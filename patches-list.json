@@ -1,5 +1,5 @@
 {
-  "version": "1.16.0",
+  "version": "1.17.0",
   "appNames": {
     "com.google.android.apps.photos": "Google Photos"
   },
@@ -11,6 +11,30 @@
       "dependencies": [
         "BytecodePatch"
       ],
+      "compatiblePackages": {
+        "com.google.android.apps.photos": null
+      },
+      "compatibility": [
+        {
+          "name": "Google Photos",
+          "packageName": "com.google.android.apps.photos",
+          "description": null,
+          "appIconColor": 16531260,
+          "targets": [
+            {
+              "version": "",
+              "experimental": false
+            }
+          ]
+        }
+      ],
+      "options": []
+    },
+    {
+      "name": "Bake memory style flags",
+      "description": "Hard-codes the Styles in Memories feature flags into the DEX so they are always enabled regardless of SharedPreferences / Phenotype state. Enables scrapbook-style graphic borders, large typography number cutouts, and depth pop-out effects in the Memories carousel.",
+      "use": true,
+      "dependencies": [],
       "compatiblePackages": {
         "com.google.android.apps.photos": null
       },

@@ -1,3 +1,10 @@
+# [1.17.0](https://github.com/Akash-Sriram/De-Vanced/compare/v1.16.0...v1.17.0) (2026-09-11)
+
+
+### Features
+
+* **photos:** hard-bake memory style flags and local font fallback for scrapbook cutouts ([5f72625](https://github.com/Akash-Sriram/De-Vanced/commit/5f7262588e0b0f5c9af06136df9f31c29f80c335))
+
 # [1.16.0](https://github.com/Akash-Sriram/De-Vanced/compare/v1.15.0...v1.16.0) (2026-09-11)
 
 
