@@ -84,6 +84,7 @@ public final class PhenotypeSeedData {
 
                 editor.putBoolean(PhenotypeFlagManager.SEEDED_MARKER, true);
                 editor.commit();
+                GooglePhotosAccountAvatar.ensureOneGoogleFlagsConfigured(context);
                 final int finalCount = count;
                 Logger.printDebug(() -> "Successfully restored " + finalCount + " official phenotype flags");
                 return count;
@@ -132,6 +133,7 @@ public final class PhenotypeSeedData {
                 Logger.printDebug(() -> "ensureSeeded: loaded " + restored + " official flags directly into SharedPreferences (seed version " + LATEST_SEED_VERSION + ")");
             }
 
+            GooglePhotosAccountAvatar.ensureOneGoogleFlagsConfigured(context);
             syncActiveAccount(context);
         } catch (Throwable t) {
             Logger.printException(() -> "Failed to seed official phenotype data", t);

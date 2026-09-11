@@ -256,6 +256,27 @@ public class PhenotypeFlagManager {
                 "Replaces the \"Create\" tab in the bottom bar",
                 videosFlags
         ));
+
+        // 8. Styles in Memories & Graphic Cutouts (Verified)
+        Map<String, Object> memoryStylesFlags = new LinkedHashMap<>();
+        memoryStylesFlags.put("45477626", true);
+        memoryStylesFlags.put("45659276", true);
+        memoryStylesFlags.put("3999", 120480972L);
+        memoryStylesFlags.put("45662994", true);
+        memoryStylesFlags.put("45785531", true);
+        memoryStylesFlags.put("45741031", true);
+        memoryStylesFlags.put("45737826", true);
+        memoryStylesFlags.put("45764779", true);
+        memoryStylesFlags.put("45659278", true);
+        CURATED_RECIPES.add(new FeatureRecipe(
+                "memory_styles_cutouts",
+                "Styles in Memories (Graphic Cutouts & Typography)",
+                "Enables Skottie GPU-rendered graphic memory templates, stylized scrapbook borders, and dynamic typography number cutouts (e.g. 7 years ago).",
+                "Memories",
+                "Verified",
+                null,
+                memoryStylesFlags
+        ));
     }
 
     public static SharedPreferences getPrefs(Context context) {
