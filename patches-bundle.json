@@ -1,7 +1,7 @@
 {
-  "created_at": "2026-09-12T22:38:46",
-  "description": "# [1.18.0](https://github.com/Akash-Sriram/De-Vanced/compare/v1.17.0...v1.18.0) (2026-09-12)\n\n\n### Features\n\n* **photos:** limit default spoof features to Pixel 2016 and add model readiness gates ([d5de929](https://github.com/Akash-Sriram/De-Vanced/commit/d5de929597c681a8d04f24c4e9dadb0ab1eaf084))",
-  "download_url": "https://github.com/Akash-Sriram/De-Vanced/releases/download/v1.18.0/patches-1.18.0.mpp",
+  "created_at": "2026-09-12T22:46:07",
+  "description": "# [1.19.0](https://github.com/Akash-Sriram/De-Vanced/compare/v1.18.0...v1.19.0) (2026-09-12)\n\n\n### Features\n\n* **photos:** add PhotosModelSeeder for persistent ML model and MDD rehydration ([712ffee](https://github.com/Akash-Sriram/De-Vanced/commit/712ffee068bb4065cbbf6207af2190db8e8bca78))",
+  "download_url": "https://github.com/Akash-Sriram/De-Vanced/releases/download/v1.19.0/patches-1.19.0.mpp",
   "signature_download_url": "",
-  "version": "1.18.0"
+  "version": "1.19.0"
 }

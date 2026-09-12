@@ -1,3 +1,10 @@
+# [1.19.0](https://github.com/Akash-Sriram/De-Vanced/compare/v1.18.0...v1.19.0) (2026-09-12)
+
+
+### Features
+
+* **photos:** add PhotosModelSeeder for persistent ML model and MDD rehydration ([712ffee](https://github.com/Akash-Sriram/De-Vanced/commit/712ffee068bb4065cbbf6207af2190db8e8bca78))
+
 # [1.18.0](https://github.com/Akash-Sriram/De-Vanced/compare/v1.17.0...v1.18.0) (2026-09-12)
 
 
