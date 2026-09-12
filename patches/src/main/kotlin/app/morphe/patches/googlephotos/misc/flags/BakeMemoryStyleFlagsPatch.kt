@@ -191,6 +191,106 @@ val bakeMemoryStyleFlagsPatch = bytecodePatch(
                         mutableClass.methods.add(clonedB)
                     }
                 }
+
+                // Portrait Blur classifier provider (bypasses MDD build_id version check)
+                "Lanqb;" -> {
+                    val mutableClass by lazy { mutableClassDefBy(classDef) }
+                    classDef.methods.forEach { method ->
+                        if (method.name == "a" && method.parameterTypes.isEmpty() && method.returnType == "Z") {
+                            mutableClass.findMutableMethodOf(method).returnEarly(true)
+                        }
+                    }
+                }
+
+                // Portrait Segmenter model provider (bypasses MDD file lookup check)
+                "Lanrk;" -> {
+                    val mutableClass by lazy { mutableClassDefBy(classDef) }
+                    classDef.methods.forEach { method ->
+                        if (method.name == "a" && method.parameterTypes.isEmpty() && method.returnType == "Z") {
+                            mutableClass.findMutableMethodOf(method).returnEarly(true)
+                        }
+                    }
+                }
+
+                // Sky model provider (bypasses MDD file lookup check)
+                "Laspz;" -> {
+                    val mutableClass by lazy { mutableClassDefBy(classDef) }
+                    classDef.methods.forEach { method ->
+                        if (method.name == "c" && method.parameterTypes.isEmpty() && method.returnType == "Z") {
+                            mutableClass.findMutableMethodOf(method).returnEarly(true)
+                        }
+                    }
+                }
+
+                // ModelDownloadManager UI status and readiness gates
+                "Larea;" -> {
+                    val mutableClass = mutableClassDefBy(classDef)
+                    val methodC = classDef.methods.find {
+                        it.name == "c" && it.parameterTypes == listOf("Lchoo;") && it.returnType == "Laqta;"
+                    }
+                    if (methodC != null) {
+                        val clonedC = methodC.cloneMutable(additionalRegisters = 2)
+                        clonedC.addInstructions(0, """
+                            if-eqz p1, :cond_orig
+                            invoke-virtual { p1 }, Ljava/lang/Enum;->ordinal()I
+                            move-result v0
+                            const/16 v1, 8
+                            if-eq v0, v1, :cond_loaded
+                            const/16 v1, 14
+                            if-eq v0, v1, :cond_loaded
+                            const/16 v1, 16
+                            if-eq v0, v1, :cond_loaded
+                            const/16 v1, 17
+                            if-eq v0, v1, :cond_loaded
+                            const/16 v1, 19
+                            if-eq v0, v1, :cond_loaded
+                            const/16 v1, 34
+                            if-eq v0, v1, :cond_loaded
+                            const/16 v1, 52
+                            if-eq v0, v1, :cond_loaded
+                            goto :cond_orig
+                            :cond_loaded
+                            sget-object v0, Laqta;->e:Laqta;
+                            return-object v0
+                            :cond_orig
+                        """.trimIndent())
+                        mutableClass.methods.remove(methodC)
+                        mutableClass.methods.add(clonedC)
+                    }
+
+                    val methodQ = classDef.methods.find {
+                        it.name == "q" && it.parameterTypes == listOf("Lchoo;") && it.returnType == "Z"
+                    }
+                    if (methodQ != null) {
+                        val clonedQ = methodQ.cloneMutable(additionalRegisters = 2)
+                        clonedQ.addInstructions(0, """
+                            if-eqz p1, :cond_orig_q
+                            invoke-virtual { p1 }, Ljava/lang/Enum;->ordinal()I
+                            move-result v0
+                            const/16 v1, 8
+                            if-eq v0, v1, :cond_true_q
+                            const/16 v1, 14
+                            if-eq v0, v1, :cond_true_q
+                            const/16 v1, 16
+                            if-eq v0, v1, :cond_true_q
+                            const/16 v1, 17
+                            if-eq v0, v1, :cond_true_q
+                            const/16 v1, 19
+                            if-eq v0, v1, :cond_true_q
+                            const/16 v1, 34
+                            if-eq v0, v1, :cond_true_q
+                            const/16 v1, 52
+                            if-eq v0, v1, :cond_true_q
+                            goto :cond_orig_q
+                            :cond_true_q
+                            const/4 v0, 1
+                            return v0
+                            :cond_orig_q
+                        """.trimIndent())
+                        mutableClass.methods.remove(methodQ)
+                        mutableClass.methods.add(clonedQ)
+                    }
+                }
             }
         }
 
