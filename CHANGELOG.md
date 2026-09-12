@@ -1,3 +1,10 @@
+# [1.18.0](https://github.com/Akash-Sriram/De-Vanced/compare/v1.17.0...v1.18.0) (2026-09-12)
+
+
+### Features
+
+* **photos:** limit default spoof features to Pixel 2016 and add model readiness gates ([d5de929](https://github.com/Akash-Sriram/De-Vanced/commit/d5de929597c681a8d04f24c4e9dadb0ab1eaf084))
+
 # [1.17.0](https://github.com/Akash-Sriram/De-Vanced/compare/v1.16.0...v1.17.0) (2026-09-11)
 
 

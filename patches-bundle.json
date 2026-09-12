@@ -1,7 +1,7 @@
 {
-  "created_at": "2026-09-11T19:08:41",
-  "description": "# [1.17.0](https://github.com/Akash-Sriram/De-Vanced/compare/v1.16.0...v1.17.0) (2026-09-11)\n\n\n### Features\n\n* **photos:** hard-bake memory style flags and local font fallback for scrapbook cutouts ([5f72625](https://github.com/Akash-Sriram/De-Vanced/commit/5f7262588e0b0f5c9af06136df9f31c29f80c335))",
-  "download_url": "https://github.com/Akash-Sriram/De-Vanced/releases/download/v1.17.0/patches-1.17.0.mpp",
+  "created_at": "2026-09-12T22:38:46",
+  "description": "# [1.18.0](https://github.com/Akash-Sriram/De-Vanced/compare/v1.17.0...v1.18.0) (2026-09-12)\n\n\n### Features\n\n* **photos:** limit default spoof features to Pixel 2016 and add model readiness gates ([d5de929](https://github.com/Akash-Sriram/De-Vanced/commit/d5de929597c681a8d04f24c4e9dadb0ab1eaf084))",
+  "download_url": "https://github.com/Akash-Sriram/De-Vanced/releases/download/v1.18.0/patches-1.18.0.mpp",
   "signature_download_url": "",
-  "version": "1.17.0"
+  "version": "1.18.0"
 }
