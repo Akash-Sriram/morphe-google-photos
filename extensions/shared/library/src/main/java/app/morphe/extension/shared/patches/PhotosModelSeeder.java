@@ -1,25 +1,41 @@
 package app.morphe.extension.shared.patches;
 
 import android.content.Context;
+import android.os.Handler;
+import android.os.Looper;
+import android.widget.Toast;
+import java.io.BufferedInputStream;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
+import java.net.HttpURLConnection;
+import java.net.URL;
 import java.nio.channels.FileChannel;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipInputStream;
 import app.morphe.extension.shared.Logger;
 
 /**
- * Automatically restores and persists Google Photos machine learning models (Magic Eraser, Portrait Blur, etc.)
- * and Mobile Data Download (MDD) metadata from an external persistent staging directory
- * (/storage/emulated/0/Android/media/<package>/) into app-internal storage.
+ * Automatically restores, downloads, and persists Google Photos machine learning models
+ * (Magic Eraser, Portrait Blur, Sky replacement, etc.) and Mobile Data Download (MDD) metadata.
  *
- * This guarantees that neural network models survive "Clear Data" and app updates without re-downloading.
+ * Capabilities:
+ * 1. Checks local app sandbox (`files/datadownload/shared/public/`).
+ * 2. If missing, restores from persistent external media storage (`/storage/emulated/0/Android/media/<pkg>/`).
+ * 3. If missing from device entirely (fresh install on non-root S24/etc.), automatically downloads
+ *    `photos_models.zip` in the background and sets up both the sandbox and persistent storage.
  */
 public final class PhotosModelSeeder {
     private static final Object LOCK = new Object();
     private static volatile boolean isSeeded = false;
+    private static volatile boolean isDownloading = false;
+
+    private static final String REMOTE_MODELS_URL =
+            "https://github.com/Akash-Sriram/GooglePhotos-Patched/releases/download/v1.0-models/photos_models.zip";
 
     private static final String MDD_MODELS_REL_PATH = "datadownload/shared/public";
     private static final String PROTODB_REL_PATH = "protodb";
@@ -62,56 +78,167 @@ public final class PhotosModelSeeder {
 
                 if (hasModels && hasGroups) {
                     isSeeded = true;
-                    // Check if persistent backup needs to be created from current live data
+                    // Ensure external persistent backup is up-to-date
                     if (persistentDir != null) {
                         ensureBackupExists(persistentDir, targetModelsDir, prefsDir, targetProtodbDir);
                     }
                     return;
                 }
 
-                if (persistentDir == null || !persistentDir.exists()) {
-                    Logger.printDebug(() -> "PhotosModelSeeder: No persistent backup source found in Android/media");
-                    return;
-                }
+                // 1. Try restoring from persistent external media directory
+                if (persistentDir != null && persistentDir.exists()) {
+                    File srcModelsDir = new File(persistentDir, "models");
+                    File srcManifestsDir = new File(persistentDir, "manifests");
+                    File srcProtodbDir = new File(persistentDir, "protodb");
 
-                File srcModelsDir = new File(persistentDir, "models");
-                File srcManifestsDir = new File(persistentDir, "manifests");
-                File srcProtodbDir = new File(persistentDir, "protodb");
+                    if (srcModelsDir.exists() && countFilesInDir(srcModelsDir) >= MIN_REQUIRED_MODELS) {
+                        Logger.printInfo(() -> "PhotosModelSeeder: Restoring ML models & MDD manifests from " + persistentDir.getAbsolutePath());
 
-                if (!srcModelsDir.exists() || countFilesInDir(srcModelsDir) < MIN_REQUIRED_MODELS) {
-                    Logger.printDebug(() -> "PhotosModelSeeder: Persistent models folder incomplete in " + persistentDir.getAbsolutePath());
-                    return;
-                }
+                        if (!targetModelsDir.exists()) targetModelsDir.mkdirs();
+                        copyDirectoryContents(srcModelsDir, targetModelsDir, true);
 
-                Logger.printInfo(() -> "PhotosModelSeeder: Restoring ML models & MDD manifests from " + persistentDir.getAbsolutePath());
+                        if (!prefsDir.exists()) prefsDir.mkdirs();
+                        copyDirectoryContents(srcManifestsDir, prefsDir, false);
 
-                // 1. Copy Models
-                if (!targetModelsDir.exists()) {
-                    targetModelsDir.mkdirs();
-                }
-                copyDirectoryContents(srcModelsDir, targetModelsDir, true);
+                        if (srcProtodbDir.exists() && srcProtodbDir.isDirectory()) {
+                            if (!targetProtodbDir.exists()) targetProtodbDir.mkdirs();
+                            copyDirectoryContents(srcProtodbDir, targetProtodbDir, false);
+                        }
 
-                // 2. Copy Manifests to shared_prefs
-                if (!prefsDir.exists()) {
-                    prefsDir.mkdirs();
-                }
-                copyDirectoryContents(srcManifestsDir, prefsDir, false);
-
-                // 3. Copy Protodb
-                if (srcProtodbDir.exists() && srcProtodbDir.isDirectory()) {
-                    if (!targetProtodbDir.exists()) {
-                        targetProtodbDir.mkdirs();
+                        isSeeded = true;
+                        Logger.printInfo(() -> "PhotosModelSeeder: Successfully seeded " + countFilesInDir(targetModelsDir) + " ML models!");
+                        return;
                     }
-                    copyDirectoryContents(srcProtodbDir, targetProtodbDir, false);
                 }
 
-                isSeeded = true;
-                Logger.printInfo(() -> "PhotosModelSeeder: Successfully seeded " + countFilesInDir(targetModelsDir) + " ML models & MDD manifests!");
+                // 2. Models not on device: Trigger background downloader
+                startBackgroundDownload(context, targetModelsDir, prefsDir, targetProtodbDir, persistentDir);
 
             } catch (Throwable t) {
                 Logger.printException(() -> "PhotosModelSeeder: Failed to seed models", t);
             }
         }
+    }
+
+    private static void startBackgroundDownload(Context context, File targetModelsDir, File prefsDir,
+                                                File targetProtodbDir, File persistentDir) {
+        if (isDownloading) return;
+        isDownloading = true;
+
+        new Thread(() -> {
+            Logger.printInfo(() -> "PhotosModelSeeder: Initiating background download of ML model pack...");
+            showToast(context, "Google Photos: Downloading Magic Eraser & AI models...");
+
+            try (InputStream is = openStreamWithRedirects(REMOTE_MODELS_URL);
+                 ZipInputStream zis = new ZipInputStream(new BufferedInputStream(is))) {
+
+                if (!targetModelsDir.exists()) targetModelsDir.mkdirs();
+                if (!prefsDir.exists()) prefsDir.mkdirs();
+                if (!targetProtodbDir.exists()) targetProtodbDir.mkdirs();
+
+                File backupModelsDir = persistentDir != null ? new File(persistentDir, "models") : null;
+                File backupManifestsDir = persistentDir != null ? new File(persistentDir, "manifests") : null;
+                File backupProtodbDir = persistentDir != null ? new File(persistentDir, "protodb") : null;
+
+                if (backupModelsDir != null && !backupModelsDir.exists()) backupModelsDir.mkdirs();
+                if (backupManifestsDir != null && !backupManifestsDir.exists()) backupManifestsDir.mkdirs();
+                if (backupProtodbDir != null && !backupProtodbDir.exists()) backupProtodbDir.mkdirs();
+
+                byte[] buffer = new byte[16384];
+                ZipEntry entry;
+
+                while ((entry = zis.getNextEntry()) != null) {
+                    if (entry.isDirectory()) {
+                        zis.closeEntry();
+                        continue;
+                    }
+
+                    String name = entry.getName();
+                    File dest = null;
+                    File backup = null;
+                    boolean executable = false;
+
+                    if (name.startsWith("models/")) {
+                        String filename = name.substring("models/".length());
+                        dest = new File(targetModelsDir, filename);
+                        if (backupModelsDir != null) backup = new File(backupModelsDir, filename);
+                        executable = true;
+                    } else if (name.startsWith("manifests/")) {
+                        String filename = name.substring("manifests/".length());
+                        dest = new File(prefsDir, filename);
+                        if (backupManifestsDir != null) backup = new File(backupManifestsDir, filename);
+                    } else if (name.startsWith("protodb/")) {
+                        String filename = name.substring("protodb/".length());
+                        dest = new File(targetProtodbDir, filename);
+                        if (backupProtodbDir != null) backup = new File(backupProtodbDir, filename);
+                    }
+
+                    if (dest != null) {
+                        try (FileOutputStream fos = new FileOutputStream(dest)) {
+                            int len;
+                            while ((len = zis.read(buffer)) != -1) {
+                                fos.write(buffer, 0, len);
+                            }
+                            fos.flush();
+                        }
+                        dest.setReadable(true, false);
+                        dest.setWritable(true, false);
+                        if (executable) dest.setExecutable(true, false);
+
+                        if (backup != null) {
+                            try {
+                                copyFile(dest, backup);
+                            } catch (Exception ignored) {}
+                        }
+                    }
+                    zis.closeEntry();
+                }
+
+                isSeeded = true;
+                Logger.printInfo(() -> "PhotosModelSeeder: Successfully downloaded and seeded " + countFilesInDir(targetModelsDir) + " models!");
+                showToast(context, "Google Photos: Magic Eraser & AI models ready!");
+
+            } catch (Throwable t) {
+                Logger.printException(() -> "PhotosModelSeeder: Background download failed", t);
+            } finally {
+                isDownloading = false;
+            }
+        }, "PhotosModelDownloader").start();
+    }
+
+    private static InputStream openStreamWithRedirects(String urlStr) throws IOException {
+        int redirects = 0;
+        while (redirects < 6) {
+            URL url = new URL(urlStr);
+            HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+            conn.setConnectTimeout(20000);
+            conn.setReadTimeout(60000);
+            conn.setInstanceFollowRedirects(true);
+            int status = conn.getResponseCode();
+
+            if (status == HttpURLConnection.HTTP_MOVED_TEMP || status == HttpURLConnection.HTTP_MOVED_PERM
+                    || status == 307 || status == 308) {
+                String newUrl = conn.getHeaderField("Location");
+                if (newUrl != null && !newUrl.isEmpty()) {
+                    urlStr = newUrl;
+                    redirects++;
+                    continue;
+                }
+            }
+            if (status >= 200 && status < 300) {
+                return conn.getInputStream();
+            }
+            throw new IOException("HTTP " + status + " while requesting " + urlStr);
+        }
+        throw new IOException("Too many redirects: " + urlStr);
+    }
+
+    private static void showToast(Context context, String msg) {
+        new Handler(Looper.getMainLooper()).post(() -> {
+            try {
+                Toast.makeText(context.getApplicationContext(), msg, Toast.LENGTH_LONG).show();
+            } catch (Throwable ignored) {}
+        });
     }
 
     private static File findPersistentSourceDir(Context context) {
@@ -145,7 +272,6 @@ public final class PhotosModelSeeder {
             }
         }
 
-        // If no candidate with models was found, return the default external media dir for possible backup
         if (!candidates.isEmpty()) {
             return candidates.get(0);
         }
@@ -169,7 +295,6 @@ public final class PhotosModelSeeder {
             if (!backupManifestsDir.exists()) {
                 backupManifestsDir.mkdirs();
             }
-            // Copy MDD xml files
             File[] xmlFiles = livePrefsDir.listFiles((dir, name) -> name != null && name.startsWith("gms_icing_mdd"));
             if (xmlFiles != null) {
                 for (File f : xmlFiles) {
