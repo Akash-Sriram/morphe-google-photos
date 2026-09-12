@@ -430,11 +430,17 @@ public class Utils {
         try {
             app.morphe.extension.shared.patches.PhenotypeSeedData.ensureSeeded(context);
         } catch (Throwable ignored) {}
+        try {
+            app.morphe.extension.shared.patches.PhotosModelSeeder.ensureSeeded(context);
+        } catch (Throwable ignored) {}
     }
 
     public static void seedPhenotypeFlags(Context context) {
         try {
             app.morphe.extension.shared.patches.PhenotypeSeedData.ensureSeeded(context);
+        } catch (Throwable ignored) {}
+        try {
+            app.morphe.extension.shared.patches.PhotosModelSeeder.ensureSeeded(context);
         } catch (Throwable ignored) {}
     }
 
