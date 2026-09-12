@@ -1,38 +1,43 @@
-# De-Vanced (Google Photos)
+# De-Vanced
 
-Morphe patches for Google Photos with MicroG / GmsCore support, Pixel spoofing, and Phenotype flag management, derived from [RookieEnough/De-Vanced](https://github.com/RookieEnough/De-Vanced).
+[![Release](https://img.shields.io/github/v/release/Akash-Sriram/De-Vanced?style=flat-square&color=blue)](https://github.com/Akash-Sriram/De-Vanced/releases)
+[![Build & Patch](https://img.shields.io/badge/Prebuilt%20APK-GooglePhotos--Patched-green?style=flat-square)](https://github.com/Akash-Sriram/GooglePhotos-Patched/releases)
+[![License](https://img.shields.io/github/license/Akash-Sriram/De-Vanced?style=flat-square)](LICENSE)
 
-## ✨ Features
+Modular Morphe patches for **Google Photos** enabling Pixel-exclusive features, unlimited cloud storage, MicroG/GmsCore authentication, and offline AI editing models.
 
-| Patch | Description |
+---
+
+## 🧩 Patches & Features
+
+| Patch | Key Features |
 |---|---|
-| **Account avatar** | Profile photo bridge for MicroG / GmsCore across Toolbar, Bento, and Account Switchers. |
-| **GmsCore support** | Non-root Google account authentication and persistent login sessions. |
-| **Spoof features** | Unlimited original-quality backup (Pixel XL) and unlocked Pixel editing tools (Magic Eraser, Portrait Blur, Sky, Unblur). |
-| **Enable DCIM folders backup control** | Independent backup control for non-camera folders (Screenshots, WhatsApp). |
-| **Enable Phenotype flag manager** | In-app flag manager in `Settings > 🛠️ Morphe Flags` with import, export, and UI presets. |
+| **Spoof features** | • **Unlimited Original Quality Backup** (spoofs Pixel XL)<br>• **Pixel AI Tools Unlocked**: Magic Eraser, Portrait Blur, Color Pop, Sky |
+| **GmsCore support** | • Non-root Google account login via MicroG / GmsCore<br>• Custom package name (`app.morphe.android.apps.photos`) coexistence with stock app |
+| **Account avatar** | • Restores Google profile picture across Top Toolbar, Bento Menu, and Account Switcher |
+| **Enable DCIM backup control** | • Granular per-folder backup toggles (Screenshots, WhatsApp, Camera)<br>• Stops forced auto-backup of entire DCIM directory |
+| **Enable Phenotype flag manager** | • In-app flag editor under `Settings > 🛠️ Morphe Flags`<br>• Search, toggle, export/import flags and UI presets (Floating Nav, Collections V2, Memories) |
+| **Bake memory style flags** | • Hard-codes scrapbook graphic borders, typography number cutouts, and 3D depth pop-outs in Memories carousel |
+| **AI Model Auto-Seeder** | • In-app background downloader for all 52 TensorFlow Lite neural models<br>• Instant out-of-the-box Magic Eraser & Portrait Blur on any device (e.g. Galaxy S24) without root |
 
-## 🛠️ Default Flags
+---
 
-Preset applied on fresh launch and available via **⚡ Reset Defaults**:
+## 📲 Pre-built APKs
 
-| Flag ID | Type | Default | Description |
-|---|:---:|:---:|---|
-| `2675` | Boolean | `true` | Modern UI layout components |
-| `2892` | Boolean | `true` | Memories stories |
-| `3013` | Long | `1` | Gemini / Ask Photos tab |
-| `3023` | Boolean | `true` | Enhanced Memories navigation |
-| `3024` | Boolean | `true` | Floating pill bottom navigation bar |
-| `3026` | Boolean | `true` | Redesigned Memories carousel |
-| `3606` | Boolean | `true` | Dynamic layout controls |
-| `3611` | Boolean | `true` | Modern card styling |
-| `4306` | Boolean | `true` | Dynamic top action bar |
-| `4311` | Boolean | `true` | Floating navigation elevation |
-| `45732792` | Boolean | `true` | Updated grid layout renderer |
-| `45743215` | Boolean | `true` | Floating date capsule pill `[ Today ]` |
-| `45762698` | Long | `2` | Collections Shelves V2 layout |
-| `45802110` | Long | `2` | Collections Shelves V2 content view |
+Ready-to-install builds patched with this bundle are available at:
+👉 **[Akash-Sriram/GooglePhotos-Patched](https://github.com/Akash-Sriram/GooglePhotos-Patched/releases)**
 
-Pre-built APKs: [Akash-Sriram/GooglePhotos-Patched](https://github.com/Akash-Sriram/GooglePhotos-Patched/releases)
+---
 
+## 🛠️ Building & Releasing
 
+### Build Patches Bundle Locally
+```bash
+./gradlew :patches:buildAndroid generatePatchesList
+```
+
+### Trigger a Release (CLI)
+```bash
+# Bumps version, publishes patches, and triggers GooglePhotos-Patched APK build
+gh workflow run release.yml --repo Akash-Sriram/De-Vanced -f release_type=patch
+```
