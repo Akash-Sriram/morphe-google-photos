@@ -41,3 +41,5 @@ Ready-to-install builds patched with this bundle are available at:
 # Bumps version, publishes patches, and triggers GooglePhotos-Patched APK build
 gh workflow run release.yml --repo Akash-Sriram/De-Vanced -f release_type=patch
 ```
+
+For full CLI recipes (ADB, model syncing, permissions, and debugging), see **[COMMANDS.md](COMMANDS.md)**.
