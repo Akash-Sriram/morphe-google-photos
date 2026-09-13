@@ -3,9 +3,20 @@ package app.morphe.patches.googlephotos.misc.flags
 import app.morphe.patches.shared.compat.AppCompatibilities
 import app.morphe.patcher.extensions.InstructionExtensions.addInstructions
 import app.morphe.patcher.patch.bytecodePatch
-import app.morphe.util.cloneMutable
 import app.morphe.util.findMutableMethodOf
 import app.morphe.util.returnEarly
+import com.android.tools.smali.dexlib2.iface.Method
+import com.android.tools.smali.dexlib2.Opcode
+import com.android.tools.smali.dexlib2.iface.instruction.ReferenceInstruction
+import com.android.tools.smali.dexlib2.iface.reference.StringReference
+
+fun Method.containsStringConstant(string: String): Boolean {
+    val implementation = this.implementation ?: return false
+    return implementation.instructions.any { 
+        (it.opcode == Opcode.CONST_STRING || it.opcode == Opcode.CONST_STRING_JUMBO) &&
+        ((it as? ReferenceInstruction)?.reference as? StringReference)?.string == string 
+    }
+}
 
 val modelReadinessGatesPatch = bytecodePatch(
     name = "Model Readiness Gates",
@@ -15,38 +26,37 @@ val modelReadinessGatesPatch = bytecodePatch(
     compatibleWith(AppCompatibilities.GOOGLE_PHOTOS)
 
     execute {
-        getAllClasses().forEach { classDef ->
-            when {
-                classDef.type == "Laspz;" -> {
-                    val mutableClass by lazy { mutableClassDefBy(classDef) }
-                    classDef.methods.forEach { method ->
-                        if (method.name == "c" && method.parameterTypes.isEmpty() && method.returnType == "Z") {
-                            mutableClass.findMutableMethodOf(method).returnEarly(true)
-                        }
-                    }
+        classDefForEach { classDef ->
+            val clinit = classDef.methods.find { it.name == "<clinit>" }
+            if (clinit != null && clinit.containsStringConstant("ModelDownloadManager")) {
+                val mutableClass = mutableClassDefBy(classDef)
+                
+                // Find method that returns the State Enum (taking 1 Model Enum param)
+                val methodC = classDef.methods.find {
+                    it.parameterTypes.size == 1 && 
+                    it.parameterTypes[0].startsWith("L") && 
+                    it.returnType.startsWith("L") &&
+                    it.returnType != it.parameterTypes[0] &&
+                    !it.returnType.startsWith("Ljava/") // not returning String or Object
+                }
+                
+                if (methodC != null) {
+                    val returnTypeObj = methodC.returnType
+                    mutableClass.findMutableMethodOf(methodC).addInstructions(0, """
+                        sget-object v0, $returnTypeObj->e:$returnTypeObj
+                        return-object v0
+                    """.trimIndent())
                 }
 
-                classDef.type == "Larea;" -> {
-                    val mutableClass = mutableClassDefBy(classDef)
-                    val methodC = classDef.methods.find {
-                        it.name == "c" && it.parameterTypes == listOf("Lchoo;") && it.returnType == "Laqta;"
-                    }
-                    if (methodC != null) {
-                        val clonedC = methodC.cloneMutable(additionalRegisters = 0)
-                        clonedC.addInstructions(0, """
-                            sget-object p1, Laqta;->e:Laqta;
-                            return-object p1
-                        """.trimIndent())
-                        mutableClass.methods.remove(methodC)
-                        mutableClass.methods.add(clonedC)
-                    }
-
-                    val methodQ = classDef.methods.find {
-                        it.name == "q" && it.parameterTypes == listOf("Lchoo;") && it.returnType == "Z"
-                    }
-                    if (methodQ != null) {
-                        mutableClass.findMutableMethodOf(methodQ).returnEarly(true)
-                    }
+                // Find method that returns boolean (taking 1 Model Enum param)
+                val methodQ = classDef.methods.find {
+                    it.parameterTypes.size == 1 && 
+                    it.parameterTypes[0].startsWith("L") && 
+                    it.returnType == "Z"
+                }
+                
+                if (methodQ != null) {
+                    mutableClass.findMutableMethodOf(methodQ).returnEarly(true)
                 }
             }
         }

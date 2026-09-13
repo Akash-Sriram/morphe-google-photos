@@ -72,7 +72,7 @@ public final class PhotosModelSeeder {
 
                 boolean hasModels = countFilesInDir(targetModelsDir) >= MIN_REQUIRED_MODELS;
                 File groupsXml = new File(prefsDir, MDD_GROUPS_XML);
-                boolean hasGroups = groupsXml.exists() && groupsXml.length() > 2000;
+                boolean hasGroups = groupsXml.exists() && groupsXml.length() > 50000;
 
                 File persistentDir = findPersistentSourceDir(context);
 
@@ -99,6 +99,7 @@ public final class PhotosModelSeeder {
 
                         if (!prefsDir.exists()) prefsDir.mkdirs();
                         copyDirectoryContents(srcManifestsDir, prefsDir, false);
+                        patchMddManifests(prefsDir, pkg);
 
                         if (srcProtodbDir.exists() && srcProtodbDir.isDirectory()) {
                             if (!targetProtodbDir.exists()) targetProtodbDir.mkdirs();
@@ -117,6 +118,44 @@ public final class PhotosModelSeeder {
             } catch (Throwable t) {
                 Logger.printException(() -> "PhotosModelSeeder: Failed to seed models", t);
             }
+        }
+    }
+
+
+    private static void patchMddManifests(File manifestsDir, String newPackageName) {
+        File[] xmlFiles = manifestsDir.listFiles();
+        if (xmlFiles == null) return;
+        String oldPackage = "com.google.android.apps.photos";
+        if (oldPackage.length() != newPackageName.length()) return; 
+        
+        for (File xml : xmlFiles) {
+            if (!xml.getName().endsWith(".xml")) continue;
+            try {
+                String content = new String(java.nio.file.Files.readAllBytes(xml.toPath()));
+                boolean changed = false;
+                java.util.regex.Matcher m = java.util.regex.Pattern.compile(">([^<]+)</string>").matcher(content);
+                StringBuffer sb = new StringBuffer();
+                while (m.find()) {
+                    String base64 = m.group(1);
+                    try {
+                        byte[] decoded = android.util.Base64.decode(base64, android.util.Base64.DEFAULT);
+                        String decodedStr = new String(decoded, "ISO-8859-1");
+                        if (decodedStr.contains(oldPackage)) {
+                            decodedStr = decodedStr.replace(oldPackage, newPackageName);
+                            String newBase64 = android.util.Base64.encodeToString(decodedStr.getBytes("ISO-8859-1"), android.util.Base64.NO_WRAP);
+                            m.appendReplacement(sb, ">" + newBase64 + "</string>");
+                            changed = true;
+                            continue;
+                        }
+                    } catch (Exception e) {}
+                    m.appendReplacement(sb, ">" + base64 + "</string>");
+                }
+                m.appendTail(sb);
+                
+                if (changed) {
+                    java.nio.file.Files.write(xml.toPath(), sb.toString().getBytes());
+                }
+            } catch (Exception e) {}
         }
     }
 
@@ -193,10 +232,24 @@ public final class PhotosModelSeeder {
                     }
                     zis.closeEntry();
                 }
+                
+                patchMddManifests(prefsDir, context.getPackageName());
+                if (persistentDir != null && new File(persistentDir, "manifests").exists()) {
+                    patchMddManifests(new File(persistentDir, "manifests"), context.getPackageName());
+                }
 
                 isSeeded = true;
-                Logger.printInfo(() -> "PhotosModelSeeder: Successfully downloaded and seeded " + countFilesInDir(targetModelsDir) + " models!");
-                showToast(context, "Google Photos: Magic Eraser & AI models ready!");
+                Logger.printInfo(() -> "PhotosModelSeeder: Successfully downloaded and seeded " + countFilesInDir(targetModelsDir) + " models! Restarting app...");
+                showToast(context, "AI Models downloaded! Restarting to apply...");
+
+                try { Thread.sleep(2000); } catch (Exception ignored) {}
+
+                android.content.Intent intent = context.getPackageManager().getLaunchIntentForPackage(context.getPackageName());
+                if (intent != null) {
+                    intent.addFlags(android.content.Intent.FLAG_ACTIVITY_CLEAR_TOP | android.content.Intent.FLAG_ACTIVITY_NEW_TASK | android.content.Intent.FLAG_ACTIVITY_CLEAR_TASK);
+                    context.startActivity(intent);
+                }
+                Runtime.getRuntime().exit(0);
 
             } catch (Throwable t) {
                 Logger.printException(() -> "PhotosModelSeeder: Models download failed", t);
