@@ -42,7 +42,7 @@ public final class PhotosModelSeeder {
     private static final String SHARED_PREFS_DIR_NAME = "shared_prefs";
     private static final String MDD_GROUPS_XML = "gms_icing_mdd_groups.xml";
 
-    private static final int MIN_REQUIRED_MODELS = 50;
+    private static final int MIN_REQUIRED_MODELS = 70;
 
     private PhotosModelSeeder() {}
 

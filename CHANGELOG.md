@@ -76,7 +76,8 @@ Welcome to the inaugural standalone release of **De-Vanced (Morphe Patches)**! T
 ### ✨ Core Highlights & Features
 
 #### 🧠 Neural Model Auto-Seeder & Background Streaming (`PhotosModelSeeder`)
-- **Seamless Non-Root Delivery**: Automatically provisions all 52 official TensorFlow Lite ML models (~241.5 MB) required for Google Photos AI editing tools.
+- **Seamless Non-Root Delivery**: Automatically provisions all official TensorFlow Lite ML models required for Google Photos AI editing tools.
+- **Moods & Creative Lab Expansion**: Bundled complete 20-asset neural suite (Vision Transformer ToneFix model `vit_tonefix_v2.tflite`, 10 3D LUT profiles, 5 film textures, and 2 light leak overlays) bringing the total bundle to 72 verified models (~336.8 MB) with automated MDD group registration.
 - **In-App Background Downloader**: On fresh installs (such as on Samsung Galaxy S24), streams and unzips the verified model pack directly from GitHub Releases CDN with zero user intervention.
 - **Clear-Data Immunity**: Simultaneously caches all models and MDD manifests into persistent external storage (`/storage/emulated/0/Android/media/app.morphe.android.apps.photos/`), ensuring models instantly rehydrate after "Clear Data" without needing network access.
 - **Model Readiness Smali Gates**: Hard-baked bytecode overrides for `Lanqb`, `Lanrk`, `Laspz`, and `Larea` to report Magic Eraser, Portrait Segmenter, and Sky replacement models as loaded and ready.
