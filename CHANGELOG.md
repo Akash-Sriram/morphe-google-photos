@@ -1,3 +1,11 @@
+## [1.2.1](https://github.com/Akash-Sriram/De-Vanced/compare/v1.2.0...v1.2.1) (2026-09-13)
+
+
+### Bug Fixes
+
+* **photos:** bump REMOTE_MODELS_URL to v1.1-models to support 72 models ([8dfc0c3](https://github.com/Akash-Sriram/De-Vanced/commit/8dfc0c329d8e7949de904c59ae901d27ed752735))
+* **photos:** remove leftover Google CDN fallback from seeder ([2022eaf](https://github.com/Akash-Sriram/De-Vanced/commit/2022eaf1c6f062f49b38f4965f272db9359e6e47))
+
 # [1.2.0](https://github.com/Akash-Sriram/De-Vanced/compare/v1.1.0...v1.2.0) (2026-09-13)
 
 
