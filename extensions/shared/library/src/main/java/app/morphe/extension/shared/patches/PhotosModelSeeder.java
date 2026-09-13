@@ -199,8 +199,7 @@ public final class PhotosModelSeeder {
                 showToast(context, "Google Photos: Magic Eraser & AI models ready!");
 
             } catch (Throwable t) {
-                Logger.printException(() -> "PhotosModelSeeder: Primary models download failed, falling back to direct Google CDN", t);
-                GoogleCdnDownloader.downloadAllRemainingAsync(context);
+                Logger.printException(() -> "PhotosModelSeeder: Models download failed", t);
             } finally {
                 isDownloading = false;
             }
