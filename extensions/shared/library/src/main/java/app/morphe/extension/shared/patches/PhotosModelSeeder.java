@@ -35,7 +35,7 @@ public final class PhotosModelSeeder {
     private static volatile boolean isDownloading = false;
 
     private static final String REMOTE_MODELS_URL =
-            "https://github.com/Akash-Sriram/GooglePhotos-Patched/releases/download/v1.0-models/photos_models.zip";
+            "https://github.com/Akash-Sriram/GooglePhotos-Patched/releases/download/v1.1-models/photos_models.zip";
 
     private static final String MDD_MODELS_REL_PATH = "datadownload/shared/public";
     private static final String PROTODB_REL_PATH = "protodb";
@@ -199,7 +199,8 @@ public final class PhotosModelSeeder {
                 showToast(context, "Google Photos: Magic Eraser & AI models ready!");
 
             } catch (Throwable t) {
-                Logger.printException(() -> "PhotosModelSeeder: Background download failed", t);
+                Logger.printException(() -> "PhotosModelSeeder: Primary models download failed, falling back to direct Google CDN", t);
+                GoogleCdnDownloader.downloadAllRemainingAsync(context);
             } finally {
                 isDownloading = false;
             }
