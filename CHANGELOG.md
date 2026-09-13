@@ -1,3 +1,11 @@
+# [1.2.0](https://github.com/Akash-Sriram/De-Vanced/compare/v1.1.0...v1.2.0) (2026-09-13)
+
+
+### Features
+
+* **photos:** add dynamic auto-fingerprinting and v7.92 support for memory style flags ([8bd398c](https://github.com/Akash-Sriram/De-Vanced/commit/8bd398c50093da46f594f6bd7b8f02a845f93ee4))
+* **photos:** expand neural model pack to 72 models with Moods suite ([764ff87](https://github.com/Akash-Sriram/De-Vanced/commit/764ff87a822e1e550cecd4526a52da26c8f99ac1))
+
 # [1.1.0](https://github.com/Akash-Sriram/De-Vanced/compare/v1.0.0...v1.1.0) (2026-09-13)
 
 
