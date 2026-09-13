@@ -1,3 +1,10 @@
+## [1.2.2](https://github.com/Akash-Sriram/De-Vanced/compare/v1.2.1...v1.2.2) (2026-09-13)
+
+
+### Bug Fixes
+
+* **photos:** unconditionally report models as loaded to fix 0MB bug for Moods suite ([c032335](https://github.com/Akash-Sriram/De-Vanced/commit/c0323359bc4aa4ee2f870ca89681c10fe5364dd0))
+
 ## [1.2.1](https://github.com/Akash-Sriram/De-Vanced/compare/v1.2.0...v1.2.1) (2026-09-13)
 
 
