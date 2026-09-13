@@ -1,3 +1,10 @@
+# [1.1.0](https://github.com/Akash-Sriram/De-Vanced/compare/v1.0.0...v1.1.0) (2026-09-13)
+
+
+### Features
+
+* **photos:** port SystemProperties spoofing to cover native C/C++ property reads ([605e4cb](https://github.com/Akash-Sriram/De-Vanced/commit/605e4cb5451379f02370b503df4451dbade37774))
+
 # 1.0.0 (2026-09-12)
 
 
