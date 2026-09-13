@@ -346,23 +346,7 @@ val bakeMemoryStyleFlagsPatch = bytecodePatch(
                     if (methodC != null) {
                         val clonedC = methodC.cloneMutable(additionalRegisters = 2)
                         clonedC.addInstructions(0, """
-                            if-eqz p1, :cond_orig
-                            invoke-virtual { p1 }, Ljava/lang/Enum;->ordinal()I
-                            move-result v0
-                            const/16 v1, 8
-                            if-eq v0, v1, :cond_loaded
-                            const/16 v1, 14
-                            if-eq v0, v1, :cond_loaded
-                            const/16 v1, 16
-                            if-eq v0, v1, :cond_loaded
-                            const/16 v1, 17
-                            if-eq v0, v1, :cond_loaded
-                            const/16 v1, 19
-                            if-eq v0, v1, :cond_loaded
-                            const/16 v1, 34
-                            if-eq v0, v1, :cond_loaded
-                            const/16 v1, 52
-                            if-eq v0, v1, :cond_loaded
+                            if-eqz p1, :cond_loaded
                             goto :cond_orig
                             :cond_loaded
                             sget-object v0, Laqta;->e:Laqta;
@@ -379,23 +363,7 @@ val bakeMemoryStyleFlagsPatch = bytecodePatch(
                     if (methodQ != null) {
                         val clonedQ = methodQ.cloneMutable(additionalRegisters = 2)
                         clonedQ.addInstructions(0, """
-                            if-eqz p1, :cond_orig_q
-                            invoke-virtual { p1 }, Ljava/lang/Enum;->ordinal()I
-                            move-result v0
-                            const/16 v1, 8
-                            if-eq v0, v1, :cond_true_q
-                            const/16 v1, 14
-                            if-eq v0, v1, :cond_true_q
-                            const/16 v1, 16
-                            if-eq v0, v1, :cond_true_q
-                            const/16 v1, 17
-                            if-eq v0, v1, :cond_true_q
-                            const/16 v1, 19
-                            if-eq v0, v1, :cond_true_q
-                            const/16 v1, 34
-                            if-eq v0, v1, :cond_true_q
-                            const/16 v1, 52
-                            if-eq v0, v1, :cond_true_q
+                            if-eqz p1, :cond_true_q
                             goto :cond_orig_q
                             :cond_true_q
                             const/4 v0, 1
