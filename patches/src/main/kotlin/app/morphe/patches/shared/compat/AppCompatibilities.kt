@@ -117,6 +117,12 @@ internal object AppCompatibilities {
         appIconColor = 0xFC3F3C,
     )
 
+    val GOOGLE_PHOTOS_MORPHE = Compatibility(
+        name = "Google Photos (Morphe)",
+        packageName = "app.morphe.android.apps.photos",
+        appIconColor = 0xFC3F3C,
+    )
+
     val GOOGLE_NEWS = Compatibility(
         name = "Google News",
         packageName = "com.google.android.apps.magazines",

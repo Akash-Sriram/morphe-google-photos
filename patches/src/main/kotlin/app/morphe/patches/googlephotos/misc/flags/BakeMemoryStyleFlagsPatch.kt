@@ -16,8 +16,10 @@ import com.android.tools.smali.dexlib2.iface.instruction.OneRegisterInstruction
 import com.android.tools.smali.dexlib2.iface.instruction.ReferenceInstruction
 import com.android.tools.smali.dexlib2.iface.instruction.WideLiteralInstruction
 import com.android.tools.smali.dexlib2.iface.instruction.formats.Instruction21c
+import com.android.tools.smali.dexlib2.iface.reference.FieldReference
 import com.android.tools.smali.dexlib2.iface.reference.MethodReference
 import com.android.tools.smali.dexlib2.iface.reference.StringReference
+import com.android.tools.smali.dexlib2.iface.reference.TypeReference
 
 // Flag IDs whose default value (false) we want to override to true.
 // These control the Styles in Memories / scrapbook cutout rendering pipeline.
@@ -38,7 +40,7 @@ private val BOOL_FLAGS_TO_ENABLE = setOf(
 private const val LONG_FLAG_ID = "3999"
 private const val LONG_FLAG_VALUE = 120480972L
 
-// Method names on clwj that return boolean flags to enable
+// Method names on clwj (v7.80) that return boolean flags to enable
 private val CLWJ_BOOLEAN_METHODS = setOf(
     "aR", // master MemoryCard rendering capability
     "bt", // master pop-out cutout capability
@@ -51,6 +53,24 @@ private val CLWJ_BOOLEAN_METHODS = setOf(
     "bU", // multi-up capability
 )
 
+// Method names on cndy (v7.92) that return boolean flags to enable
+private val CNDY_BOOLEAN_METHODS = setOf(
+    "aQ", // master MemoryCard rendering capability
+    "bs", // master pop-out cutout capability
+    "cd", // MemoryCard style templates
+    "T",  // pop-out animation templates
+    "bB", // on-device "N Years Ago" generator
+    "bC", // "Over the Years" delightful theme
+    "aV", // multi-up collage engine
+    "aj", // multi-up collage layout support
+    "bT", // multi-up capability
+)
+
+// Method names on cnmd (v7.92) that return boolean StoryPlayerFlags to enable
+private val CNMD_BOOLEAN_METHODS = setOf(
+    "aC", "aM", "aq", "au", "av", "ba", "bb", "bd", "bj", "bp", "bv"
+)
+
 @Suppress("unused")
 val bakeMemoryStyleFlagsPatch = bytecodePatch(
     name = "Bake memory style flags",
@@ -60,31 +80,112 @@ val bakeMemoryStyleFlagsPatch = bytecodePatch(
             "and depth pop-out effects in the Memories carousel.",
     default = true,
 ) {
-    compatibleWith(AppCompatibilities.GOOGLE_PHOTOS)
+    compatibleWith(
+        AppCompatibilities.GOOGLE_PHOTOS,
+        AppCompatibilities.GOOGLE_PHOTOS_MORPHE,
+    )
 
     execute {
-        // 1. Direct method overrides (bypasses Phenotype database, SharedPreferences, and server sync completely)
+        // --- Dynamic Auto-Fingerprinting Phase ---
+        val dynamicGatekeeperClasses = mutableSetOf("Lakol;", "Lakyh;")
+        val dynamicPhenotypeClasses = mutableSetOf("Lclwj;", "Lcndy;")
+        val dynamicStoryPlayerClasses = mutableSetOf("Lcmeo;", "Lcnmd;")
+        val phenotypeTargetFields = mutableSetOf<String>()
+
+        // 1. Scan classes with strings to auto-discover Phenotype flag getters and StoryPlayerFlags
+        getAllClassesWithStrings().forEach { classDef ->
+            if (classDef.type.startsWith("Lapp/morphe/extension/")) return@forEach
+
+            classDef.methods.forEach classLoop@{ method ->
+                if (method.name != "<clinit>") return@classLoop
+                val implementation = method.implementation ?: return@classLoop
+                val instructionList = implementation.instructions.toList()
+
+                instructionList.forEachIndexed { index, instruction ->
+                    if (instruction.opcode != Opcode.CONST_STRING &&
+                        instruction.opcode != Opcode.CONST_STRING_JUMBO
+                    ) return@forEachIndexed
+
+                    val stringRef = ((instruction as? Instruction21c)?.reference as? StringReference)?.string
+                        ?: return@forEachIndexed
+
+                    when {
+                        stringRef in BOOL_FLAGS_TO_ENABLE -> {
+                            dynamicPhenotypeClasses += classDef.type
+                            for (lookahead in 1..7) {
+                                val nextIdx = index + lookahead
+                                if (nextIdx >= instructionList.size) break
+                                val nextInst = instructionList[nextIdx]
+                                if (nextInst.opcode.name.lowercase().startsWith("sput")) {
+                                    val fieldRef = (nextInst as? ReferenceInstruction)?.reference as? FieldReference
+                                    if (fieldRef != null) {
+                                        phenotypeTargetFields += fieldRef.name
+                                        break
+                                    }
+                                }
+                            }
+                        }
+
+                        stringRef == LONG_FLAG_ID -> {
+                            dynamicStoryPlayerClasses += classDef.type
+                        }
+                    }
+                }
+            }
+        }
+
+        // 2. Discover Gatekeeper dynamically from SkAnimationImpl
+        classDefForEach { classDef ->
+            if (classDef.type == "Lcom/google/android/apps/photos/stories/skottie/gpurender/impl/SkAnimationImpl;") {
+                classDef.methods.forEach { method ->
+                    method.implementation?.instructions?.forEach { inst ->
+                        val methodRef = (inst as? ReferenceInstruction)?.reference as? MethodReference
+                        if (methodRef != null &&
+                            methodRef.returnType == "Z" &&
+                            methodRef.parameterTypes.isEmpty()
+                        ) {
+                            val dc = methodRef.definingClass
+                            if (!dc.startsWith("Ljava/") &&
+                                !dc.startsWith("Landroid/") &&
+                                !dc.startsWith("Lapp/morphe/")
+                            ) {
+                                dynamicGatekeeperClasses += dc
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // 3. Direct method overrides (bypasses Phenotype database, SharedPreferences, and server sync completely)
         classDefForEach { classDef ->
             if (classDef.type.startsWith("Lapp/morphe/extension/")) return@classDefForEach
 
-            when (classDef.type) {
+            val isGatekeeper = classDef.type in dynamicGatekeeperClasses
+            val isPhenotype = classDef.type in dynamicPhenotypeClasses
+            val isStoryPlayer = classDef.type in dynamicStoryPlayerClasses
+
+            when {
                 // Master feature gatekeeper for Google Photos stories/memories
-                "Lakol;" -> {
+                isGatekeeper -> {
                     val mutableClass by lazy { mutableClassDefBy(classDef) }
                     classDef.methods.forEach { method ->
                         if (method.parameterTypes.isEmpty() && method.returnType == "Z") {
-                            when (method.name) {
-                                "E", // MemoryCard style capability
-                                "J", // Pop-out cutout capability
-                                "f"  // Skottie assets capability
-                                -> mutableClass.findMutableMethodOf(method).returnEarly(true)
+                            // Match known method names or any method reading a Boolean supplier
+                            val isBooleanSupplierGate = method.implementation?.instructions?.any {
+                                it.opcode == Opcode.CHECK_CAST &&
+                                    ((it as? ReferenceInstruction)?.reference as? TypeReference)?.type == "Ljava/lang/Boolean;"
+                            } == true
+
+                            if (method.name in setOf("E", "J", "f", "S") || isBooleanSupplierGate) {
+                                mutableClass.findMutableMethodOf(method).returnEarly(true)
                             }
                         }
                     }
                 }
 
                 // Cinematic/effect style capability
-                "Lakot;" -> {
+                classDef.type in setOf("Lakot;", "Lakyp;") -> {
                     val mutableClass by lazy { mutableClassDefBy(classDef) }
                     classDef.methods.forEach { method ->
                         if (method.name == "c" && method.parameterTypes.isEmpty() && method.returnType == "Z") {
@@ -93,31 +194,44 @@ val bakeMemoryStyleFlagsPatch = bytecodePatch(
                     }
                 }
 
-                // Phenotype flag getters implementation (clwi)
-                "Lclwj;" -> {
+                // Phenotype flag getters implementation (dynamically discovered or static)
+                isPhenotype -> {
                     val mutableClass by lazy { mutableClassDefBy(classDef) }
                     classDef.methods.forEach { method ->
-                        if (method.name in CLWJ_BOOLEAN_METHODS &&
-                            method.parameterTypes.isEmpty() &&
-                            method.returnType == "Z"
-                        ) {
-                            mutableClass.findMutableMethodOf(method).returnEarly(true)
+                        if (method.parameterTypes.isEmpty() && method.returnType == "Z") {
+                            val readsTargetField = method.implementation?.instructions?.any { inst ->
+                                if (inst.opcode.name.lowercase().startsWith("sget")) {
+                                    val fieldRef = (inst as? ReferenceInstruction)?.reference as? FieldReference
+                                    fieldRef?.name in phenotypeTargetFields
+                                } else false
+                            } == true
+
+                            if (readsTargetField ||
+                                method.name in CLWJ_BOOLEAN_METHODS ||
+                                method.name in CNDY_BOOLEAN_METHODS
+                            ) {
+                                mutableClass.findMutableMethodOf(method).returnEarly(true)
+                            }
                         }
                     }
                 }
 
-                // Skottie CDN asset bundle version getter (cmen)
-                "Lcmeo;" -> {
+                // Skottie CDN asset bundle version getter and story flags
+                isStoryPlayer -> {
                     val mutableClass by lazy { mutableClassDefBy(classDef) }
                     classDef.methods.forEach { method ->
-                        if (method.name == "J" && method.parameterTypes.isEmpty() && method.returnType == "J") {
+                        if (method.parameterTypes.isEmpty() && method.returnType == "J") {
                             mutableClass.findMutableMethodOf(method).returnEarly(LONG_FLAG_VALUE)
+                        } else if (method.parameterTypes.isEmpty() && method.returnType == "Z") {
+                            if (method.name in CNMD_BOOLEAN_METHODS) {
+                                mutableClass.findMutableMethodOf(method).returnEarly(true)
+                            }
                         }
                     }
                 }
 
                 // Skottie player animation view helper
-                "Ltjh;" -> {
+                classDef.type in setOf("Ltjh;", "Ltmm;") -> {
                     val mutableClass by lazy { mutableClassDefBy(classDef) }
                     classDef.methods.forEach { method ->
                         if (method.name == "z" && method.parameterTypes.isEmpty() && method.returnType == "Z") {
@@ -127,7 +241,8 @@ val bakeMemoryStyleFlagsPatch = bytecodePatch(
                 }
 
                 // Story / Memory font loading & resolution (bypasses GMS font provider certificate check)
-                "Lbfxs;" -> {
+                classDef.type in setOf("Lbfxs;", "Lbgwl;") -> {
+                    val streamReaderClass = if (classDef.type == "Lbgwl;") "Lcpfj;" else "Lcnxl;"
                     val mutableClass = mutableClassDefBy(classDef)
                     val methodA = classDef.methods.find {
                         it.name == "a" && it.parameterTypes == listOf("Ljava/lang/String;", "Landroid/os/CancellationSignal;")
@@ -172,7 +287,7 @@ val bakeMemoryStyleFlagsPatch = bytecodePatch(
                             if-eqz v0, :cond_default_b
                             new-instance v0, Ljava/io/FileInputStream;
                             invoke-direct { v0, v1 }, Ljava/io/FileInputStream;-><init>(Ljava/io/File;)V
-                            invoke-static { v0 }, Lcnxl;->h(Ljava/io/InputStream;)[B
+                            invoke-static { v0 }, $streamReaderClass->h(Ljava/io/InputStream;)[B
                             move-result-object v1
                             invoke-virtual { v0 }, Ljava/io/FileInputStream;->close()V
                             return-object v1
@@ -182,7 +297,7 @@ val bakeMemoryStyleFlagsPatch = bytecodePatch(
                             invoke-direct { v0, v1 }, Ljava/io/File;-><init>(Ljava/lang/String;)V
                             new-instance v1, Ljava/io/FileInputStream;
                             invoke-direct { v1, v0 }, Ljava/io/FileInputStream;-><init>(Ljava/io/File;)V
-                            invoke-static { v1 }, Lcnxl;->h(Ljava/io/InputStream;)[B
+                            invoke-static { v1 }, $streamReaderClass->h(Ljava/io/InputStream;)[B
                             move-result-object v0
                             invoke-virtual { v1 }, Ljava/io/FileInputStream;->close()V
                             return-object v0
@@ -193,7 +308,7 @@ val bakeMemoryStyleFlagsPatch = bytecodePatch(
                 }
 
                 // Portrait Blur classifier provider (bypasses MDD build_id version check)
-                "Lanqb;" -> {
+                classDef.type in setOf("Lanqb;", "Laodg;") -> {
                     val mutableClass by lazy { mutableClassDefBy(classDef) }
                     classDef.methods.forEach { method ->
                         if (method.name == "a" && method.parameterTypes.isEmpty() && method.returnType == "Z") {
@@ -203,7 +318,7 @@ val bakeMemoryStyleFlagsPatch = bytecodePatch(
                 }
 
                 // Portrait Segmenter model provider (bypasses MDD file lookup check)
-                "Lanrk;" -> {
+                classDef.type in setOf("Lanrk;", "Laoek;") -> {
                     val mutableClass by lazy { mutableClassDefBy(classDef) }
                     classDef.methods.forEach { method ->
                         if (method.name == "a" && method.parameterTypes.isEmpty() && method.returnType == "Z") {
@@ -213,7 +328,7 @@ val bakeMemoryStyleFlagsPatch = bytecodePatch(
                 }
 
                 // Sky model provider (bypasses MDD file lookup check)
-                "Laspz;" -> {
+                classDef.type == "Laspz;" -> {
                     val mutableClass by lazy { mutableClassDefBy(classDef) }
                     classDef.methods.forEach { method ->
                         if (method.name == "c" && method.parameterTypes.isEmpty() && method.returnType == "Z") {
@@ -223,7 +338,7 @@ val bakeMemoryStyleFlagsPatch = bytecodePatch(
                 }
 
                 // ModelDownloadManager UI status and readiness gates
-                "Larea;" -> {
+                classDef.type == "Larea;" -> {
                     val mutableClass = mutableClassDefBy(classDef)
                     val methodC = classDef.methods.find {
                         it.name == "c" && it.parameterTypes == listOf("Lchoo;") && it.returnType == "Laqta;"
