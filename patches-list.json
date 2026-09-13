@@ -1,8 +1,7 @@
 {
-  "version": "1.2.2",
+  "version": "1.2.3",
   "appNames": {
-    "com.google.android.apps.photos": "Google Photos",
-    "app.morphe.android.apps.photos": "Google Photos (Morphe)"
+    "com.google.android.apps.photos": "Google Photos"
   },
   "patches": [
     {
@@ -33,29 +32,16 @@
     },
     {
       "name": "Bake memory style flags",
-      "description": "Hard-codes the Styles in Memories feature flags into the DEX so they are always enabled regardless of SharedPreferences / Phenotype state. Enables scrapbook-style graphic borders, large typography number cutouts, and depth pop-out effects in the Memories carousel.",
+      "description": "Hard-codes the Styles in Memories feature flags into the DEX.",
       "use": true,
       "dependencies": [],
       "compatiblePackages": {
-        "com.google.android.apps.photos": null,
-        "app.morphe.android.apps.photos": null
+        "com.google.android.apps.photos": null
       },
       "compatibility": [
         {
           "name": "Google Photos",
           "packageName": "com.google.android.apps.photos",
-          "description": null,
-          "appIconColor": 16531260,
-          "targets": [
-            {
-              "version": "",
-              "experimental": false
-            }
-          ]
-        },
-        {
-          "name": "Google Photos (Morphe)",
-          "packageName": "app.morphe.android.apps.photos",
           "description": null,
           "appIconColor": 16531260,
           "targets": [
@@ -125,6 +111,30 @@
         "ResourcePatch",
         "BytecodePatch"
       ],
+      "compatiblePackages": {
+        "com.google.android.apps.photos": null
+      },
+      "compatibility": [
+        {
+          "name": "Google Photos",
+          "packageName": "com.google.android.apps.photos",
+          "description": null,
+          "appIconColor": 16531260,
+          "targets": [
+            {
+              "version": "",
+              "experimental": false
+            }
+          ]
+        }
+      ],
+      "options": []
+    },
+    {
+      "name": "Model Readiness Gates",
+      "description": "Bypasses the 0MB Mobile Data Download check for AI models and reports them as loaded.",
+      "use": true,
+      "dependencies": [],
       "compatiblePackages": {
         "com.google.android.apps.photos": null
       },

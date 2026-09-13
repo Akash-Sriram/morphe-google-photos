@@ -1,7 +1,7 @@
 {
-  "created_at": "2026-09-13T06:43:14",
-  "description": "## [1.2.2](https://github.com/Akash-Sriram/De-Vanced/compare/v1.2.1...v1.2.2) (2026-09-13)\n\n\n### Bug Fixes\n\n* **photos:** unconditionally report models as loaded to fix 0MB bug for Moods suite ([c032335](https://github.com/Akash-Sriram/De-Vanced/commit/c0323359bc4aa4ee2f870ca89681c10fe5364dd0))",
-  "download_url": "https://github.com/Akash-Sriram/De-Vanced/releases/download/v1.2.2/patches-1.2.2.mpp",
+  "created_at": "2026-09-13T16:13:58",
+  "description": "## [1.2.3](https://github.com/Akash-Sriram/De-Vanced/compare/v1.2.2...v1.2.3) (2026-09-13)\n\n\n### Bug Fixes\n\n* **Google Photos v7.92:** Restore ML Models and Fix Story Crashes ([9fa2350](https://github.com/Akash-Sriram/De-Vanced/commit/9fa23505e4c76790da39d84ae18035dd1d1f168b))\n* **photos:** revert crashy dynamic story fingerprinting and separate model readiness gates safely ([e34f695](https://github.com/Akash-Sriram/De-Vanced/commit/e34f695c4200ace18840cdb8a5ea2cba8af48e01))\n* **photos:** use dynamic fingerprinting for memory style flags ([62bc026](https://github.com/Akash-Sriram/De-Vanced/commit/62bc026b4cf2320f6a017ec80688a15361e27ece))",
+  "download_url": "https://github.com/Akash-Sriram/De-Vanced/releases/download/v1.2.3/patches-1.2.3.mpp",
   "signature_download_url": "",
-  "version": "1.2.2"
+  "version": "1.2.3"
 }
