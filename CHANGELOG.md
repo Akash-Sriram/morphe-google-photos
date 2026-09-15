@@ -1,3 +1,9 @@
+## [1.4.2](https://github.com/RookieEnough/De-Vanced/compare/v1.4.1...v1.4.2) (2026-09-15)
+
+### 🐛 Bug Fixes
+
+* **Pixiv:** Update compatibility declaration ([f05037e](https://github.com/RookieEnough/De-Vanced/commit/f05037e17f1c0b57fdf1a08f51855a0afcb3a982))
+
 ## [1.4.1](https://github.com/RookieEnough/De-Vanced/compare/v1.4.0...v1.4.1) (2026-09-15)
 
 ### 🚀 Updated App Support
