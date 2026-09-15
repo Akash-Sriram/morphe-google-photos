@@ -1,3 +1,10 @@
+# [1.3.0](https://github.com/Akash-Sriram/De-Vanced/compare/v1.2.3...v1.3.0) (2026-09-15)
+
+
+### Features
+
+* **photos:** dynamic ML model discovery and download from MDD manifests ([e39c700](https://github.com/Akash-Sriram/De-Vanced/commit/e39c700c7a19173fcf5c2a848afbdd3c8cddc389))
+
 ## [1.2.3](https://github.com/Akash-Sriram/De-Vanced/compare/v1.2.2...v1.2.3) (2026-09-13)
 
 

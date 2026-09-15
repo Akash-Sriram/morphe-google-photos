@@ -1,7 +1,7 @@
 {
-  "created_at": "2026-09-13T16:13:58",
-  "description": "## [1.2.3](https://github.com/Akash-Sriram/De-Vanced/compare/v1.2.2...v1.2.3) (2026-09-13)\n\n\n### Bug Fixes\n\n* **Google Photos v7.92:** Restore ML Models and Fix Story Crashes ([9fa2350](https://github.com/Akash-Sriram/De-Vanced/commit/9fa23505e4c76790da39d84ae18035dd1d1f168b))\n* **photos:** revert crashy dynamic story fingerprinting and separate model readiness gates safely ([e34f695](https://github.com/Akash-Sriram/De-Vanced/commit/e34f695c4200ace18840cdb8a5ea2cba8af48e01))\n* **photos:** use dynamic fingerprinting for memory style flags ([62bc026](https://github.com/Akash-Sriram/De-Vanced/commit/62bc026b4cf2320f6a017ec80688a15361e27ece))",
-  "download_url": "https://github.com/Akash-Sriram/De-Vanced/releases/download/v1.2.3/patches-1.2.3.mpp",
+  "created_at": "2026-09-15T07:09:39",
+  "description": "# [1.3.0](https://github.com/Akash-Sriram/De-Vanced/compare/v1.2.3...v1.3.0) (2026-09-15)\n\n\n### Features\n\n* **photos:** dynamic ML model discovery and download from MDD manifests ([e39c700](https://github.com/Akash-Sriram/De-Vanced/commit/e39c700c7a19173fcf5c2a848afbdd3c8cddc389))",
+  "download_url": "https://github.com/Akash-Sriram/De-Vanced/releases/download/v1.3.0/patches-1.3.0.mpp",
   "signature_download_url": "",
-  "version": "1.2.3"
+  "version": "1.3.0"
 }
