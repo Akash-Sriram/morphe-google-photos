@@ -14,7 +14,7 @@ Morphe patches for **Google Photos**, derived from [RookieEnough/De-Vanced](http
 | **Enable DCIM backup control** | • Granular per-folder backup toggles (Screenshots, WhatsApp, Camera)<br>• Stops forced auto-backup of entire DCIM directory |
 | **Enable Phenotype flag manager** | • In-app flag editor under `Settings > 🛠️ Morphe Flags`<br>• Search, toggle, export/import flags and UI presets |
 | **Bake memory style flags** | • Hard-codes scrapbook borders, typography cutouts, and 3D depth pop-outs in Memories carousel<br>• Bypasses GMS font provider certificate checks to load local system fonts |
-| **AI Model Auto-Seeder** | • In-app background downloader for all 52 TensorFlow Lite neural models<br>• Instant out-of-the-box Magic Eraser & Portrait Blur on any device (e.g. Galaxy S24) without root |
+| **AI Model Auto-Seeder** | • Dynamic runtime discovery and in-app background downloader for all 116+ Google ML models directly from official Google CDNs<br>• Dynamic manifest-driven mapping (zero hardcoded URLs/counts or GitHub mirror dependencies)<br>• Instant out-of-the-box Magic Eraser, Portrait Blur, Sky, and AI editing suite on any device without root |
 
 ---
 
