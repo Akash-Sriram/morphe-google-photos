@@ -1,3 +1,10 @@
+## [1.3.1](https://github.com/Akash-Sriram/De-Vanced/compare/v1.3.0...v1.3.1) (2026-09-16)
+
+
+### Bug Fixes
+
+* **photos:** bypass GmsCore battery optimization and background check dialogs ([24e3a1e](https://github.com/Akash-Sriram/De-Vanced/commit/24e3a1ebc1def251d36abfa856e23cd1ebbe5c96))
+
 # [1.3.0](https://github.com/Akash-Sriram/De-Vanced/compare/v1.2.3...v1.3.0) (2026-09-15)
 
 
