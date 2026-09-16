@@ -156,10 +156,10 @@ public class GmsCoreSupportPatch {
                 return;
             }
 
-            if (isAndroidAutomotive(context)) {
-                // Ignore Android Automotive devices (Google built-in),
-                // as there is no way to disable battery optimizations.
-                Logger.printDebug(() -> "Device is Android Automotive");
+            if (isAndroidAutomotive(context) || isGooglePhotos(context)) {
+                // Ignore Android Automotive devices (Google built-in) and Google Photos,
+                // as Photos does not require persistent background GmsCore services.
+                Logger.printDebug(() -> "Skipping battery optimization check (Automotive or Google Photos)");
             } else if (batteryOptimizationsEnabled(context)) {
                 Logger.printInfo(() -> "GmsCore is not whitelisted from battery optimizations");
 
@@ -170,21 +170,23 @@ public class GmsCoreSupportPatch {
                 return;
             }
 
-            // Check if GmsCore is currently running in the background.
-            var client = context.getContentResolver().acquireContentProviderClient(GMS_CORE_PROVIDER);
-            //noinspection TryFinallyCanBeTryWithResources
-            try {
-                if (client == null) {
-                    Logger.printInfo(() -> "GmsCore is not running in the background");
-                    checkIfDontKillMyAppSupportsManufacturer();
+            if (!isGooglePhotos(context)) {
+                // Check if GmsCore is currently running in the background.
+                var client = context.getContentResolver().acquireContentProviderClient(GMS_CORE_PROVIDER);
+                //noinspection TryFinallyCanBeTryWithResources
+                try {
+                    if (client == null) {
+                        Logger.printInfo(() -> "GmsCore is not running in the background");
+                        checkIfDontKillMyAppSupportsManufacturer();
 
-                    showBatteryOptimizationDialog(context,
-                            "gms_core_dialog_not_whitelisted_not_allowed_in_background_message",
-                            "gms_core_dialog_open_website_text",
-                            (dialog, id) -> openDontKillMyApp());
+                        showBatteryOptimizationDialog(context,
+                                "gms_core_dialog_not_whitelisted_not_allowed_in_background_message",
+                                "gms_core_dialog_open_website_text",
+                                (dialog, id) -> openDontKillMyApp());
+                    }
+                } finally {
+                    if (client != null) client.close();
                 }
-            } finally {
-                if (client != null) client.close();
             }
         } catch (Exception ex) {
             Logger.printException(() -> "checkGmsCore failure", ex);
@@ -255,6 +257,11 @@ public class GmsCoreSupportPatch {
 
     private static boolean isAndroidAutomotive(Context context) {
         return context.getPackageManager().hasSystemFeature(PackageManager.FEATURE_AUTOMOTIVE);
+    }
+
+    private static boolean isGooglePhotos(Context context) {
+        return GOOGLE_PHOTOS_PACKAGE_NAME.equals(getOriginalPackageName())
+                || context.getPackageName().contains("photos");
     }
 
     private static String getGmsCoreDownload() {
