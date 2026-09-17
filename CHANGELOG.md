@@ -1,3 +1,9 @@
+## [1.4.3-dev.1](https://github.com/RookieEnough/De-Vanced/compare/v1.4.2...v1.4.3-dev.1) (2026-09-17)
+
+### 🐛 Bug Fixes
+
+* **Pixiv:** Support `6.196.0` in `Remove popular search time limit`, rework `Hide ads` gate ([#139](https://github.com/RookieEnough/De-Vanced/issues/139)) ([a65f085](https://github.com/RookieEnough/De-Vanced/commit/a65f085802e349c2330e108b23cc16d48308280a))
+
 ## [1.4.2](https://github.com/RookieEnough/De-Vanced/compare/v1.4.1...v1.4.2) (2026-09-15)
 
 ### 🐛 Bug Fixes
