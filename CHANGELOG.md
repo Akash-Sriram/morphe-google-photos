@@ -1,3 +1,15 @@
+## [1.4.0](https://github.com/Akash-Sriram/De-Vanced/compare/v1.3.1...v1.4.0) (2026-09-18)
+
+### 🐛 Bug Fixes
+
+* **ci:** remove duplicate release note generation from semantic-release ([4d6093e](https://github.com/Akash-Sriram/De-Vanced/commit/4d6093eb7ef2cfafca26ce6c63f8dbf4b1f2d7bc))
+* **photos:** catch Throwable and skip framework views during avatar reflection ([6aa80b8](https://github.com/Akash-Sriram/De-Vanced/commit/6aa80b8c562d773b4aa46d61dd593e180fe2605b))
+* **photos:** restore global background model seeder and clean readiness gates ([336e7f5](https://github.com/Akash-Sriram/De-Vanced/commit/336e7f59875d62a8f423f23fe8ba54c2c65bb6cd))
+
+### ✨ New Features
+
+* **photos:** align with latest patch template and refine photo patches ([8b6468a](https://github.com/Akash-Sriram/De-Vanced/commit/8b6468a1194f19a9dbce20fdd762f3bd4027a68c))
+
 ## [1.3.1](https://github.com/Akash-Sriram/De-Vanced/compare/v1.3.0...v1.3.1) (2026-09-16)
 
 
