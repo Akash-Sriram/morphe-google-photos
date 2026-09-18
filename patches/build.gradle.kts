@@ -2,12 +2,12 @@ group = "app.morphe"
 
 patches {
     about {
-        name = "Morphe Photo Patches"
+        name = "Morphe Google Photos Patches"
         description = "Google Photos patches, ported for Morphe."
-        source = "https://github.com/Akash-Sriram/De-Vanced"
+        source = "https://github.com/Akash-Sriram/morphe-google-photos"
         author = "Morphe Photo Patches"
         contact = "na"
-        website = "https://github.com/Akash-Sriram/De-Vanced"
+        website = "https://github.com/Akash-Sriram/morphe-google-photos"
         license = "GNU General Public License v3.0, with additional GPL section 7 requirements"
     }
 }

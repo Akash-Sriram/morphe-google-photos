@@ -1,6 +1,6 @@
-# De-Vanced Commands Runbook
+# Morphe Google Photos (MGP) Commands Runbook
 
-Executable command reference for developing, building, releasing, deploying, and debugging **De-Vanced** and **GooglePhotos-Patched**.
+Executable command reference for developing, building, releasing, deploying, and debugging **Morphe Google Photos (MGP)** and **GooglePhotos-Patched**.
 
 ---
 
@@ -32,23 +32,23 @@ Validates code changes and imports without packaging full DEX.
 ### Trigger a Patch Release (`1.0.0` → `1.0.1`)
 Automatically cuts a release, generates release notes, and triggers the downstream APK builder.
 ```bash
-gh workflow run release.yml --repo Akash-Sriram/De-Vanced -f release_type=patch
+gh workflow run release.yml --repo Akash-Sriram/morphe-google-photos -f release_type=patch
 ```
 
 ### Trigger a Minor Release (`1.0.0` → `1.1.0`)
 ```bash
-gh workflow run release.yml --repo Akash-Sriram/De-Vanced -f release_type=minor
+gh workflow run release.yml --repo Akash-Sriram/morphe-google-photos -f release_type=minor
 ```
 
 ### Trigger with Custom Version Tag
 ```bash
-gh workflow run release.yml --repo Akash-Sriram/De-Vanced -f custom_tag=1.1.0
+gh workflow run release.yml --repo Akash-Sriram/morphe-google-photos -f custom_tag=1.1.0
 ```
 
 ### Monitor Release Progress
 ```bash
-gh run list --repo Akash-Sriram/De-Vanced -L 1
-gh run watch --repo Akash-Sriram/De-Vanced
+gh run list --repo Akash-Sriram/morphe-google-photos -L 1
+gh run watch --repo Akash-Sriram/morphe-google-photos
 ```
 
 ---
@@ -127,15 +127,15 @@ python3 tools/sync_and_detect_new_models.py --diff-only
 
 ### Check Dependabot Security Alerts
 ```bash
-gh api repos/Akash-Sriram/De-Vanced/dependabot/alerts --jq '.[] | select(.state == "open") | {pkg: .dependency.package.name, severity: .security_advisory.severity, summary: .security_advisory.summary}'
+gh api repos/Akash-Sriram/morphe-google-photos/dependabot/alerts --jq '.[] | select(.state == "open") | {pkg: .dependency.package.name, severity: .security_advisory.severity, summary: .security_advisory.summary}'
 ```
 
 ### List Open Pull Requests
 ```bash
-gh pr list --repo Akash-Sriram/De-Vanced
+gh pr list --repo Akash-Sriram/morphe-google-photos
 ```
 
 ### Merge a Dependabot PR
 ```bash
-gh pr merge <PR_NUMBER> --repo Akash-Sriram/De-Vanced --squash --delete-branch
+gh pr merge <PR_NUMBER> --repo Akash-Sriram/morphe-google-photos --squash --delete-branch
 ```
