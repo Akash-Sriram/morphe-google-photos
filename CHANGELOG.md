@@ -1,3 +1,9 @@
+## [1.4.1](https://github.com/Akash-Sriram/De-Vanced/compare/v1.4.0...v1.4.1) (2026-09-18)
+
+### 🐛 Bug Fixes
+
+* **ci:** prevent gradlew.bat line ending changes from failing backmerge ([3af9529](https://github.com/Akash-Sriram/De-Vanced/commit/3af95291e23708bce7e7153cb9f3384ff10b0aa2))
+
 ## [1.4.0](https://github.com/Akash-Sriram/De-Vanced/compare/v1.3.1...v1.4.0) (2026-09-18)
 
 ### 🐛 Bug Fixes
