@@ -592,21 +592,24 @@ public final class GooglePhotosAccountAvatar {
             }
 
             // 2. Check reflection on fields of the AccountParticleDisc ViewGroup
-            try {
-                Field[] fields = cur.getClass().getDeclaredFields();
-                for (Field f : fields) {
-                    f.setAccessible(true);
-                    Object val = f.get(cur);
-                    if (val != null) {
-                        String valStr = val.toString().toLowerCase(Locale.ROOT);
-                        for (Account acc : accounts) {
-                            if (valStr.contains(acc.name.toLowerCase(Locale.ROOT))) {
-                                return acc.name;
+            String className = cur.getClass().getName();
+            if (!className.startsWith("android.") && !className.startsWith("androidx.")) {
+                try {
+                    Field[] fields = cur.getClass().getDeclaredFields();
+                    for (Field f : fields) {
+                        f.setAccessible(true);
+                        Object val = f.get(cur);
+                        if (val != null) {
+                            String valStr = val.toString().toLowerCase(Locale.ROOT);
+                            for (Account acc : accounts) {
+                                if (valStr.contains(acc.name.toLowerCase(Locale.ROOT))) {
+                                    return acc.name;
+                                }
                             }
                         }
                     }
-                }
-            } catch (Exception ignored) {}
+                } catch (Throwable ignored) {}
+            }
 
             ViewParent p = cur.getParent();
             cur = p instanceof View ? (View) p : null;
