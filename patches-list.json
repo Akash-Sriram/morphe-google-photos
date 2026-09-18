@@ -14,15 +14,22 @@
         {
           "packageName": "com.google.android.apps.photos",
           "name": "Google Photos",
-          "description": "https://www.apkmirror.com/apk/google-inc/photos/google-photos-7-93-0-982110057-release/",
+          "description": null,
           "apkFileType": null,
           "appIconColor": "#FC3F3C",
           "signatures": null,
           "targets": [
             {
-              "version": "7.93.0.982110057",
+              "version": "7.92.0.977185651",
               "versionCodes": null,
               "isExperimental": false,
+              "minSdk": null,
+              "description": null
+            },
+            {
+              "version": "7.93.0.982110057",
+              "versionCodes": null,
+              "isExperimental": true,
               "minSdk": null,
               "description": null
             }
@@ -41,15 +48,22 @@
         {
           "packageName": "com.google.android.apps.photos",
           "name": "Google Photos",
-          "description": "https://www.apkmirror.com/apk/google-inc/photos/google-photos-7-93-0-982110057-release/",
+          "description": null,
           "apkFileType": null,
           "appIconColor": "#FC3F3C",
           "signatures": null,
           "targets": [
             {
-              "version": "7.93.0.982110057",
+              "version": "7.92.0.977185651",
               "versionCodes": null,
               "isExperimental": false,
+              "minSdk": null,
+              "description": null
+            },
+            {
+              "version": "7.93.0.982110057",
+              "versionCodes": null,
+              "isExperimental": true,
               "minSdk": null,
               "description": null
             }
@@ -68,15 +82,22 @@
         {
           "packageName": "com.google.android.apps.photos",
           "name": "Google Photos",
-          "description": "https://www.apkmirror.com/apk/google-inc/photos/google-photos-7-93-0-982110057-release/",
+          "description": null,
           "apkFileType": null,
           "appIconColor": "#FC3F3C",
           "signatures": null,
           "targets": [
             {
-              "version": "7.93.0.982110057",
+              "version": "7.92.0.977185651",
               "versionCodes": null,
               "isExperimental": false,
+              "minSdk": null,
+              "description": null
+            },
+            {
+              "version": "7.93.0.982110057",
+              "versionCodes": null,
+              "isExperimental": true,
               "minSdk": null,
               "description": null
             }
@@ -95,15 +116,22 @@
         {
           "packageName": "com.google.android.apps.photos",
           "name": "Google Photos",
-          "description": "https://www.apkmirror.com/apk/google-inc/photos/google-photos-7-93-0-982110057-release/",
+          "description": null,
           "apkFileType": null,
           "appIconColor": "#FC3F3C",
           "signatures": null,
           "targets": [
             {
-              "version": "7.93.0.982110057",
+              "version": "7.92.0.977185651",
               "versionCodes": null,
               "isExperimental": false,
+              "minSdk": null,
+              "description": null
+            },
+            {
+              "version": "7.93.0.982110057",
+              "versionCodes": null,
+              "isExperimental": true,
               "minSdk": null,
               "description": null
             }
@@ -126,15 +154,22 @@
         {
           "packageName": "com.google.android.apps.photos",
           "name": "Google Photos",
-          "description": "https://www.apkmirror.com/apk/google-inc/photos/google-photos-7-93-0-982110057-release/",
+          "description": null,
           "apkFileType": null,
           "appIconColor": "#FC3F3C",
           "signatures": null,
           "targets": [
             {
-              "version": "7.93.0.982110057",
+              "version": "7.92.0.977185651",
               "versionCodes": null,
               "isExperimental": false,
+              "minSdk": null,
+              "description": null
+            },
+            {
+              "version": "7.93.0.982110057",
+              "versionCodes": null,
+              "isExperimental": true,
               "minSdk": null,
               "description": null
             }
@@ -145,7 +180,7 @@
     },
     {
       "name": "Model Readiness Gates",
-      "description": "Enables intelligent on-demand AI model downloading and readiness gates for Google Photos.",
+      "description": "Bypasses the 0MB Mobile Data Download check for AI models and reports them as loaded.",
       "default": true,
       "category": null,
       "dependencies": [],
@@ -153,15 +188,22 @@
         {
           "packageName": "com.google.android.apps.photos",
           "name": "Google Photos",
-          "description": "https://www.apkmirror.com/apk/google-inc/photos/google-photos-7-93-0-982110057-release/",
+          "description": null,
           "apkFileType": null,
           "appIconColor": "#FC3F3C",
           "signatures": null,
           "targets": [
             {
-              "version": "7.93.0.982110057",
+              "version": "7.92.0.977185651",
               "versionCodes": null,
               "isExperimental": false,
+              "minSdk": null,
+              "description": null
+            },
+            {
+              "version": "7.93.0.982110057",
+              "versionCodes": null,
+              "isExperimental": true,
               "minSdk": null,
               "description": null
             }
@@ -184,15 +226,22 @@
         {
           "packageName": "com.google.android.apps.photos",
           "name": "Google Photos",
-          "description": "https://www.apkmirror.com/apk/google-inc/photos/google-photos-7-93-0-982110057-release/",
+          "description": null,
           "apkFileType": null,
           "appIconColor": "#FC3F3C",
           "signatures": null,
           "targets": [
             {
-              "version": "7.93.0.982110057",
+              "version": "7.92.0.977185651",
               "versionCodes": null,
               "isExperimental": false,
+              "minSdk": null,
+              "description": null
+            },
+            {
+              "version": "7.93.0.982110057",
+              "versionCodes": null,
+              "isExperimental": true,
               "minSdk": null,
               "description": null
             }
