@@ -2,6 +2,8 @@
  * Forked from:
  * https://gitlab.com/ReVanced/revanced-patches/-/blob/main/patches/src/main/kotlin/app/revanced/patches/shared/misc/extension/SharedExtensionPatch.kt
  */
+@file:Suppress("CONTEXT_RECEIVERS_DEPRECATED")
+
 package app.morphe.patches.shared.misc.extension
 
 import app.morphe.patcher.Fingerprint

@@ -8,6 +8,7 @@ import app.morphe.patcher.patch.PatchException
 import app.morphe.patcher.patch.rawResourcePatch
 import kotlin.math.max
 
+@Suppress("DEPRECATION")
 fun hexPatch(ignoreMissingTargetFiles: Boolean = false, block: HexPatchBuilder.() -> Unit) =
     hexPatch(ignoreMissingTargetFiles, fun(): Set<Replacement> = HexPatchBuilder().apply(block))
 

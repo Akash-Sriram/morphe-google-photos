@@ -4,17 +4,32 @@ Morphe patches for **Google Photos**, derived from [RookieEnough/De-Vanced](http
 
 ---
 
-## 🧩 Patches & Features
+## 🩹 Patches list
 
-| Patch | Key Features |
-|---|---|
-| **Spoof features** | • **Unlimited Original Quality Backup** (spoofs Pixel XL)<br>• **Pixel AI Tools Unlocked**: Magic Eraser, Portrait Blur, Color Pop, Sky |
-| **GmsCore support** | • Non-root Google account login via MicroG / GmsCore<br>• Custom package name (`app.morphe.android.apps.photos`) coexistence with stock app |
-| **Account avatar** | • Restores Google profile picture across Top Toolbar, Bento Menu, and Account Switcher |
-| **Enable DCIM backup control** | • Granular per-folder backup toggles (Screenshots, WhatsApp, Camera)<br>• Stops forced auto-backup of entire DCIM directory |
-| **Enable Phenotype flag manager** | • In-app flag editor under `Settings > 🛠️ Morphe Flags`<br>• Search, toggle, export/import flags and UI presets |
-| **Bake memory style flags** | • Hard-codes scrapbook borders, typography cutouts, and 3D depth pop-outs in Memories carousel<br>• Bypasses GMS font provider certificate checks to load local system fonts |
-| **AI Model Auto-Seeder** | • Dynamic runtime discovery and in-app background downloader for all 116+ Google ML models directly from official Google CDNs<br>• Dynamic manifest-driven mapping (zero hardcoded URLs/counts or GitHub mirror dependencies)<br>• Instant out-of-the-box Magic Eraser, Portrait Blur, Sky, and AI editing suite on any device without root |
+<!-- PATCHES_START EXPANDED -->
+> **[v1.3.1](https://github.com/Akash-Sriram/De-Vanced/releases/tag/v1.3.1)**&nbsp;&nbsp;•&nbsp;&nbsp;`main`&nbsp;&nbsp;•&nbsp;&nbsp;7 patches total
+<details open>
+<summary>📦 Google Photos&nbsp;&nbsp;•&nbsp;&nbsp;7 patches</summary>
+<br>
+
+**🎯 Supported versions:**
+
+| 7.93.0.982110057 |
+| :---: |
+
+| 💊&nbsp;Patch | 📜&nbsp;Description | ⚙️&nbsp;Options |
+|----------|----------------|-----------|
+| [Account avatar](#account-avatar) | Loads and displays account profile avatars across the top toolbar, Bento menu, and account switcher. |  |
+| [Bake memory style flags](#bake-memory-style-flags) | Hard-codes the Styles in Memories feature flags into the DEX. |  |
+| [Enable DCIM folders backup control](#enable-dcim-folders-backup-control) | Disables always on backup for the Camera and other DCIM folders, allowing you to control backup for each folder individually. This will make the app default to having no folders backed up. |  |
+| [Enable Phenotype flag manager](#enable-phenotype-flag-manager) | Enables an in-app flag manager in Photos Settings to customize experimental UI redesigns and feature flags. |  |
+| [GmsCore support](#gmscore-support) | Allows the app to work without root by using a different package name when patched using a GmsCore instead of Google Play Services. |  |
+| [Model Readiness Gates](#model-readiness-gates) | Enables intelligent on-demand AI model downloading and readiness gates for Google Photos. |  |
+| [Spoof features](#spoof-features) | Spoofs the device to enable Google Pixel exclusive features, including unlimited storage. |  |
+
+</details>
+
+<!-- PATCHES_END -->
 
 ---
 
@@ -22,6 +37,9 @@ Morphe patches for **Google Photos**, derived from [RookieEnough/De-Vanced](http
 
 Ready-to-install builds patched with this bundle are available at:
 👉 **[Akash-Sriram/GooglePhotos-Patched](https://github.com/Akash-Sriram/GooglePhotos-Patched/releases)**
+
+Download original untouched APKs from:
+👉 **[Google Photos on APKMirror](https://www.apkmirror.com/apk/google-inc/photos/)**
 
 ---
 

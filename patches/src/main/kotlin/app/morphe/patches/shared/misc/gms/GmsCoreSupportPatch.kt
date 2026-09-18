@@ -115,23 +115,32 @@ fun gmsCoreSupportPatch(
 
         // region Collection of transformations that are applied to all strings.
 
-        fun commonTransform(referencedString: String): String? = when (referencedString) {
-            "com.google",
-            "com.google.android.gms",
-            in PERMISSIONS,
-            in ACTIONS,
-            in AUTHORITIES,
-            -> {
-                if (fromPackageName == "com.google.android.apps.photos" && referencedString.contains("phenotype")) {
-                    null
-                } else {
-                    referencedString.replace("com.google", GMS_CORE_VENDOR_GROUP_ID)
-                }
+        fun commonTransform(referencedString: String): String? {
+            // Fast exit: if string doesn't even contain relevant substrings, skip set lookups.
+            if (!referencedString.startsWith("com.google") &&
+                referencedString != "subscribedfeeds"
+            ) {
+                return null
             }
 
-            // No vendor prefix for whatever reason...
-            "subscribedfeeds" -> "$GMS_CORE_VENDOR_GROUP_ID.subscribedfeeds"
-            else -> null
+            return when (referencedString) {
+                "com.google",
+                "com.google.android.gms",
+                in PERMISSIONS,
+                in ACTIONS,
+                in AUTHORITIES,
+                -> {
+                    if (fromPackageName == "com.google.android.apps.photos" && referencedString.contains("phenotype")) {
+                        null
+                    } else {
+                        referencedString.replace("com.google", GMS_CORE_VENDOR_GROUP_ID)
+                    }
+                }
+
+                // No vendor prefix for whatever reason...
+                "subscribedfeeds" -> "$GMS_CORE_VENDOR_GROUP_ID.subscribedfeeds"
+                else -> null
+            }
         }
 
         fun contentUrisTransform(str: String): String? {
@@ -592,11 +601,13 @@ fun gmsCoreSupportResourcePatch(
                     setAttribute("android:value", "$GMS_CORE_VENDOR_GROUP_ID.android.gms")
                 }
 
-                // Add REQUEST_INSTALL_PACKAGES permission for in-app updates
-                val manifestNode = document.getElementsByTagName("manifest").item(0)
-                val permissionNode = document.createElement("uses-permission")
-                permissionNode.setAttribute("android:name", "android.permission.REQUEST_INSTALL_PACKAGES")
-                manifestNode.appendChild(permissionNode)
+                // Add REQUEST_INSTALL_PACKAGES permission for in-app updates (not needed for Google Photos)
+                if (fromPackageName != "com.google.android.apps.photos") {
+                    val manifestNode = document.getElementsByTagName("manifest").item(0)
+                    val permissionNode = document.createElement("uses-permission")
+                    permissionNode.setAttribute("android:name", "android.permission.REQUEST_INSTALL_PACKAGES")
+                    manifestNode.appendChild(permissionNode)
+                }
             }
         }
 
@@ -661,7 +672,7 @@ private val changePackageNamePatch = resourcePatch(
     name = "Change package name",
     description = "Appends \".morphe\" to the package name by default. " +
         "Changing the package name of the app can lead to unexpected issues.",
-    default = true,
+    default = false,
 ) {
     packageNameOption = stringOption(
         key = "packageName",

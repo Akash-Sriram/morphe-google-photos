@@ -12,14 +12,27 @@ patches {
     }
 }
 
+repositories {
+    mavenCentral()
+    google()
+    maven { url = uri("${rootDir}/local-repo") }
+    maven { url = uri("https://jitpack.io") }
+}
+
+val patchListGeneratorClasspath = configurations.create("patchListGeneratorClasspath")
+
+configurations.all {
+    resolutionStrategy {
+        force(libs.guava)
+        force("com.google.errorprone:error_prone_annotations:2.50.0")
+    }
+}
+
 dependencies {
-    compileOnly(libs.morphe.patcher)
+    compileOnly(libs.gson)
+    patchListGeneratorClasspath(libs.gson)
 
-    // Used by JsonGenerator.
-    implementation(libs.gson)
-
-    // Required due to smali, or build fails. Can be removed once smali is bumped.
-    implementation(libs.guava)
+    compileOnly(libs.guava)
 
     // Android API stubs defined here.
     compileOnly(project(":patches:stub"))
@@ -40,7 +53,7 @@ tasks {
 
         dependsOn(build)
 
-        classpath = sourceSets["main"].runtimeClasspath
+        classpath = sourceSets["main"].runtimeClasspath + patchListGeneratorClasspath
         mainClass.set("app.morphe.util.PatchListGeneratorKt")
     }
     // Used by gradle-semantic-release-plugin.
@@ -51,6 +64,6 @@ tasks {
 
 kotlin {
     compilerOptions {
-        freeCompilerArgs = listOf("-Xcontext-receivers")
+        freeCompilerArgs = listOf("-Xcontext-receivers", "-Xskip-metadata-version-check")
     }
 }

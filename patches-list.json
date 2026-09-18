@@ -1,29 +1,30 @@
 {
+  "NOTE": "Do NOT manually edit this file. This file is automatically updated when semantic release (release.yml) runs. Manually editing this file can break your releases and break third party tools that use this file.",
   "version": "1.3.1",
-  "appNames": {
-    "com.google.android.apps.photos": "Google Photos"
-  },
   "patches": [
     {
       "name": "Account avatar",
       "description": "Loads and displays account profile avatars across the top toolbar, Bento menu, and account switcher.",
-      "use": true,
+      "default": true,
+      "category": null,
       "dependencies": [
         "BytecodePatch"
       ],
-      "compatiblePackages": {
-        "com.google.android.apps.photos": null
-      },
-      "compatibility": [
+      "compatiblePackages": [
         {
-          "name": "Google Photos",
           "packageName": "com.google.android.apps.photos",
-          "description": null,
-          "appIconColor": 16531260,
+          "name": "Google Photos",
+          "description": "https://www.apkmirror.com/apk/google-inc/photos/google-photos-7-93-0-982110057-release/",
+          "apkFileType": null,
+          "appIconColor": "#FC3F3C",
+          "signatures": null,
           "targets": [
             {
-              "version": "",
-              "experimental": false
+              "version": "7.93.0.982110057",
+              "versionCodes": null,
+              "isExperimental": false,
+              "minSdk": null,
+              "description": null
             }
           ]
         }
@@ -33,21 +34,24 @@
     {
       "name": "Bake memory style flags",
       "description": "Hard-codes the Styles in Memories feature flags into the DEX.",
-      "use": true,
+      "default": true,
+      "category": null,
       "dependencies": [],
-      "compatiblePackages": {
-        "com.google.android.apps.photos": null
-      },
-      "compatibility": [
+      "compatiblePackages": [
         {
-          "name": "Google Photos",
           "packageName": "com.google.android.apps.photos",
-          "description": null,
-          "appIconColor": 16531260,
+          "name": "Google Photos",
+          "description": "https://www.apkmirror.com/apk/google-inc/photos/google-photos-7-93-0-982110057-release/",
+          "apkFileType": null,
+          "appIconColor": "#FC3F3C",
+          "signatures": null,
           "targets": [
             {
-              "version": "",
-              "experimental": false
+              "version": "7.93.0.982110057",
+              "versionCodes": null,
+              "isExperimental": false,
+              "minSdk": null,
+              "description": null
             }
           ]
         }
@@ -57,21 +61,24 @@
     {
       "name": "Enable DCIM folders backup control",
       "description": "Disables always on backup for the Camera and other DCIM folders, allowing you to control backup for each folder individually. This will make the app default to having no folders backed up.",
-      "use": true,
+      "default": true,
+      "category": null,
       "dependencies": [],
-      "compatiblePackages": {
-        "com.google.android.apps.photos": null
-      },
-      "compatibility": [
+      "compatiblePackages": [
         {
-          "name": "Google Photos",
           "packageName": "com.google.android.apps.photos",
-          "description": null,
-          "appIconColor": 16531260,
+          "name": "Google Photos",
+          "description": "https://www.apkmirror.com/apk/google-inc/photos/google-photos-7-93-0-982110057-release/",
+          "apkFileType": null,
+          "appIconColor": "#FC3F3C",
+          "signatures": null,
           "targets": [
             {
-              "version": "",
-              "experimental": false
+              "version": "7.93.0.982110057",
+              "versionCodes": null,
+              "isExperimental": false,
+              "minSdk": null,
+              "description": null
             }
           ]
         }
@@ -81,21 +88,24 @@
     {
       "name": "Enable Phenotype flag manager",
       "description": "Enables an in-app flag manager in Photos Settings to customize experimental UI redesigns and feature flags.",
-      "use": true,
+      "default": true,
+      "category": null,
       "dependencies": [],
-      "compatiblePackages": {
-        "com.google.android.apps.photos": null
-      },
-      "compatibility": [
+      "compatiblePackages": [
         {
-          "name": "Google Photos",
           "packageName": "com.google.android.apps.photos",
-          "description": null,
-          "appIconColor": 16531260,
+          "name": "Google Photos",
+          "description": "https://www.apkmirror.com/apk/google-inc/photos/google-photos-7-93-0-982110057-release/",
+          "apkFileType": null,
+          "appIconColor": "#FC3F3C",
+          "signatures": null,
           "targets": [
             {
-              "version": "",
-              "experimental": false
+              "version": "7.93.0.982110057",
+              "versionCodes": null,
+              "isExperimental": false,
+              "minSdk": null,
+              "description": null
             }
           ]
         }
@@ -105,25 +115,28 @@
     {
       "name": "GmsCore support",
       "description": "Allows the app to work without root by using a different package name when patched using a GmsCore instead of Google Play Services.",
-      "use": true,
+      "default": true,
+      "category": null,
       "dependencies": [
         "ResourcePatch",
         "ResourcePatch",
         "BytecodePatch"
       ],
-      "compatiblePackages": {
-        "com.google.android.apps.photos": null
-      },
-      "compatibility": [
+      "compatiblePackages": [
         {
-          "name": "Google Photos",
           "packageName": "com.google.android.apps.photos",
-          "description": null,
-          "appIconColor": 16531260,
+          "name": "Google Photos",
+          "description": "https://www.apkmirror.com/apk/google-inc/photos/google-photos-7-93-0-982110057-release/",
+          "apkFileType": null,
+          "appIconColor": "#FC3F3C",
+          "signatures": null,
           "targets": [
             {
-              "version": "",
-              "experimental": false
+              "version": "7.93.0.982110057",
+              "versionCodes": null,
+              "isExperimental": false,
+              "minSdk": null,
+              "description": null
             }
           ]
         }
@@ -132,22 +145,25 @@
     },
     {
       "name": "Model Readiness Gates",
-      "description": "Bypasses the 0MB Mobile Data Download check for AI models and reports them as loaded.",
-      "use": true,
+      "description": "Enables intelligent on-demand AI model downloading and readiness gates for Google Photos.",
+      "default": true,
+      "category": null,
       "dependencies": [],
-      "compatiblePackages": {
-        "com.google.android.apps.photos": null
-      },
-      "compatibility": [
+      "compatiblePackages": [
         {
-          "name": "Google Photos",
           "packageName": "com.google.android.apps.photos",
-          "description": null,
-          "appIconColor": 16531260,
+          "name": "Google Photos",
+          "description": "https://www.apkmirror.com/apk/google-inc/photos/google-photos-7-93-0-982110057-release/",
+          "apkFileType": null,
+          "appIconColor": "#FC3F3C",
+          "signatures": null,
           "targets": [
             {
-              "version": "",
-              "experimental": false
+              "version": "7.93.0.982110057",
+              "versionCodes": null,
+              "isExperimental": false,
+              "minSdk": null,
+              "description": null
             }
           ]
         }
@@ -156,53 +172,34 @@
     },
     {
       "name": "Spoof features",
-      "description": "Spoofs the device to enable Google Pixel exclusive features, including unlimited storage and modern UI.",
-      "use": true,
+      "description": "Spoofs the device to enable Google Pixel exclusive features, including unlimited storage.",
+      "default": true,
+      "category": null,
       "dependencies": [
         "BytecodePatch",
         "BytecodePatch",
         "BytecodePatch"
       ],
-      "compatiblePackages": {
-        "com.google.android.apps.photos": null
-      },
-      "compatibility": [
+      "compatiblePackages": [
         {
-          "name": "Google Photos",
           "packageName": "com.google.android.apps.photos",
-          "description": null,
-          "appIconColor": 16531260,
+          "name": "Google Photos",
+          "description": "https://www.apkmirror.com/apk/google-inc/photos/google-photos-7-93-0-982110057-release/",
+          "apkFileType": null,
+          "appIconColor": "#FC3F3C",
+          "signatures": null,
           "targets": [
             {
-              "version": "",
-              "experimental": false
+              "version": "7.93.0.982110057",
+              "versionCodes": null,
+              "isExperimental": false,
+              "minSdk": null,
+              "description": null
             }
           ]
         }
       ],
-      "options": [
-        {
-          "key": "featuresToEnable",
-          "title": "Features to enable",
-          "description": "Google Pixel exclusive features to enable.",
-          "required": true,
-          "type": "kotlin.collections.List<kotlin.String>",
-          "default": [
-            "com.google.android.apps.photos.NEXUS_PRELOAD",
-            "com.google.android.apps.photos.nexus_preload"
-          ],
-          "values": null
-        },
-        {
-          "key": "featuresToDisable",
-          "title": "Features to disable",
-          "description": "Google Pixel exclusive features to disable.",
-          "required": true,
-          "type": "kotlin.collections.List<kotlin.String>",
-          "default": [],
-          "values": null
-        }
-      ]
+      "options": []
     }
   ]
 }

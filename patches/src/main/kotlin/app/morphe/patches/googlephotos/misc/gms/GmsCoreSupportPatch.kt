@@ -30,12 +30,14 @@ val gmsCoreSupportPatch = gmsCoreSupportPatch(
     extensionPatch = sharedExtensionPatch,
     gmsCoreSupportResourcePatchFactory = ::gmsCoreSupportResourcePatch,
     executeBlock = {
-        // 1) Photos has multiple bundled Google Play Services availability and signature checks across all DEX files.
-        // Hook ALL methods with signature (Context, int) -> int, (Context) -> int, and signature verification.
+        // 1) Combined single pass over all classes:
+        //    - Bundle Google Play Services availability & signature check hooks
+        //    - Relax MDD and WorkManager network constraints from UNMETERED/NOT_ROAMING to CONNECTED
         classDefForEach { classDef ->
             val mutableClass by lazy { mutableClassDefBy(classDef) }
 
-            classDef.methods.forEach { method ->
+            classDef.methods.forEach classLoop@{ method ->
+                // Check A: Google Play Services availability check
                 val isAvailabilityCheck = method.returnType == "I" &&
                     (
                         (method.parameterTypes.size == 2 && method.parameterTypes[0] == "Landroid/content/Context;" && method.parameterTypes[1] == "I") ||
@@ -48,18 +50,36 @@ val gmsCoreSupportPatch = gmsCoreSupportPatch(
                         str?.contains("android.gms") == true || str?.contains("GooglePlayServices") == true
                     }) {
                         mutableClass.findMutableMethodOf(method).returnEarly(0)
+                        return@classLoop
                     }
                 }
 
+                // Check B: PackageInfo signature verification
                 val isSignatureCheck = method.returnType == "Z" &&
                     method.parameterTypes.size in 1..2 &&
                     method.parameterTypes[0] == "Landroid/content/pm/PackageInfo;"
                 if (isSignatureCheck) {
                     mutableClass.findMutableMethodOf(method).returnEarly(true)
+                    return@classLoop
+                }
+
+                // Check C: WorkManager / MDD network constraints
+                val implementation = method.implementation ?: return@classLoop
+                implementation.instructions.forEachIndexed { index, instruction ->
+                    val fieldRef = (instruction as? com.android.tools.smali.dexlib2.iface.instruction.ReferenceInstruction)?.reference as? com.android.tools.smali.dexlib2.iface.reference.FieldReference
+                        ?: return@forEachIndexed
+
+                    if (fieldRef.definingClass == "Landroidx/work/NetworkType;" &&
+                        (fieldRef.name == "UNMETERED" || fieldRef.name == "NOT_ROAMING")) {
+                        val register = (instruction as com.android.tools.smali.dexlib2.iface.instruction.OneRegisterInstruction).registerA
+                        mutableClass.findMutableMethodOf(method).replaceInstruction(
+                            index,
+                            "sget-object v$register, Landroidx/work/NetworkType;->CONNECTED:Landroidx/work/NetworkType;",
+                        )
+                    }
                 }
             }
         }
-
 
         // 2) Disable the AccountValidityMonitor check that runs on resume.
         AccountValidityMonitorCheckFingerprint.method.addInstruction(
@@ -84,31 +104,7 @@ val gmsCoreSupportPatch = gmsCoreSupportPatch(
             replaceInstruction(clearSelectedAccountIndex, "invoke-virtual {p0}, $accountHandlerClass->p()V")
         }
 
-        // 4) Relax MDD and WorkManager network constraints from UNMETERED to CONNECTED.
-        classDefForEach { classDef ->
-            val mutableClass by lazy { mutableClassDefBy(classDef) }
-
-            classDef.methods.forEach classLoop@{ method ->
-                val implementation = method.implementation ?: return@classLoop
-                val mutableMethod by lazy { mutableClass.findMutableMethodOf(method) }
-
-                implementation.instructions.forEachIndexed { index, instruction ->
-                    val fieldRef = (instruction as? com.android.tools.smali.dexlib2.iface.instruction.ReferenceInstruction)?.reference as? com.android.tools.smali.dexlib2.iface.reference.FieldReference
-                        ?: return@forEachIndexed
-
-                    if (fieldRef.definingClass == "Landroidx/work/NetworkType;" &&
-                        (fieldRef.name == "UNMETERED" || fieldRef.name == "NOT_ROAMING")) {
-                        val register = (instruction as com.android.tools.smali.dexlib2.iface.instruction.OneRegisterInstruction).registerA
-                        mutableMethod.replaceInstruction(
-                            index,
-                            "sget-object v$register, Landroidx/work/NetworkType;->CONNECTED:Landroidx/work/NetworkType;",
-                        )
-                    }
-                }
-            }
-        }
-
-        // 5) Hook CurrentLocationMixin.a() to immediately obtain device location and animate map camera.
+        // 4) Hook CurrentLocationMixin.a() to immediately obtain device location and animate map camera.
         CurrentLocationMixinFingerprint.method.apply {
             addInstruction(
                 0,

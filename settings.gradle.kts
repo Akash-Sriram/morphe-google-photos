@@ -2,6 +2,7 @@ rootProject.name = "morphe-patches"
 
 pluginManagement {
     repositories {
+        maven { url = uri("${rootDir}/local-repo") }
         mavenLocal()
         gradlePluginPortal()
         google()

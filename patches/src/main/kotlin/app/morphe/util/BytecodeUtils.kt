@@ -39,6 +39,8 @@
  * Forked from:
  * https://gitlab.com/ReVanced/revanced-patches/-/blob/main/patches/src/main/kotlin/app/revanced/util/BytecodeUtils.kt
  */
+@file:Suppress("CONTEXT_RECEIVERS_DEPRECATED")
+
 package app.morphe.util
 
 import app.morphe.patcher.Fingerprint
@@ -144,6 +146,7 @@ private fun Method.findInstructionIndexFromToString(fieldName: String) : Int {
  * @param fieldName The name of the field to find.  Partial matches are allowed.
  */
 context(BytecodePatchContext)
+@Suppress("DEPRECATION")
 internal fun Method.findMethodFromToString(fieldName: String) : MutableMethod {
     val methodUsageIndex = findInstructionIndexFromToString(fieldName)
     return navigate(this).to(methodUsageIndex).stop()

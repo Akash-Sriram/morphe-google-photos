@@ -11,7 +11,6 @@ import app.morphe.patcher.extensions.InstructionExtensions.addInstruction
 import app.morphe.patcher.extensions.InstructionExtensions.instructions
 import app.morphe.patcher.extensions.InstructionExtensions.replaceInstruction
 import app.morphe.patcher.patch.bytecodePatch
-import app.morphe.patcher.patch.stringsOption
 import app.morphe.patcher.util.proxy.mutableTypes.MutableMethod
 import app.morphe.util.findMutableMethodOf
 import app.morphe.util.getReference
@@ -41,10 +40,16 @@ private val SYSTEM_PROPERTY_OVERRIDES = mapOf(
     "ro.build.fingerprint"                to "google/marlin/marlin:10/QP1A.191005.007.A3/5972272:user/release-keys",
 )
 
+// The two flags cleanly baked directly into the DEX for unlimited original quality backup.
+private val BAKED_FEATURES_TO_ENABLE = setOf(
+    "com.google.android.apps.photos.NEXUS_PRELOAD",
+    "com.google.android.apps.photos.nexus_preload",
+)
+
 @Suppress("unused")
 val spoofFeaturesPatch = bytecodePatch(
     name = "Spoof features",
-    description = "Spoofs the device to enable Google Pixel exclusive features, including unlimited storage and modern UI.",
+    description = "Spoofs the device to enable Google Pixel exclusive features, including unlimited storage.",
     default = true,
 ) {
     compatibleWith(AppCompatibilities.GOOGLE_PHOTOS)
@@ -87,32 +92,7 @@ val spoofFeaturesPatch = bytecodePatch(
         ),
     )
 
-    val featuresToEnable by stringsOption(
-        key = "featuresToEnable",
-        default = listOf(
-            "com.google.android.apps.photos.NEXUS_PRELOAD",
-            "com.google.android.apps.photos.nexus_preload",
-        ),
-        title = "Features to enable",
-        description = "Google Pixel exclusive features to enable.",
-        required = true,
-    )
-
-    val featuresToDisable by stringsOption(
-        key = "featuresToDisable",
-        default = emptyList(),
-        title = "Features to disable",
-        description = "Google Pixel exclusive features to disable.",
-        required = true,
-    )
-
     execute {
-        @Suppress("NAME_SHADOWING")
-        val featuresToEnable = featuresToEnable!!.toSet()
-
-        @Suppress("NAME_SHADOWING")
-        val featuresToDisable = featuresToDisable!!.toSet()
-
         getAllClassesWithStrings().forEach { classDef ->
             val mutableClass by lazy { mutableClassDefBy(classDef) }
 
@@ -125,18 +105,14 @@ val spoofFeaturesPatch = bytecodePatch(
                     val string = ((instruction as? Instruction21c)?.reference as? StringReference)?.string
                         ?: return@forEachIndexed
 
-                    val transformedString = when (string) {
-                        in featuresToEnable -> "android.hardware.wifi"
-                        in featuresToDisable -> "dummy"
-                        else -> return@forEachIndexed
-                    }
+                    if (string !in BAKED_FEATURES_TO_ENABLE) return@forEachIndexed
 
                     mutableMethod.replaceInstruction(
                         index,
                         BuilderInstruction21c(
                             Opcode.CONST_STRING,
                             (instruction as OneRegisterInstruction).registerA,
-                            ImmutableStringReference(transformedString),
+                            ImmutableStringReference("android.hardware.wifi"),
                         ),
                     )
                     didPatchFeatureFlag = true
