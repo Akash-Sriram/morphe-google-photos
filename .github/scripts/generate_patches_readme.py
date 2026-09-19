@@ -38,8 +38,7 @@ with open(json_path, encoding="utf-8") as f:
 
 
 def pkg_emoji(pkg):
-    """Return a standard package emoji regardless of the package name."""
-    return "📦"
+    return ""
 
 # Group patches by package; patches with no compatiblePackages are universal.
 # JSON structure: compatiblePackages is a list of objects with
@@ -75,28 +74,34 @@ def anchor(name):
 
 
 def patches_table(patches):
-    """Render a sorted markdown table of patches with name, description, and options."""
-    rows = [
-        "| 💊&nbsp;Patch | 📜&nbsp;Description | ⚙️&nbsp;Options |",
-        "|----------|----------------|-----------|",
-    ]
+    """Render a sorted markdown table of patches with name, description, and options (if any)."""
+    has_options = any(p.get("options") for p in patches)
+    if has_options:
+        rows = [
+            "| Patch | Description | Options |",
+            "|---|---|---|",
+        ]
+    else:
+        rows = [
+            "| Patch | Description |",
+            "|---|---|",
+        ]
+
     for p in sorted(patches, key=lambda x: x["name"]):
         a = anchor(p["name"])
-        options = p.get("options") or []
-        if options:
-            # Show only option titles as a bullet list
+        desc = (p.get("description") or "").replace("\n", "<br>")
+        if has_options:
+            options = p.get("options") or []
             parts = [opt.get("title") or opt.get("key") or "" for opt in options]
             opts_cell = "<br>".join(f"• {t}" for t in parts)
+            rows.append(f"| [{p['name']}](#{a}) | {desc} | {opts_cell} |")
         else:
-            opts_cell = ""
-        desc = (p.get("description") or "").replace("\n", "<br>")
-        rows.append(f"| [{p['name']}](#{a}) | {desc} | {opts_cell} |")
+            rows.append(f"| [{p['name']}](#{a}) | {desc} |")
     return "\n".join(rows)
 
 
 def versions_table(targets):
     """Render a markdown table of supported versions.
-    Experimental versions get a 🧪 prefix.
     Versions with a description get it shown in a second row below.
     """
     if not targets:
@@ -107,7 +112,7 @@ def versions_table(targets):
         ver   = t["version"]
         if ver is None:
             continue
-        label = f"🧪&nbsp;{ver}" if t.get("isExperimental") else ver
+        label = f"{ver} (experimental)" if t.get("isExperimental") else ver
         cells.append(label)
 
     if not cells:
@@ -131,10 +136,11 @@ def spoiler(label, count, targets, tbl, expanded=False):
     """
     noun = "patch" if count == 1 else "patches"
     vtbl = versions_table(targets)
-    versions_section = f"**🎯 Supported versions:**\n\n{vtbl}\n\n" if vtbl else ""
+    versions_section = f"**Supported versions:**\n\n{vtbl}\n\n" if vtbl else ""
     tag = "<details open>" if expanded else "<details>"
+    clean_label = label.strip()
     return f"""{tag}
-<summary>{label}&nbsp;&nbsp;•&nbsp;&nbsp;{count} {noun}</summary>
+<summary>{clean_label}&nbsp;&nbsp;•&nbsp;&nbsp;{count} {noun}</summary>
 <br>
 
 {versions_section}{tbl}
