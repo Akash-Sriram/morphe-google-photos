@@ -30,7 +30,7 @@ import com.android.tools.smali.dexlib2.iface.reference.MethodReference
  */
 val fixMemoryStyleFontLoadingPatch = bytecodePatch(
     name = "Fix memory style font loading",
-    description = "Redirects Skottie animation font loading to system fonts for mod package compatibility.",
+    description = "Redirects Skottie animation font loading to system fonts for mod package compatibility, fixing blank text and cutout crashes in Memories.",
     default = true,
 ) {
     compatibleWith(AppCompatibilities.GOOGLE_PHOTOS)

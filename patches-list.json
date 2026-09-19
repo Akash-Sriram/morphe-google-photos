@@ -157,7 +157,7 @@
     },
     {
       "name": "Enable Phenotype flag manager",
-      "description": "Enables an in-app flag manager in Photos Settings to customize experimental UI redesigns and feature flags.",
+      "description": "Enables an in-app flag manager in Photos Settings to toggle curated experimental UI redesigns, video editor tools, and feature flags.",
       "default": true,
       "category": null,
       "dependencies": [],
@@ -191,7 +191,7 @@
     },
     {
       "name": "Fix memory style font loading",
-      "description": "Redirects Skottie animation font loading to system fonts for mod package compatibility.",
+      "description": "Redirects Skottie animation font loading to system fonts for mod package compatibility, fixing blank text and cutout crashes in Memories.",
       "default": true,
       "category": null,
       "dependencies": [],

@@ -56,7 +56,7 @@ public final class PhotoFlagsRegistry {
         register("45705305", "Tap/Circle Select", "Tap, circle or brush to select objects in editor", "Photo Editor", FlagType.BOOLEAN, true);
         register("45683689", "AI Enhance V2", "AI Enhance V2 presets with multi-option photo enhancement", "Photo Editor", FlagType.BOOLEAN, true);
         register("45797840", "Moods Edit Presets", "Adaptive creative edit presets with hold-to-compare", "Photo Editor", FlagType.BOOLEAN, true);
-        register("45709528", "Enhanced Pixel Processing", "Advanced pixel processing & filter framework pipeline", "Photo Editor", FlagType.BOOLEAN, true);
+        register("45709528", "New Video Editor & AI", "Intuitive video editor layout with AI-powered features & presets", "Photo Editor", FlagType.BOOLEAN, true);
 
         // 2. Navigation & Tabs (4 flags)
         register("45762698", "Collections V2 Layout", "Collections Shelves V2 redesigned grouped layout (0=Off, 2=On)", "Navigation & Tabs", FlagType.LONG, 2L);
@@ -70,7 +70,7 @@ public final class PhotoFlagsRegistry {
 
         // 4. Media, Grid & Memories (15 flags)
         register("45743215", "Date Capsule Pill", "Floating [ Today ] date capsule pill & smart search filters", "Media & Memories", FlagType.BOOLEAN, true);
-        register("45732792", "Modern Grid & Export", "Updated photo grid view components and fast compression", "Media & Memories", FlagType.BOOLEAN, true);
+        register("45732792", "Floating Navigation Bar", "Floating bottom navigation bar pill", "Media & Memories", FlagType.BOOLEAN, true);
         register("45683026", "Video Seek Scrubbing", "High-speed video thumbnail scrubbing preview bar", "Media & Memories", FlagType.BOOLEAN, true);
         register("45353606", "Document Scanner Crop", "Perspective document scanner cropping & modern controls", "Media & Memories", FlagType.BOOLEAN, true);
         register("45694311", "Motion Stabilizer", "Motion photo stabilizer and floating playback pill", "Media & Memories", FlagType.BOOLEAN, true);
