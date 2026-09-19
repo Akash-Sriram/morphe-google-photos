@@ -568,11 +568,19 @@ public final class PhenotypeFlagManager {
             boolean next = !sw.isChecked();
             sw.setChecked(next);
             toggleRecipe(prefs, recipe, next);
+            if (recipe.flags.containsKey("45531621")) {
+                GooglePhotosAccountAvatar.syncOneGoogleFlags(activity, next);
+            }
+            Toast.makeText(activity, (next ? "Enabled: " : "Disabled: ") + recipe.title + "\nTap '⚡ Apply & Restart Photos' below to apply.", Toast.LENGTH_SHORT).show();
             onRefresh.run();
         });
 
         sw.setOnClickListener(v -> {
             toggleRecipe(prefs, recipe, sw.isChecked());
+            if (recipe.flags.containsKey("45531621")) {
+                GooglePhotosAccountAvatar.syncOneGoogleFlags(activity, sw.isChecked());
+            }
+            Toast.makeText(activity, (sw.isChecked() ? "Enabled: " : "Disabled: ") + recipe.title + "\nTap '⚡ Apply & Restart Photos' below to apply.", Toast.LENGTH_SHORT).show();
             onRefresh.run();
         });
 
@@ -1263,8 +1271,23 @@ public final class PhenotypeFlagManager {
         Map<String, ?> all = prefs.getAll();
         for (Map.Entry<String, Object> e : recipe.flags.entrySet()) {
             Object current = all.get(e.getKey());
-            if (current == null) return false;
-            if (!String.valueOf(current).equalsIgnoreCase(String.valueOf(e.getValue()))) {
+            if (current == null) {
+                CuratedFlag cf = PhotoFlagsRegistry.FLAG_MAP.get(e.getKey());
+                if (cf != null) {
+                    current = cf.defaultValue;
+                } else {
+                    return false;
+                }
+            }
+            if (current instanceof Boolean && e.getValue() instanceof Boolean) {
+                if (!((Boolean) current).equals(e.getValue())) {
+                    return false;
+                }
+            } else if (current instanceof Number && e.getValue() instanceof Number) {
+                if (((Number) current).longValue() != ((Number) e.getValue()).longValue()) {
+                    return false;
+                }
+            } else if (!String.valueOf(current).equalsIgnoreCase(String.valueOf(e.getValue()))) {
                 return false;
             }
         }
@@ -1273,16 +1296,22 @@ public final class PhenotypeFlagManager {
 
     private static void toggleRecipe(SharedPreferences prefs, RecommendationRecipe recipe, boolean enable) {
         SharedPreferences.Editor editor = prefs.edit();
-        if (enable) {
-            for (Map.Entry<String, Object> e : recipe.flags.entrySet()) {
-                applyEntry(editor, e.getKey(), e.getValue());
-            }
-        } else {
-            for (String key : recipe.flags.keySet()) {
-                editor.remove(key);
+        for (Map.Entry<String, Object> e : recipe.flags.entrySet()) {
+            String key = e.getKey();
+            Object val = e.getValue();
+            if (enable) {
+                applyEntry(editor, key, val);
+            } else {
+                if (val instanceof Boolean) {
+                    editor.putBoolean(key, false);
+                } else if (val instanceof Number) {
+                    editor.putLong(key, 0L);
+                } else {
+                    editor.putString(key, "");
+                }
             }
         }
-        editor.apply();
+        editor.commit();
     }
 
     private static void applyEntry(SharedPreferences.Editor editor, String key, Object val) {
