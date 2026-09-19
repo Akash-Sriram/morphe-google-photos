@@ -789,10 +789,11 @@ public final class PhenotypeFlagManager {
             });
         }));
 
-        // 2. Reset / Apply Default 26 Curated Flags
-        items.add(new MenuItem("⚡", "Reset to Default (26 Flags)", "Re-apply all 26 curated modern UI preset flags", () -> {
-            PhotoFlagsRegistry.applyAll26Defaults(prefs);
-            Toast.makeText(activity, "✓ Re-applied all 26 default curated flags", Toast.LENGTH_SHORT).show();
+        // 2. Reset / Apply Default Curated Flags
+        int flagCount = PhotoFlagsRegistry.CURATED_FLAGS.size();
+        items.add(new MenuItem("⚡", "Reset to Default (" + flagCount + " Flags)", "Re-apply all " + flagCount + " curated Morphe preset flags", () -> {
+            PhotoFlagsRegistry.applyCuratedDefaults(prefs);
+            Toast.makeText(activity, "✓ Re-applied all " + flagCount + " default curated flags", Toast.LENGTH_SHORT).show();
             onRefresh.run();
         }));
 
