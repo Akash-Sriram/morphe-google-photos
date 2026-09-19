@@ -59,34 +59,27 @@ public final class PhotoFlagsRegistry {
         register("45785454", "Dynamic Accent Theming", "OneGoogle dynamic theming, accent ring & HDR preview", "Account & Theming", FlagType.BOOLEAN, true);
         register("45804059", "Modern Account Sheet", "Fullscreen modern account card sheet & playback controls", "Account & Theming", FlagType.BOOLEAN, true);
 
-        // 2. Photo Editor & Tools (4 flags)
+        // 2. Photo Editor & Tools (3 flags)
         register("45705305", "Tap/Circle Select", "Tap, circle or brush to select objects in editor", "Photo Editor", FlagType.BOOLEAN, true);
         register("45683689", "AI Enhance V2", "AI Enhance V2 presets with multi-option photo enhancement", "Photo Editor", FlagType.BOOLEAN, true);
         register("45797840", "Moods Edit Presets", "Adaptive creative edit presets with hold-to-compare", "Photo Editor", FlagType.BOOLEAN, true);
-        register("4306", "Collage Editor Grids", "Enhanced collage layout grids & dynamic editing bars", "Photo Editor", FlagType.BOOLEAN, true);
 
-        // 3. Navigation & Tabs (5 flags)
-        register("45762698", "Collections V2 Layout", "Collections Shelves V2 redesigned grouped layout", "Navigation & Tabs", FlagType.LONG, 2L);
+        // 3. Navigation & Tabs (4 flags)
+        register("45762698", "Collections V2 Layout", "Collections Shelves V2 redesigned grouped layout (0=Off, 2=On)", "Navigation & Tabs", FlagType.LONG, 2L);
         register("45802110", "Collections V2 Content", "Collections Shelves V2 content view and modern shelves", "Navigation & Tabs", FlagType.LONG, 2L);
         register("45752831", "Reels Videos Tab (V1)", "Full-screen scrollable Reels-style Videos feed", "Navigation & Tabs", FlagType.BOOLEAN, true);
         register("45754546", "Reels Videos Tab (V2)", "Explore tab transition into full-screen video feed", "Navigation & Tabs", FlagType.BOOLEAN, true);
-        register("3024", "Floating Bottom Bar", "Floating bottom navigation bar & Ultra HDR display", "Navigation & Tabs", FlagType.BOOLEAN, true);
 
-        // 4. AI Assistant & Top Bar (3 flags)
+        // 4. AI Assistant & Top Bar (2 flags)
         register("45753590", "\"On this device\" Filter", "Quick top bar filter button to show local device media", "AI & Search", FlagType.BOOLEAN, true);
-        register("45724258", "Ask Photos AI", "Conversational Gemini AI search and photo query assistant", "AI & Search", FlagType.BOOLEAN, true);
-        register("3013", "Gemini Search Tab", "Gemini AI navigation tab & dynamic search suggestion chips", "AI & Search", FlagType.LONG, 1L);
+        register("45724258", "Ask Photos AI", "Conversational Gemini AI search (requires server enrollment)", "AI & Search", FlagType.BOOLEAN, true);
 
-        // 5. Media, Grid & Memories (9 flags)
+        // 5. Media, Grid & Memories (16 flags)
         register("45743215", "Date Capsule Pill", "Floating [ Today ] date capsule pill & smart search filters", "Media & Memories", FlagType.BOOLEAN, true);
         register("45732792", "Modern Grid & Export", "Updated photo grid view components and fast compression", "Media & Memories", FlagType.BOOLEAN, true);
-        register("3023", "Enhanced Zoom Controls", "Smooth zoom controls & gesture navigation in media viewer", "Media & Memories", FlagType.BOOLEAN, true);
-        register("3026", "Video Seek Scrubbing", "High-speed video thumbnail scrubbing preview bar", "Media & Memories", FlagType.BOOLEAN, true);
-        register("2892", "Story Layout & Warnings", "Modern Memories story layout and trash cleanup warnings", "Media & Memories", FlagType.BOOLEAN, true);
-        register("2675", "Modern Layout Tokens", "Modern UI layout components and shared album feed", "Media & Memories", FlagType.BOOLEAN, true);
-        register("3606", "Document Scanner Crop", "Perspective document scanner cropping & modern controls", "Media & Memories", FlagType.BOOLEAN, true);
-        register("3611", "High-Res Cache Tokens", "High-quality thumbnail caching and modern UI styling", "Media & Memories", FlagType.BOOLEAN, true);
-        register("4311", "Stabilizer & Floating Pill", "Motion photo stabilizer & floating pill styling", "Media & Memories", FlagType.BOOLEAN, true);
+        register("45683026", "Video Seek Scrubbing", "High-speed video thumbnail scrubbing preview bar", "Media & Memories", FlagType.BOOLEAN, true);
+        register("45353606", "Document Scanner Crop", "Perspective document scanner cropping & modern controls", "Media & Memories", FlagType.BOOLEAN, true);
+        register("45694311", "Motion Stabilizer", "Motion photo stabilizer and floating playback pill", "Media & Memories", FlagType.BOOLEAN, true);
         register("45659276", "Story Cutouts (Pop-Out)", "Master pop-out subject cutout scrapbook animations in Memories", "Media & Memories", FlagType.BOOLEAN, true);
         register("45477626", "MemoryCard Styles", "Master MemoryCard graphic styling & scrapbook frames", "Media & Memories", FlagType.BOOLEAN, true);
         register("45785531", "Pop-Out Templates", "Pop-out animation templates & 3D foreground motion", "Media & Memories", FlagType.BOOLEAN, true);

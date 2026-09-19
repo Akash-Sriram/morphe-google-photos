@@ -636,18 +636,20 @@ public final class PhenotypeFlagManager {
             row.setOnClickListener(v -> {
                 boolean next = !sw.isChecked();
                 sw.setChecked(next);
-                prefs.edit().putBoolean(flag.key, next).apply();
+                prefs.edit().putBoolean(flag.key, next).commit();
                 if ("45531621".equals(flag.key)) {
                     GooglePhotosAccountAvatar.syncOneGoogleFlags(activity, next);
                 }
+                Toast.makeText(activity, "Updated: " + flag.title + "\nTap '⚡ Apply & Restart Photos' below to apply.", Toast.LENGTH_SHORT).show();
                 onRefresh.run();
             });
 
             sw.setOnClickListener(v -> {
-                prefs.edit().putBoolean(flag.key, sw.isChecked()).apply();
+                prefs.edit().putBoolean(flag.key, sw.isChecked()).commit();
                 if ("45531621".equals(flag.key)) {
                     GooglePhotosAccountAvatar.syncOneGoogleFlags(activity, sw.isChecked());
                 }
+                Toast.makeText(activity, "Updated: " + flag.title + "\nTap '⚡ Apply & Restart Photos' below to apply.", Toast.LENGTH_SHORT).show();
                 onRefresh.run();
             });
 
@@ -713,11 +715,13 @@ public final class PhenotypeFlagManager {
             row.setOnClickListener(v -> {
                 boolean next = !sw.isChecked();
                 sw.setChecked(next);
-                prefs.edit().putBoolean(key, next).apply();
+                prefs.edit().putBoolean(key, next).commit();
+                Toast.makeText(activity, "Custom flag updated.\nTap '⚡ Apply & Restart Photos' below to apply.", Toast.LENGTH_SHORT).show();
                 onRefresh.run();
             });
             sw.setOnClickListener(v -> {
-                prefs.edit().putBoolean(key, sw.isChecked()).apply();
+                prefs.edit().putBoolean(key, sw.isChecked()).commit();
+                Toast.makeText(activity, "Custom flag updated.\nTap '⚡ Apply & Restart Photos' below to apply.", Toast.LENGTH_SHORT).show();
                 onRefresh.run();
             });
         } else {
@@ -1101,7 +1105,8 @@ public final class PhenotypeFlagManager {
                 } catch (Exception ex) {
                     ed.putString(key, v);
                 }
-                ed.apply();
+                ed.commit();
+                Toast.makeText(activity, "Updated " + title + "\nTap '⚡ Apply & Restart Photos' below to apply.", Toast.LENGTH_SHORT).show();
                 onRefresh.run();
             }
         });
