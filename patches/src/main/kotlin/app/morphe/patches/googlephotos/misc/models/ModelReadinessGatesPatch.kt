@@ -1,5 +1,7 @@
-package app.morphe.patches.googlephotos.misc.flags
+package app.morphe.patches.googlephotos.misc.models
 
+import app.morphe.patches.googlephotos.misc.extension.sharedExtensionPatch
+import app.morphe.patches.googlephotos.misc.gms.HomeActivityOnCreateFingerprint
 import app.morphe.patches.shared.compat.AppCompatibilities
 import app.morphe.patcher.extensions.InstructionExtensions.addInstructions
 import app.morphe.patcher.patch.bytecodePatch
@@ -24,8 +26,16 @@ val modelReadinessGatesPatch = bytecodePatch(
     default = true,
 ) {
     compatibleWith(AppCompatibilities.GOOGLE_PHOTOS)
+    dependsOn(sharedExtensionPatch)
 
     execute {
+        HomeActivityOnCreateFingerprint.method.addInstructions(
+            0,
+            """
+            invoke-static/range { p0 .. p0 }, Lapp/morphe/extension/shared/patches/PhotosModelSeeder;->ensureSeeded(Landroid/content/Context;)V
+            """.trimIndent(),
+        )
+
         classDefForEach { classDef ->
             val clinit = classDef.methods.find { it.name == "<clinit>" }
             if (clinit != null && clinit.containsStringConstant("ModelDownloadManager")) {

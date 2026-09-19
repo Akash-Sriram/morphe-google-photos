@@ -169,6 +169,16 @@ public final class GooglePhotosAccountAvatar {
 
     public static void ensureOneGoogleFlagsConfigured(Context context) {
         try {
+            SharedPreferences prefs = context.getSharedPreferences(
+                    "com.google.android.apps.photos.phenotype", Context.MODE_PRIVATE);
+            boolean enableModernOneGoogle = prefs.getBoolean("45531621", false);
+            syncOneGoogleFlags(context, enableModernOneGoogle);
+        } catch (Throwable ignored) {}
+    }
+
+    public static void syncOneGoogleFlags(Context context, boolean enable) {
+        if (context == null) return;
+        try {
             File sharedDir = new File(context.getFilesDir(), "phenotype/shared");
             if (!sharedDir.exists()) {
                 sharedDir.mkdirs();
@@ -180,26 +190,26 @@ public final class GooglePhotosAccountAvatar {
                     "com.google.android.libraries.onegoogle#com.google.android.apps.photos.pb"
             };
 
-            byte[] pbBytes = null;
-
-            for (String targetName : targetNames) {
-                File pbFile = new File(sharedDir, targetName);
-                if (!pbFile.exists() || pbFile.length() < 500) {
-                    if (pbBytes == null) {
-                        pbBytes = Base64.decode(ONEGOOGLE_PB_BASE64, Base64.DEFAULT);
-                    }
+            if (enable) {
+                byte[] pbBytes = Base64.decode(ONEGOOGLE_PB_BASE64, Base64.DEFAULT);
+                for (String targetName : targetNames) {
+                    File pbFile = new File(sharedDir, targetName);
                     try (FileOutputStream fos = new FileOutputStream(pbFile)) {
                         fos.write(pbBytes);
                         fos.flush();
                     }
                     pbFile.setReadable(true, false);
                     pbFile.setWritable(true, false);
-                    Logger.printInfo(() -> "Seeded OneGoogle phenotype flags to: " + pbFile.getAbsolutePath());
+                }
+            } else {
+                for (String targetName : targetNames) {
+                    File pbFile = new File(sharedDir, targetName);
+                    if (pbFile.exists()) {
+                        pbFile.delete();
+                    }
                 }
             }
-        } catch (Throwable t) {
-            Logger.printException(() -> "Could not seed OneGoogle phenotype flags", t);
-        }
+        } catch (Throwable ignored) {}
     }
 
     private static void warmUpMemoryCache(Activity activity) {
