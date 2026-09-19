@@ -9,8 +9,8 @@ import java.util.Map;
 import app.morphe.extension.shared.Logger;
 
 /**
- * Single source of truth for the curated 29 Morphe Google Photos Flags.
- * Stripped of obsolete, broken and legacy flags.
+ * Single source of truth for the curated 24 Morphe Google Photos Flags.
+ * Stripped of obsolete, broken, legacy, and OneGoogle library flags.
  */
 public final class PhotoFlagsRegistry {
 
@@ -52,14 +52,7 @@ public final class PhotoFlagsRegistry {
     public static final Map<String, CuratedFlag> FLAG_MAP = new LinkedHashMap<>();
 
     static {
-        // 1. Account & OneGoogle Theming (5 flags)
-        register("45531621", "Modern Avatar Ring", "Modern Blue Avatar Particle Ring & OneGoogle theme", "Account & Theming", FlagType.BOOLEAN, true);
-        register("45531625", "Avatar Ring Style", "Modern account switcher disc & ring styling variant", "Account & Theming", FlagType.LONG, 3L);
-        register("45375377", "Account Particle Disc", "Base OneGoogle Particle Disc & wallpaper activation", "Account & Theming", FlagType.BOOLEAN, true);
-        register("45785454", "Dynamic Accent Theming", "OneGoogle dynamic theming, accent ring & HDR preview", "Account & Theming", FlagType.BOOLEAN, true);
-        register("45804059", "Modern Account Sheet", "Fullscreen modern account card sheet & playback controls", "Account & Theming", FlagType.BOOLEAN, true);
-
-        // 2. Photo Editor & Tools (3 flags)
+        // 1. Photo Editor & Tools (3 flags)
         register("45705305", "Tap/Circle Select", "Tap, circle or brush to select objects in editor", "Photo Editor", FlagType.BOOLEAN, true);
         register("45683689", "AI Enhance V2", "AI Enhance V2 presets with multi-option photo enhancement", "Photo Editor", FlagType.BOOLEAN, true);
         register("45797840", "Moods Edit Presets", "Adaptive creative edit presets with hold-to-compare", "Photo Editor", FlagType.BOOLEAN, true);
@@ -130,7 +123,7 @@ public final class PhotoFlagsRegistry {
                 editor.putString(f.key, String.valueOf(f.defaultValue));
             }
         }
-        editor.putInt("_morphe_curated_preset_version", 6);
+        editor.putInt("_morphe_curated_preset_version", 7);
         editor.putBoolean("_morphe_flags_seeded", true);
         editor.apply();
         Logger.printInfo(() -> "Applied all " + CURATED_FLAGS.size() + " curated preset flags to SharedPreferences.");

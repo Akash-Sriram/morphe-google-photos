@@ -568,18 +568,12 @@ public final class PhenotypeFlagManager {
             boolean next = !sw.isChecked();
             sw.setChecked(next);
             toggleRecipe(prefs, recipe, next);
-            if (recipe.flags.containsKey("45531621")) {
-                GooglePhotosAccountAvatar.syncOneGoogleFlags(activity, next);
-            }
             Toast.makeText(activity, (next ? "Enabled: " : "Disabled: ") + recipe.title + "\nTap '⚡ Apply & Restart Photos' below to apply.", Toast.LENGTH_SHORT).show();
             onRefresh.run();
         });
 
         sw.setOnClickListener(v -> {
             toggleRecipe(prefs, recipe, sw.isChecked());
-            if (recipe.flags.containsKey("45531621")) {
-                GooglePhotosAccountAvatar.syncOneGoogleFlags(activity, sw.isChecked());
-            }
             Toast.makeText(activity, (sw.isChecked() ? "Enabled: " : "Disabled: ") + recipe.title + "\nTap '⚡ Apply & Restart Photos' below to apply.", Toast.LENGTH_SHORT).show();
             onRefresh.run();
         });
@@ -645,18 +639,12 @@ public final class PhenotypeFlagManager {
                 boolean next = !sw.isChecked();
                 sw.setChecked(next);
                 prefs.edit().putBoolean(flag.key, next).commit();
-                if ("45531621".equals(flag.key)) {
-                    GooglePhotosAccountAvatar.syncOneGoogleFlags(activity, next);
-                }
                 Toast.makeText(activity, "Updated: " + flag.title + "\nTap '⚡ Apply & Restart Photos' below to apply.", Toast.LENGTH_SHORT).show();
                 onRefresh.run();
             });
 
             sw.setOnClickListener(v -> {
                 prefs.edit().putBoolean(flag.key, sw.isChecked()).commit();
-                if ("45531621".equals(flag.key)) {
-                    GooglePhotosAccountAvatar.syncOneGoogleFlags(activity, sw.isChecked());
-                }
                 Toast.makeText(activity, "Updated: " + flag.title + "\nTap '⚡ Apply & Restart Photos' below to apply.", Toast.LENGTH_SHORT).show();
                 onRefresh.run();
             });
