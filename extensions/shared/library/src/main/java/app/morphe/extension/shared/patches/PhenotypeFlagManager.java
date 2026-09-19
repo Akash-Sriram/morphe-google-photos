@@ -61,6 +61,7 @@ public final class PhenotypeFlagManager {
     private static final String PREF_NAME = "com.google.android.apps.photos.phenotype";
     private static final String SETTINGS_PILL_TAG = "morphe_photos_flags_pill";
     public static final String CUSTOM_FLAGS_KEY = "_morphe_custom_flag_ids";
+    public static final String SEEDED_MARKER = "_morphe_flags_seeded";
 
     // Material 3 Palette
     private static final int M3_BG = 0xFFF5F7F6;

@@ -9,6 +9,7 @@ import app.morphe.patches.shared.compat.AppCompatibilities
 import app.morphe.patches.googlephotos.misc.gms.Constants.MORPHE_PHOTOS_PACKAGE_NAME
 import app.morphe.patches.googlephotos.misc.gms.Constants.PHOTOS_PACKAGE_NAME
 import app.morphe.patches.googlephotos.misc.gms.HomeActivityOnCreateFingerprint
+import app.morphe.patches.shared.misc.gms.PackageNameConfig
 import app.morphe.patches.shared.misc.gms.gmsCoreSupportPatch
 import app.morphe.patches.shared.misc.settings.preference.BasePreferenceScreen
 import app.morphe.patches.shared.misc.settings.preference.PreferenceScreenPreference
@@ -92,38 +93,42 @@ val gmsCoreSupportPatch = gmsCoreSupportPatch(
         //    original package name, so the OS fails to resolve the provider and the entire
         //    Locked Folder pipeline (backup eligibility, auth handshake, data sync) breaks.
         //    This pass re-aligns those strings with the renamed authorities in the manifest.
-        val marsPackagePrefixes = listOf(
-            "$PHOTOS_PACKAGE_NAME.mars.",
-            "content://$PHOTOS_PACKAGE_NAME.mars.",
-        )
-        classDefForEach { classDef ->
-            val mutableClass by lazy { mutableClassDefBy(classDef) }
+        //    Only execute this transformation when package renaming is enabled.
+        if (PackageNameConfig.isPackageNameChangeEnabled) {
+            val targetPackageName = PackageNameConfig.effectivePackageName.ifEmpty { MORPHE_PHOTOS_PACKAGE_NAME }
+            val marsPackagePrefixes = listOf(
+                "$PHOTOS_PACKAGE_NAME.mars.",
+                "content://$PHOTOS_PACKAGE_NAME.mars.",
+            )
+            classDefForEach { classDef ->
+                val mutableClass by lazy { mutableClassDefBy(classDef) }
 
-            classDef.methods.forEach marsLoop@{ method ->
-                val implementation = method.implementation ?: return@marsLoop
+                classDef.methods.forEach marsLoop@{ method ->
+                    val implementation = method.implementation ?: return@marsLoop
 
-                val mutableMethod by lazy { mutableClass.findMutableMethodOf(method) }
+                    val mutableMethod by lazy { mutableClass.findMutableMethodOf(method) }
 
-                implementation.instructions.forEachIndexed { index, instruction ->
-                    val stringRef =
-                        (instruction as? com.android.tools.smali.dexlib2.iface.instruction.formats.Instruction21c)
-                            ?.reference as? StringReference
+                    implementation.instructions.forEachIndexed { index, instruction ->
+                        val stringRef =
+                            (instruction as? com.android.tools.smali.dexlib2.iface.instruction.formats.Instruction21c)
+                                ?.reference as? StringReference
+                                ?: return@forEachIndexed
+
+                        val original = stringRef.string
+                        val transformed = marsPackagePrefixes
+                            .firstOrNull { original.startsWith(it) }
+                            ?.let { original.replace(PHOTOS_PACKAGE_NAME, targetPackageName) }
                             ?: return@forEachIndexed
 
-                    val original = stringRef.string
-                    val transformed = marsPackagePrefixes
-                        .firstOrNull { original.startsWith(it) }
-                        ?.let { original.replace(PHOTOS_PACKAGE_NAME, MORPHE_PHOTOS_PACKAGE_NAME) }
-                        ?: return@forEachIndexed
-
-                    mutableMethod.replaceInstruction(
-                        index,
-                        com.android.tools.smali.dexlib2.builder.instruction.BuilderInstruction21c(
-                            com.android.tools.smali.dexlib2.Opcode.CONST_STRING,
-                            (instruction as com.android.tools.smali.dexlib2.iface.instruction.OneRegisterInstruction).registerA,
-                            com.android.tools.smali.dexlib2.immutable.reference.ImmutableStringReference(transformed),
-                        ),
-                    )
+                        mutableMethod.replaceInstruction(
+                            index,
+                            com.android.tools.smali.dexlib2.builder.instruction.BuilderInstruction21c(
+                                com.android.tools.smali.dexlib2.Opcode.CONST_STRING,
+                                (instruction as com.android.tools.smali.dexlib2.iface.instruction.OneRegisterInstruction).registerA,
+                                com.android.tools.smali.dexlib2.immutable.reference.ImmutableStringReference(transformed),
+                            ),
+                        )
+                    }
                 }
             }
         }

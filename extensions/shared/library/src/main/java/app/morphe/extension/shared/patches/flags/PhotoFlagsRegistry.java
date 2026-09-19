@@ -97,6 +97,10 @@ public final class PhotoFlagsRegistry {
         register("45659278", "Collage Layout Support", "Multi-up collage layout support & animations", "Media & Memories", FlagType.BOOLEAN, true);
         register("45742883", "Multi-up Capability", "Story multi-up grid and cutout capability", "Media & Memories", FlagType.BOOLEAN, true);
         register("3999", "Skottie CDN Bundle", "Skottie asset bundle CDN version for cutout animations", "Media & Memories", FlagType.LONG, 120480972L);
+        register("45417849", "Styles in Memories", "Core memory card graphic styles and scrapbook templates", "Media & Memories", FlagType.BOOLEAN, true);
+        register("45417850", "Styles in Memories V2", "Enhanced graphic memory styles and background cutouts", "Media & Memories", FlagType.BOOLEAN, true);
+        register("45422890", "Memory Cutout Renderer", "Render graphic cutouts in stylized memories", "Media & Memories", FlagType.BOOLEAN, true);
+        register("45418195", "Memory Styles Version", "Memory card styling renderer engine version", "Media & Memories", FlagType.LONG, 4L);
     }
 
     private static void register(String key, String title, String description, String category, FlagType type, Object defaultValue) {
@@ -137,7 +141,7 @@ public final class PhotoFlagsRegistry {
                 editor.putString(f.key, String.valueOf(f.defaultValue));
             }
         }
-        editor.putInt("_morphe_curated_preset_version", 4);
+        editor.putInt("_morphe_curated_preset_version", 5);
         editor.putBoolean("_morphe_flags_seeded", true);
         editor.apply();
         Logger.printInfo(() -> "Applied all " + CURATED_FLAGS.size() + " curated preset flags to SharedPreferences.");
