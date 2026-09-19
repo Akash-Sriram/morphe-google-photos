@@ -9,7 +9,7 @@ import java.util.Map;
 import app.morphe.extension.shared.Logger;
 
 /**
- * Single source of truth for the curated 24 Morphe Google Photos Flags.
+ * Single source of truth for the curated 25 Morphe Google Photos Flags.
  * Stripped of obsolete, broken, legacy, and OneGoogle library flags.
  */
 public final class PhotoFlagsRegistry {
@@ -52,22 +52,23 @@ public final class PhotoFlagsRegistry {
     public static final Map<String, CuratedFlag> FLAG_MAP = new LinkedHashMap<>();
 
     static {
-        // 1. Photo Editor & Tools (3 flags)
+        // 1. Photo Editor & Tools (4 flags)
         register("45705305", "Tap/Circle Select", "Tap, circle or brush to select objects in editor", "Photo Editor", FlagType.BOOLEAN, true);
         register("45683689", "AI Enhance V2", "AI Enhance V2 presets with multi-option photo enhancement", "Photo Editor", FlagType.BOOLEAN, true);
         register("45797840", "Moods Edit Presets", "Adaptive creative edit presets with hold-to-compare", "Photo Editor", FlagType.BOOLEAN, true);
+        register("45709528", "Enhanced Pixel Processing", "Advanced pixel processing & filter framework pipeline", "Photo Editor", FlagType.BOOLEAN, true);
 
-        // 3. Navigation & Tabs (4 flags)
+        // 2. Navigation & Tabs (4 flags)
         register("45762698", "Collections V2 Layout", "Collections Shelves V2 redesigned grouped layout (0=Off, 2=On)", "Navigation & Tabs", FlagType.LONG, 2L);
         register("45802110", "Collections V2 Content", "Collections Shelves V2 content view and modern shelves", "Navigation & Tabs", FlagType.LONG, 2L);
         register("45752831", "Reels Videos Tab (V1)", "Full-screen scrollable Reels-style Videos feed", "Navigation & Tabs", FlagType.BOOLEAN, true);
         register("45754546", "Reels Videos Tab (V2)", "Explore tab transition into full-screen video feed", "Navigation & Tabs", FlagType.BOOLEAN, true);
 
-        // 4. AI Assistant & Top Bar (2 flags)
+        // 3. AI Assistant & Top Bar (2 flags)
         register("45753590", "\"On this device\" Filter", "Quick top bar filter button to show local device media", "AI & Search", FlagType.BOOLEAN, true);
         register("45724258", "Ask Photos AI", "Conversational Gemini AI search (requires server enrollment)", "AI & Search", FlagType.BOOLEAN, true);
 
-        // 5. Media, Grid & Memories (15 flags)
+        // 4. Media, Grid & Memories (15 flags)
         register("45743215", "Date Capsule Pill", "Floating [ Today ] date capsule pill & smart search filters", "Media & Memories", FlagType.BOOLEAN, true);
         register("45732792", "Modern Grid & Export", "Updated photo grid view components and fast compression", "Media & Memories", FlagType.BOOLEAN, true);
         register("45683026", "Video Seek Scrubbing", "High-speed video thumbnail scrubbing preview bar", "Media & Memories", FlagType.BOOLEAN, true);
@@ -123,7 +124,7 @@ public final class PhotoFlagsRegistry {
                 editor.putString(f.key, String.valueOf(f.defaultValue));
             }
         }
-        editor.putInt("_morphe_curated_preset_version", 7);
+        editor.putInt("_morphe_curated_preset_version", 8);
         editor.putBoolean("_morphe_flags_seeded", true);
         editor.apply();
         Logger.printInfo(() -> "Applied all " + CURATED_FLAGS.size() + " curated preset flags to SharedPreferences.");
