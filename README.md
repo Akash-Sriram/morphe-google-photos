@@ -20,9 +20,8 @@ Morphe patches for **Google Photos**, derived from [RookieEnough/De-Vanced](http
 | 💊&nbsp;Patch | 📜&nbsp;Description | ⚙️&nbsp;Options |
 |----------|----------------|-----------|
 | [Account avatar](#account-avatar) | Loads and displays account profile avatars across the top toolbar, Bento menu, and account switcher. |  |
-| [Bake memory style flags](#bake-memory-style-flags) | Hard-codes the Styles in Memories feature flags into the DEX. |  |
-| [Enable DCIM folders backup control](#enable-dcim-folders-backup-control) | Disables always on backup for the Camera and other DCIM folders, allowing you to control backup for each folder individually. This will make the app default to having no folders backed up. |  |
 | [Enable Phenotype flag manager](#enable-phenotype-flag-manager) | Enables an in-app flag manager in Photos Settings to customize experimental UI redesigns and feature flags. |  |
+| [Fix memory style font loading](#fix-memory-style-font-loading) | Redirects Skottie animation font loading to system fonts for mod package compatibility. |  |
 | [GmsCore support](#gmscore-support) | Allows the app to work without root by using a different package name when patched using a GmsCore instead of Google Play Services. |  |
 | [Model Readiness Gates](#model-readiness-gates) | Bypasses the 0MB Mobile Data Download check for AI models and reports them as loaded. |  |
 | [Spoof features](#spoof-features) | Spoofs the device to enable Google Pixel exclusive features, including unlimited storage. |  |

@@ -28,8 +28,8 @@ import com.android.tools.smali.dexlib2.iface.reference.MethodReference
  * removed those old Phenotype call-sites. Story flags are now guaranteed via
  * PhenotypeSeedData (2,496-flag official seed) + PhotoFlagsRegistry overrides.
  */
-val bakeMemoryStyleFlagsPatch = bytecodePatch(
-    name = "Bake memory style flags",
+val fixMemoryStyleFontLoadingPatch = bytecodePatch(
+    name = "Fix memory style font loading",
     description = "Redirects Skottie animation font loading to system fonts for mod package compatibility.",
     default = true,
 ) {
