@@ -9,8 +9,8 @@ import java.util.Map;
 import app.morphe.extension.shared.Logger;
 
 /**
- * Single source of truth for the exact 26 Curated Morphe Google Photos Flags.
- * Stripped of all stock 2.4k phenotype dump bloat.
+ * Single source of truth for the curated 29 Morphe Google Photos Flags.
+ * Stripped of obsolete, broken and legacy flags.
  */
 public final class PhotoFlagsRegistry {
 
@@ -74,7 +74,7 @@ public final class PhotoFlagsRegistry {
         register("45753590", "\"On this device\" Filter", "Quick top bar filter button to show local device media", "AI & Search", FlagType.BOOLEAN, true);
         register("45724258", "Ask Photos AI", "Conversational Gemini AI search (requires server enrollment)", "AI & Search", FlagType.BOOLEAN, true);
 
-        // 5. Media, Grid & Memories (16 flags)
+        // 5. Media, Grid & Memories (15 flags)
         register("45743215", "Date Capsule Pill", "Floating [ Today ] date capsule pill & smart search filters", "Media & Memories", FlagType.BOOLEAN, true);
         register("45732792", "Modern Grid & Export", "Updated photo grid view components and fast compression", "Media & Memories", FlagType.BOOLEAN, true);
         register("45683026", "Video Seek Scrubbing", "High-speed video thumbnail scrubbing preview bar", "Media & Memories", FlagType.BOOLEAN, true);
@@ -89,11 +89,7 @@ public final class PhotoFlagsRegistry {
         register("45764779", "Collage Engine", "Multi-up collage scrapbook layout engine", "Media & Memories", FlagType.BOOLEAN, true);
         register("45659278", "Collage Layout Support", "Multi-up collage layout support & animations", "Media & Memories", FlagType.BOOLEAN, true);
         register("45742883", "Multi-up Capability", "Story multi-up grid and cutout capability", "Media & Memories", FlagType.BOOLEAN, true);
-        register("3999", "Skottie CDN Bundle", "Skottie asset bundle CDN version for cutout animations", "Media & Memories", FlagType.LONG, 120480972L);
-        register("45417849", "Styles in Memories", "Core memory card graphic styles and scrapbook templates", "Media & Memories", FlagType.BOOLEAN, true);
-        register("45417850", "Styles in Memories V2", "Enhanced graphic memory styles and background cutouts", "Media & Memories", FlagType.BOOLEAN, true);
-        register("45422890", "Memory Cutout Renderer", "Render graphic cutouts in stylized memories", "Media & Memories", FlagType.BOOLEAN, true);
-        register("45418195", "Memory Styles Version", "Memory card styling renderer engine version", "Media & Memories", FlagType.LONG, 4L);
+        register("3999", "Skottie CDN Bundle", "Skottie asset bundle CDN version for cutout animations", "Media & Memories", FlagType.LONG, 118109605L);
     }
 
     private static void register(String key, String title, String description, String category, FlagType type, Object defaultValue) {
@@ -122,7 +118,7 @@ public final class PhotoFlagsRegistry {
         return list;
     }
 
-    public static void applyAll26Defaults(SharedPreferences prefs) {
+    public static void applyCuratedDefaults(SharedPreferences prefs) {
         if (prefs == null) return;
         SharedPreferences.Editor editor = prefs.edit();
         for (CuratedFlag f : CURATED_FLAGS) {
@@ -134,9 +130,13 @@ public final class PhotoFlagsRegistry {
                 editor.putString(f.key, String.valueOf(f.defaultValue));
             }
         }
-        editor.putInt("_morphe_curated_preset_version", 5);
+        editor.putInt("_morphe_curated_preset_version", 6);
         editor.putBoolean("_morphe_flags_seeded", true);
         editor.apply();
         Logger.printInfo(() -> "Applied all " + CURATED_FLAGS.size() + " curated preset flags to SharedPreferences.");
+    }
+
+    public static void applyAll26Defaults(SharedPreferences prefs) {
+        applyCuratedDefaults(prefs);
     }
 }
