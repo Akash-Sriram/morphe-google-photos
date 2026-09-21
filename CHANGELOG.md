@@ -1,3 +1,9 @@
+## [1.6.1](https://github.com/Akash-Sriram/morphe-google-photos/compare/v1.6.0...v1.6.1) (2026-09-21)
+
+### 🐛 Bug Fixes
+
+* **googlephotos:** repair map live location tracking and dynamic Mars provider authority [skip ci] ([4cddf8f](https://github.com/Akash-Sriram/morphe-google-photos/commit/4cddf8fbd4f25fc4811555133f661af23f7f6e8e))
+
 ## [1.5.1](https://github.com/Akash-Sriram/morphe-google-photos/compare/v1.5.0...v1.5.1) (2026-09-20)
 
 ### 🐛 Bug Fixes
