@@ -39,9 +39,9 @@
       "options": []
     },
     {
-      "name": "Change package name",
-      "description": "Renames the package to app.morphe.android.apps.photos to allow non-root installation alongside pre-installed Google Photos. Deselect this if Google Photos is not installed as a system app on your device to keep the original package name.",
-      "default": true,
+      "name": "Change to official package name",
+      "description": "Keeps the official package name (com.google.android.apps.photos) instead of renaming to app.morphe.android.apps.photos. Enable this only if Google Photos is uninstalled via ADB or installed as a system app with root. When selecting this, also select 'Disable Play Store updates'.",
+      "default": false,
       "category": "Experimental",
       "dependencies": [],
       "compatiblePackages": [
@@ -70,19 +70,7 @@
           ]
         }
       ],
-      "options": [
-        {
-          "key": "packageName",
-          "title": "Package name",
-          "description": "The name of the package to rename the app to.",
-          "required": true,
-          "type": "java.lang.String (Kotlin reflection is not available)",
-          "default": "Default",
-          "values": {
-            "Default": "Default"
-          }
-        }
-      ]
+      "options": []
     },
     {
       "name": "Disable Play Store updates",

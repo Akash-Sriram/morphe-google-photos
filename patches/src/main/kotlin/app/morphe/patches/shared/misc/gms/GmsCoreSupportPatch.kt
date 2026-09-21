@@ -46,16 +46,26 @@ internal const val EXTENSION_CLASS_DESCRIPTOR =
 internal const val GMS_CORE_VENDOR_GROUP_ID = "app.revanced"
 
 object PackageNameConfig {
-    var isPackageNameChangeEnabled: Boolean = false
-    var effectivePackageName: String = ""
+    /**
+     * If true, forces the official package name (com.google.android.apps.photos).
+     * Defaults to false, so the mod package (app.morphe.android.apps.photos) is active by default.
+     */
+    var useOfficialPackageName: Boolean = false
+    var customPackageName: String = ""
+
+    val isPackageNameChangeEnabled: Boolean
+        get() = !useOfficialPackageName
+
+    val effectivePackageName: String
+        get() = if (useOfficialPackageName) "" else customPackageName
 
     fun resolvePackageName(fromPackageName: String, fallbackPackageName: String): String {
-        return if (isPackageNameChangeEnabled && effectivePackageName.isNotEmpty()) {
-            effectivePackageName
-        } else if (isPackageNameChangeEnabled) {
-            fallbackPackageName
-        } else {
+        return if (useOfficialPackageName) {
             fromPackageName
+        } else if (customPackageName.isNotEmpty()) {
+            customPackageName
+        } else {
+            fallbackPackageName
         }
     }
 }

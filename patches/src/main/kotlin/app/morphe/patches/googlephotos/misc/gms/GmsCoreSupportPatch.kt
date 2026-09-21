@@ -16,12 +16,15 @@ import app.morphe.patches.shared.misc.settings.preference.PreferenceScreenPrefer
 import app.morphe.patcher.extensions.InstructionExtensions.addInstruction
 import app.morphe.patcher.extensions.InstructionExtensions.getInstruction
 import app.morphe.patcher.extensions.InstructionExtensions.replaceInstruction
+import app.morphe.util.asSequence
 import app.morphe.util.findMutableMethodOf
+import app.morphe.util.getNode
 import app.morphe.util.getReference
 import app.morphe.util.indexOfFirstInstructionOrThrow
 import app.morphe.util.returnEarly
 import com.android.tools.smali.dexlib2.iface.reference.MethodReference
 import com.android.tools.smali.dexlib2.iface.reference.StringReference
+import org.w3c.dom.Element
 
 @Suppress("unused")
 val gmsCoreSupportPatch = gmsCoreSupportPatch(
@@ -194,4 +197,34 @@ private fun gmsCoreSupportResourcePatch() =
         toPackageName = MORPHE_PHOTOS_PACKAGE_NAME,
         spoofedPackageSignature = "24bb24c05e47e0aefa68a58a766179d9b613a600",
         screen = DummyPreferenceScreen.SCREEN,
-    )
+    ) {
+        finalize {
+            if (PackageNameConfig.isPackageNameChangeEnabled) {
+                val targetPackageName = PackageNameConfig.effectivePackageName.ifEmpty { MORPHE_PHOTOS_PACKAGE_NAME }
+
+                document("AndroidManifest.xml").use { document ->
+                    val manifest = document.getNode("manifest") as Element
+                    val originalPackageName = manifest.getAttribute("package")
+
+                    manifest.setAttribute("package", targetPackageName)
+
+                    val permissions = manifest.getElementsByTagName("permission").asSequence()
+                    val usesPermissions = manifest.getElementsByTagName("uses-permission").asSequence()
+                    val receiverNotExported = "DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION"
+
+                    (permissions + usesPermissions)
+                        .map { it as Element }
+                        .filter { it.getAttribute("android:name") == "$originalPackageName.$receiverNotExported" }
+                        .forEach { it.setAttribute("android:name", "$targetPackageName.$receiverNotExported") }
+
+                    val providers = manifest.getElementsByTagName("provider").asSequence()
+                    for (node in providers) {
+                        val provider = node as Element
+                        val authorities = provider.getAttribute("android:authorities")
+                        if (!authorities.startsWith("$originalPackageName.")) continue
+                        provider.setAttribute("android:authorities", authorities.replace(originalPackageName, targetPackageName))
+                    }
+                }
+            }
+        }
+    }
