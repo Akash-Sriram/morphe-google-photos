@@ -178,6 +178,53 @@
       "options": []
     },
     {
+      "name": "Enable in-app update checker",
+      "description": "Checks for newer patched Google Photos releases on GitHub and prompts to update.",
+      "default": true,
+      "category": null,
+      "dependencies": [
+        "ResourcePatch",
+        "BytecodePatch"
+      ],
+      "compatiblePackages": [
+        {
+          "packageName": "com.google.android.apps.photos",
+          "name": "Google Photos",
+          "description": null,
+          "apkFileType": null,
+          "appIconColor": "#FC3F3C",
+          "signatures": null,
+          "targets": [
+            {
+              "version": "7.92.0.977185651",
+              "versionCodes": null,
+              "isExperimental": false,
+              "minSdk": null,
+              "description": null
+            },
+            {
+              "version": "7.93.0.982110057",
+              "versionCodes": null,
+              "isExperimental": true,
+              "minSdk": null,
+              "description": null
+            }
+          ]
+        }
+      ],
+      "options": [
+        {
+          "key": "releaseApiUrl",
+          "title": "GitHub Release API URL",
+          "description": "Endpoint to check for the latest patched Google Photos APK release.",
+          "required": true,
+          "type": "java.lang.String (Kotlin reflection is not available)",
+          "default": "https://api.github.com/repos/Akash-Sriram/GooglePhotos-Patched/releases/latest",
+          "values": null
+        }
+      ]
+    },
+    {
       "name": "Fix memory style font loading",
       "description": "Redirects font loading across Stories and UI to authentic Google Fonts with local caching and CDN downloading, fixing fallback fonts and blank text in Memories.",
       "default": true,
