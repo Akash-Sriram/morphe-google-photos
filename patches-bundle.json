@@ -1,7 +1,7 @@
 {
-  "created_at": "2026-09-21T10:27:35",
-  "description": "## [1.6.1](https://github.com/Akash-Sriram/morphe-google-photos/compare/v1.6.0...v1.6.1) (2026-09-21)\n\n### \ud83d\udc1b Bug Fixes\n\n* **Google Photos:** repair map live location tracking and dynamic Mars provider authority [skip ci] ([4cddf8f](https://github.com/Akash-Sriram/morphe-google-photos/commit/4cddf8fbd4f25fc4811555133f661af23f7f6e8e))",
-  "download_url": "https://github.com/Akash-Sriram/morphe-google-photos/releases/download/v1.6.1/patches-1.6.1.mpp",
+  "created_at": "2026-09-21T13:30:46",
+  "description": "## [1.6.2](https://github.com/Akash-Sriram/morphe-google-photos/compare/v1.6.1...v1.6.2) (2026-09-21)\n\n### \ud83d\udc1b Bug Fixes\n\n* **Google Photos - Updater:** add in-app update checker and normalize changelog scopes for Morphe Manager ([64fcd6e](https://github.com/Akash-Sriram/morphe-google-photos/commit/64fcd6eb33902a6144981e1c05b8f11930344b73))\n* **Google Photos - Updater:** add REQUEST_INSTALL_PACKAGES permission and handle SecurityException ([05fed19](https://github.com/Akash-Sriram/morphe-google-photos/commit/05fed1972aceb62b57e1cd386894ff5364b2a382))",
+  "download_url": "https://github.com/Akash-Sriram/morphe-google-photos/releases/download/v1.6.2/patches-1.6.2.mpp",
   "signature_download_url": "",
-  "version": "1.6.1"
+  "version": "1.6.2"
 }

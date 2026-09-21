@@ -1,3 +1,10 @@
+## [1.6.2](https://github.com/Akash-Sriram/morphe-google-photos/compare/v1.6.1...v1.6.2) (2026-09-21)
+
+### 🐛 Bug Fixes
+
+* **Google Photos - Updater:** add in-app update checker and normalize changelog scopes for Morphe Manager ([64fcd6e](https://github.com/Akash-Sriram/morphe-google-photos/commit/64fcd6eb33902a6144981e1c05b8f11930344b73))
+* **Google Photos - Updater:** add REQUEST_INSTALL_PACKAGES permission and handle SecurityException ([05fed19](https://github.com/Akash-Sriram/morphe-google-photos/commit/05fed1972aceb62b57e1cd386894ff5364b2a382))
+
 ## [1.6.1](https://github.com/Akash-Sriram/morphe-google-photos/compare/v1.6.0...v1.6.1) (2026-09-21)
 
 ### 🐛 Bug Fixes
