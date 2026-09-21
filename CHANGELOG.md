@@ -1,3 +1,9 @@
+## [1.7.0](https://github.com/Akash-Sriram/morphe-google-photos/compare/v1.6.2...v1.7.0) (2026-09-21)
+
+### ✨ New Features
+
+* **Google Photos:** add AMOLED dark theme patch (closes [#12](https://github.com/Akash-Sriram/morphe-google-photos/issues/12)) ([e4cbe58](https://github.com/Akash-Sriram/morphe-google-photos/commit/e4cbe58e49fd3b7df95bcb50a728ddfa196d9900))
+
 ## [1.6.2](https://github.com/Akash-Sriram/morphe-google-photos/compare/v1.6.1...v1.6.2) (2026-09-21)
 
 ### 🐛 Bug Fixes
