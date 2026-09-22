@@ -155,6 +155,7 @@ rsync -u "$CLI_JAR" "$FAST_CACHE_DIR/morphe-desktop.jar"
         -e "GmsCore support"
         -e "Model Readiness Gates"
         -e "Spoof features"
+        -e "AMOLED dark theme"
     )
 
     if [ "$OFFICIAL_PKG" = true ]; then
