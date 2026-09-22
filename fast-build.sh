@@ -163,9 +163,11 @@ rsync -u "$CLI_JAR" "$FAST_CACHE_DIR/morphe-desktop.jar"
             -e "Disable Play Store updates"
         )
         APP_PKG="com.google.android.apps.photos"
+        OUTPUT_APK="$PROJECT_DIR/photos_official_patched.apk"
         echo "🏷️ Mode: Official package name $APP_PKG (Experimental)"
     else
         APP_PKG="app.morphe.android.apps.photos"
+        OUTPUT_APK="$PROJECT_DIR/photos_patched.apk"
         echo "🏷️ Mode: Mod package (default) -> $APP_PKG"
     fi
 
