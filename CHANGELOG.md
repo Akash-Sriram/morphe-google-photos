@@ -1,3 +1,9 @@
+## [1.9.0](https://github.com/Akash-Sriram/morphe-google-photos/compare/v1.8.0...v1.9.0) (2026-09-22)
+
+### ✨ New Features
+
+* **Google Photos - Branding:** add Custom Morphe branding patch and 46 assets ([38f188e](https://github.com/Akash-Sriram/morphe-google-photos/commit/38f188e795db2525aed643eb3df6111d6469091c))
+
 ## [1.8.0](https://github.com/Akash-Sriram/morphe-google-photos/compare/v1.7.0...v1.8.0) (2026-09-22)
 
 ### 🐛 Bug Fixes
