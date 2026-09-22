@@ -107,6 +107,40 @@
       "options": []
     },
     {
+      "name": "Custom Morphe branding",
+      "description": "Replaces the Google Photos icon and in-app logos with Morphe branding (violet / teal / indigo / slate pinwheel, hand-drawn style).",
+      "default": false,
+      "category": null,
+      "dependencies": [],
+      "compatiblePackages": [
+        {
+          "packageName": "com.google.android.apps.photos",
+          "name": "Google Photos",
+          "description": null,
+          "apkFileType": null,
+          "appIconColor": "#FC3F3C",
+          "signatures": null,
+          "targets": [
+            {
+              "version": "7.92.0.977185651",
+              "versionCodes": null,
+              "isExperimental": false,
+              "minSdk": null,
+              "description": null
+            },
+            {
+              "version": "7.93.0.982110057",
+              "versionCodes": null,
+              "isExperimental": true,
+              "minSdk": null,
+              "description": null
+            }
+          ]
+        }
+      ],
+      "options": []
+    },
+    {
       "name": "Disable Play Store updates",
       "description": "[Experimental] Disables Play Store updates by setting the version code to the maximum allowed. This patch may cause unexpected issues with some apps and does not work if the app is installed by root mounting",
       "default": false,
