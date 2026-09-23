@@ -1,3 +1,13 @@
+## [1.10.0](https://github.com/Akash-Sriram/morphe-google-photos/compare/v1.9.0...v1.10.0) (2026-09-23)
+
+### 🐛 Bug Fixes
+
+* **Google Photos:** parallelize model downloads and resolve startup freezes ([99287f6](https://github.com/Akash-Sriram/morphe-google-photos/commit/99287f67ad97a13d4e1b61cf71b3cd65e36e0e50))
+
+### ✨ New Features
+
+* **Google Photos:** add deviceComplianceCheckPatch to suppress Play Protect screen ([5613eae](https://github.com/Akash-Sriram/morphe-google-photos/commit/5613eae789aa0cbc37686817fbfd11ccfe754338)), closes [MorpheApp/morphe-patches#2977](https://github.com/MorpheApp/morphe-patches/issues/2977) [#13](https://github.com/Akash-Sriram/morphe-google-photos/issues/13)
+
 ## [1.9.0](https://github.com/Akash-Sriram/morphe-google-photos/compare/v1.8.0...v1.9.0) (2026-09-22)
 
 ### ✨ New Features
