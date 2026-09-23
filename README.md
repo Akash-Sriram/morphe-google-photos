@@ -14,7 +14,7 @@ Morphe patches for **Google Photos**, derived from [RookieEnough/De-Vanced](http
 
 **🎯 Supported versions:**
 
-| 7.92.0.977185651 | 🧪&nbsp;7.93.0.982110057 |
+| 7.92.0.977185651 | 7.93.0.982110057 |
 | :---: | :---: |
 
 | 💊&nbsp;Patch | 📜&nbsp;Description |
