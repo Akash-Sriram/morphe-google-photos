@@ -443,13 +443,6 @@ public final class PhenotypeFlagManager {
             @Override public void afterTextChanged(Editable s) {}
         });
 
-        // Background sync on open
-        GmsFlagsApiClient.syncLiveRecommendations(activity, prefs, (success, count) -> {
-            if (success && count > 0) {
-                activity.runOnUiThread(refreshUi);
-            }
-        });
-
         refreshUi.run();
         dialog.setContentView(root);
         dialog.show();
@@ -762,22 +755,7 @@ public final class PhenotypeFlagManager {
 
         List<MenuItem> items = new ArrayList<>();
 
-        // 1. Sync Live Recommendations from Cloud
-        items.add(new MenuItem("🔄", "Sync Live from GMS Flags", "Fetch latest recommendations from api.polodarb.com", () -> {
-            Toast.makeText(activity, "Syncing from GMS Flags Cloud...", Toast.LENGTH_SHORT).show();
-            GmsFlagsApiClient.syncLiveRecommendations(activity, prefs, (success, count) -> {
-                activity.runOnUiThread(() -> {
-                    if (success) {
-                        Toast.makeText(activity, "✓ Synced " + count + " recommendations!", Toast.LENGTH_SHORT).show();
-                        onRefresh.run();
-                    } else {
-                        Toast.makeText(activity, "Failed to connect to api.polodarb.com", Toast.LENGTH_SHORT).show();
-                    }
-                });
-            });
-        }));
-
-        // 2. Reset / Apply Default Curated Flags
+        // 1. Reset / Apply Default Curated Flags
         int flagCount = PhotoFlagsRegistry.CURATED_FLAGS.size();
         items.add(new MenuItem("⚡", "Reset to Default (" + flagCount + " Flags)", "Re-apply all " + flagCount + " curated Morphe preset flags", () -> {
             PhotoFlagsRegistry.applyCuratedDefaults(prefs);
