@@ -1,3 +1,9 @@
+## [1.12.0](https://github.com/Akash-Sriram/morphe-google-photos/compare/v1.11.0...v1.12.0) (2026-09-26)
+
+### ✨ New Features
+
+* **Google Photos - Flags:** add collapsible headers and fix preset dialog styling ([9802906](https://github.com/Akash-Sriram/morphe-google-photos/commit/980290640016559a0852fac18095421deb555b81))
+
 ## [1.11.0](https://github.com/Akash-Sriram/morphe-google-photos/compare/v1.10.1...v1.11.0) (2026-09-26)
 
 ### 🐛 Bug Fixes
