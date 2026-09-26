@@ -304,9 +304,8 @@ public final class PhenotypeFlagManager {
             allItems.clear();
             Map<String, ?> all = prefs.getAll();
             int totalCount = 0;
-            int activeCount = 0;
 
-            // 1. Curated Flags
+            // 1. Curated Flags that are configured in SharedPreferences
             List<String> categories = PhotoFlagsRegistry.getCategories();
             for (String cat : categories) {
                 List<CuratedFlag> flagsInCat = PhotoFlagsRegistry.getFlagsForCategory(cat);
@@ -314,18 +313,10 @@ public final class PhenotypeFlagManager {
                 DisplayItem catHeader = new DisplayItem(cat);
                 List<DisplayItem> catFlags = new ArrayList<>();
                 for (CuratedFlag f : flagsInCat) {
+                    if (!all.containsKey(f.key)) continue; // Only show configured flags
                     totalCount++;
-                    Object raw;
-                    if (all.containsKey(f.key)) {
-                        raw = all.get(f.key);
-                    } else {
-                        // Unconfigured flags in prefs default to disabled (stock)
-                        raw = (f.type == PhotoFlagsRegistry.FlagType.BOOLEAN) ? Boolean.FALSE : null;
-                    }
+                    Object raw = all.get(f.key);
                     Object v = sanitizeValue(f.key, raw);
-                    if (Boolean.TRUE.equals(v) || (v instanceof Number && ((Number) v).longValue() > 0)) {
-                        activeCount++;
-                    }
                     catFlags.add(new DisplayItem(f, v));
                 }
                 if (!catFlags.isEmpty()) {
@@ -356,33 +347,29 @@ public final class PhenotypeFlagManager {
                 for (String k : sortedKeys) {
                     totalCount++;
                     Object v = sanitizeValue(k, all.get(k));
-                    if (Boolean.TRUE.equals(v) || (v instanceof Number && ((Number) v).longValue() > 0)) {
-                        activeCount++;
-                    }
                     allItems.add(new DisplayItem(k, v));
                 }
             }
 
             this.totalFlagsCount = totalCount;
-            this.activeFlagsCount = activeCount;
             filter(currentFilterQuery);
         }
 
         private void updateSubtitleText(int flagsShown) {
             if (totalFlagsCount == 0) {
                 emptyContainer.setVisibility(View.VISIBLE);
-                renderEmptySlate(activity, emptyContainer, density);
+                renderEmptySlate(activity, emptyContainer, prefs, this::reloadData, density);
                 tvSub.setText("0 Flags Configured");
             } else if (flagsShown == 0) {
                 emptyContainer.setVisibility(View.VISIBLE);
                 renderEmptyMessage(activity, emptyContainer, "No flags matched \"" + currentFilterQuery + "\"", density);
-                tvSub.setText("0 Flags Matched (" + activeFlagsCount + " Active)");
+                tvSub.setText("0 Flags Matched (" + totalFlagsCount + " Total)");
             } else {
                 emptyContainer.setVisibility(View.GONE);
                 if (currentFilterQuery.isEmpty()) {
-                    tvSub.setText(activeFlagsCount + " Active • " + totalFlagsCount + " Flags Available");
+                    tvSub.setText(totalFlagsCount + " Flags Configured");
                 } else {
-                    tvSub.setText(flagsShown + " Shown (" + activeFlagsCount + " Active)");
+                    tvSub.setText(flagsShown + " Shown (" + totalFlagsCount + " Total)");
                 }
             }
         }
@@ -879,12 +866,12 @@ public final class PhenotypeFlagManager {
         }
     }
 
-    private static void renderEmptySlate(Activity activity, LinearLayout container, float density) {
+    private static void renderEmptySlate(Activity activity, LinearLayout container, SharedPreferences prefs, Runnable onRefresh, float density) {
         container.removeAllViews();
         LinearLayout box = new LinearLayout(activity);
         box.setOrientation(LinearLayout.VERTICAL);
         box.setGravity(Gravity.CENTER);
-        int p = (int) (40 * density);
+        int p = (int) (32 * density);
         box.setPadding(p, p, p, p);
 
         TextView icon = new TextView(activity);
@@ -903,11 +890,24 @@ public final class PhenotypeFlagManager {
         box.addView(title);
 
         TextView desc = new TextView(activity);
-        desc.setText("Tap ➕ above to add a flag, or tap ⋮ to bulk import or paste flags.");
+        desc.setText("Google Photos is running in stock mode.\nTap ➕ to add a flag, or tap ⋮ to import.");
         desc.setTextSize(13);
         desc.setTextColor(M3_TEXT_SECONDARY);
         desc.setGravity(Gravity.CENTER);
+        desc.setPadding(0, 0, 0, (int) (16 * density));
         box.addView(desc);
+
+        Button btnPresets = new Button(activity);
+        btnPresets.setText("✨ Load Recommended Presets");
+        btnPresets.setTextColor(M3_ON_PRIMARY);
+        btnPresets.setBackground(createRoundedDrawable(M3_PRIMARY, 10 * density));
+        btnPresets.setOnClickListener(v -> {
+            PhotoFlagsRegistry.applyCuratedDefaults(prefs);
+            GooglePhotosAccountAvatar.syncOneGoogleFlags(activity);
+            Toast.makeText(activity, "✓ Loaded recommended presets", Toast.LENGTH_SHORT).show();
+            onRefresh.run();
+        });
+        box.addView(btnPresets);
 
         container.addView(box);
     }
