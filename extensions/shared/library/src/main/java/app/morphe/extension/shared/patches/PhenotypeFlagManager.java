@@ -414,7 +414,7 @@ public final class PhenotypeFlagManager {
                 emptyContainer.setVisibility(View.VISIBLE);
                 renderEmptySlate(activity, emptyContainer, density);
                 tvSub.setText("0 Flags Configured");
-            } else if (flagsShown == 0) {
+            } else if (!currentFilterQuery.isEmpty() && flagsShown == 0) {
                 emptyContainer.setVisibility(View.VISIBLE);
                 renderEmptyMessage(activity, emptyContainer, "No flags matched \"" + currentFilterQuery + "\"", density);
                 tvSub.setText("0 Flags Matched (" + totalFlagsCount + " Total)");
