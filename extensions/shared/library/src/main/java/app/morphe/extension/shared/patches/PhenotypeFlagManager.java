@@ -209,15 +209,25 @@ public final class PhenotypeFlagManager {
         String getKey() { return customKey; }
         String getTitle() { return curatedFlag != null ? curatedFlag.title : customKey; }
         String getDescription() { return curatedFlag != null ? curatedFlag.description : null; }
+        String getTrigger() { return curatedFlag != null ? curatedFlag.triggerTarget : null; }
+        String getCategory() { return curatedFlag != null ? curatedFlag.category : null; }
     }
 
     private static class FlagViewHolder {
         LinearLayout root;
         TextView tvTitle;
+        TextView tvTriggerBadge;
         TextView tvDesc;
         TextView tvKey;
         Switch swToggle;
         TextView valChip;
+    }
+
+    private static class HeaderViewHolder {
+        LinearLayout root;
+        TextView tvTitle;
+        TextView tvTrigger;
+        TextView btnToggleAll;
     }
 
     public static class FlagAdapter extends BaseAdapter {
@@ -338,7 +348,7 @@ public final class PhenotypeFlagManager {
                         currentHeader = it;
                         currentSection.clear();
                     } else {
-                        String target = it.getKey() + " " + it.getTitle() + " " + (it.getDescription() != null ? it.getDescription() : "") + " " + it.value;
+                        String target = it.getKey() + " " + it.getTitle() + " " + (it.getDescription() != null ? it.getDescription() : "") + " " + (it.getTrigger() != null ? it.getTrigger() : "") + " " + it.value;
                         if (target.toLowerCase().contains(currentFilterQuery)) {
                             currentSection.add(it);
                         }
@@ -380,22 +390,110 @@ public final class PhenotypeFlagManager {
             DisplayItem item = getItem(position);
 
             if (item.isHeader()) {
-                TextView tvHeader;
-                if (convertView instanceof TextView) {
-                    tvHeader = (TextView) convertView;
+                HeaderViewHolder hHolder;
+                if (convertView != null && convertView.getTag() instanceof HeaderViewHolder) {
+                    hHolder = (HeaderViewHolder) convertView.getTag();
                 } else {
-                    tvHeader = new TextView(activity);
-                    tvHeader.setTextSize(13);
-                    tvHeader.setTextColor(M3_PRIMARY);
-                    tvHeader.setTypeface(null, Typeface.BOLD);
-                    tvHeader.setPadding((int) (4 * density), (int) (14 * density), 0, (int) (6 * density));
+                    hHolder = new HeaderViewHolder();
+                    LinearLayout card = new LinearLayout(activity);
+                    card.setOrientation(LinearLayout.VERTICAL);
+                    card.setBackground(createRoundedDrawable(0xFFEAEFEB, 14 * density));
+                    int padH = (int) (14 * density);
+                    int padV = (int) (10 * density);
+                    card.setPadding(padH, padV, padH, padV);
+
+                    LinearLayout topRow = new LinearLayout(activity);
+                    topRow.setOrientation(LinearLayout.HORIZONTAL);
+                    topRow.setGravity(Gravity.CENTER_VERTICAL);
+
+                    TextView tvTitle = new TextView(activity);
+                    tvTitle.setTextSize(13);
+                    tvTitle.setTextColor(M3_PRIMARY);
+                    tvTitle.setTypeface(null, Typeface.BOLD);
+                    LinearLayout.LayoutParams tLp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+                    tvTitle.setLayoutParams(tLp);
+                    topRow.addView(tvTitle);
+
+                    TextView btnToggle = new TextView(activity);
+                    btnToggle.setTextSize(11);
+                    btnToggle.setTypeface(null, Typeface.BOLD);
+                    int bPadH = (int) (10 * density);
+                    int bPadV = (int) (5 * density);
+                    btnToggle.setPadding(bPadH, bPadV, bPadH, bPadV);
+                    btnToggle.setClickable(true);
+                    topRow.addView(btnToggle);
+                    card.addView(topRow);
+
+                    TextView tvTrigger = new TextView(activity);
+                    tvTrigger.setTextSize(11);
+                    tvTrigger.setTextColor(M3_TEXT_SECONDARY);
+                    tvTrigger.setPadding(0, (int) (3 * density), 0, 0);
+                    card.addView(tvTrigger);
+
+                    hHolder.root = card;
+                    hHolder.tvTitle = tvTitle;
+                    hHolder.tvTrigger = tvTrigger;
+                    hHolder.btnToggleAll = btnToggle;
+
+                    convertView = card;
+                    convertView.setTag(hHolder);
                 }
-                tvHeader.setText(item.headerTitle);
-                return tvHeader;
+
+                final String cat = item.headerTitle;
+                final List<CuratedFlag> flagsInCat = PhotoFlagsRegistry.getFlagsForCategory(cat);
+
+                int totalInCat = flagsInCat.size();
+                int enabledInCat = 0;
+                for (CuratedFlag cf : flagsInCat) {
+                    if (prefs.getBoolean(cf.key, false)) {
+                        enabledInCat++;
+                    }
+                }
+
+                hHolder.tvTitle.setText(cat + (totalInCat > 0 ? " (" + enabledInCat + "/" + totalInCat + ")" : ""));
+                hHolder.tvTrigger.setText(PhotoFlagsRegistry.getCategoryTriggerDescription(cat));
+
+                if (totalInCat > 0) {
+                    hHolder.btnToggleAll.setVisibility(View.VISIBLE);
+                    boolean allEnabled = enabledInCat == totalInCat;
+                    if (allEnabled) {
+                        hHolder.btnToggleAll.setText("DISABLE ALL");
+                        hHolder.btnToggleAll.setTextColor(0xFFBA1A1A);
+                        hHolder.btnToggleAll.setBackground(createRoundedDrawable(0xFFFFDAD6, 8 * density));
+                    } else {
+                        hHolder.btnToggleAll.setText("ENABLE ALL");
+                        hHolder.btnToggleAll.setTextColor(M3_PRIMARY);
+                        hHolder.btnToggleAll.setBackground(createRoundedDrawable(M3_PRIMARY_CONTAINER, 8 * density));
+                    }
+
+                    hHolder.btnToggleAll.setOnClickListener(v -> {
+                        boolean targetState = !allEnabled;
+                        SharedPreferences.Editor edit = prefs.edit();
+                        for (CuratedFlag cf : flagsInCat) {
+                            if (cf.type == PhotoFlagsRegistry.FlagType.BOOLEAN) {
+                                edit.putBoolean(cf.key, targetState);
+                            } else if (cf.type == PhotoFlagsRegistry.FlagType.LONG) {
+                                if (targetState) {
+                                    edit.putLong(cf.key, ((Number) cf.defaultValue).longValue());
+                                } else {
+                                    edit.remove(cf.key);
+                                }
+                            }
+                        }
+                        edit.apply();
+                        GooglePhotosAccountAvatar.syncOneGoogleFlags(activity);
+                        reloadData();
+                        Toast.makeText(activity, (targetState ? "Enabled " : "Disabled ") + totalInCat + " flags in " + cat, Toast.LENGTH_SHORT).show();
+                    });
+                } else {
+                    hHolder.btnToggleAll.setVisibility(View.GONE);
+                }
+
+                return convertView;
             }
 
             FlagViewHolder holder;
-            if (convertView == null || convertView.getTag() == null) {
+            if (convertView == null || !(convertView.getTag() instanceof FlagViewHolder)) {
                 holder = new FlagViewHolder();
                 LinearLayout row = new LinearLayout(activity);
                 row.setOrientation(LinearLayout.HORIZONTAL);
@@ -413,6 +511,19 @@ public final class PhenotypeFlagManager {
                 tvTitle.setTextColor(M3_TEXT_PRIMARY);
                 tvTitle.setTypeface(null, Typeface.BOLD);
                 textCol.addView(tvTitle);
+
+                TextView tvTriggerBadge = new TextView(activity);
+                tvTriggerBadge.setTextSize(10);
+                tvTriggerBadge.setTypeface(null, Typeface.BOLD);
+                tvTriggerBadge.setTextColor(M3_PRIMARY);
+                tvTriggerBadge.setBackground(createRoundedDrawable(0xFFE6F4F1, 6 * density));
+                int bPad = (int) (6 * density);
+                tvTriggerBadge.setPadding(bPad, (int) (2 * density), bPad, (int) (2 * density));
+                LinearLayout.LayoutParams tbLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+                tbLp.topMargin = (int) (2 * density);
+                tbLp.bottomMargin = (int) (2 * density);
+                tvTriggerBadge.setLayoutParams(tbLp);
+                textCol.addView(tvTriggerBadge);
 
                 TextView tvDesc = new TextView(activity);
                 tvDesc.setTextSize(12);
@@ -440,6 +551,7 @@ public final class PhenotypeFlagManager {
 
                 holder.root = row;
                 holder.tvTitle = tvTitle;
+                holder.tvTriggerBadge = tvTriggerBadge;
                 holder.tvDesc = tvDesc;
                 holder.tvKey = tvKey;
                 holder.swToggle = sw;
@@ -452,6 +564,14 @@ public final class PhenotypeFlagManager {
             }
 
             // Bind Data
+            String triggerStr = item.getTrigger();
+            if (triggerStr != null && !triggerStr.isEmpty()) {
+                holder.tvTriggerBadge.setVisibility(View.VISIBLE);
+                holder.tvTriggerBadge.setText("⚡ Triggers: " + triggerStr);
+            } else {
+                holder.tvTriggerBadge.setVisibility(View.GONE);
+            }
+
             if (item.curatedFlag != null) {
                 holder.tvTitle.setText(item.curatedFlag.title);
                 holder.tvDesc.setVisibility(View.VISIBLE);
