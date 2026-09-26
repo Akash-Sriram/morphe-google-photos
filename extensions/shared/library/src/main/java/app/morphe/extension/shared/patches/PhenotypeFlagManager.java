@@ -239,6 +239,7 @@ public final class PhenotypeFlagManager {
         private final TextView tvSub;
         private final LinearLayout emptyContainer;
         private int totalFlagsCount = 0;
+        private int activeFlagsCount = 0;
         private String currentFilterQuery = "";
 
         public FlagAdapter(Activity activity, SharedPreferences prefs, TextView tvSub, LinearLayout emptyContainer) {
@@ -256,6 +257,23 @@ public final class PhenotypeFlagManager {
         @Override public int getItemViewType(int position) { return displayedItems.get(position).type; }
         @Override public boolean isEnabled(int position) { return !displayedItems.get(position).isHeader(); }
 
+        private static boolean isFlagEnabled(SharedPreferences prefs, CuratedFlag cf) {
+            if (!prefs.contains(cf.key)) return false;
+            if (cf.type == PhotoFlagsRegistry.FlagType.BOOLEAN) {
+                try {
+                    return prefs.getBoolean(cf.key, false);
+                } catch (Exception e) {
+                    return false;
+                }
+            } else if (cf.type == PhotoFlagsRegistry.FlagType.LONG) {
+                try {
+                    return prefs.getLong(cf.key, 0L) > 0;
+                } catch (Exception e) {
+                    return false;
+                }
+            }
+            return true;
+        }
 
         private Object sanitizeValue(String key, Object rawVal) {
             if (rawVal instanceof String) {
@@ -285,7 +303,8 @@ public final class PhenotypeFlagManager {
         public void reloadData() {
             allItems.clear();
             Map<String, ?> all = prefs.getAll();
-            int count = 0;
+            int totalCount = 0;
+            int activeCount = 0;
 
             // 1. Curated Flags
             List<String> categories = PhotoFlagsRegistry.getCategories();
@@ -295,9 +314,18 @@ public final class PhenotypeFlagManager {
                 DisplayItem catHeader = new DisplayItem(cat);
                 List<DisplayItem> catFlags = new ArrayList<>();
                 for (CuratedFlag f : flagsInCat) {
-                    count++;
-                    Object raw = all.containsKey(f.key) ? all.get(f.key) : f.defaultValue;
+                    totalCount++;
+                    Object raw;
+                    if (all.containsKey(f.key)) {
+                        raw = all.get(f.key);
+                    } else {
+                        // Unconfigured flags in prefs default to disabled (stock)
+                        raw = (f.type == PhotoFlagsRegistry.FlagType.BOOLEAN) ? Boolean.FALSE : null;
+                    }
                     Object v = sanitizeValue(f.key, raw);
+                    if (Boolean.TRUE.equals(v) || (v instanceof Number && ((Number) v).longValue() > 0)) {
+                        activeCount++;
+                    }
                     catFlags.add(new DisplayItem(f, v));
                 }
                 if (!catFlags.isEmpty()) {
@@ -306,9 +334,14 @@ public final class PhenotypeFlagManager {
                 }
             }
 
-            // 2. Custom / Imported Flags
+            // 2. Custom / Imported Flags (Strictly non-curated overrides)
             Set<String> customKeys = prefs.getStringSet(CUSTOM_FLAGS_KEY, Collections.emptySet());
-            Set<String> allCustom = new HashSet<>(customKeys);
+            Set<String> allCustom = new HashSet<>();
+            for (String k : customKeys) {
+                if (!k.startsWith("_") && !k.startsWith("__") && !PhotoFlagsRegistry.FLAG_MAP.containsKey(k)) {
+                    allCustom.add(k);
+                }
+            }
             for (String k : all.keySet()) {
                 if (!k.startsWith("_") && !k.startsWith("__") && !PhotoFlagsRegistry.FLAG_MAP.containsKey(k)) {
                     allCustom.add(k);
@@ -318,16 +351,48 @@ public final class PhenotypeFlagManager {
             if (!allCustom.isEmpty()) {
                 List<String> sortedKeys = new ArrayList<>(allCustom);
                 Collections.sort(sortedKeys);
-                String headerTitle = categories.isEmpty() ? "Active Flags (" + sortedKeys.size() + ")" : "Custom Overrides (" + sortedKeys.size() + ")";
+                String headerTitle = "Custom Overrides (" + sortedKeys.size() + ")";
                 allItems.add(new DisplayItem(headerTitle));
                 for (String k : sortedKeys) {
-                    count++;
-                    allItems.add(new DisplayItem(k, sanitizeValue(k, all.get(k))));
+                    totalCount++;
+                    Object v = sanitizeValue(k, all.get(k));
+                    if (Boolean.TRUE.equals(v) || (v instanceof Number && ((Number) v).longValue() > 0)) {
+                        activeCount++;
+                    }
+                    allItems.add(new DisplayItem(k, v));
                 }
             }
 
-            this.totalFlagsCount = count;
+            this.totalFlagsCount = totalCount;
+            this.activeFlagsCount = activeCount;
             filter(currentFilterQuery);
+        }
+
+        private void updateSubtitleText(int flagsShown) {
+            if (totalFlagsCount == 0) {
+                emptyContainer.setVisibility(View.VISIBLE);
+                renderEmptySlate(activity, emptyContainer, density);
+                tvSub.setText("0 Flags Configured");
+            } else if (flagsShown == 0) {
+                emptyContainer.setVisibility(View.VISIBLE);
+                renderEmptyMessage(activity, emptyContainer, "No flags matched \"" + currentFilterQuery + "\"", density);
+                tvSub.setText("0 Flags Matched (" + activeFlagsCount + " Active)");
+            } else {
+                emptyContainer.setVisibility(View.GONE);
+                if (currentFilterQuery.isEmpty()) {
+                    tvSub.setText(activeFlagsCount + " Active • " + totalFlagsCount + " Flags Available");
+                } else {
+                    tvSub.setText(flagsShown + " Shown (" + activeFlagsCount + " Active)");
+                }
+            }
+        }
+
+        private void updateSubtitleText() {
+            int flagsShown = 0;
+            for (DisplayItem it : displayedItems) {
+                if (!it.isHeader()) flagsShown++;
+            }
+            updateSubtitleText(flagsShown);
         }
 
         public void filter(String query) {
@@ -366,23 +431,7 @@ public final class PhenotypeFlagManager {
             for (DisplayItem it : displayedItems) {
                 if (!it.isHeader()) flagsShown++;
             }
-
-            if (totalFlagsCount == 0) {
-                emptyContainer.setVisibility(View.VISIBLE);
-                renderEmptySlate(activity, emptyContainer, density);
-                tvSub.setText("0 Flags Configured");
-            } else if (flagsShown == 0) {
-                emptyContainer.setVisibility(View.VISIBLE);
-                renderEmptyMessage(activity, emptyContainer, "No flags matched \"" + query + "\"", density);
-                tvSub.setText("0 Flags Matched (" + totalFlagsCount + " Total)");
-            } else {
-                emptyContainer.setVisibility(View.GONE);
-                if (currentFilterQuery.isEmpty()) {
-                    tvSub.setText(totalFlagsCount + " Flags Configured");
-                } else {
-                    tvSub.setText(flagsShown + " Shown (" + totalFlagsCount + " Total)");
-                }
-            }
+            updateSubtitleText(flagsShown);
         }
 
         @Override
@@ -445,7 +494,7 @@ public final class PhenotypeFlagManager {
                 int totalInCat = flagsInCat.size();
                 int enabledInCat = 0;
                 for (CuratedFlag cf : flagsInCat) {
-                    if (prefs.getBoolean(cf.key, false)) {
+                    if (isFlagEnabled(prefs, cf)) {
                         enabledInCat++;
                     }
                 }
@@ -471,7 +520,11 @@ public final class PhenotypeFlagManager {
                         SharedPreferences.Editor edit = prefs.edit();
                         for (CuratedFlag cf : flagsInCat) {
                             if (cf.type == PhotoFlagsRegistry.FlagType.BOOLEAN) {
-                                edit.putBoolean(cf.key, targetState);
+                                if (targetState) {
+                                    edit.putBoolean(cf.key, true);
+                                } else {
+                                    edit.remove(cf.key);
+                                }
                             } else if (cf.type == PhotoFlagsRegistry.FlagType.LONG) {
                                 if (targetState) {
                                     edit.putLong(cf.key, ((Number) cf.defaultValue).longValue());
@@ -601,10 +654,18 @@ public final class PhenotypeFlagManager {
                     item.value = next;
                     holder.swToggle.setChecked(next);
                     holder.root.setBackground(createCardDrawable(next, density));
-                    prefs.edit().putBoolean(item.getKey(), next).apply();
+                    if (next) {
+                        prefs.edit().putBoolean(item.getKey(), true).apply();
+                        activeFlagsCount++;
+                    } else {
+                        prefs.edit().remove(item.getKey()).apply();
+                        activeFlagsCount = Math.max(0, activeFlagsCount - 1);
+                    }
                     if ("45531621".equals(item.getKey()) || "45531625".equals(item.getKey())) {
                         GooglePhotosAccountAvatar.syncOneGoogleFlags(activity);
                     }
+                    updateSubtitleText();
+                    notifyDataSetChanged();
                     Toast.makeText(activity, "Updated: " + item.getTitle(), Toast.LENGTH_SHORT).show();
                 };
 
@@ -908,7 +969,15 @@ public final class PhenotypeFlagManager {
             copyAllToClipboard(activity, prefs);
         }));
 
-        // 5. Clear All Flags
+        // 5. Restore Recommended Presets
+        items.add(new MenuItem("✨", "Restore Recommended Presets", "Enable all 8 Create Tab tools, Stories & Avatar Rings", () -> {
+            PhotoFlagsRegistry.applyCuratedDefaults(prefs);
+            GooglePhotosAccountAvatar.syncOneGoogleFlags(activity);
+            Toast.makeText(activity, "✓ Restored recommended presets", Toast.LENGTH_SHORT).show();
+            onRefresh.run();
+        }));
+
+        // 6. Clear All Flags
         items.add(new MenuItem("🗑️", "Clear All Flags", "Wipe all flags and restore stock photos state", () -> {
             prefs.edit().clear().apply();
             GooglePhotosAccountAvatar.syncOneGoogleFlags(activity);
@@ -1353,7 +1422,9 @@ public final class PhenotypeFlagManager {
                     Object v = json.get(k);
                     editor.remove(k);
                     applyEntry(editor, k, v);
-                    customKeys.add(k);
+                    if (!PhotoFlagsRegistry.FLAG_MAP.containsKey(k)) {
+                        customKeys.add(k);
+                    }
                     count++;
                 }
             } else if (firstContentLine.contains("<flag") || firstContentLine.startsWith("<?xml") || firstContentLine.startsWith("<map") || firstContentLine.startsWith("<package")) {
@@ -1382,7 +1453,9 @@ public final class PhenotypeFlagManager {
                     } else {
                         editor.putString(name, value);
                     }
-                    customKeys.add(name);
+                    if (!PhotoFlagsRegistry.FLAG_MAP.containsKey(name)) {
+                        customKeys.add(name);
+                    }
                     count++;
                 }
 
@@ -1393,7 +1466,9 @@ public final class PhenotypeFlagManager {
                     if (!name.isEmpty() && !name.startsWith("_")) {
                         editor.remove(name);
                         editor.putBoolean(name, Boolean.parseBoolean(el.getAttribute("value")));
-                        customKeys.add(name);
+                        if (!PhotoFlagsRegistry.FLAG_MAP.containsKey(name)) {
+                            customKeys.add(name);
+                        }
                         count++;
                     }
                 }
@@ -1405,7 +1480,9 @@ public final class PhenotypeFlagManager {
                         editor.remove(name);
                         try { editor.putLong(name, Long.parseLong(el.getAttribute("value"))); }
                         catch (Exception ignored) {}
-                        customKeys.add(name);
+                        if (!PhotoFlagsRegistry.FLAG_MAP.containsKey(name)) {
+                            customKeys.add(name);
+                        }
                         count++;
                     }
                 }
@@ -1416,7 +1493,9 @@ public final class PhenotypeFlagManager {
                     if (!name.isEmpty() && !name.startsWith("_")) {
                         editor.remove(name);
                         editor.putString(name, el.getTextContent());
-                        customKeys.add(name);
+                        if (!PhotoFlagsRegistry.FLAG_MAP.containsKey(name)) {
+                            customKeys.add(name);
+                        }
                         count++;
                     }
                 }
@@ -1504,7 +1583,9 @@ public final class PhenotypeFlagManager {
             editor.putString(k, v);
         }
 
-        customKeys.add(k);
+        if (!PhotoFlagsRegistry.FLAG_MAP.containsKey(k)) {
+            customKeys.add(k);
+        }
         return true;
     }
 
@@ -1631,9 +1712,12 @@ public final class PhenotypeFlagManager {
                 } else {
                     ed.putString(k, v);
                 }
-                Set<String> custom = new HashSet<>(prefs.getStringSet(CUSTOM_FLAGS_KEY, Collections.emptySet()));
-                custom.add(k);
-                ed.putStringSet(CUSTOM_FLAGS_KEY, custom).apply();
+                if (!PhotoFlagsRegistry.FLAG_MAP.containsKey(k)) {
+                    Set<String> custom = new HashSet<>(prefs.getStringSet(CUSTOM_FLAGS_KEY, Collections.emptySet()));
+                    custom.add(k);
+                    ed.putStringSet(CUSTOM_FLAGS_KEY, custom);
+                }
+                ed.apply();
                 if ("45531621".equals(k) || "45531625".equals(k)) {
                     GooglePhotosAccountAvatar.syncOneGoogleFlags(activity);
                 }
