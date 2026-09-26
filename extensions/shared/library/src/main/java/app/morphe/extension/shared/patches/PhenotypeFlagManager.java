@@ -11,7 +11,7 @@ import android.graphics.Color;
 import android.graphics.Typeface;
 import android.graphics.drawable.ColorDrawable;
 import android.graphics.drawable.GradientDrawable;
-import android.graphics.drawable.StateListDrawable;
+import android.net.Uri;
 import android.text.Editable;
 import android.text.TextWatcher;
 import android.view.Gravity;
@@ -29,8 +29,17 @@ import android.widget.TextView;
 import android.widget.Toast;
 
 import org.json.JSONObject;
+import org.w3c.dom.Document;
+import org.w3c.dom.Element;
+import org.w3c.dom.NodeList;
+import org.xml.sax.InputSource;
 
+import java.io.BufferedReader;
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.io.OutputStream;
 import java.io.StringReader;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashSet;
@@ -41,20 +50,14 @@ import java.util.Map;
 import java.util.Set;
 
 import javax.xml.parsers.DocumentBuilderFactory;
-import org.w3c.dom.Document;
-import org.w3c.dom.Element;
-import org.w3c.dom.NodeList;
-import org.xml.sax.InputSource;
 
 import app.morphe.extension.shared.Logger;
-import app.morphe.extension.shared.patches.flags.GmsFlagsApiClient;
-import app.morphe.extension.shared.patches.flags.GmsFlagsApiClient.RecommendationRecipe;
 import app.morphe.extension.shared.patches.flags.PhotoFlagsRegistry;
 import app.morphe.extension.shared.patches.flags.PhotoFlagsRegistry.CuratedFlag;
 
 /**
- * Modern, touch-first Material 3 Phenotype Flag Manager for Morphe Google Photos.
- * Powered by api.polodarb.com GMS Flags 2.0 API and the 26 Curated Morphe UI flags.
+ * Clean, single-view Material 3 Phenotype Flag Manager for Morphe Google Photos.
+ * Supports bulk file import/export via SAF, bulk clipboard paste, and universal flag data types.
  */
 public final class PhenotypeFlagManager {
 
@@ -149,26 +152,23 @@ public final class PhenotypeFlagManager {
         pill.addView(icon);
 
         TextView label = new TextView(activity);
-        label.setText("Photos Flags");
-        label.setTextSize(15);
-        label.setTextColor(0xFFFFFFFF);
+        label.setText("Flag Manager");
+        label.setTextSize(14);
+        label.setTextColor(M3_ON_PRIMARY);
         label.setTypeface(null, Typeface.BOLD);
         pill.addView(label);
 
-        pill.setOnClickListener(v -> show(activity));
+        pill.setOnClickListener(v -> showFlagManagerDialog(activity));
         return pill;
     }
 
-    public static void show(Activity activity) {
+    // ─────────────────────────────────────────────────────────────────────────
+    // Main Flag Manager Dialog (Single Clean View)
+    // ─────────────────────────────────────────────────────────────────────────
+
+    public static void showFlagManagerDialog(Activity activity) {
         if (activity == null || activity.isFinishing() || activity.isDestroyed()) return;
-        activity.runOnUiThread(() -> showManagerDialog(activity));
-    }
 
-    // ─────────────────────────────────────────────────────────────────────────
-    // Redesigned Popup-Friendly Material 3 Dialog
-    // ─────────────────────────────────────────────────────────────────────────
-
-    private static void showManagerDialog(Activity activity) {
         float density = activity.getResources().getDisplayMetrics().density;
         SharedPreferences prefs = getPrefs(activity);
 
@@ -180,7 +180,7 @@ public final class PhenotypeFlagManager {
         root.setBackground(createRoundedDrawable(M3_BG, 28 * density));
         root.setLayoutParams(new ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
 
-        // 1. Top Bar (Height: 56dp, 48dp min touch targets)
+        // 1. Top Bar
         LinearLayout topBar = new LinearLayout(activity);
         topBar.setOrientation(LinearLayout.HORIZONTAL);
         topBar.setGravity(Gravity.CENTER_VERTICAL);
@@ -201,13 +201,13 @@ public final class PhenotypeFlagManager {
         titleCol.addView(tvTitle);
 
         TextView tvSub = new TextView(activity);
-        tvSub.setText(PhotoFlagsRegistry.CURATED_FLAGS.size() + " Curated Flags • GMS Flags 2.0");
+        tvSub.setText("Loading flags...");
         tvSub.setTextSize(11);
         tvSub.setTextColor(M3_TEXT_SECONDARY);
         titleCol.addView(tvSub);
         topBar.addView(titleCol);
 
-        // Header action icons with 48x48dp touch targets
+        // Action Icons
         View btnSearch = createHeaderIconButton(activity, "🔍", (int) (48 * density));
         View btnAdd = createHeaderIconButton(activity, "➕", (int) (48 * density));
         View btnMenu = createHeaderIconButton(activity, "⋮", (int) (48 * density));
@@ -228,7 +228,7 @@ public final class PhenotypeFlagManager {
         searchBox.setVisibility(View.GONE);
 
         EditText etSearch = new EditText(activity);
-        etSearch.setHint("Search curated flags, keys or values...");
+        etSearch.setHint("Search flags, keys or values...");
         etSearch.setTextSize(14);
         etSearch.setTextColor(M3_TEXT_PRIMARY);
         etSearch.setHintTextColor(M3_TEXT_SECONDARY);
@@ -252,28 +252,7 @@ public final class PhenotypeFlagManager {
 
         btnClose.setOnClickListener(v -> dialog.dismiss());
 
-        // 3. Minimal Tabs: [ Recommendations ]  [ Curated Flags ]
-        LinearLayout tabContainer = new LinearLayout(activity);
-        tabContainer.setOrientation(LinearLayout.HORIZONTAL);
-        tabContainer.setPadding(tbPad, (int) (12 * density), tbPad, (int) (8 * density));
-
-        final int[] activeTab = new int[] { 0 }; // 0: Recommendations, 1: Curated Flags
-        Button tabRecs = createTabButton(activity, "Recommendations", true);
-        Button tabFlags = createTabButton(activity, "Curated Flags (" + PhotoFlagsRegistry.CURATED_FLAGS.size() + ")", false);
-
-        LinearLayout.LayoutParams tLp1 = new LinearLayout.LayoutParams(0, (int) (44 * density), 1f);
-        tLp1.setMargins(0, 0, (int) (6 * density), 0);
-        tabRecs.setLayoutParams(tLp1);
-
-        LinearLayout.LayoutParams tLp2 = new LinearLayout.LayoutParams(0, (int) (44 * density), 1f);
-        tLp2.setMargins((int) (6 * density), 0, 0, 0);
-        tabFlags.setLayoutParams(tLp2);
-
-        tabContainer.addView(tabRecs);
-        tabContainer.addView(tabFlags);
-        root.addView(tabContainer);
-
-        // 4. Scrollable List Content Area
+        // 3. Scrollable List Content Area
         ScrollView scrollView = new ScrollView(activity);
         LinearLayout.LayoutParams scrollLp = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f);
@@ -281,11 +260,11 @@ public final class PhenotypeFlagManager {
 
         LinearLayout listContainer = new LinearLayout(activity);
         listContainer.setOrientation(LinearLayout.VERTICAL);
-        listContainer.setPadding(tbPad, (int) (4 * density), tbPad, (int) (16 * density));
+        listContainer.setPadding(tbPad, (int) (8 * density), tbPad, (int) (16 * density));
         scrollView.addView(listContainer);
         root.addView(scrollView);
 
-        // 5. Minimal Bottom Action Dock
+        // 4. Bottom Action Dock
         LinearLayout bottomDock = new LinearLayout(activity);
         bottomDock.setOrientation(LinearLayout.VERTICAL);
         bottomDock.setGravity(Gravity.CENTER);
@@ -319,119 +298,93 @@ public final class PhenotypeFlagManager {
             String query = etSearch.getText().toString().toLowerCase().trim();
             Map<String, ?> all = prefs.getAll();
 
-            // Update Tab buttons visual state
-            updateTabButtonState(tabRecs, activeTab[0] == 0);
-            updateTabButtonState(tabFlags, activeTab[0] == 1);
+            int totalConfigured = 0;
+            int matchedCount = 0;
 
-            if (activeTab[0] == 0) {
-                // TAB 0: Recommendations (from GMS Flags api.polodarb.com)
-                List<RecommendationRecipe> recipes = GmsFlagsApiClient.loadCachedRecipes(prefs);
-                int count = 0;
+            // 1. Curated Flags from Registry (if any)
+            List<String> categories = PhotoFlagsRegistry.getCategories();
+            for (String cat : categories) {
+                List<CuratedFlag> flagsInCat = PhotoFlagsRegistry.getFlagsForCategory(cat);
+                List<CuratedFlag> matchingFlags = new ArrayList<>();
 
-                for (RecommendationRecipe recipe : recipes) {
-                    if (!query.isEmpty() &&
-                            !recipe.title.toLowerCase().contains(query) &&
-                            (recipe.description == null || !recipe.description.toLowerCase().contains(query)) &&
-                            !recipe.category.toLowerCase().contains(query)) {
-                        continue;
-                    }
-                    count++;
-
-                    boolean isActive = isRecipeActive(prefs, recipe);
-                    View card = createRecipeCard(activity, prefs, recipe, isActive, refreshHolder[0]);
-                    listContainer.addView(card);
-                }
-
-                if (count == 0) {
-                    renderEmptyMessage(activity, listContainer, "No recommendations matched your search.", density);
-                }
-
-            } else {
-                // TAB 1: Curated 26 Flags (grouped by category)
-                List<String> categories = PhotoFlagsRegistry.getCategories();
-                int matchedCount = 0;
-
-                for (String cat : categories) {
-                    List<CuratedFlag> flagsInCat = PhotoFlagsRegistry.getFlagsForCategory(cat);
-                    List<CuratedFlag> matchingFlags = new ArrayList<>();
-
-                    for (CuratedFlag flag : flagsInCat) {
-                        Object val = all.get(flag.key);
-                        String searchTarget = flag.key + " " + flag.title + " " + flag.description + " " + val;
-                        if (query.isEmpty() || searchTarget.toLowerCase().contains(query)) {
-                            matchingFlags.add(flag);
-                        }
-                    }
-
-                    if (matchingFlags.isEmpty()) continue;
-                    matchedCount += matchingFlags.size();
-
-                    // Category Section Header
-                    TextView tvCatHeader = new TextView(activity);
-                    tvCatHeader.setText(cat);
-                    tvCatHeader.setTextSize(13);
-                    tvCatHeader.setTextColor(M3_PRIMARY);
-                    tvCatHeader.setTypeface(null, Typeface.BOLD);
-                    tvCatHeader.setPadding(0, (int) (12 * density), 0, (int) (6 * density));
-                    listContainer.addView(tvCatHeader);
-
-                    // Flag Rows
-                    for (CuratedFlag flag : matchingFlags) {
-                        View flagRow = createCuratedFlagRow(activity, prefs, flag, all, refreshHolder[0]);
-                        listContainer.addView(flagRow);
+                for (CuratedFlag flag : flagsInCat) {
+                    totalConfigured++;
+                    Object val = all.get(flag.key);
+                    String searchTarget = flag.key + " " + flag.title + " " + flag.description + " " + val;
+                    if (query.isEmpty() || searchTarget.toLowerCase().contains(query)) {
+                        matchingFlags.add(flag);
                     }
                 }
 
-                // Any user-added custom flags
-                Set<String> customKeys = prefs.getStringSet(CUSTOM_FLAGS_KEY, Collections.emptySet());
-                if (!customKeys.isEmpty()) {
-                    List<String> matchingCustom = new ArrayList<>();
-                    for (String ck : customKeys) {
-                        if (!PhotoFlagsRegistry.FLAG_MAP.containsKey(ck)) {
-                            Object val = all.get(ck);
-                            String st = ck + " " + val;
-                            if (query.isEmpty() || st.toLowerCase().contains(query)) {
-                                matchingCustom.add(ck);
-                            }
-                        }
-                    }
+                if (matchingFlags.isEmpty()) continue;
+                matchedCount += matchingFlags.size();
 
-                    if (!matchingCustom.isEmpty()) {
-                        matchedCount += matchingCustom.size();
-                        TextView tvCustomHeader = new TextView(activity);
-                        tvCustomHeader.setText("Custom User Flags");
-                        tvCustomHeader.setTextSize(13);
-                        tvCustomHeader.setTextColor(M3_PRIMARY);
-                        tvCustomHeader.setTypeface(null, Typeface.BOLD);
-                        tvCustomHeader.setPadding(0, (int) (12 * density), 0, (int) (6 * density));
-                        listContainer.addView(tvCustomHeader);
+                TextView tvCatHeader = new TextView(activity);
+                tvCatHeader.setText(cat);
+                tvCatHeader.setTextSize(13);
+                tvCatHeader.setTextColor(M3_PRIMARY);
+                tvCatHeader.setTypeface(null, Typeface.BOLD);
+                tvCatHeader.setPadding(0, (int) (12 * density), 0, (int) (6 * density));
+                listContainer.addView(tvCatHeader);
 
-                        for (String ck : matchingCustom) {
-                            View customRow = createCustomFlagRow(activity, prefs, ck, all.get(ck), refreshHolder[0]);
-                            listContainer.addView(customRow);
-                        }
+                for (CuratedFlag flag : matchingFlags) {
+                    View flagRow = createCuratedFlagRow(activity, prefs, flag, all, refreshHolder[0]);
+                    listContainer.addView(flagRow);
+                }
+            }
+
+            // 2. Custom / Imported Flags
+            Set<String> customKeys = prefs.getStringSet(CUSTOM_FLAGS_KEY, Collections.emptySet());
+            Set<String> allKeysToDisplay = new HashSet<>(customKeys);
+
+            // Also include any flag directly present in SharedPreferences that is not internal
+            for (String k : all.keySet()) {
+                if (!k.startsWith("_") && !k.startsWith("__") && !PhotoFlagsRegistry.FLAG_MAP.containsKey(k)) {
+                    allKeysToDisplay.add(k);
+                }
+            }
+
+            List<String> matchingCustom = new ArrayList<>();
+            for (String ck : allKeysToDisplay) {
+                if (!PhotoFlagsRegistry.FLAG_MAP.containsKey(ck)) {
+                    totalConfigured++;
+                    Object val = all.get(ck);
+                    String st = ck + " " + val;
+                    if (query.isEmpty() || st.toLowerCase().contains(query)) {
+                        matchingCustom.add(ck);
                     }
                 }
+            }
 
-                if (matchedCount == 0) {
-                    renderEmptyMessage(activity, listContainer, "No curated flags matched your search.", density);
+            if (!matchingCustom.isEmpty()) {
+                // Sort keys alphabetically/numerically
+                Collections.sort(matchingCustom);
+                matchedCount += matchingCustom.size();
+
+                TextView tvCustomHeader = new TextView(activity);
+                tvCustomHeader.setText(categories.isEmpty() ? "Active Flags (" + matchingCustom.size() + ")" : "Custom Overrides (" + matchingCustom.size() + ")");
+                tvCustomHeader.setTextSize(13);
+                tvCustomHeader.setTextColor(M3_PRIMARY);
+                tvCustomHeader.setTypeface(null, Typeface.BOLD);
+                tvCustomHeader.setPadding(0, (int) (12 * density), 0, (int) (6 * density));
+                listContainer.addView(tvCustomHeader);
+
+                for (String ck : matchingCustom) {
+                    View customRow = createCustomFlagRow(activity, prefs, ck, all.get(ck), refreshHolder[0]);
+                    listContainer.addView(customRow);
                 }
+            }
+
+            tvSub.setText(totalConfigured + " Flags Configured");
+
+            if (totalConfigured == 0) {
+                renderEmptySlate(activity, listContainer, density);
+            } else if (matchedCount == 0) {
+                renderEmptyMessage(activity, listContainer, "No flags matched \"" + query + "\"", density);
             }
         };
 
         refreshHolder[0] = refreshUi;
-
-        tabRecs.setOnClickListener(v -> {
-            activeTab[0] = 0;
-            scrollView.scrollTo(0, 0);
-            refreshUi.run();
-        });
-
-        tabFlags.setOnClickListener(v -> {
-            activeTab[0] = 1;
-            scrollView.scrollTo(0, 0);
-            refreshUi.run();
-        });
 
         btnAdd.setOnClickListener(v -> showAddCustomFlagDialog(activity, prefs, refreshUi));
         btnMenu.setOnClickListener(v -> showProperOptionsMenu(activity, prefs, refreshUi));
@@ -461,119 +414,52 @@ public final class PhenotypeFlagManager {
         }
     }
 
-    // ─────────────────────────────────────────────────────────────────────────
-    // Touch-Friendly Card & Row Builders (Min 56-60dp touch height, Whole-Card Click)
-    // ─────────────────────────────────────────────────────────────────────────
+    private static void renderEmptySlate(Activity activity, LinearLayout container, float density) {
+        LinearLayout box = new LinearLayout(activity);
+        box.setOrientation(LinearLayout.VERTICAL);
+        box.setGravity(Gravity.CENTER);
+        int p = (int) (40 * density);
+        box.setPadding(p, p, p, p);
 
-    private static View createRecipeCard(Activity activity, SharedPreferences prefs,
-                                         RecommendationRecipe recipe, boolean isActive,
-                                         Runnable onRefresh) {
-        float density = activity.getResources().getDisplayMetrics().density;
-        LinearLayout card = new LinearLayout(activity);
-        card.setOrientation(LinearLayout.VERTICAL);
-        int cPad = (int) (16 * density);
-        card.setPadding(cPad, cPad, cPad, cPad);
-        LinearLayout.LayoutParams cardLp = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        cardLp.setMargins(0, 0, 0, (int) (12 * density));
-        card.setLayoutParams(cardLp);
-        card.setBackground(createCardDrawable(isActive, density));
+        TextView icon = new TextView(activity);
+        icon.setText("✨");
+        icon.setTextSize(36);
+        icon.setGravity(Gravity.CENTER);
+        box.addView(icon);
 
-        // Header Row: Category Badge + Status Badge + Switch
-        LinearLayout topRow = new LinearLayout(activity);
-        topRow.setOrientation(LinearLayout.HORIZONTAL);
-        topRow.setGravity(Gravity.CENTER_VERTICAL);
+        TextView title = new TextView(activity);
+        title.setText("No Flags Configured");
+        title.setTextSize(16);
+        title.setTextColor(M3_TEXT_PRIMARY);
+        title.setTypeface(null, Typeface.BOLD);
+        title.setGravity(Gravity.CENTER);
+        title.setPadding(0, (int) (10 * density), 0, (int) (4 * density));
+        box.addView(title);
 
-        TextView catBadge = new TextView(activity);
-        catBadge.setText(recipe.category);
-        catBadge.setTextSize(11);
-        catBadge.setTextColor(M3_PRIMARY);
-        catBadge.setTypeface(null, Typeface.BOLD);
-        catBadge.setBackground(createRoundedDrawable(0x1F006A60, 8 * density));
-        int bPadH = (int) (8 * density);
-        int bPadV = (int) (4 * density);
-        catBadge.setPadding(bPadH, bPadV, bPadH, bPadV);
-        topRow.addView(catBadge);
+        TextView desc = new TextView(activity);
+        desc.setText("Tap ➕ above to add a flag, or tap ⋮ to bulk import or paste flags.");
+        desc.setTextSize(13);
+        desc.setTextColor(M3_TEXT_SECONDARY);
+        desc.setGravity(Gravity.CENTER);
+        box.addView(desc);
 
-        TextView statusBadge = new TextView(activity);
-        String sText = "VERIFIED".equalsIgnoreCase(recipe.supportStatus) ? "✓ Verified"
-                : "PARTIAL".equalsIgnoreCase(recipe.supportStatus) ? "⚡ Partial" : "🧪 Experimental";
-        int sColor = "VERIFIED".equalsIgnoreCase(recipe.supportStatus) ? 0xFF0D652D : 0xFF7627BB;
-        int sBg = "VERIFIED".equalsIgnoreCase(recipe.supportStatus) ? 0xFFCEEAD6 : 0xFFF3E8FD;
-        statusBadge.setText(sText);
-        statusBadge.setTextSize(11);
-        statusBadge.setTextColor(sColor);
-        statusBadge.setTypeface(null, Typeface.BOLD);
-        statusBadge.setBackground(createRoundedDrawable(sBg, 8 * density));
-        statusBadge.setPadding(bPadH, bPadV, bPadH, bPadV);
-        LinearLayout.LayoutParams sbLp = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        sbLp.setMargins((int) (6 * density), 0, 0, 0);
-        statusBadge.setLayoutParams(sbLp);
-        topRow.addView(statusBadge);
-
-        View spacer = new View(activity);
-        topRow.addView(spacer, new LinearLayout.LayoutParams(0, 0, 1f));
-
-        Switch sw = new Switch(activity);
-        sw.setChecked(isActive);
-        topRow.addView(sw);
-        card.addView(topRow);
-
-        // Title
-        TextView tvTitle = new TextView(activity);
-        tvTitle.setText(recipe.title);
-        tvTitle.setTextSize(15);
-        tvTitle.setTextColor(M3_TEXT_PRIMARY);
-        tvTitle.setTypeface(null, Typeface.BOLD);
-        tvTitle.setPadding(0, (int) (8 * density), 0, (int) (2 * density));
-        card.addView(tvTitle);
-
-        // Warning banner if any
-        if (recipe.warningBlock != null && !recipe.warningBlock.isEmpty()) {
-            TextView tvWarn = new TextView(activity);
-            tvWarn.setText("⚠️ " + recipe.warningBlock);
-            tvWarn.setTextSize(11);
-            tvWarn.setTextColor(M3_WARN_TEXT);
-            tvWarn.setBackground(createRoundedDrawable(M3_WARN_BG, 8 * density));
-            int wPad = (int) (8 * density);
-            tvWarn.setPadding(wPad, (int) (5 * density), wPad, (int) (5 * density));
-            LinearLayout.LayoutParams wLp = new LinearLayout.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-            wLp.setMargins(0, (int) (6 * density), 0, (int) (4 * density));
-            tvWarn.setLayoutParams(wLp);
-            card.addView(tvWarn);
-        }
-
-        // Description
-        if (recipe.description != null && !recipe.description.isEmpty()) {
-            TextView tvDesc = new TextView(activity);
-            tvDesc.setText(recipe.description);
-            tvDesc.setTextSize(12);
-            tvDesc.setTextColor(M3_TEXT_SECONDARY);
-            tvDesc.setPadding(0, (int) (2 * density), 0, 0);
-            card.addView(tvDesc);
-        }
-
-        // Whole-card click-to-toggle!
-        card.setClickable(true);
-        card.setFocusable(true);
-        card.setOnClickListener(v -> {
-            boolean next = !sw.isChecked();
-            sw.setChecked(next);
-            toggleRecipe(prefs, recipe, next);
-            Toast.makeText(activity, (next ? "Enabled: " : "Disabled: ") + recipe.title + "\nTap '⚡ Apply & Restart Photos' below to apply.", Toast.LENGTH_SHORT).show();
-            onRefresh.run();
-        });
-
-        sw.setOnClickListener(v -> {
-            toggleRecipe(prefs, recipe, sw.isChecked());
-            Toast.makeText(activity, (sw.isChecked() ? "Enabled: " : "Disabled: ") + recipe.title + "\nTap '⚡ Apply & Restart Photos' below to apply.", Toast.LENGTH_SHORT).show();
-            onRefresh.run();
-        });
-
-        return card;
+        container.addView(box);
     }
+
+    private static void renderEmptyMessage(Activity activity, LinearLayout container, String msg, float density) {
+        TextView tv = new TextView(activity);
+        tv.setText(msg);
+        tv.setTextSize(13);
+        tv.setTextColor(M3_TEXT_SECONDARY);
+        tv.setGravity(Gravity.CENTER);
+        int p = (int) (32 * density);
+        tv.setPadding(p, p, p, p);
+        container.addView(tv);
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Row Builders
+    // ─────────────────────────────────────────────────────────────────────────
 
     private static View createCuratedFlagRow(Activity activity, SharedPreferences prefs,
                                              CuratedFlag flag, Map<String, ?> all,
@@ -615,7 +501,7 @@ public final class PhenotypeFlagManager {
         textCol.addView(tvDesc);
 
         TextView tvKey = new TextView(activity);
-        tvKey.setText("ID: " + flag.key + " • Default: " + flag.defaultValue);
+        tvKey.setText("ID: " + flag.key + " • " + flag.type + ": " + val);
         tvKey.setTextSize(10);
         tvKey.setTextColor(0xFF8B9B97);
         textCol.addView(tvKey);
@@ -626,25 +512,29 @@ public final class PhenotypeFlagManager {
             sw.setChecked(isActive);
             row.addView(sw);
 
-            // Whole-row tap toggles boolean!
             row.setClickable(true);
             row.setFocusable(true);
             row.setOnClickListener(v -> {
                 boolean next = !sw.isChecked();
                 sw.setChecked(next);
                 prefs.edit().putBoolean(flag.key, next).commit();
-                Toast.makeText(activity, "Updated: " + flag.title + "\nTap '⚡ Apply & Restart Photos' below to apply.", Toast.LENGTH_SHORT).show();
+                if (flag.key.equals("45531621") || flag.key.equals("45531625")) {
+                    GooglePhotosAccountAvatar.syncOneGoogleFlags(activity);
+                }
+                Toast.makeText(activity, "Updated: " + flag.title, Toast.LENGTH_SHORT).show();
                 onRefresh.run();
             });
 
             sw.setOnClickListener(v -> {
                 prefs.edit().putBoolean(flag.key, sw.isChecked()).commit();
-                Toast.makeText(activity, "Updated: " + flag.title + "\nTap '⚡ Apply & Restart Photos' below to apply.", Toast.LENGTH_SHORT).show();
+                if (flag.key.equals("45531621") || flag.key.equals("45531625")) {
+                    GooglePhotosAccountAvatar.syncOneGoogleFlags(activity);
+                }
+                Toast.makeText(activity, "Updated: " + flag.title, Toast.LENGTH_SHORT).show();
                 onRefresh.run();
             });
 
         } else {
-            // Number / String flag with edit chip
             TextView valChip = new TextView(activity);
             valChip.setText(String.valueOf(val));
             valChip.setTextSize(13);
@@ -712,7 +602,7 @@ public final class PhenotypeFlagManager {
                 if (key.equals("45531621") || key.equals("45531625")) {
                     GooglePhotosAccountAvatar.syncOneGoogleFlags(activity);
                 }
-                Toast.makeText(activity, "Custom flag updated.\nTap '⚡ Apply & Restart Photos' below to apply.", Toast.LENGTH_SHORT).show();
+                Toast.makeText(activity, "Custom flag updated.", Toast.LENGTH_SHORT).show();
                 onRefresh.run();
             });
             sw.setOnClickListener(v -> {
@@ -720,7 +610,7 @@ public final class PhenotypeFlagManager {
                 if (key.equals("45531621") || key.equals("45531625")) {
                     GooglePhotosAccountAvatar.syncOneGoogleFlags(activity);
                 }
-                Toast.makeText(activity, "Custom flag updated.\nTap '⚡ Apply & Restart Photos' below to apply.", Toast.LENGTH_SHORT).show();
+                Toast.makeText(activity, "Custom flag updated.", Toast.LENGTH_SHORT).show();
                 onRefresh.run();
             });
         } else {
@@ -742,7 +632,7 @@ public final class PhenotypeFlagManager {
     }
 
     // ─────────────────────────────────────────────────────────────────────────
-    // Proper Options Menu (Modal Popup with Large 52dp Touch Rows)
+    // Options Menu
     // ─────────────────────────────────────────────────────────────────────────
 
     private static void showProperOptionsMenu(Activity activity, SharedPreferences prefs, Runnable onRefresh) {
@@ -766,29 +656,31 @@ public final class PhenotypeFlagManager {
 
         List<MenuItem> items = new ArrayList<>();
 
-        // 1. Reset / Apply Default Curated Flags
-        int flagCount = PhotoFlagsRegistry.CURATED_FLAGS.size();
-        items.add(new MenuItem("⚡", "Reset to Default (" + flagCount + " Flags)", "Re-apply all " + flagCount + " curated Morphe preset flags", () -> {
-            PhotoFlagsRegistry.applyCuratedDefaults(prefs);
-            Toast.makeText(activity, "✓ Re-applied all " + flagCount + " default curated flags", Toast.LENGTH_SHORT).show();
-            onRefresh.run();
+        // 1. Bulk Import from File (SAF)
+        items.add(new MenuItem("📁", "Bulk Import from File (SAF)", "Select a .txt, .json, or .xml file to import flags", () -> {
+            launchSafImport(activity, prefs, onRefresh);
         }));
 
-        // 3. Import Overrides
-        items.add(new MenuItem("📥", "Import Overrides", "Load JSON presets, XML, or Key=Value pairs", () -> {
-            showImportDialog(activity, prefs, onRefresh);
+        // 2. Bulk Paste Text
+        items.add(new MenuItem("📋", "Bulk Paste Text", "Paste key=value lines or JSON directly", () -> {
+            showBulkPasteDialog(activity, prefs, onRefresh);
         }));
 
-        // 4. Export Overrides
-        items.add(new MenuItem("📤", "Export Overrides", "Copy current active flags to clipboard as JSON", () -> {
-            showExportDialog(activity, prefs);
+        // 3. Export to File (SAF)
+        items.add(new MenuItem("💾", "Export to File (SAF)", "Save all configured flags to a file", () -> {
+            launchSafExport(activity, prefs);
         }));
 
-        // 5. Clear All Custom Overrides
-        items.add(new MenuItem("🗑️", "Clear All Custom Overrides", "Wipe custom overrides and return to 26 defaults", () -> {
-            prefs.edit().remove(CUSTOM_FLAGS_KEY).apply();
-            PhotoFlagsRegistry.applyAll26Defaults(prefs);
-            Toast.makeText(activity, "Cleared custom overrides; 26 defaults active.", Toast.LENGTH_SHORT).show();
+        // 4. Copy All to Clipboard
+        items.add(new MenuItem("📤", "Copy All to Clipboard", "Copy all configured flags to clipboard as JSON", () -> {
+            copyAllToClipboard(activity, prefs);
+        }));
+
+        // 5. Clear All Flags
+        items.add(new MenuItem("🗑️", "Clear All Flags", "Wipe all flags and restore stock photos state", () -> {
+            prefs.edit().clear().apply();
+            GooglePhotosAccountAvatar.syncOneGoogleFlags(activity);
+            Toast.makeText(activity, "✓ Cleared all flags (stock photos state)", Toast.LENGTH_SHORT).show();
             onRefresh.run();
         }));
 
@@ -798,13 +690,12 @@ public final class PhenotypeFlagManager {
             LinearLayout row = new LinearLayout(activity);
             row.setOrientation(LinearLayout.HORIZONTAL);
             row.setGravity(Gravity.CENTER_VERTICAL);
-            int rPad = (int) (14 * density);
-            row.setPadding(rPad, (int) (12 * density), rPad, (int) (12 * density));
+            int p = (int) (14 * density);
+            row.setPadding(p, p, p, p);
             row.setBackground(createCardDrawable(false, density));
-            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-            lp.setMargins(0, 0, 0, (int) (8 * density));
-            row.setLayoutParams(lp);
+            LinearLayout.LayoutParams rLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            rLp.setMargins(0, 0, 0, (int) (8 * density));
+            row.setLayoutParams(rLp);
 
             TextView tvIcon = new TextView(activity);
             tvIcon.setText(item.icon);
@@ -846,10 +737,148 @@ public final class PhenotypeFlagManager {
     }
 
     // ─────────────────────────────────────────────────────────────────────────
-    // Import, Export & Edit Sub-Dialogs
+    // SAF (Storage Access Framework) File Operations
     // ─────────────────────────────────────────────────────────────────────────
 
-    private static void showImportDialog(Activity activity, SharedPreferences prefs, Runnable onRefresh) {
+    public static class SafHelperFragment extends android.app.Fragment {
+        private static final int REQ_OPEN_DOCUMENT = 8011;
+        private static final int REQ_CREATE_DOCUMENT = 8012;
+
+        public interface FileCallback {
+            void onFileSelected(Uri uri);
+        }
+
+        private FileCallback openCallback;
+        private FileCallback createCallback;
+
+        public void setOpenCallback(FileCallback cb) { this.openCallback = cb; }
+        public void setCreateCallback(FileCallback cb) { this.createCallback = cb; }
+
+        public void openDocument(String[] mimeTypes) {
+            Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+            intent.addCategory(Intent.CATEGORY_OPENABLE);
+            intent.setType("*/*");
+            if (mimeTypes != null && mimeTypes.length > 0) {
+                intent.putExtra(Intent.EXTRA_MIME_TYPES, mimeTypes);
+            }
+            startActivityForResult(intent, REQ_OPEN_DOCUMENT);
+        }
+
+        public void createDocument(String fileName, String mimeType) {
+            Intent intent = new Intent(Intent.ACTION_CREATE_DOCUMENT);
+            intent.addCategory(Intent.CATEGORY_OPENABLE);
+            intent.setType(mimeType);
+            intent.putExtra(Intent.EXTRA_TITLE, fileName);
+            startActivityForResult(intent, REQ_CREATE_DOCUMENT);
+        }
+
+        @Override
+        public void onActivityResult(int requestCode, int resultCode, Intent data) {
+            super.onActivityResult(requestCode, resultCode, data);
+            if (resultCode == Activity.RESULT_OK && data != null && data.getData() != null) {
+                Uri uri = data.getData();
+                if (requestCode == REQ_OPEN_DOCUMENT && openCallback != null) {
+                    openCallback.onFileSelected(uri);
+                } else if (requestCode == REQ_CREATE_DOCUMENT && createCallback != null) {
+                    createCallback.onFileSelected(uri);
+                }
+            }
+            if (getFragmentManager() != null) {
+                getFragmentManager().beginTransaction().remove(this).commitAllowingStateLoss();
+            }
+        }
+    }
+
+    private static void launchSafImport(Activity activity, SharedPreferences prefs, Runnable onRefresh) {
+        try {
+            SafHelperFragment fragment = new SafHelperFragment();
+            fragment.setOpenCallback(uri -> {
+                if (uri == null) return;
+                try {
+                    InputStream is = activity.getContentResolver().openInputStream(uri);
+                    if (is != null) {
+                        BufferedReader reader = new BufferedReader(new InputStreamReader(is, StandardCharsets.UTF_8));
+                        StringBuilder sb = new StringBuilder();
+                        String line;
+                        while ((line = reader.readLine()) != null) {
+                            sb.append(line).append('\n');
+                        }
+                        reader.close();
+                        is.close();
+                        int count = importFlagsUniversal(activity, prefs, sb.toString());
+                        Toast.makeText(activity, "✓ Imported " + count + " flags from file!", Toast.LENGTH_SHORT).show();
+                        onRefresh.run();
+                    }
+                } catch (Throwable t) {
+                    Logger.printException(() -> "Error importing file from SAF", t);
+                    Toast.makeText(activity, "Failed to read file: " + t.getMessage(), Toast.LENGTH_SHORT).show();
+                }
+            });
+            activity.getFragmentManager().beginTransaction().add(fragment, "saf_import").commitAllowingStateLoss();
+            activity.getFragmentManager().executePendingTransactions();
+            fragment.openDocument(new String[]{"text/plain", "application/json", "text/xml", "*/*"});
+        } catch (Throwable t) {
+            Logger.printException(() -> "Error launching SAF file picker", t);
+            Toast.makeText(activity, "Could not open file picker", Toast.LENGTH_SHORT).show();
+        }
+    }
+
+    private static void launchSafExport(Activity activity, SharedPreferences prefs) {
+        try {
+            SafHelperFragment fragment = new SafHelperFragment();
+            fragment.setCreateCallback(uri -> {
+                if (uri == null) return;
+                try {
+                    OutputStream os = activity.getContentResolver().openOutputStream(uri);
+                    if (os != null) {
+                        String jsonStr = generateExportJson(prefs);
+                        os.write(jsonStr.getBytes(StandardCharsets.UTF_8));
+                        os.flush();
+                        os.close();
+                        Toast.makeText(activity, "✓ Exported flags to file!", Toast.LENGTH_SHORT).show();
+                    }
+                } catch (Throwable t) {
+                    Logger.printException(() -> "Error exporting file to SAF", t);
+                    Toast.makeText(activity, "Failed to save file: " + t.getMessage(), Toast.LENGTH_SHORT).show();
+                }
+            });
+            activity.getFragmentManager().beginTransaction().add(fragment, "saf_export").commitAllowingStateLoss();
+            activity.getFragmentManager().executePendingTransactions();
+            fragment.createDocument("morphe_photos_flags.json", "application/json");
+        } catch (Throwable t) {
+            Logger.printException(() -> "Error launching SAF file save", t);
+            Toast.makeText(activity, "Could not open file saver", Toast.LENGTH_SHORT).show();
+        }
+    }
+
+    private static void copyAllToClipboard(Activity activity, SharedPreferences prefs) {
+        String jsonStr = generateExportJson(prefs);
+        ClipboardManager cm = (ClipboardManager) activity.getSystemService(Context.CLIPBOARD_SERVICE);
+        if (cm != null) {
+            cm.setPrimaryClip(ClipData.newPlainText("Photos Flags", jsonStr));
+            Toast.makeText(activity, "✓ Copied flags to clipboard!", Toast.LENGTH_SHORT).show();
+        }
+    }
+
+    private static String generateExportJson(SharedPreferences prefs) {
+        JSONObject json = new JSONObject();
+        try {
+            Map<String, ?> all = prefs.getAll();
+            for (Map.Entry<String, ?> entry : all.entrySet()) {
+                String k = entry.getKey();
+                if (!k.startsWith("_") && !k.startsWith("__")) {
+                    json.put(k, entry.getValue());
+                }
+            }
+        } catch (Exception ignored) {}
+        return json.toString();
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Bulk Paste Dialog
+    // ─────────────────────────────────────────────────────────────────────────
+
+    private static void showBulkPasteDialog(Activity activity, SharedPreferences prefs, Runnable onRefresh) {
         float density = activity.getResources().getDisplayMetrics().density;
         LinearLayout layout = new LinearLayout(activity);
         layout.setOrientation(LinearLayout.VERTICAL);
@@ -857,35 +886,113 @@ public final class PhenotypeFlagManager {
         layout.setPadding(p, 0, p, (int) (8 * density));
 
         TextView tvHelp = new TextView(activity);
-        tvHelp.setText("Paste JSON preset, GMS-Flags XML, or Key=Value pairs:");
+        tvHelp.setText("Paste Key=Value lines, JSON preset, or Phenotype XML:");
         tvHelp.setTextSize(12);
         tvHelp.setTextColor(M3_TEXT_SECONDARY);
-        tvHelp.setPadding(0, 0, 0, (int) (8 * density));
+        tvHelp.setPadding(0, 0, 0, (int) (6 * density));
         layout.addView(tvHelp);
 
+        LinearLayout actionRow = new LinearLayout(activity);
+        actionRow.setOrientation(LinearLayout.HORIZONTAL);
+        actionRow.setGravity(Gravity.CENTER_VERTICAL);
+        actionRow.setPadding(0, 0, 0, (int) (8 * density));
+
+        Button btnPasteClipboard = new Button(activity);
+        btnPasteClipboard.setText("📋 Paste from Clipboard");
+        btnPasteClipboard.setTextSize(12);
+        btnPasteClipboard.setTypeface(null, Typeface.BOLD);
+        btnPasteClipboard.setTextColor(M3_PRIMARY);
+        btnPasteClipboard.setBackground(createRoundedDrawable(M3_PRIMARY_CONTAINER, 16 * density));
+        btnPasteClipboard.setPadding((int) (12 * density), 0, (int) (12 * density), 0);
+        LinearLayout.LayoutParams btnLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, (int) (36 * density));
+        btnPasteClipboard.setLayoutParams(btnLp);
+        actionRow.addView(btnPasteClipboard);
+
+        TextView tvCountPreview = new TextView(activity);
+        tvCountPreview.setText("0 flags detected");
+        tvCountPreview.setTextSize(12);
+        tvCountPreview.setTextColor(M3_TEXT_SECONDARY);
+        tvCountPreview.setGravity(Gravity.END);
+        LinearLayout.LayoutParams cLp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+        tvCountPreview.setLayoutParams(cLp);
+        actionRow.addView(tvCountPreview);
+        layout.addView(actionRow);
+
         EditText etInput = new EditText(activity);
-        etInput.setHint("e.g. {\"45705305\": true, \"45762698\": 2}");
+        etInput.setHint("Paste flags here...\ne.g.\n45705305=true\n45762698=2\n45531621=true");
         etInput.setTextSize(13);
         etInput.setTextColor(M3_TEXT_PRIMARY);
         etInput.setHintTextColor(M3_TEXT_SECONDARY);
         etInput.setBackground(createRoundedDrawable(0xFFEAEFEB, 12 * density));
         int pad = (int) (12 * density);
         etInput.setPadding(pad, pad, pad, pad);
-        etInput.setMinLines(5);
-        etInput.setMaxLines(10);
+        etInput.setMinLines(6);
+        etInput.setMaxLines(12);
         etInput.setGravity(Gravity.TOP);
         layout.addView(etInput);
 
-        Dialog dialog = createM3ActionDialog(activity, "📥 Import Overrides", layout, "Import", () -> {
+        etInput.addTextChangedListener(new TextWatcher() {
+            @Override public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
+            @Override public void onTextChanged(CharSequence s, int start, int before, int count) {
+                int detected = countFlagsInText(s.toString());
+                tvCountPreview.setText(detected + " flags detected");
+            }
+            @Override public void afterTextChanged(Editable s) {}
+        });
+
+        btnPasteClipboard.setOnClickListener(v -> {
+            ClipboardManager cm = (ClipboardManager) activity.getSystemService(Context.CLIPBOARD_SERVICE);
+            if (cm != null && cm.hasPrimaryClip() && cm.getPrimaryClip().getItemCount() > 0) {
+                CharSequence text = cm.getPrimaryClip().getItemAt(0).getText();
+                if (text != null) {
+                    etInput.setText(text);
+                    Toast.makeText(activity, "Pasted from clipboard", Toast.LENGTH_SHORT).show();
+                }
+            } else {
+                Toast.makeText(activity, "Clipboard is empty", Toast.LENGTH_SHORT).show();
+            }
+        });
+
+        Dialog dialog = createM3ActionDialog(activity, "📋 Bulk Paste Flags", layout, "Import All", () -> {
             String text = etInput.getText().toString().trim();
             if (!text.isEmpty()) {
                 int count = importFlagsUniversal(activity, prefs, text);
-                Toast.makeText(activity, "✓ Imported " + count + " flags", Toast.LENGTH_SHORT).show();
+                Toast.makeText(activity, "✓ Imported " + count + " flags!", Toast.LENGTH_SHORT).show();
                 onRefresh.run();
             }
         });
         dialog.show();
     }
+
+    private static int countFlagsInText(String content) {
+        if (content == null || content.isEmpty()) return 0;
+        try {
+            if (content.startsWith("{")) {
+                JSONObject json = new JSONObject(content);
+                int c = 0;
+                Iterator<String> it = json.keys();
+                while (it.hasNext()) {
+                    if (!it.next().startsWith("_")) c++;
+                }
+                return c;
+            }
+        } catch (Exception ignored) {}
+        int count = 0;
+        String[] lines = content.split("\\n");
+        for (String line : lines) {
+            String l = line.trim();
+            if (l.contains("=") && !l.startsWith("#")) {
+                count++;
+            } else if (l.contains("<flag")) {
+                count++;
+            }
+        }
+        return count;
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Import & Parsing Logic
+    // ─────────────────────────────────────────────────────────────────────────
 
     private static int importFlagsUniversal(Activity activity, SharedPreferences prefs, String content) {
         int count = 0;
@@ -942,7 +1049,7 @@ public final class PhenotypeFlagManager {
             }
 
             // 3. Try Key=Value lines
-            String[] lines = content.split("\n");
+            String[] lines = content.split("\\n");
             for (String line : lines) {
                 line = line.trim();
                 if (line.isEmpty() || line.startsWith("#")) continue;
@@ -974,52 +1081,21 @@ public final class PhenotypeFlagManager {
         return count;
     }
 
-    private static void showExportDialog(Activity activity, SharedPreferences prefs) {
-        float density = activity.getResources().getDisplayMetrics().density;
-        LinearLayout layout = new LinearLayout(activity);
-        layout.setOrientation(LinearLayout.VERTICAL);
-        int p = (int) (18 * density);
-        layout.setPadding(p, 0, p, (int) (8 * density));
-
-        JSONObject json = new JSONObject();
-        try {
-            Map<String, ?> all = prefs.getAll();
-            for (CuratedFlag f : PhotoFlagsRegistry.CURATED_FLAGS) {
-                if (all.containsKey(f.key)) {
-                    json.put(f.key, all.get(f.key));
-                }
-            }
-            Set<String> custom = prefs.getStringSet(CUSTOM_FLAGS_KEY, Collections.emptySet());
-            for (String ck : custom) {
-                if (all.containsKey(ck)) {
-                    json.put(ck, all.get(ck));
-                }
-            }
-        } catch (Exception ignored) {}
-
-        String jsonStr = json.toString();
-
-        EditText etPreview = new EditText(activity);
-        etPreview.setText(jsonStr);
-        etPreview.setTextSize(12);
-        etPreview.setTextColor(M3_TEXT_PRIMARY);
-        etPreview.setBackground(createRoundedDrawable(0xFFEAEFEB, 12 * density));
-        int pad = (int) (12 * density);
-        etPreview.setPadding(pad, pad, pad, pad);
-        etPreview.setMinLines(5);
-        etPreview.setMaxLines(8);
-        etPreview.setFocusable(false);
-        layout.addView(etPreview);
-
-        Dialog dialog = createM3ActionDialog(activity, "📤 Export Overrides", layout, "Copy to Clipboard", () -> {
-            ClipboardManager cm = (ClipboardManager) activity.getSystemService(Context.CLIPBOARD_SERVICE);
-            if (cm != null) {
-                cm.setPrimaryClip(ClipData.newPlainText("Photos Flags", jsonStr));
-                Toast.makeText(activity, "✓ Copied flags to clipboard!", Toast.LENGTH_SHORT).show();
-            }
-        });
-        dialog.show();
+    private static void applyEntry(SharedPreferences.Editor editor, String key, Object val) {
+        if (val instanceof Boolean) {
+            editor.putBoolean(key, (Boolean) val);
+        } else if (val instanceof Float || val instanceof Double) {
+            editor.putFloat(key, ((Number) val).floatValue());
+        } else if (val instanceof Number) {
+            editor.putLong(key, ((Number) val).longValue());
+        } else {
+            editor.putString(key, String.valueOf(val));
+        }
     }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Single-Flag Addition & Value Edit Dialogs
+    // ─────────────────────────────────────────────────────────────────────────
 
     private static void showAddCustomFlagDialog(Activity activity, SharedPreferences prefs, Runnable onRefresh) {
         float density = activity.getResources().getDisplayMetrics().density;
@@ -1199,7 +1275,7 @@ public final class PhenotypeFlagManager {
                 if (key.equals("45531621") || key.equals("45531625")) {
                     GooglePhotosAccountAvatar.syncOneGoogleFlags(activity);
                 }
-                Toast.makeText(activity, "Updated " + title + "\nTap '⚡ Apply & Restart Photos' below to apply.", Toast.LENGTH_SHORT).show();
+                Toast.makeText(activity, "Updated " + title, Toast.LENGTH_SHORT).show();
                 onRefresh.run();
             }
         });
@@ -1221,22 +1297,6 @@ public final class PhenotypeFlagManager {
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(sizePx, sizePx);
         tv.setLayoutParams(lp);
         return tv;
-    }
-
-    private static Button createTabButton(Activity activity, String text, boolean selected) {
-        float density = activity.getResources().getDisplayMetrics().density;
-        Button b = new Button(activity);
-        b.setText(text);
-        b.setTextSize(13);
-        b.setTypeface(null, Typeface.BOLD);
-        updateTabButtonState(b, selected);
-        return b;
-    }
-
-    private static void updateTabButtonState(Button b, boolean selected) {
-        float density = b.getResources().getDisplayMetrics().density;
-        b.setTextColor(selected ? M3_ON_PRIMARY : M3_TEXT_SECONDARY);
-        b.setBackground(createRoundedDrawable(selected ? M3_PRIMARY : 0xFFE1E8E6, 22 * density));
     }
 
     private static GradientDrawable createCardDrawable(boolean active, float density) {
@@ -1339,76 +1399,8 @@ public final class PhenotypeFlagManager {
 
         ((ViewGroup) d.findViewById(android.R.id.content)).getChildAt(0);
         ((LinearLayout) ((ViewGroup) d.findViewById(android.R.id.content)).getChildAt(0)).addView(actions);
+
         return d;
-    }
-
-    private static void renderEmptyMessage(Activity activity, LinearLayout container, String msg, float density) {
-        TextView tv = new TextView(activity);
-        tv.setText(msg);
-        tv.setTextSize(13);
-        tv.setTextColor(M3_TEXT_SECONDARY);
-        tv.setPadding(0, (int) (40 * density), 0, (int) (40 * density));
-        tv.setGravity(Gravity.CENTER);
-        container.addView(tv);
-    }
-
-    private static boolean isRecipeActive(SharedPreferences prefs, RecommendationRecipe recipe) {
-        Map<String, ?> all = prefs.getAll();
-        for (Map.Entry<String, Object> e : recipe.flags.entrySet()) {
-            Object current = all.get(e.getKey());
-            if (current == null) {
-                CuratedFlag cf = PhotoFlagsRegistry.FLAG_MAP.get(e.getKey());
-                if (cf != null) {
-                    current = cf.defaultValue;
-                } else {
-                    return false;
-                }
-            }
-            if (current instanceof Boolean && e.getValue() instanceof Boolean) {
-                if (!((Boolean) current).equals(e.getValue())) {
-                    return false;
-                }
-            } else if (current instanceof Number && e.getValue() instanceof Number) {
-                if (((Number) current).longValue() != ((Number) e.getValue()).longValue()) {
-                    return false;
-                }
-            } else if (!String.valueOf(current).equalsIgnoreCase(String.valueOf(e.getValue()))) {
-                return false;
-            }
-        }
-        return true;
-    }
-
-    private static void toggleRecipe(SharedPreferences prefs, RecommendationRecipe recipe, boolean enable) {
-        SharedPreferences.Editor editor = prefs.edit();
-        for (Map.Entry<String, Object> e : recipe.flags.entrySet()) {
-            String key = e.getKey();
-            Object val = e.getValue();
-            if (enable) {
-                applyEntry(editor, key, val);
-            } else {
-                if (val instanceof Boolean) {
-                    editor.putBoolean(key, false);
-                } else if (val instanceof Number) {
-                    editor.putLong(key, 0L);
-                } else {
-                    editor.putString(key, "");
-                }
-            }
-        }
-        editor.commit();
-    }
-
-    private static void applyEntry(SharedPreferences.Editor editor, String key, Object val) {
-        if (val instanceof Boolean) {
-            editor.putBoolean(key, (Boolean) val);
-        } else if (val instanceof Float || val instanceof Double) {
-            editor.putFloat(key, ((Number) val).floatValue());
-        } else if (val instanceof Number) {
-            editor.putLong(key, ((Number) val).longValue());
-        } else {
-            editor.putString(key, String.valueOf(val));
-        }
     }
 
     private static void restartApp(Activity activity) {
