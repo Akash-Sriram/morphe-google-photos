@@ -275,12 +275,26 @@ public final class PhenotypeFlagManager {
         private final float density;
         private final List<DisplayItem> allItems = new ArrayList<>();
         private final List<DisplayItem> displayedItems = new ArrayList<>();
-        private final Set<String> collapsedCategories = new HashSet<>();
+        private final Set<String> expandedCategories = new HashSet<>();
         private final TextView tvSub;
         private final LinearLayout emptyContainer;
         private int totalFlagsCount = 0;
         private int activeFlagsCount = 0;
         private String currentFilterQuery = "";
+
+        public void expandAll() {
+            for (DisplayItem it : allItems) {
+                if (it.isHeader()) {
+                    expandedCategories.add(it.headerTitle);
+                }
+            }
+            filter(currentFilterQuery);
+        }
+
+        public void collapseAll() {
+            expandedCategories.clear();
+            filter(currentFilterQuery);
+        }
 
         public FlagAdapter(Activity activity, SharedPreferences prefs, TextView tvSub, LinearLayout emptyContainer) {
             this.activity = activity;
@@ -432,8 +446,8 @@ public final class PhenotypeFlagManager {
                 if (it.isHeader()) {
                     if (currentHeader != null) {
                         displayedItems.add(currentHeader);
-                        boolean isCollapsed = currentFilterQuery.isEmpty() && collapsedCategories.contains(currentHeader.headerTitle);
-                        if (!isCollapsed) {
+                        boolean isExpanded = !currentFilterQuery.isEmpty() || expandedCategories.contains(currentHeader.headerTitle);
+                        if (isExpanded) {
                             displayedItems.addAll(currentSection);
                         }
                     }
@@ -453,8 +467,8 @@ public final class PhenotypeFlagManager {
             if (currentHeader != null) {
                 if (currentFilterQuery.isEmpty() || !currentSection.isEmpty()) {
                     displayedItems.add(currentHeader);
-                    boolean isCollapsed = currentFilterQuery.isEmpty() && collapsedCategories.contains(currentHeader.headerTitle);
-                    if (!isCollapsed) {
+                    boolean isExpanded = !currentFilterQuery.isEmpty() || expandedCategories.contains(currentHeader.headerTitle);
+                    if (isExpanded) {
                         displayedItems.addAll(currentSection);
                     }
                 }
@@ -543,16 +557,16 @@ public final class PhenotypeFlagManager {
                     }
                 }
 
-                boolean isCollapsed = currentFilterQuery.isEmpty() && collapsedCategories.contains(cat);
-                hHolder.tvArrow.setText(isCollapsed ? "▶" : "▼");
+                boolean isExpanded = !currentFilterQuery.isEmpty() || expandedCategories.contains(cat);
+                hHolder.tvArrow.setText(isExpanded ? "▼" : "▶");
                 hHolder.tvTitle.setText(cat + (totalInCat > 0 ? " (" + enabledInCat + "/" + totalInCat + ")" : ""));
                 hHolder.tvTrigger.setText(PhotoFlagsRegistry.getCategoryTriggerDescription(cat));
 
                 View.OnClickListener toggleCollapse = v -> {
-                    if (collapsedCategories.contains(cat)) {
-                        collapsedCategories.remove(cat);
+                    if (expandedCategories.contains(cat)) {
+                        expandedCategories.remove(cat);
                     } else {
-                        collapsedCategories.add(cat);
+                        expandedCategories.add(cat);
                     }
                     filter(currentFilterQuery);
                 };
@@ -847,7 +861,9 @@ public final class PhenotypeFlagManager {
         listView.setDividerHeight((int) (6 * density));
         listView.setPadding(tbPad, (int) (8 * density), tbPad, (int) (16 * density));
         listView.setClipToPadding(false);
-        listView.setFastScrollEnabled(true);
+        listView.setFastScrollEnabled(false);
+        listView.setVerticalScrollBarEnabled(true);
+        listView.setScrollBarStyle(View.SCROLLBARS_OUTSIDE_OVERLAY);
         listFrame.addView(listView);
 
         LinearLayout emptyContainer = new LinearLayout(activity);
@@ -906,7 +922,7 @@ public final class PhenotypeFlagManager {
         Runnable refreshUi = adapter::reloadData;
 
         btnAdd.setOnClickListener(v -> showAddCustomFlagDialog(activity, prefs, refreshUi));
-        btnMenu.setOnClickListener(v -> showProperOptionsMenu(activity, prefs, refreshUi));
+        btnMenu.setOnClickListener(v -> showProperOptionsMenu(activity, prefs, adapter, refreshUi));
 
         // Debounced Search TextWatcher
         Runnable[] searchRunnable = new Runnable[1];
@@ -989,7 +1005,7 @@ public final class PhenotypeFlagManager {
     // Options Menu
     // ─────────────────────────────────────────────────────────────────────────
 
-    private static void showProperOptionsMenu(Activity activity, SharedPreferences prefs, Runnable onRefresh) {
+    private static void showProperOptionsMenu(Activity activity, SharedPreferences prefs, FlagAdapter adapter, Runnable onRefresh) {
         float density = activity.getResources().getDisplayMetrics().density;
         LinearLayout list = new LinearLayout(activity);
         list.setOrientation(LinearLayout.VERTICAL);
@@ -1010,27 +1026,39 @@ public final class PhenotypeFlagManager {
 
         List<MenuItem> items = new ArrayList<>();
 
-        // 1. Bulk Import from File (SAF)
+        // 1. Expand All Categories
+        items.add(new MenuItem("📂", "Expand All Categories", "Expand all flag categories to view all flags", () -> {
+            adapter.expandAll();
+            Toast.makeText(activity, "Expanded all categories", Toast.LENGTH_SHORT).show();
+        }));
+
+        // 2. Collapse All Categories
+        items.add(new MenuItem("📁", "Collapse All Categories", "Collapse all categories to headers only", () -> {
+            adapter.collapseAll();
+            Toast.makeText(activity, "Collapsed all categories", Toast.LENGTH_SHORT).show();
+        }));
+
+        // 3. Bulk Import from File (SAF)
         items.add(new MenuItem("📁", "Bulk Import from File (SAF)", "Select a .txt, .json, or .xml file to import flags", () -> {
             launchSafImport(activity, prefs, onRefresh);
         }));
 
-        // 2. Bulk Paste Text
+        // 4. Bulk Paste Text
         items.add(new MenuItem("📋", "Bulk Paste Text", "Paste key=value lines, JSON, or XML directly", () -> {
             showBulkPasteDialog(activity, prefs, onRefresh);
         }));
 
-        // 3. Export to File (SAF)
+        // 5. Export to File (SAF)
         items.add(new MenuItem("💾", "Export to File (SAF)", "Save all configured flags to a file", () -> {
             launchSafExport(activity, prefs);
         }));
 
-        // 4. Copy All to Clipboard
+        // 6. Copy All to Clipboard
         items.add(new MenuItem("📤", "Copy All to Clipboard", "Copy all configured flags to clipboard as JSON", () -> {
             copyAllToClipboard(activity, prefs);
         }));
 
-        // 5. Load Recommended Presets
+        // 7. Load Recommended Presets
         items.add(new MenuItem("✨", "Load Recommended Presets", "Apply all 362 Morphe feature flags (story colors, AI tools, Create Tab, Navigation)", () -> {
             LinearLayout msgLayout = new LinearLayout(activity);
             msgLayout.setOrientation(LinearLayout.VERTICAL);
@@ -1053,15 +1081,16 @@ public final class PhenotypeFlagManager {
             presetDialog.show();
         }));
 
-        // 6. Diagnostics & Logs
+        // 8. Diagnostics & Logs
         items.add(new MenuItem("📊", "Diagnostics & Logs", "View session logs, errors, crashes, and export/share diagnostics", () -> {
             app.morphe.extension.shared.diagnostics.DiagnosticsDialog.show(activity);
         }));
 
-        // 7. Clear All Flags
+        // 9. Clear All Flags
         items.add(new MenuItem("🗑️", "Clear All Flags", "Wipe all flags and restore stock photos state", () -> {
             prefs.edit().clear().apply();
             GooglePhotosAccountAvatar.syncOneGoogleFlags(activity);
+            adapter.collapseAll();
             Toast.makeText(activity, "✓ Cleared all flags (stock photos state)", Toast.LENGTH_SHORT).show();
             onRefresh.run();
         }));
