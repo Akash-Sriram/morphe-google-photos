@@ -265,6 +265,7 @@ public final class PhenotypeFlagManager {
         LinearLayout root;
         TextView tvTitle;
         TextView tvTrigger;
+        TextView tvArrow;
         TextView btnToggleAll;
     }
 
@@ -274,6 +275,7 @@ public final class PhenotypeFlagManager {
         private final float density;
         private final List<DisplayItem> allItems = new ArrayList<>();
         private final List<DisplayItem> displayedItems = new ArrayList<>();
+        private final Set<String> collapsedCategories = new HashSet<>();
         private final TextView tvSub;
         private final LinearLayout emptyContainer;
         private int totalFlagsCount = 0;
@@ -424,19 +426,22 @@ public final class PhenotypeFlagManager {
             this.currentFilterQuery = query == null ? "" : query.toLowerCase().trim();
             displayedItems.clear();
 
-            if (currentFilterQuery.isEmpty()) {
-                displayedItems.addAll(allItems);
-            } else {
-                DisplayItem currentHeader = null;
-                List<DisplayItem> currentSection = new ArrayList<>();
-                for (DisplayItem it : allItems) {
-                    if (it.isHeader()) {
-                        if (currentHeader != null && !currentSection.isEmpty()) {
-                            displayedItems.add(currentHeader);
+            DisplayItem currentHeader = null;
+            List<DisplayItem> currentSection = new ArrayList<>();
+            for (DisplayItem it : allItems) {
+                if (it.isHeader()) {
+                    if (currentHeader != null) {
+                        displayedItems.add(currentHeader);
+                        boolean isCollapsed = currentFilterQuery.isEmpty() && collapsedCategories.contains(currentHeader.headerTitle);
+                        if (!isCollapsed) {
                             displayedItems.addAll(currentSection);
                         }
-                        currentHeader = it;
-                        currentSection.clear();
+                    }
+                    currentHeader = it;
+                    currentSection.clear();
+                } else {
+                    if (currentFilterQuery.isEmpty()) {
+                        currentSection.add(it);
                     } else {
                         String target = it.getKey() + " " + it.getTitle() + " " + (it.getDescription() != null ? it.getDescription() : "") + " " + (it.getTrigger() != null ? it.getTrigger() : "") + " " + it.value;
                         if (target.toLowerCase().contains(currentFilterQuery)) {
@@ -444,9 +449,14 @@ public final class PhenotypeFlagManager {
                         }
                     }
                 }
-                if (currentHeader != null && !currentSection.isEmpty()) {
+            }
+            if (currentHeader != null) {
+                if (currentFilterQuery.isEmpty() || !currentSection.isEmpty()) {
                     displayedItems.add(currentHeader);
-                    displayedItems.addAll(currentSection);
+                    boolean isCollapsed = currentFilterQuery.isEmpty() && collapsedCategories.contains(currentHeader.headerTitle);
+                    if (!isCollapsed) {
+                        displayedItems.addAll(currentSection);
+                    }
                 }
             }
 
@@ -488,6 +498,14 @@ public final class PhenotypeFlagManager {
                     tvTitle.setLayoutParams(tLp);
                     topRow.addView(tvTitle);
 
+                    TextView tvArrow = new TextView(activity);
+                    tvArrow.setTextSize(14);
+                    tvArrow.setTextColor(M3_PRIMARY);
+                    tvArrow.setTypeface(null, Typeface.BOLD);
+                    int aPadH = (int) (6 * density);
+                    tvArrow.setPadding(aPadH, 0, aPadH, 0);
+                    topRow.addView(tvArrow);
+
                     TextView btnToggle = new TextView(activity);
                     btnToggle.setTextSize(11);
                     btnToggle.setTypeface(null, Typeface.BOLD);
@@ -506,6 +524,7 @@ public final class PhenotypeFlagManager {
 
                     hHolder.root = card;
                     hHolder.tvTitle = tvTitle;
+                    hHolder.tvArrow = tvArrow;
                     hHolder.tvTrigger = tvTrigger;
                     hHolder.btnToggleAll = btnToggle;
 
@@ -524,8 +543,25 @@ public final class PhenotypeFlagManager {
                     }
                 }
 
+                boolean isCollapsed = currentFilterQuery.isEmpty() && collapsedCategories.contains(cat);
+                hHolder.tvArrow.setText(isCollapsed ? "▶" : "▼");
                 hHolder.tvTitle.setText(cat + (totalInCat > 0 ? " (" + enabledInCat + "/" + totalInCat + ")" : ""));
                 hHolder.tvTrigger.setText(PhotoFlagsRegistry.getCategoryTriggerDescription(cat));
+
+                View.OnClickListener toggleCollapse = v -> {
+                    if (collapsedCategories.contains(cat)) {
+                        collapsedCategories.remove(cat);
+                    } else {
+                        collapsedCategories.add(cat);
+                    }
+                    filter(currentFilterQuery);
+                };
+
+                hHolder.root.setClickable(true);
+                hHolder.root.setOnClickListener(toggleCollapse);
+                hHolder.tvTitle.setOnClickListener(toggleCollapse);
+                hHolder.tvArrow.setOnClickListener(toggleCollapse);
+                hHolder.tvTrigger.setOnClickListener(toggleCollapse);
 
                 if (totalInCat > 0) {
                     hHolder.btnToggleAll.setVisibility(View.VISIBLE);
@@ -996,17 +1032,25 @@ public final class PhenotypeFlagManager {
 
         // 5. Load Recommended Presets
         items.add(new MenuItem("✨", "Load Recommended Presets", "Apply all 362 Morphe feature flags (story colors, AI tools, Create Tab, Navigation)", () -> {
-            new android.app.AlertDialog.Builder(activity)
-                .setTitle("✨ Load Recommended Presets")
-                .setMessage("This will apply all 362 curated Morphe flags:\n\n• 226 Story colors & collage templates\n• 54 Story player & audio controls\n• 41 3D memories & cutout animations\n• AI video generation & editor tools\n• Create Tab storefront & 8 creative tools\n• Modern navigation & Collections V2\n\nExisting flags will be kept. New flags will be added on top.")
-                .setPositiveButton("Apply All", (d, w) -> {
-                    PhotoFlagsRegistry.applyCuratedDefaults(prefs);
-                    GooglePhotosAccountAvatar.syncOneGoogleFlags(activity);
-                    Toast.makeText(activity, "✓ Loaded 362 Morphe recommended flags", Toast.LENGTH_SHORT).show();
-                    onRefresh.run();
-                })
-                .setNegativeButton("Cancel", null)
-                .show();
+            LinearLayout msgLayout = new LinearLayout(activity);
+            msgLayout.setOrientation(LinearLayout.VERTICAL);
+            int mPad = (int) (18 * density);
+            msgLayout.setPadding(mPad, (int) (4 * density), mPad, (int) (12 * density));
+
+            TextView tvMsg = new TextView(activity);
+            tvMsg.setText("This will apply all 362 curated Morphe flags:\n\n• 226 Story colors & collage templates\n• 54 Story player & audio controls\n• 41 3D memories & cutout animations\n• AI video generation & editor tools\n• Create Tab storefront & 8 creative tools\n• Modern navigation & Collections V2\n\nExisting flags will be kept. New flags will be added on top.");
+            tvMsg.setTextSize(13);
+            tvMsg.setTextColor(M3_TEXT_PRIMARY);
+            tvMsg.setLineSpacing(0, 1.25f);
+            msgLayout.addView(tvMsg);
+
+            Dialog presetDialog = createM3ActionDialog(activity, "✨ Load Recommended Presets", msgLayout, "Apply All", () -> {
+                PhotoFlagsRegistry.applyCuratedDefaults(prefs);
+                GooglePhotosAccountAvatar.syncOneGoogleFlags(activity);
+                Toast.makeText(activity, "✓ Loaded 362 Morphe recommended flags", Toast.LENGTH_SHORT).show();
+                onRefresh.run();
+            });
+            presetDialog.show();
         }));
 
         // 6. Diagnostics & Logs
