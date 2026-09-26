@@ -306,6 +306,7 @@ public final class PhenotypeFlagManager {
         btnApply.setLayoutParams(applyLp);
         btnApply.setOnClickListener(v -> {
             dialog.dismiss();
+            GooglePhotosAccountAvatar.syncOneGoogleFlags(activity);
             restartApp(activity);
         });
         bottomDock.addView(btnApply);
@@ -690,7 +691,10 @@ public final class PhenotypeFlagManager {
         textCol.addView(tvKey);
 
         TextView tvVal = new TextView(activity);
-        tvVal.setText("Value: " + val);
+        String typeLabel = (val instanceof Boolean) ? "Boolean"
+                : (val instanceof Float || val instanceof Double) ? "Float"
+                : (val instanceof Number) ? "Long" : "String";
+        tvVal.setText(typeLabel + " • Value: " + val);
         tvVal.setTextSize(12);
         tvVal.setTextColor(M3_TEXT_SECONDARY);
         textCol.addView(tvVal);
@@ -705,17 +709,24 @@ public final class PhenotypeFlagManager {
                 boolean next = !sw.isChecked();
                 sw.setChecked(next);
                 prefs.edit().putBoolean(key, next).commit();
+                if (key.equals("45531621") || key.equals("45531625")) {
+                    GooglePhotosAccountAvatar.syncOneGoogleFlags(activity);
+                }
                 Toast.makeText(activity, "Custom flag updated.\nTap '⚡ Apply & Restart Photos' below to apply.", Toast.LENGTH_SHORT).show();
                 onRefresh.run();
             });
             sw.setOnClickListener(v -> {
                 prefs.edit().putBoolean(key, sw.isChecked()).commit();
+                if (key.equals("45531621") || key.equals("45531625")) {
+                    GooglePhotosAccountAvatar.syncOneGoogleFlags(activity);
+                }
                 Toast.makeText(activity, "Custom flag updated.\nTap '⚡ Apply & Restart Photos' below to apply.", Toast.LENGTH_SHORT).show();
                 onRefresh.run();
             });
         } else {
             TextView valChip = new TextView(activity);
-            valChip.setText(String.valueOf(val));
+            String chipText = ((val instanceof Float || val instanceof Double) ? "[Float] " : (val instanceof Number) ? "[Long] " : "[String] ") + val;
+            valChip.setText(chipText);
             valChip.setTextSize(13);
             valChip.setTypeface(null, Typeface.BOLD);
             valChip.setTextColor(M3_PRIMARY);
@@ -868,7 +879,7 @@ public final class PhenotypeFlagManager {
         Dialog dialog = createM3ActionDialog(activity, "📥 Import Overrides", layout, "Import", () -> {
             String text = etInput.getText().toString().trim();
             if (!text.isEmpty()) {
-                int count = importFlagsUniversal(prefs, text);
+                int count = importFlagsUniversal(activity, prefs, text);
                 Toast.makeText(activity, "✓ Imported " + count + " flags", Toast.LENGTH_SHORT).show();
                 onRefresh.run();
             }
@@ -876,7 +887,7 @@ public final class PhenotypeFlagManager {
         dialog.show();
     }
 
-    private static int importFlagsUniversal(SharedPreferences prefs, String content) {
+    private static int importFlagsUniversal(Activity activity, SharedPreferences prefs, String content) {
         int count = 0;
         SharedPreferences.Editor editor = prefs.edit();
         Set<String> customKeys = new HashSet<>(prefs.getStringSet(CUSTOM_FLAGS_KEY, Collections.emptySet()));
@@ -895,6 +906,7 @@ public final class PhenotypeFlagManager {
                     count++;
                 }
                 editor.putStringSet(CUSTOM_FLAGS_KEY, customKeys).apply();
+                GooglePhotosAccountAvatar.syncOneGoogleFlags(activity);
                 return count;
             }
 
@@ -912,7 +924,10 @@ public final class PhenotypeFlagManager {
 
                     if ("boolean".equalsIgnoreCase(type)) {
                         editor.putBoolean(name, Boolean.parseBoolean(value));
-                    } else if ("long".equalsIgnoreCase(type) || "int".equalsIgnoreCase(type)) {
+                    } else if ("float".equalsIgnoreCase(type) || "double".equalsIgnoreCase(type)) {
+                        try { editor.putFloat(name, Float.parseFloat(value)); }
+                        catch (Exception ex) { editor.putString(name, value); }
+                    } else if ("long".equalsIgnoreCase(type) || "int".equalsIgnoreCase(type) || "integer".equalsIgnoreCase(type)) {
                         try { editor.putLong(name, Long.parseLong(value)); }
                         catch (Exception ex) { editor.putLong(name, 1L); }
                     } else {
@@ -922,6 +937,7 @@ public final class PhenotypeFlagManager {
                     count++;
                 }
                 editor.putStringSet(CUSTOM_FLAGS_KEY, customKeys).apply();
+                GooglePhotosAccountAvatar.syncOneGoogleFlags(activity);
                 return count;
             }
 
@@ -936,6 +952,12 @@ public final class PhenotypeFlagManager {
                     String v = parts[1].trim();
                     if (v.equalsIgnoreCase("true") || v.equalsIgnoreCase("false")) {
                         editor.putBoolean(k, Boolean.parseBoolean(v));
+                    } else if (v.contains(".")) {
+                        try { editor.putFloat(k, Float.parseFloat(v)); }
+                        catch (Exception ex) {
+                            try { editor.putLong(k, Long.parseLong(v)); }
+                            catch (Exception ex2) { editor.putString(k, v); }
+                        }
                     } else {
                         try { editor.putLong(k, Long.parseLong(v)); }
                         catch (Exception ex) { editor.putString(k, v); }
@@ -945,6 +967,7 @@ public final class PhenotypeFlagManager {
                 }
             }
             editor.putStringSet(CUSTOM_FLAGS_KEY, customKeys).apply();
+            GooglePhotosAccountAvatar.syncOneGoogleFlags(activity);
         } catch (Exception e) {
             Logger.printException(() -> "Import failed", e);
         }
@@ -1005,6 +1028,22 @@ public final class PhenotypeFlagManager {
         int p = (int) (18 * density);
         layout.setPadding(p, 0, p, (int) (8 * density));
 
+        TextView tvTypeLabel = new TextView(activity);
+        tvTypeLabel.setText("Flag Data Type:");
+        tvTypeLabel.setTextSize(12);
+        tvTypeLabel.setTextColor(M3_TEXT_SECONDARY);
+        tvTypeLabel.setPadding(0, 0, 0, (int) (6 * density));
+        layout.addView(tvTypeLabel);
+
+        LinearLayout typeRow = new LinearLayout(activity);
+        typeRow.setOrientation(LinearLayout.HORIZONTAL);
+        typeRow.setGravity(Gravity.CENTER_VERTICAL);
+        typeRow.setPadding(0, 0, 0, (int) (10 * density));
+
+        int[] selectedType = new int[]{0}; // 0=Boolean, 1=Long, 2=Float, 3=String
+        Button[] typeButtons = new Button[4];
+        String[] typeNames = new String[]{"Boolean", "Long", "Float", "String"};
+
         EditText etKey = new EditText(activity);
         etKey.setHint("Flag ID (e.g. 45705305)");
         etKey.setTextSize(14);
@@ -1012,10 +1051,10 @@ public final class PhenotypeFlagManager {
         etKey.setBackground(createRoundedDrawable(0xFFEAEFEB, 10 * density));
         int pad = (int) (10 * density);
         etKey.setPadding(pad, pad, pad, pad);
-        layout.addView(etKey);
 
         EditText etVal = new EditText(activity);
-        etVal.setHint("Value (e.g. true, false, or 2)");
+        etVal.setText("true");
+        etVal.setHint("Value (true / false)");
         etVal.setTextSize(14);
         etVal.setTextColor(M3_TEXT_PRIMARY);
         etVal.setBackground(createRoundedDrawable(0xFFEAEFEB, 10 * density));
@@ -1023,6 +1062,48 @@ public final class PhenotypeFlagManager {
         LinearLayout.LayoutParams vLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         vLp.setMargins(0, (int) (8 * density), 0, 0);
         etVal.setLayoutParams(vLp);
+
+        Runnable updateTypeButtons = () -> {
+            for (int i = 0; i < 4; i++) {
+                boolean isSel = (selectedType[0] == i);
+                typeButtons[i].setBackground(createRoundedDrawable(isSel ? M3_PRIMARY : 0xFFEAEFEB, 8 * density));
+                typeButtons[i].setTextColor(isSel ? M3_ON_PRIMARY : M3_TEXT_PRIMARY);
+            }
+            if (selectedType[0] == 0) {
+                etVal.setHint("true or false");
+                if (etVal.getText().toString().isEmpty() || etVal.getText().toString().equals("0")) etVal.setText("true");
+            } else if (selectedType[0] == 1) {
+                etVal.setHint("Integer value (e.g. 2, 3)");
+                if (etVal.getText().toString().equals("true") || etVal.getText().toString().equals("false")) etVal.setText("1");
+            } else if (selectedType[0] == 2) {
+                etVal.setHint("Decimal value (e.g. 1.5, 2.0)");
+                if (etVal.getText().toString().equals("true") || etVal.getText().toString().equals("false")) etVal.setText("1.0");
+            } else {
+                etVal.setHint("String value");
+            }
+        };
+
+        for (int i = 0; i < 4; i++) {
+            final int tIdx = i;
+            Button b = new Button(activity);
+            b.setText(typeNames[i]);
+            b.setTextSize(11);
+            b.setTypeface(null, Typeface.BOLD);
+            b.setPadding((int) (8 * density), (int) (4 * density), (int) (8 * density), (int) (4 * density));
+            LinearLayout.LayoutParams bLp = new LinearLayout.LayoutParams(0, (int) (36 * density), 1f);
+            if (i > 0) bLp.setMargins((int) (4 * density), 0, 0, 0);
+            b.setLayoutParams(bLp);
+            b.setOnClickListener(v -> {
+                selectedType[0] = tIdx;
+                updateTypeButtons.run();
+            });
+            typeButtons[i] = b;
+            typeRow.addView(b);
+        }
+        updateTypeButtons.run();
+
+        layout.addView(typeRow);
+        layout.addView(etKey);
         layout.addView(etVal);
 
         Dialog dialog = createM3ActionDialog(activity, "➕ Add Custom Flag", layout, "Save", () -> {
@@ -1030,16 +1111,30 @@ public final class PhenotypeFlagManager {
             String v = etVal.getText().toString().trim();
             if (!k.isEmpty() && !v.isEmpty()) {
                 SharedPreferences.Editor ed = prefs.edit();
-                if (v.equalsIgnoreCase("true") || v.equalsIgnoreCase("false")) {
+                if (selectedType[0] == 0) {
                     ed.putBoolean(k, Boolean.parseBoolean(v));
+                } else if (selectedType[0] == 1) {
+                    try {
+                        ed.putLong(k, Long.parseLong(v));
+                    } catch (Exception ex) {
+                        ed.putString(k, v);
+                    }
+                } else if (selectedType[0] == 2) {
+                    try {
+                        ed.putFloat(k, Float.parseFloat(v));
+                    } catch (Exception ex) {
+                        ed.putString(k, v);
+                    }
                 } else {
-                    try { ed.putLong(k, Long.parseLong(v)); }
-                    catch (Exception ex) { ed.putString(k, v); }
+                    ed.putString(k, v);
                 }
                 Set<String> custom = new HashSet<>(prefs.getStringSet(CUSTOM_FLAGS_KEY, Collections.emptySet()));
                 custom.add(k);
                 ed.putStringSet(CUSTOM_FLAGS_KEY, custom).apply();
-                Toast.makeText(activity, "✓ Saved custom flag", Toast.LENGTH_SHORT).show();
+                if (k.equals("45531621") || k.equals("45531625")) {
+                    GooglePhotosAccountAvatar.syncOneGoogleFlags(activity);
+                }
+                Toast.makeText(activity, "✓ Saved custom flag (" + typeNames[selectedType[0]] + ")", Toast.LENGTH_SHORT).show();
                 onRefresh.run();
             }
         });
@@ -1055,8 +1150,12 @@ public final class PhenotypeFlagManager {
         int p = (int) (18 * density);
         layout.setPadding(p, 0, p, (int) (8 * density));
 
+        String typeDesc = (currentVal instanceof Boolean) ? "Boolean"
+                : (currentVal instanceof Float || currentVal instanceof Double) ? "Float (Decimal)"
+                : (currentVal instanceof Number) ? "Long (Integer)" : "String";
+
         TextView tvDesc = new TextView(activity);
-        tvDesc.setText("Enter numeric or text value for:\n" + title);
+        tvDesc.setText("Editing " + typeDesc + " for:\n" + title);
         tvDesc.setTextSize(13);
         tvDesc.setTextColor(M3_TEXT_SECONDARY);
         tvDesc.setPadding(0, 0, 0, (int) (8 * density));
@@ -1075,12 +1174,31 @@ public final class PhenotypeFlagManager {
             String v = etVal.getText().toString().trim();
             if (!v.isEmpty()) {
                 SharedPreferences.Editor ed = prefs.edit();
-                try {
-                    ed.putLong(key, Long.parseLong(v));
-                } catch (Exception ex) {
+                if (currentVal instanceof Boolean) {
+                    ed.putBoolean(key, Boolean.parseBoolean(v));
+                } else if (currentVal instanceof Float || currentVal instanceof Double) {
+                    try {
+                        ed.putFloat(key, Float.parseFloat(v));
+                    } catch (Exception ex) {
+                        ed.putString(key, v);
+                    }
+                } else if (currentVal instanceof Number) {
+                    try {
+                        ed.putLong(key, Long.parseLong(v));
+                    } catch (Exception ex) {
+                        try {
+                            ed.putFloat(key, Float.parseFloat(v));
+                        } catch (Exception ex2) {
+                            ed.putString(key, v);
+                        }
+                    }
+                } else {
                     ed.putString(key, v);
                 }
                 ed.commit();
+                if (key.equals("45531621") || key.equals("45531625")) {
+                    GooglePhotosAccountAvatar.syncOneGoogleFlags(activity);
+                }
                 Toast.makeText(activity, "Updated " + title + "\nTap '⚡ Apply & Restart Photos' below to apply.", Toast.LENGTH_SHORT).show();
                 onRefresh.run();
             }
@@ -1284,6 +1402,8 @@ public final class PhenotypeFlagManager {
     private static void applyEntry(SharedPreferences.Editor editor, String key, Object val) {
         if (val instanceof Boolean) {
             editor.putBoolean(key, (Boolean) val);
+        } else if (val instanceof Float || val instanceof Double) {
+            editor.putFloat(key, ((Number) val).floatValue());
         } else if (val instanceof Number) {
             editor.putLong(key, ((Number) val).longValue());
         } else {
