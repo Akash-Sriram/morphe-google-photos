@@ -246,6 +246,32 @@ public final class PhenotypeFlagManager {
         @Override public int getItemViewType(int position) { return displayedItems.get(position).type; }
         @Override public boolean isEnabled(int position) { return !displayedItems.get(position).isHeader(); }
 
+
+        private Object sanitizeValue(String key, Object rawVal) {
+            if (rawVal instanceof String) {
+                String s = ((String) rawVal).trim();
+                int h = s.indexOf('#'); if (h != -1) s = s.substring(0, h).trim();
+                int sl = s.indexOf("//"); if (sl != -1) s = s.substring(0, sl).trim();
+                int sm = s.indexOf(';'); if (sm != -1) s = s.substring(0, sm).trim();
+                s = stripQuotes(s);
+                if (s.equalsIgnoreCase("true")) {
+                    prefs.edit().remove(key).putBoolean(key, true).apply();
+                    return Boolean.TRUE;
+                } else if (s.equalsIgnoreCase("false")) {
+                    prefs.edit().remove(key).putBoolean(key, false).apply();
+                    return Boolean.FALSE;
+                } else if (s.matches("^-?\\d+$")) {
+                    try {
+                        long lv = Long.parseLong(s);
+                        prefs.edit().remove(key).putLong(key, lv).apply();
+                        return lv;
+                    } catch (Exception ignored) {}
+                }
+                return s;
+            }
+            return rawVal;
+        }
+
         public void reloadData() {
             allItems.clear();
             Map<String, ?> all = prefs.getAll();
@@ -260,7 +286,8 @@ public final class PhenotypeFlagManager {
                 List<DisplayItem> catFlags = new ArrayList<>();
                 for (CuratedFlag f : flagsInCat) {
                     count++;
-                    Object v = all.containsKey(f.key) ? all.get(f.key) : f.defaultValue;
+                    Object raw = all.containsKey(f.key) ? all.get(f.key) : f.defaultValue;
+                    Object v = sanitizeValue(f.key, raw);
                     catFlags.add(new DisplayItem(f, v));
                 }
                 if (!catFlags.isEmpty()) {
@@ -285,7 +312,7 @@ public final class PhenotypeFlagManager {
                 allItems.add(new DisplayItem(headerTitle));
                 for (String k : sortedKeys) {
                     count++;
-                    allItems.add(new DisplayItem(k, all.get(k)));
+                    allItems.add(new DisplayItem(k, sanitizeValue(k, all.get(k))));
                 }
             }
 
@@ -1137,7 +1164,8 @@ public final class PhenotypeFlagManager {
     private static int countFlagsInText(String content) {
         if (content == null || content.isEmpty()) return 0;
         try {
-            if (content.startsWith("{")) {
+            String trimmed = content.trim();
+            if (trimmed.startsWith("{")) {
                 JSONObject json = new JSONObject(content);
                 int c = 0;
                 Iterator<String> it = json.keys();
@@ -1147,12 +1175,20 @@ public final class PhenotypeFlagManager {
                 return c;
             }
         } catch (Exception ignored) {}
+
         int count = 0;
         String[] lines = content.split("\\n");
         for (String line : lines) {
             String l = line.trim();
-            if (l.contains("=") && !l.startsWith("#")) {
-                count++;
+            if (l.isEmpty() || l.startsWith("#") || l.startsWith("//") || l.startsWith(";") || l.startsWith("<!--")) {
+                continue;
+            }
+            int eqIdx = l.indexOf('=');
+            if (eqIdx > 0) {
+                String k = l.substring(0, eqIdx).trim();
+                if (!k.startsWith("#") && !k.startsWith("//") && !k.startsWith(";")) {
+                    count++;
+                }
             } else if (l.contains("<flag") || l.contains("<boolean") || l.contains("<long") || l.contains("<string")) {
                 count++;
             }
@@ -1170,34 +1206,39 @@ public final class PhenotypeFlagManager {
         Set<String> customKeys = new HashSet<>(prefs.getStringSet(CUSTOM_FLAGS_KEY, Collections.emptySet()));
 
         try {
-            String firstLine = reader.readLine();
-            if (firstLine == null) return 0;
-            String trimmedFirst = firstLine.trim();
+            List<String> allLines = new ArrayList<>();
+            String line;
+            while ((line = reader.readLine()) != null) {
+                allLines.add(line);
+            }
 
-            if (trimmedFirst.startsWith("{")) {
-                StringBuilder sb = new StringBuilder();
-                sb.append(firstLine).append('\n');
-                String line;
-                while ((line = reader.readLine()) != null) {
-                    sb.append(line).append('\n');
+            // Find first non-empty, non-comment line to detect format
+            String firstContentLine = "";
+            for (String l : allLines) {
+                String t = l.trim();
+                if (!t.isEmpty() && !t.startsWith("#") && !t.startsWith("//") && !t.startsWith(";") && !t.startsWith("<!--")) {
+                    firstContentLine = t;
+                    break;
                 }
+            }
+
+            if (firstContentLine.startsWith("{")) {
+                StringBuilder sb = new StringBuilder();
+                for (String l : allLines) sb.append(l).append('\n');
                 JSONObject json = new JSONObject(sb.toString());
                 Iterator<String> keys = json.keys();
                 while (keys.hasNext()) {
                     String k = keys.next();
                     if (k.startsWith("_")) continue;
                     Object v = json.get(k);
+                    editor.remove(k);
                     applyEntry(editor, k, v);
                     customKeys.add(k);
                     count++;
                 }
-            } else if (trimmedFirst.contains("<flag") || trimmedFirst.startsWith("<?xml") || trimmedFirst.startsWith("<map") || trimmedFirst.startsWith("<package")) {
+            } else if (firstContentLine.contains("<flag") || firstContentLine.startsWith("<?xml") || firstContentLine.startsWith("<map") || firstContentLine.startsWith("<package")) {
                 StringBuilder sb = new StringBuilder();
-                sb.append(firstLine).append('\n');
-                String line;
-                while ((line = reader.readLine()) != null) {
-                    sb.append(line).append('\n');
-                }
+                for (String l : allLines) sb.append(l).append('\n');
                 Document doc = DocumentBuilderFactory.newInstance().newDocumentBuilder()
                         .parse(new InputSource(new StringReader(sb.toString())));
 
@@ -1209,6 +1250,7 @@ public final class PhenotypeFlagManager {
                     String value = el.getAttribute("value");
                     if (name.isEmpty() || name.startsWith("_")) continue;
 
+                    editor.remove(name);
                     if ("boolean".equalsIgnoreCase(type)) {
                         editor.putBoolean(name, Boolean.parseBoolean(value));
                     } else if ("float".equalsIgnoreCase(type) || "double".equalsIgnoreCase(type)) {
@@ -1224,12 +1266,12 @@ public final class PhenotypeFlagManager {
                     count++;
                 }
 
-                // Support standard Android SharedPreferences XML dumps (<boolean name="..." value="true"/>)
                 NodeList booleans = doc.getElementsByTagName("boolean");
                 for (int i = 0; i < booleans.getLength(); i++) {
                     Element el = (Element) booleans.item(i);
                     String name = el.getAttribute("name");
                     if (!name.isEmpty() && !name.startsWith("_")) {
+                        editor.remove(name);
                         editor.putBoolean(name, Boolean.parseBoolean(el.getAttribute("value")));
                         customKeys.add(name);
                         count++;
@@ -1240,6 +1282,7 @@ public final class PhenotypeFlagManager {
                     Element el = (Element) longs.item(i);
                     String name = el.getAttribute("name");
                     if (!name.isEmpty() && !name.startsWith("_")) {
+                        editor.remove(name);
                         try { editor.putLong(name, Long.parseLong(el.getAttribute("value"))); }
                         catch (Exception ignored) {}
                         customKeys.add(name);
@@ -1251,21 +1294,15 @@ public final class PhenotypeFlagManager {
                     Element el = (Element) strings.item(i);
                     String name = el.getAttribute("name");
                     if (!name.isEmpty() && !name.startsWith("_")) {
+                        editor.remove(name);
                         editor.putString(name, el.getTextContent());
                         customKeys.add(name);
                         count++;
                     }
                 }
             } else {
-                // Key=Value streaming
-                if (parseAndApplyKeyValueLine(trimmedFirst, editor, customKeys)) {
-                    count++;
-                }
-                String line;
-                while ((line = reader.readLine()) != null) {
-                    line = line.trim();
-                    if (line.isEmpty() || line.startsWith("#")) continue;
-                    if (parseAndApplyKeyValueLine(line, editor, customKeys)) {
+                for (String l : allLines) {
+                    if (parseAndApplyKeyValueLine(l, editor, customKeys)) {
                         count++;
                     }
                 }
@@ -1279,28 +1316,76 @@ public final class PhenotypeFlagManager {
         return count;
     }
 
-    private static boolean parseAndApplyKeyValueLine(String line, SharedPreferences.Editor editor, Set<String> customKeys) {
-        String[] parts = line.split("=", 2);
-        if (parts.length == 2) {
-            String k = parts[0].trim();
-            String v = parts[1].trim();
-            if (k.isEmpty() || k.startsWith("#")) return false;
-            if (v.equalsIgnoreCase("true") || v.equalsIgnoreCase("false")) {
-                editor.putBoolean(k, Boolean.parseBoolean(v));
-            } else if (v.contains(".")) {
-                try { editor.putFloat(k, Float.parseFloat(v)); }
-                catch (Exception ex) {
-                    try { editor.putLong(k, Long.parseLong(v)); }
-                    catch (Exception ex2) { editor.putString(k, v); }
-                }
-            } else {
-                try { editor.putLong(k, Long.parseLong(v)); }
-                catch (Exception ex) { editor.putString(k, v); }
+    private static String stripQuotes(String s) {
+        if (s == null) return "";
+        s = s.trim();
+        if (s.length() >= 2) {
+            char f = s.charAt(0);
+            char l = s.charAt(s.length() - 1);
+            if ((f == '"' && l == '"') || (f == 39 && l == 39)) {
+                return s.substring(1, s.length() - 1).trim();
             }
-            customKeys.add(k);
-            return true;
         }
-        return false;
+        return s;
+    }
+
+    private static boolean parseAndApplyKeyValueLine(String line, SharedPreferences.Editor editor, Set<String> customKeys) {
+        if (line == null) return false;
+        line = line.trim();
+        if (line.isEmpty() || line.startsWith("#") || line.startsWith("//") || line.startsWith(";") || line.startsWith("<!--")) {
+            return false;
+        }
+
+        int eqIdx = line.indexOf('=');
+        if (eqIdx <= 0) return false;
+
+        String k = line.substring(0, eqIdx).trim();
+        if (k.isEmpty() || k.startsWith("#") || k.startsWith("//") || k.startsWith(";")) {
+            return false;
+        }
+
+        String v = line.substring(eqIdx + 1).trim();
+
+        // Strip inline comments (#, //, ;)
+        int commentHash = v.indexOf('#');
+        if (commentHash != -1) v = v.substring(0, commentHash).trim();
+
+        int commentSlash = v.indexOf("//");
+        if (commentSlash != -1) v = v.substring(0, commentSlash).trim();
+
+        int commentSemi = v.indexOf(';');
+        if (commentSemi != -1) v = v.substring(0, commentSemi).trim();
+
+        // Strip surrounding quotes ("value" or 'value')
+        v = stripQuotes(v);
+
+        if (v.isEmpty()) return false;
+
+        // Clean out any existing dirty type entry in SharedPreferences before putting correct type
+        editor.remove(k);
+
+        if (v.equalsIgnoreCase("true")) {
+            editor.putBoolean(k, true);
+        } else if (v.equalsIgnoreCase("false")) {
+            editor.putBoolean(k, false);
+        } else if (v.matches("^-?\\d+$")) {
+            try {
+                editor.putLong(k, Long.parseLong(v));
+            } catch (Exception ex) {
+                editor.putString(k, v);
+            }
+        } else if (v.matches("^-?\\d*\\.\\d+$")) {
+            try {
+                editor.putFloat(k, Float.parseFloat(v));
+            } catch (Exception ex) {
+                editor.putString(k, v);
+            }
+        } else {
+            editor.putString(k, v);
+        }
+
+        customKeys.add(k);
+        return true;
     }
 
     private static void applyEntry(SharedPreferences.Editor editor, String key, Object val) {
