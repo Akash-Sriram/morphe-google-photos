@@ -126,45 +126,83 @@ public final class PhenotypeFlagManager {
 
     private static LinearLayout createFloatingPill(Activity activity) {
         float density = activity.getResources().getDisplayMetrics().density;
-        LinearLayout pill = new LinearLayout(activity);
-        pill.setTag(SETTINGS_PILL_TAG);
-        pill.setOrientation(LinearLayout.HORIZONTAL);
-        pill.setGravity(Gravity.CENTER);
-        pill.setClickable(true);
-        pill.setFocusable(true);
-        pill.setElevation(14f);
+        LinearLayout dock = new LinearLayout(activity);
+        dock.setTag(SETTINGS_PILL_TAG);
+        dock.setOrientation(LinearLayout.HORIZONTAL);
+        dock.setGravity(Gravity.CENTER);
 
         FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT,
-                (int) (50 * density)
+                ViewGroup.LayoutParams.WRAP_CONTENT
         );
         lp.gravity = Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL;
         lp.setMargins(0, 0, 0, (int) (24 * density));
-        pill.setLayoutParams(lp);
+        dock.setLayoutParams(lp);
 
-        int padH = (int) (22 * density);
-        pill.setPadding(padH, 0, padH, 0);
+        // Pill 1: Flag Manager
+        LinearLayout pillFlags = new LinearLayout(activity);
+        pillFlags.setOrientation(LinearLayout.HORIZONTAL);
+        pillFlags.setGravity(Gravity.CENTER);
+        pillFlags.setClickable(true);
+        pillFlags.setFocusable(true);
+        pillFlags.setElevation(14f);
+        int padH = (int) (18 * density);
+        pillFlags.setPadding(padH, (int) (12 * density), padH, (int) (12 * density));
+        GradientDrawable bgFlags = new GradientDrawable();
+        bgFlags.setCornerRadius(25 * density);
+        bgFlags.setColor(M3_PRIMARY);
+        pillFlags.setBackground(bgFlags);
 
-        GradientDrawable bg = new GradientDrawable();
-        bg.setCornerRadius(25 * density);
-        bg.setColor(M3_PRIMARY);
-        pill.setBackground(bg);
+        TextView iconFlags = new TextView(activity);
+        iconFlags.setText("✨");
+        iconFlags.setTextSize(16);
+        iconFlags.setPadding(0, 0, (int) (8 * density), 0);
+        pillFlags.addView(iconFlags);
 
-        TextView icon = new TextView(activity);
-        icon.setText("✨");
-        icon.setTextSize(17);
-        icon.setPadding(0, 0, (int) (10 * density), 0);
-        pill.addView(icon);
+        TextView labelFlags = new TextView(activity);
+        labelFlags.setText("Flags");
+        labelFlags.setTextSize(14);
+        labelFlags.setTextColor(M3_ON_PRIMARY);
+        labelFlags.setTypeface(null, Typeface.BOLD);
+        pillFlags.addView(labelFlags);
+        pillFlags.setOnClickListener(v -> showFlagManagerDialog(activity));
+        dock.addView(pillFlags);
 
-        TextView label = new TextView(activity);
-        label.setText("Flag Manager");
-        label.setTextSize(14);
-        label.setTextColor(M3_ON_PRIMARY);
-        label.setTypeface(null, Typeface.BOLD);
-        pill.addView(label);
+        // Space between pills
+        View spacer = new View(activity);
+        LinearLayout.LayoutParams spLp = new LinearLayout.LayoutParams((int) (10 * density), 1);
+        spacer.setLayoutParams(spLp);
+        dock.addView(spacer);
 
-        pill.setOnClickListener(v -> showFlagManagerDialog(activity));
-        return pill;
+        // Pill 2: Diagnostics & Logs
+        LinearLayout pillLogs = new LinearLayout(activity);
+        pillLogs.setOrientation(LinearLayout.HORIZONTAL);
+        pillLogs.setGravity(Gravity.CENTER);
+        pillLogs.setClickable(true);
+        pillLogs.setFocusable(true);
+        pillLogs.setElevation(14f);
+        pillLogs.setPadding(padH, (int) (12 * density), padH, (int) (12 * density));
+        GradientDrawable bgLogs = new GradientDrawable();
+        bgLogs.setCornerRadius(25 * density);
+        bgLogs.setColor(0xFF2E3836);
+        pillLogs.setBackground(bgLogs);
+
+        TextView iconLogs = new TextView(activity);
+        iconLogs.setText("📊");
+        iconLogs.setTextSize(16);
+        iconLogs.setPadding(0, 0, (int) (8 * density), 0);
+        pillLogs.addView(iconLogs);
+
+        TextView labelLogs = new TextView(activity);
+        labelLogs.setText("Diagnostics");
+        labelLogs.setTextSize(14);
+        labelLogs.setTextColor(0xFFFFFFFF);
+        labelLogs.setTypeface(null, Typeface.BOLD);
+        pillLogs.addView(labelLogs);
+        pillLogs.setOnClickListener(v -> app.morphe.extension.shared.diagnostics.DiagnosticsDialog.show(activity));
+        dock.addView(pillLogs);
+
+        return dock;
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -961,7 +999,12 @@ public final class PhenotypeFlagManager {
             Toast.makeText(activity, "Presets will be configured in an upcoming update", Toast.LENGTH_SHORT).show();
         }));
 
-        // 6. Clear All Flags
+        // 6. Diagnostics & Logs
+        items.add(new MenuItem("📊", "Diagnostics & Logs", "View session logs, errors, crashes, and export/share diagnostics", () -> {
+            app.morphe.extension.shared.diagnostics.DiagnosticsDialog.show(activity);
+        }));
+
+        // 7. Clear All Flags
         items.add(new MenuItem("🗑️", "Clear All Flags", "Wipe all flags and restore stock photos state", () -> {
             prefs.edit().clear().apply();
             GooglePhotosAccountAvatar.syncOneGoogleFlags(activity);
