@@ -12,6 +12,8 @@ import android.graphics.Typeface;
 import android.graphics.drawable.ColorDrawable;
 import android.graphics.drawable.GradientDrawable;
 import android.net.Uri;
+import android.os.Handler;
+import android.os.Looper;
 import android.text.Editable;
 import android.text.TextWatcher;
 import android.view.Gravity;
@@ -19,11 +21,13 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.view.ViewTreeObserver;
 import android.view.Window;
+import android.widget.BaseAdapter;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.FrameLayout;
 import android.widget.LinearLayout;
-import android.widget.ScrollView;
+import android.widget.ListView;
+import android.widget.ProgressBar;
 import android.widget.Switch;
 import android.widget.TextView;
 import android.widget.Toast;
@@ -44,10 +48,11 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.Iterator;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 import javax.xml.parsers.DocumentBuilderFactory;
 
@@ -56,8 +61,9 @@ import app.morphe.extension.shared.patches.flags.PhotoFlagsRegistry;
 import app.morphe.extension.shared.patches.flags.PhotoFlagsRegistry.CuratedFlag;
 
 /**
- * Clean, single-view Material 3 Phenotype Flag Manager for Morphe Google Photos.
- * Supports bulk file import/export via SAF, bulk clipboard paste, and universal flag data types.
+ * High-performance Material 3 Phenotype Flag Manager for Morphe Google Photos.
+ * Capable of smoothly displaying and streaming 1,000+ to 5,000+ flags via virtualized
+ * ListView recycling, debounced filtering, and asynchronous background import pipelines.
  */
 public final class PhenotypeFlagManager {
 
@@ -65,6 +71,9 @@ public final class PhenotypeFlagManager {
     private static final String SETTINGS_PILL_TAG = "morphe_photos_flags_pill";
     public static final String CUSTOM_FLAGS_KEY = "_morphe_custom_flag_ids";
     public static final String SEEDED_MARKER = "_morphe_flags_seeded";
+
+    private static final ExecutorService IO_EXECUTOR = Executors.newSingleThreadExecutor();
+    private static final Handler MAIN_HANDLER = new Handler(Looper.getMainLooper());
 
     // Material 3 Palette
     private static final int M3_BG = 0xFFF5F7F6;
@@ -77,10 +86,6 @@ public final class PhenotypeFlagManager {
     private static final int M3_TEXT_PRIMARY = 0xFF191C1D;
     private static final int M3_TEXT_SECONDARY = 0xFF53605D;
     private static final int M3_OUTLINE = 0xFFD8E3E0;
-    private static final int M3_WARN_BG = 0xFFFFF0D4;
-    private static final int M3_WARN_TEXT = 0xFF8A5100;
-    private static final int M3_DANGER_BG = 0xFFFFDAD6;
-    private static final int M3_DANGER_TEXT = 0xFFBA1A1A;
 
     private PhenotypeFlagManager() {}
 
@@ -163,6 +168,326 @@ public final class PhenotypeFlagManager {
     }
 
     // ─────────────────────────────────────────────────────────────────────────
+    // Display Model & Virtualized Adapter
+    // ─────────────────────────────────────────────────────────────────────────
+
+    private static final int ITEM_TYPE_HEADER = 0;
+    private static final int ITEM_TYPE_FLAG = 1;
+
+    public static class DisplayItem {
+        final int type;
+        final String headerTitle;
+        final CuratedFlag curatedFlag;
+        final String customKey;
+        Object value;
+
+        DisplayItem(String headerTitle) {
+            this.type = ITEM_TYPE_HEADER;
+            this.headerTitle = headerTitle;
+            this.curatedFlag = null;
+            this.customKey = null;
+            this.value = null;
+        }
+
+        DisplayItem(CuratedFlag curatedFlag, Object value) {
+            this.type = ITEM_TYPE_FLAG;
+            this.headerTitle = null;
+            this.curatedFlag = curatedFlag;
+            this.customKey = curatedFlag.key;
+            this.value = value;
+        }
+
+        DisplayItem(String customKey, Object value) {
+            this.type = ITEM_TYPE_FLAG;
+            this.headerTitle = null;
+            this.curatedFlag = null;
+            this.customKey = customKey;
+            this.value = value;
+        }
+
+        boolean isHeader() { return type == ITEM_TYPE_HEADER; }
+        String getKey() { return customKey; }
+        String getTitle() { return curatedFlag != null ? curatedFlag.title : customKey; }
+        String getDescription() { return curatedFlag != null ? curatedFlag.description : null; }
+    }
+
+    private static class FlagViewHolder {
+        LinearLayout root;
+        TextView tvTitle;
+        TextView tvDesc;
+        TextView tvKey;
+        Switch swToggle;
+        TextView valChip;
+    }
+
+    public static class FlagAdapter extends BaseAdapter {
+        private final Activity activity;
+        private final SharedPreferences prefs;
+        private final float density;
+        private final List<DisplayItem> allItems = new ArrayList<>();
+        private final List<DisplayItem> displayedItems = new ArrayList<>();
+        private final TextView tvSub;
+        private final LinearLayout emptyContainer;
+        private int totalFlagsCount = 0;
+        private String currentFilterQuery = "";
+
+        public FlagAdapter(Activity activity, SharedPreferences prefs, TextView tvSub, LinearLayout emptyContainer) {
+            this.activity = activity;
+            this.prefs = prefs;
+            this.density = activity.getResources().getDisplayMetrics().density;
+            this.tvSub = tvSub;
+            this.emptyContainer = emptyContainer;
+        }
+
+        @Override public int getCount() { return displayedItems.size(); }
+        @Override public DisplayItem getItem(int position) { return displayedItems.get(position); }
+        @Override public long getItemId(int position) { return position; }
+        @Override public int getViewTypeCount() { return 2; }
+        @Override public int getItemViewType(int position) { return displayedItems.get(position).type; }
+        @Override public boolean isEnabled(int position) { return !displayedItems.get(position).isHeader(); }
+
+        public void reloadData() {
+            allItems.clear();
+            Map<String, ?> all = prefs.getAll();
+            int count = 0;
+
+            // 1. Curated Flags
+            List<String> categories = PhotoFlagsRegistry.getCategories();
+            for (String cat : categories) {
+                List<CuratedFlag> flagsInCat = PhotoFlagsRegistry.getFlagsForCategory(cat);
+                if (flagsInCat.isEmpty()) continue;
+                DisplayItem catHeader = new DisplayItem(cat);
+                List<DisplayItem> catFlags = new ArrayList<>();
+                for (CuratedFlag f : flagsInCat) {
+                    count++;
+                    Object v = all.containsKey(f.key) ? all.get(f.key) : f.defaultValue;
+                    catFlags.add(new DisplayItem(f, v));
+                }
+                if (!catFlags.isEmpty()) {
+                    allItems.add(catHeader);
+                    allItems.addAll(catFlags);
+                }
+            }
+
+            // 2. Custom / Imported Flags
+            Set<String> customKeys = prefs.getStringSet(CUSTOM_FLAGS_KEY, Collections.emptySet());
+            Set<String> allCustom = new HashSet<>(customKeys);
+            for (String k : all.keySet()) {
+                if (!k.startsWith("_") && !k.startsWith("__") && !PhotoFlagsRegistry.FLAG_MAP.containsKey(k)) {
+                    allCustom.add(k);
+                }
+            }
+
+            if (!allCustom.isEmpty()) {
+                List<String> sortedKeys = new ArrayList<>(allCustom);
+                Collections.sort(sortedKeys);
+                String headerTitle = categories.isEmpty() ? "Active Flags (" + sortedKeys.size() + ")" : "Custom Overrides (" + sortedKeys.size() + ")";
+                allItems.add(new DisplayItem(headerTitle));
+                for (String k : sortedKeys) {
+                    count++;
+                    allItems.add(new DisplayItem(k, all.get(k)));
+                }
+            }
+
+            this.totalFlagsCount = count;
+            filter(currentFilterQuery);
+        }
+
+        public void filter(String query) {
+            this.currentFilterQuery = query == null ? "" : query.toLowerCase().trim();
+            displayedItems.clear();
+
+            if (currentFilterQuery.isEmpty()) {
+                displayedItems.addAll(allItems);
+            } else {
+                DisplayItem currentHeader = null;
+                List<DisplayItem> currentSection = new ArrayList<>();
+                for (DisplayItem it : allItems) {
+                    if (it.isHeader()) {
+                        if (currentHeader != null && !currentSection.isEmpty()) {
+                            displayedItems.add(currentHeader);
+                            displayedItems.addAll(currentSection);
+                        }
+                        currentHeader = it;
+                        currentSection.clear();
+                    } else {
+                        String target = it.getKey() + " " + it.getTitle() + " " + (it.getDescription() != null ? it.getDescription() : "") + " " + it.value;
+                        if (target.toLowerCase().contains(currentFilterQuery)) {
+                            currentSection.add(it);
+                        }
+                    }
+                }
+                if (currentHeader != null && !currentSection.isEmpty()) {
+                    displayedItems.add(currentHeader);
+                    displayedItems.addAll(currentSection);
+                }
+            }
+
+            notifyDataSetChanged();
+
+            int flagsShown = 0;
+            for (DisplayItem it : displayedItems) {
+                if (!it.isHeader()) flagsShown++;
+            }
+
+            if (totalFlagsCount == 0) {
+                emptyContainer.setVisibility(View.VISIBLE);
+                renderEmptySlate(activity, emptyContainer, density);
+                tvSub.setText("0 Flags Configured");
+            } else if (flagsShown == 0) {
+                emptyContainer.setVisibility(View.VISIBLE);
+                renderEmptyMessage(activity, emptyContainer, "No flags matched \"" + query + "\"", density);
+                tvSub.setText("0 Flags Matched (" + totalFlagsCount + " Total)");
+            } else {
+                emptyContainer.setVisibility(View.GONE);
+                if (currentFilterQuery.isEmpty()) {
+                    tvSub.setText(totalFlagsCount + " Flags Configured");
+                } else {
+                    tvSub.setText(flagsShown + " Shown (" + totalFlagsCount + " Total)");
+                }
+            }
+        }
+
+        @Override
+        public View getView(int position, View convertView, ViewGroup parent) {
+            DisplayItem item = getItem(position);
+
+            if (item.isHeader()) {
+                TextView tvHeader;
+                if (convertView instanceof TextView) {
+                    tvHeader = (TextView) convertView;
+                } else {
+                    tvHeader = new TextView(activity);
+                    tvHeader.setTextSize(13);
+                    tvHeader.setTextColor(M3_PRIMARY);
+                    tvHeader.setTypeface(null, Typeface.BOLD);
+                    tvHeader.setPadding((int) (4 * density), (int) (14 * density), 0, (int) (6 * density));
+                }
+                tvHeader.setText(item.headerTitle);
+                return tvHeader;
+            }
+
+            FlagViewHolder holder;
+            if (convertView == null || convertView.getTag() == null) {
+                holder = new FlagViewHolder();
+                LinearLayout row = new LinearLayout(activity);
+                row.setOrientation(LinearLayout.HORIZONTAL);
+                row.setGravity(Gravity.CENTER_VERTICAL);
+                int rPad = (int) (14 * density);
+                row.setPadding(rPad, (int) (10 * density), rPad, (int) (10 * density));
+
+                LinearLayout textCol = new LinearLayout(activity);
+                textCol.setOrientation(LinearLayout.VERTICAL);
+                LinearLayout.LayoutParams colLp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+                textCol.setLayoutParams(colLp);
+
+                TextView tvTitle = new TextView(activity);
+                tvTitle.setTextSize(14);
+                tvTitle.setTextColor(M3_TEXT_PRIMARY);
+                tvTitle.setTypeface(null, Typeface.BOLD);
+                textCol.addView(tvTitle);
+
+                TextView tvDesc = new TextView(activity);
+                tvDesc.setTextSize(12);
+                tvDesc.setTextColor(M3_TEXT_SECONDARY);
+                tvDesc.setPadding(0, (int) (2 * density), 0, (int) (2 * density));
+                textCol.addView(tvDesc);
+
+                TextView tvKey = new TextView(activity);
+                tvKey.setTextSize(10);
+                tvKey.setTextColor(0xFF8B9B97);
+                textCol.addView(tvKey);
+                row.addView(textCol);
+
+                Switch sw = new Switch(activity);
+                row.addView(sw);
+
+                TextView valChip = new TextView(activity);
+                valChip.setTextSize(13);
+                valChip.setTypeface(null, Typeface.BOLD);
+                valChip.setTextColor(M3_PRIMARY);
+                valChip.setBackground(createRoundedDrawable(M3_PRIMARY_CONTAINER, 8 * density));
+                int p = (int) (10 * density);
+                valChip.setPadding(p, (int) (6 * density), p, (int) (6 * density));
+                row.addView(valChip);
+
+                holder.root = row;
+                holder.tvTitle = tvTitle;
+                holder.tvDesc = tvDesc;
+                holder.tvKey = tvKey;
+                holder.swToggle = sw;
+                holder.valChip = valChip;
+
+                convertView = row;
+                convertView.setTag(holder);
+            } else {
+                holder = (FlagViewHolder) convertView.getTag();
+            }
+
+            // Bind Data
+            if (item.curatedFlag != null) {
+                holder.tvTitle.setText(item.curatedFlag.title);
+                holder.tvDesc.setVisibility(View.VISIBLE);
+                holder.tvDesc.setText(item.curatedFlag.description);
+                holder.tvKey.setText("ID: " + item.curatedFlag.key + " • " + item.curatedFlag.type + ": " + item.value);
+            } else {
+                holder.tvTitle.setText(item.customKey);
+                holder.tvDesc.setVisibility(View.GONE);
+                String typeLabel = (item.value instanceof Boolean) ? "Boolean"
+                        : (item.value instanceof Float || item.value instanceof Double) ? "Float"
+                        : (item.value instanceof Number) ? "Long" : "String";
+                holder.tvKey.setText(typeLabel + " • Value: " + item.value);
+            }
+
+            if (item.value instanceof Boolean) {
+                holder.valChip.setVisibility(View.GONE);
+                holder.swToggle.setVisibility(View.VISIBLE);
+
+                boolean isChecked = Boolean.TRUE.equals(item.value);
+                holder.root.setBackground(createCardDrawable(isChecked, density));
+
+                holder.swToggle.setOnClickListener(null);
+                holder.swToggle.setChecked(isChecked);
+
+                View.OnClickListener toggleAction = v -> {
+                    boolean next = !Boolean.TRUE.equals(item.value);
+                    item.value = next;
+                    holder.swToggle.setChecked(next);
+                    holder.root.setBackground(createCardDrawable(next, density));
+                    prefs.edit().putBoolean(item.getKey(), next).apply();
+                    if ("45531621".equals(item.getKey()) || "45531625".equals(item.getKey())) {
+                        GooglePhotosAccountAvatar.syncOneGoogleFlags(activity);
+                    }
+                    Toast.makeText(activity, "Updated: " + item.getTitle(), Toast.LENGTH_SHORT).show();
+                };
+
+                holder.swToggle.setOnClickListener(toggleAction);
+                holder.root.setClickable(true);
+                holder.root.setOnClickListener(toggleAction);
+            } else {
+                holder.swToggle.setVisibility(View.GONE);
+                holder.valChip.setVisibility(View.VISIBLE);
+                holder.root.setBackground(createCardDrawable(false, density));
+
+                String chipText = ((item.value instanceof Float || item.value instanceof Double) ? "[Float] "
+                        : (item.value instanceof Number) ? "[Long] " : "[String] ") + item.value;
+                holder.valChip.setText(chipText);
+
+                holder.root.setClickable(true);
+                holder.root.setOnClickListener(v -> showEditValueDialog(activity, prefs, item.getKey(), item.getTitle(), item.value, () -> {
+                    Object newVal = prefs.getAll().get(item.getKey());
+                    if (newVal != null) {
+                        item.value = newVal;
+                        notifyDataSetChanged();
+                    }
+                }));
+            }
+
+            return convertView;
+        }
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
     // Main Flag Manager Dialog (Single Clean View)
     // ─────────────────────────────────────────────────────────────────────────
 
@@ -240,29 +565,31 @@ public final class PhenotypeFlagManager {
         searchBox.addView(etSearch);
         root.addView(searchBox);
 
-        btnSearch.setOnClickListener(v -> {
-            if (searchBox.getVisibility() == View.VISIBLE) {
-                searchBox.setVisibility(View.GONE);
-                etSearch.setText("");
-            } else {
-                searchBox.setVisibility(View.VISIBLE);
-                etSearch.requestFocus();
-            }
-        });
-
-        btnClose.setOnClickListener(v -> dialog.dismiss());
-
-        // 3. Scrollable List Content Area
-        ScrollView scrollView = new ScrollView(activity);
-        LinearLayout.LayoutParams scrollLp = new LinearLayout.LayoutParams(
+        // 3. Virtualized List View with Fast-Scroll & Empty Container
+        FrameLayout listFrame = new FrameLayout(activity);
+        LinearLayout.LayoutParams listFrameLp = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f);
-        scrollView.setLayoutParams(scrollLp);
+        listFrame.setLayoutParams(listFrameLp);
 
-        LinearLayout listContainer = new LinearLayout(activity);
-        listContainer.setOrientation(LinearLayout.VERTICAL);
-        listContainer.setPadding(tbPad, (int) (8 * density), tbPad, (int) (16 * density));
-        scrollView.addView(listContainer);
-        root.addView(scrollView);
+        ListView listView = new ListView(activity);
+        listView.setLayoutParams(new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        listView.setDivider(null);
+        listView.setDividerHeight((int) (6 * density));
+        listView.setPadding(tbPad, (int) (8 * density), tbPad, (int) (16 * density));
+        listView.setClipToPadding(false);
+        listView.setFastScrollEnabled(true);
+        listFrame.addView(listView);
+
+        LinearLayout emptyContainer = new LinearLayout(activity);
+        emptyContainer.setOrientation(LinearLayout.VERTICAL);
+        emptyContainer.setGravity(Gravity.CENTER);
+        emptyContainer.setLayoutParams(new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        emptyContainer.setVisibility(View.GONE);
+        listFrame.addView(emptyContainer);
+
+        root.addView(listFrame);
 
         // 4. Bottom Action Dock
         LinearLayout bottomDock = new LinearLayout(activity);
@@ -291,108 +618,38 @@ public final class PhenotypeFlagManager {
         bottomDock.addView(btnApply);
         root.addView(bottomDock);
 
-        // Refresh UI Runnable
-        Runnable[] refreshHolder = new Runnable[1];
-        Runnable refreshUi = () -> {
-            listContainer.removeAllViews();
-            String query = etSearch.getText().toString().toLowerCase().trim();
-            Map<String, ?> all = prefs.getAll();
+        // Instantiate Adapter
+        FlagAdapter adapter = new FlagAdapter(activity, prefs, tvSub, emptyContainer);
+        listView.setAdapter(adapter);
 
-            int totalConfigured = 0;
-            int matchedCount = 0;
-
-            // 1. Curated Flags from Registry (if any)
-            List<String> categories = PhotoFlagsRegistry.getCategories();
-            for (String cat : categories) {
-                List<CuratedFlag> flagsInCat = PhotoFlagsRegistry.getFlagsForCategory(cat);
-                List<CuratedFlag> matchingFlags = new ArrayList<>();
-
-                for (CuratedFlag flag : flagsInCat) {
-                    totalConfigured++;
-                    Object val = all.get(flag.key);
-                    String searchTarget = flag.key + " " + flag.title + " " + flag.description + " " + val;
-                    if (query.isEmpty() || searchTarget.toLowerCase().contains(query)) {
-                        matchingFlags.add(flag);
-                    }
-                }
-
-                if (matchingFlags.isEmpty()) continue;
-                matchedCount += matchingFlags.size();
-
-                TextView tvCatHeader = new TextView(activity);
-                tvCatHeader.setText(cat);
-                tvCatHeader.setTextSize(13);
-                tvCatHeader.setTextColor(M3_PRIMARY);
-                tvCatHeader.setTypeface(null, Typeface.BOLD);
-                tvCatHeader.setPadding(0, (int) (12 * density), 0, (int) (6 * density));
-                listContainer.addView(tvCatHeader);
-
-                for (CuratedFlag flag : matchingFlags) {
-                    View flagRow = createCuratedFlagRow(activity, prefs, flag, all, refreshHolder[0]);
-                    listContainer.addView(flagRow);
-                }
+        btnSearch.setOnClickListener(v -> {
+            if (searchBox.getVisibility() == View.VISIBLE) {
+                searchBox.setVisibility(View.GONE);
+                etSearch.setText("");
+            } else {
+                searchBox.setVisibility(View.VISIBLE);
+                etSearch.requestFocus();
             }
+        });
 
-            // 2. Custom / Imported Flags
-            Set<String> customKeys = prefs.getStringSet(CUSTOM_FLAGS_KEY, Collections.emptySet());
-            Set<String> allKeysToDisplay = new HashSet<>(customKeys);
+        btnClose.setOnClickListener(v -> dialog.dismiss());
 
-            // Also include any flag directly present in SharedPreferences that is not internal
-            for (String k : all.keySet()) {
-                if (!k.startsWith("_") && !k.startsWith("__") && !PhotoFlagsRegistry.FLAG_MAP.containsKey(k)) {
-                    allKeysToDisplay.add(k);
-                }
-            }
-
-            List<String> matchingCustom = new ArrayList<>();
-            for (String ck : allKeysToDisplay) {
-                if (!PhotoFlagsRegistry.FLAG_MAP.containsKey(ck)) {
-                    totalConfigured++;
-                    Object val = all.get(ck);
-                    String st = ck + " " + val;
-                    if (query.isEmpty() || st.toLowerCase().contains(query)) {
-                        matchingCustom.add(ck);
-                    }
-                }
-            }
-
-            if (!matchingCustom.isEmpty()) {
-                // Sort keys alphabetically/numerically
-                Collections.sort(matchingCustom);
-                matchedCount += matchingCustom.size();
-
-                TextView tvCustomHeader = new TextView(activity);
-                tvCustomHeader.setText(categories.isEmpty() ? "Active Flags (" + matchingCustom.size() + ")" : "Custom Overrides (" + matchingCustom.size() + ")");
-                tvCustomHeader.setTextSize(13);
-                tvCustomHeader.setTextColor(M3_PRIMARY);
-                tvCustomHeader.setTypeface(null, Typeface.BOLD);
-                tvCustomHeader.setPadding(0, (int) (12 * density), 0, (int) (6 * density));
-                listContainer.addView(tvCustomHeader);
-
-                for (String ck : matchingCustom) {
-                    View customRow = createCustomFlagRow(activity, prefs, ck, all.get(ck), refreshHolder[0]);
-                    listContainer.addView(customRow);
-                }
-            }
-
-            tvSub.setText(totalConfigured + " Flags Configured");
-
-            if (totalConfigured == 0) {
-                renderEmptySlate(activity, listContainer, density);
-            } else if (matchedCount == 0) {
-                renderEmptyMessage(activity, listContainer, "No flags matched \"" + query + "\"", density);
-            }
-        };
-
-        refreshHolder[0] = refreshUi;
+        Runnable refreshUi = adapter::reloadData;
 
         btnAdd.setOnClickListener(v -> showAddCustomFlagDialog(activity, prefs, refreshUi));
         btnMenu.setOnClickListener(v -> showProperOptionsMenu(activity, prefs, refreshUi));
 
+        // Debounced Search TextWatcher
+        Runnable[] searchRunnable = new Runnable[1];
         etSearch.addTextChangedListener(new TextWatcher() {
             @Override public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
             @Override public void onTextChanged(CharSequence s, int start, int before, int count) {
-                refreshUi.run();
+                if (searchRunnable[0] != null) {
+                    MAIN_HANDLER.removeCallbacks(searchRunnable[0]);
+                }
+                String q = s.toString();
+                searchRunnable[0] = () -> adapter.filter(q);
+                MAIN_HANDLER.postDelayed(searchRunnable[0], 200);
             }
             @Override public void afterTextChanged(Editable s) {}
         });
@@ -415,6 +672,7 @@ public final class PhenotypeFlagManager {
     }
 
     private static void renderEmptySlate(Activity activity, LinearLayout container, float density) {
+        container.removeAllViews();
         LinearLayout box = new LinearLayout(activity);
         box.setOrientation(LinearLayout.VERTICAL);
         box.setGravity(Gravity.CENTER);
@@ -447,6 +705,7 @@ public final class PhenotypeFlagManager {
     }
 
     private static void renderEmptyMessage(Activity activity, LinearLayout container, String msg, float density) {
+        container.removeAllViews();
         TextView tv = new TextView(activity);
         tv.setText(msg);
         tv.setTextSize(13);
@@ -455,180 +714,6 @@ public final class PhenotypeFlagManager {
         int p = (int) (32 * density);
         tv.setPadding(p, p, p, p);
         container.addView(tv);
-    }
-
-    // ─────────────────────────────────────────────────────────────────────────
-    // Row Builders
-    // ─────────────────────────────────────────────────────────────────────────
-
-    private static View createCuratedFlagRow(Activity activity, SharedPreferences prefs,
-                                             CuratedFlag flag, Map<String, ?> all,
-                                             Runnable onRefresh) {
-        float density = activity.getResources().getDisplayMetrics().density;
-        LinearLayout row = new LinearLayout(activity);
-        row.setOrientation(LinearLayout.HORIZONTAL);
-        row.setGravity(Gravity.CENTER_VERTICAL);
-        int rPad = (int) (14 * density);
-        row.setPadding(rPad, (int) (12 * density), rPad, (int) (12 * density));
-
-        Object val = all.containsKey(flag.key) ? all.get(flag.key) : flag.defaultValue;
-        boolean isBool = flag.isBoolean();
-        boolean isActive = isBool && Boolean.TRUE.equals(val);
-
-        LinearLayout.LayoutParams rowLp = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        rowLp.setMargins(0, 0, 0, (int) (8 * density));
-        row.setLayoutParams(rowLp);
-        row.setBackground(createCardDrawable(isActive, density));
-
-        LinearLayout textCol = new LinearLayout(activity);
-        textCol.setOrientation(LinearLayout.VERTICAL);
-        LinearLayout.LayoutParams colLp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
-        textCol.setLayoutParams(colLp);
-
-        TextView tvTitle = new TextView(activity);
-        tvTitle.setText(flag.title);
-        tvTitle.setTextSize(14);
-        tvTitle.setTextColor(M3_TEXT_PRIMARY);
-        tvTitle.setTypeface(null, Typeface.BOLD);
-        textCol.addView(tvTitle);
-
-        TextView tvDesc = new TextView(activity);
-        tvDesc.setText(flag.description);
-        tvDesc.setTextSize(12);
-        tvDesc.setTextColor(M3_TEXT_SECONDARY);
-        tvDesc.setPadding(0, (int) (2 * density), 0, (int) (2 * density));
-        textCol.addView(tvDesc);
-
-        TextView tvKey = new TextView(activity);
-        tvKey.setText("ID: " + flag.key + " • " + flag.type + ": " + val);
-        tvKey.setTextSize(10);
-        tvKey.setTextColor(0xFF8B9B97);
-        textCol.addView(tvKey);
-        row.addView(textCol);
-
-        if (isBool) {
-            Switch sw = new Switch(activity);
-            sw.setChecked(isActive);
-            row.addView(sw);
-
-            row.setClickable(true);
-            row.setFocusable(true);
-            row.setOnClickListener(v -> {
-                boolean next = !sw.isChecked();
-                sw.setChecked(next);
-                prefs.edit().putBoolean(flag.key, next).commit();
-                if (flag.key.equals("45531621") || flag.key.equals("45531625")) {
-                    GooglePhotosAccountAvatar.syncOneGoogleFlags(activity);
-                }
-                Toast.makeText(activity, "Updated: " + flag.title, Toast.LENGTH_SHORT).show();
-                onRefresh.run();
-            });
-
-            sw.setOnClickListener(v -> {
-                prefs.edit().putBoolean(flag.key, sw.isChecked()).commit();
-                if (flag.key.equals("45531621") || flag.key.equals("45531625")) {
-                    GooglePhotosAccountAvatar.syncOneGoogleFlags(activity);
-                }
-                Toast.makeText(activity, "Updated: " + flag.title, Toast.LENGTH_SHORT).show();
-                onRefresh.run();
-            });
-
-        } else {
-            TextView valChip = new TextView(activity);
-            valChip.setText(String.valueOf(val));
-            valChip.setTextSize(13);
-            valChip.setTypeface(null, Typeface.BOLD);
-            valChip.setTextColor(M3_PRIMARY);
-            valChip.setBackground(createRoundedDrawable(M3_PRIMARY_CONTAINER, 8 * density));
-            int p = (int) (10 * density);
-            valChip.setPadding(p, (int) (6 * density), p, (int) (6 * density));
-            row.addView(valChip);
-
-            row.setClickable(true);
-            row.setFocusable(true);
-            row.setOnClickListener(v -> showEditValueDialog(activity, prefs, flag.key, flag.title, val, onRefresh));
-        }
-
-        return row;
-    }
-
-    private static View createCustomFlagRow(Activity activity, SharedPreferences prefs,
-                                            String key, Object val, Runnable onRefresh) {
-        float density = activity.getResources().getDisplayMetrics().density;
-        LinearLayout row = new LinearLayout(activity);
-        row.setOrientation(LinearLayout.HORIZONTAL);
-        row.setGravity(Gravity.CENTER_VERTICAL);
-        int rPad = (int) (14 * density);
-        row.setPadding(rPad, (int) (12 * density), rPad, (int) (12 * density));
-
-        LinearLayout.LayoutParams rowLp = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        rowLp.setMargins(0, 0, 0, (int) (8 * density));
-        row.setLayoutParams(rowLp);
-        row.setBackground(createCardDrawable(false, density));
-
-        LinearLayout textCol = new LinearLayout(activity);
-        textCol.setOrientation(LinearLayout.VERTICAL);
-        LinearLayout.LayoutParams colLp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
-        textCol.setLayoutParams(colLp);
-
-        TextView tvKey = new TextView(activity);
-        tvKey.setText(key);
-        tvKey.setTextSize(14);
-        tvKey.setTextColor(M3_TEXT_PRIMARY);
-        tvKey.setTypeface(null, Typeface.BOLD);
-        textCol.addView(tvKey);
-
-        TextView tvVal = new TextView(activity);
-        String typeLabel = (val instanceof Boolean) ? "Boolean"
-                : (val instanceof Float || val instanceof Double) ? "Float"
-                : (val instanceof Number) ? "Long" : "String";
-        tvVal.setText(typeLabel + " • Value: " + val);
-        tvVal.setTextSize(12);
-        tvVal.setTextColor(M3_TEXT_SECONDARY);
-        textCol.addView(tvVal);
-        row.addView(textCol);
-
-        if (val instanceof Boolean) {
-            Switch sw = new Switch(activity);
-            sw.setChecked((Boolean) val);
-            row.addView(sw);
-            row.setClickable(true);
-            row.setOnClickListener(v -> {
-                boolean next = !sw.isChecked();
-                sw.setChecked(next);
-                prefs.edit().putBoolean(key, next).commit();
-                if (key.equals("45531621") || key.equals("45531625")) {
-                    GooglePhotosAccountAvatar.syncOneGoogleFlags(activity);
-                }
-                Toast.makeText(activity, "Custom flag updated.", Toast.LENGTH_SHORT).show();
-                onRefresh.run();
-            });
-            sw.setOnClickListener(v -> {
-                prefs.edit().putBoolean(key, sw.isChecked()).commit();
-                if (key.equals("45531621") || key.equals("45531625")) {
-                    GooglePhotosAccountAvatar.syncOneGoogleFlags(activity);
-                }
-                Toast.makeText(activity, "Custom flag updated.", Toast.LENGTH_SHORT).show();
-                onRefresh.run();
-            });
-        } else {
-            TextView valChip = new TextView(activity);
-            String chipText = ((val instanceof Float || val instanceof Double) ? "[Float] " : (val instanceof Number) ? "[Long] " : "[String] ") + val;
-            valChip.setText(chipText);
-            valChip.setTextSize(13);
-            valChip.setTypeface(null, Typeface.BOLD);
-            valChip.setTextColor(M3_PRIMARY);
-            valChip.setBackground(createRoundedDrawable(M3_PRIMARY_CONTAINER, 8 * density));
-            int p = (int) (10 * density);
-            valChip.setPadding(p, (int) (6 * density), p, (int) (6 * density));
-            row.addView(valChip);
-            row.setClickable(true);
-            row.setOnClickListener(v -> showEditValueDialog(activity, prefs, key, key, val, onRefresh));
-        }
-
-        return row;
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -662,7 +747,7 @@ public final class PhenotypeFlagManager {
         }));
 
         // 2. Bulk Paste Text
-        items.add(new MenuItem("📋", "Bulk Paste Text", "Paste key=value lines or JSON directly", () -> {
+        items.add(new MenuItem("📋", "Bulk Paste Text", "Paste key=value lines, JSON, or XML directly", () -> {
             showBulkPasteDialog(activity, prefs, onRefresh);
         }));
 
@@ -737,6 +822,62 @@ public final class PhenotypeFlagManager {
     }
 
     // ─────────────────────────────────────────────────────────────────────────
+    // Loading / Progress Dialog
+    // ─────────────────────────────────────────────────────────────────────────
+
+    public static Dialog showLoadingDialog(Activity activity, String title, String message) {
+        float density = activity.getResources().getDisplayMetrics().density;
+        Dialog d = new Dialog(activity);
+        d.requestWindowFeature(Window.FEATURE_NO_TITLE);
+        d.setCancelable(false);
+
+        LinearLayout root = new LinearLayout(activity);
+        root.setOrientation(LinearLayout.HORIZONTAL);
+        root.setGravity(Gravity.CENTER_VERTICAL);
+        int p = (int) (20 * density);
+        root.setPadding(p, p, p, p);
+        root.setBackground(createRoundedDrawable(M3_SURFACE, 20 * density));
+
+        ProgressBar pb = new ProgressBar(activity);
+        LinearLayout.LayoutParams pbLp = new LinearLayout.LayoutParams((int) (40 * density), (int) (40 * density));
+        pbLp.setMargins(0, 0, (int) (16 * density), 0);
+        pb.setLayoutParams(pbLp);
+        root.addView(pb);
+
+        LinearLayout textCol = new LinearLayout(activity);
+        textCol.setOrientation(LinearLayout.VERTICAL);
+        LinearLayout.LayoutParams cLp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+        textCol.setLayoutParams(cLp);
+
+        TextView tvT = new TextView(activity);
+        tvT.setText(title);
+        tvT.setTextSize(16);
+        tvT.setTextColor(M3_TEXT_PRIMARY);
+        tvT.setTypeface(null, Typeface.BOLD);
+        textCol.addView(tvT);
+
+        TextView tvM = new TextView(activity);
+        tvM.setText(message);
+        tvM.setTextSize(12);
+        tvM.setTextColor(M3_TEXT_SECONDARY);
+        tvM.setPadding(0, (int) (2 * density), 0, 0);
+        textCol.addView(tvM);
+
+        root.addView(textCol);
+
+        d.setContentView(root);
+        Window w = d.getWindow();
+        if (w != null) {
+            w.setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
+            int screenWidth = activity.getResources().getDisplayMetrics().widthPixels;
+            w.setLayout(Math.min((int) (screenWidth * 0.88f), (int) (420 * density)), ViewGroup.LayoutParams.WRAP_CONTENT);
+            w.setGravity(Gravity.CENTER);
+        }
+        d.show();
+        return d;
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
     // SAF (Storage Access Framework) File Operations
     // ─────────────────────────────────────────────────────────────────────────
 
@@ -794,25 +935,27 @@ public final class PhenotypeFlagManager {
             SafHelperFragment fragment = new SafHelperFragment();
             fragment.setOpenCallback(uri -> {
                 if (uri == null) return;
-                try {
-                    InputStream is = activity.getContentResolver().openInputStream(uri);
-                    if (is != null) {
-                        BufferedReader reader = new BufferedReader(new InputStreamReader(is, StandardCharsets.UTF_8));
-                        StringBuilder sb = new StringBuilder();
-                        String line;
-                        while ((line = reader.readLine()) != null) {
-                            sb.append(line).append('\n');
+                Dialog loading = showLoadingDialog(activity, "Importing Flags...", "Reading file and saving overrides...");
+                IO_EXECUTOR.execute(() -> {
+                    int count = 0;
+                    try {
+                        InputStream is = activity.getContentResolver().openInputStream(uri);
+                        if (is != null) {
+                            BufferedReader reader = new BufferedReader(new InputStreamReader(is, StandardCharsets.UTF_8));
+                            count = importFlagsStream(activity, prefs, reader);
+                            reader.close();
+                            is.close();
                         }
-                        reader.close();
-                        is.close();
-                        int count = importFlagsUniversal(activity, prefs, sb.toString());
-                        Toast.makeText(activity, "✓ Imported " + count + " flags from file!", Toast.LENGTH_SHORT).show();
-                        onRefresh.run();
+                    } catch (Throwable t) {
+                        Logger.printException(() -> "Error importing file from SAF", t);
                     }
-                } catch (Throwable t) {
-                    Logger.printException(() -> "Error importing file from SAF", t);
-                    Toast.makeText(activity, "Failed to read file: " + t.getMessage(), Toast.LENGTH_SHORT).show();
-                }
+                    final int finalCount = count;
+                    activity.runOnUiThread(() -> {
+                        loading.dismiss();
+                        Toast.makeText(activity, "✓ Imported " + finalCount + " flags from file!", Toast.LENGTH_SHORT).show();
+                        if (onRefresh != null) onRefresh.run();
+                    });
+                });
             });
             activity.getFragmentManager().beginTransaction().add(fragment, "saf_import").commitAllowingStateLoss();
             activity.getFragmentManager().executePendingTransactions();
@@ -828,19 +971,29 @@ public final class PhenotypeFlagManager {
             SafHelperFragment fragment = new SafHelperFragment();
             fragment.setCreateCallback(uri -> {
                 if (uri == null) return;
-                try {
-                    OutputStream os = activity.getContentResolver().openOutputStream(uri);
-                    if (os != null) {
-                        String jsonStr = generateExportJson(prefs);
-                        os.write(jsonStr.getBytes(StandardCharsets.UTF_8));
-                        os.flush();
-                        os.close();
-                        Toast.makeText(activity, "✓ Exported flags to file!", Toast.LENGTH_SHORT).show();
+                IO_EXECUTOR.execute(() -> {
+                    boolean success = false;
+                    try {
+                        OutputStream os = activity.getContentResolver().openOutputStream(uri);
+                        if (os != null) {
+                            String jsonStr = generateExportJson(prefs);
+                            os.write(jsonStr.getBytes(StandardCharsets.UTF_8));
+                            os.flush();
+                            os.close();
+                            success = true;
+                        }
+                    } catch (Throwable t) {
+                        Logger.printException(() -> "Error exporting file to SAF", t);
                     }
-                } catch (Throwable t) {
-                    Logger.printException(() -> "Error exporting file to SAF", t);
-                    Toast.makeText(activity, "Failed to save file: " + t.getMessage(), Toast.LENGTH_SHORT).show();
-                }
+                    final boolean finalSuccess = success;
+                    activity.runOnUiThread(() -> {
+                        if (finalSuccess) {
+                            Toast.makeText(activity, "✓ Exported flags to file!", Toast.LENGTH_SHORT).show();
+                        } else {
+                            Toast.makeText(activity, "Failed to save file", Toast.LENGTH_SHORT).show();
+                        }
+                    });
+                });
             });
             activity.getFragmentManager().beginTransaction().add(fragment, "saf_export").commitAllowingStateLoss();
             activity.getFragmentManager().executePendingTransactions();
@@ -931,11 +1084,21 @@ public final class PhenotypeFlagManager {
         etInput.setGravity(Gravity.TOP);
         layout.addView(etInput);
 
+        Runnable[] countRunnable = new Runnable[1];
         etInput.addTextChangedListener(new TextWatcher() {
             @Override public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
             @Override public void onTextChanged(CharSequence s, int start, int before, int count) {
-                int detected = countFlagsInText(s.toString());
-                tvCountPreview.setText(detected + " flags detected");
+                if (countRunnable[0] != null) {
+                    MAIN_HANDLER.removeCallbacks(countRunnable[0]);
+                }
+                String text = s.toString();
+                countRunnable[0] = () -> {
+                    IO_EXECUTOR.execute(() -> {
+                        int detected = countFlagsInText(text);
+                        activity.runOnUiThread(() -> tvCountPreview.setText(detected + " flags detected"));
+                    });
+                };
+                MAIN_HANDLER.postDelayed(countRunnable[0], 250);
             }
             @Override public void afterTextChanged(Editable s) {}
         });
@@ -956,9 +1119,16 @@ public final class PhenotypeFlagManager {
         Dialog dialog = createM3ActionDialog(activity, "📋 Bulk Paste Flags", layout, "Import All", () -> {
             String text = etInput.getText().toString().trim();
             if (!text.isEmpty()) {
-                int count = importFlagsUniversal(activity, prefs, text);
-                Toast.makeText(activity, "✓ Imported " + count + " flags!", Toast.LENGTH_SHORT).show();
-                onRefresh.run();
+                Dialog loading = showLoadingDialog(activity, "Importing Flags...", "Parsing flags and saving overrides...");
+                IO_EXECUTOR.execute(() -> {
+                    BufferedReader reader = new BufferedReader(new StringReader(text));
+                    int count = importFlagsStream(activity, prefs, reader);
+                    activity.runOnUiThread(() -> {
+                        loading.dismiss();
+                        Toast.makeText(activity, "✓ Imported " + count + " flags!", Toast.LENGTH_SHORT).show();
+                        if (onRefresh != null) onRefresh.run();
+                    });
+                });
             }
         });
         dialog.show();
@@ -983,7 +1153,7 @@ public final class PhenotypeFlagManager {
             String l = line.trim();
             if (l.contains("=") && !l.startsWith("#")) {
                 count++;
-            } else if (l.contains("<flag")) {
+            } else if (l.contains("<flag") || l.contains("<boolean") || l.contains("<long") || l.contains("<string")) {
                 count++;
             }
         }
@@ -991,18 +1161,27 @@ public final class PhenotypeFlagManager {
     }
 
     // ─────────────────────────────────────────────────────────────────────────
-    // Import & Parsing Logic
+    // Fast Streaming Import & Parsing Engine
     // ─────────────────────────────────────────────────────────────────────────
 
-    private static int importFlagsUniversal(Activity activity, SharedPreferences prefs, String content) {
+    private static int importFlagsStream(Activity activity, SharedPreferences prefs, BufferedReader reader) {
         int count = 0;
         SharedPreferences.Editor editor = prefs.edit();
         Set<String> customKeys = new HashSet<>(prefs.getStringSet(CUSTOM_FLAGS_KEY, Collections.emptySet()));
 
         try {
-            // 1. Try JSON
-            if (content.startsWith("{")) {
-                JSONObject json = new JSONObject(content);
+            String firstLine = reader.readLine();
+            if (firstLine == null) return 0;
+            String trimmedFirst = firstLine.trim();
+
+            if (trimmedFirst.startsWith("{")) {
+                StringBuilder sb = new StringBuilder();
+                sb.append(firstLine).append('\n');
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    sb.append(line).append('\n');
+                }
+                JSONObject json = new JSONObject(sb.toString());
                 Iterator<String> keys = json.keys();
                 while (keys.hasNext()) {
                     String k = keys.next();
@@ -1012,22 +1191,23 @@ public final class PhenotypeFlagManager {
                     customKeys.add(k);
                     count++;
                 }
-                editor.putStringSet(CUSTOM_FLAGS_KEY, customKeys).apply();
-                GooglePhotosAccountAvatar.syncOneGoogleFlags(activity);
-                return count;
-            }
-
-            // 2. Try XML
-            if (content.contains("<flag")) {
+            } else if (trimmedFirst.contains("<flag") || trimmedFirst.startsWith("<?xml") || trimmedFirst.startsWith("<map") || trimmedFirst.startsWith("<package")) {
+                StringBuilder sb = new StringBuilder();
+                sb.append(firstLine).append('\n');
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    sb.append(line).append('\n');
+                }
                 Document doc = DocumentBuilderFactory.newInstance().newDocumentBuilder()
-                        .parse(new InputSource(new StringReader(content)));
+                        .parse(new InputSource(new StringReader(sb.toString())));
+
                 NodeList flags = doc.getElementsByTagName("flag");
                 for (int i = 0; i < flags.getLength(); i++) {
                     Element el = (Element) flags.item(i);
                     String name = el.getAttribute("name");
                     String type = el.getAttribute("type");
                     String value = el.getAttribute("value");
-                    if (name.isEmpty()) continue;
+                    if (name.isEmpty() || name.startsWith("_")) continue;
 
                     if ("boolean".equalsIgnoreCase(type)) {
                         editor.putBoolean(name, Boolean.parseBoolean(value));
@@ -1043,42 +1223,84 @@ public final class PhenotypeFlagManager {
                     customKeys.add(name);
                     count++;
                 }
-                editor.putStringSet(CUSTOM_FLAGS_KEY, customKeys).apply();
-                GooglePhotosAccountAvatar.syncOneGoogleFlags(activity);
-                return count;
-            }
 
-            // 3. Try Key=Value lines
-            String[] lines = content.split("\\n");
-            for (String line : lines) {
-                line = line.trim();
-                if (line.isEmpty() || line.startsWith("#")) continue;
-                String[] parts = line.split("=", 2);
-                if (parts.length == 2) {
-                    String k = parts[0].trim();
-                    String v = parts[1].trim();
-                    if (v.equalsIgnoreCase("true") || v.equalsIgnoreCase("false")) {
-                        editor.putBoolean(k, Boolean.parseBoolean(v));
-                    } else if (v.contains(".")) {
-                        try { editor.putFloat(k, Float.parseFloat(v)); }
-                        catch (Exception ex) {
-                            try { editor.putLong(k, Long.parseLong(v)); }
-                            catch (Exception ex2) { editor.putString(k, v); }
-                        }
-                    } else {
-                        try { editor.putLong(k, Long.parseLong(v)); }
-                        catch (Exception ex) { editor.putString(k, v); }
+                // Support standard Android SharedPreferences XML dumps (<boolean name="..." value="true"/>)
+                NodeList booleans = doc.getElementsByTagName("boolean");
+                for (int i = 0; i < booleans.getLength(); i++) {
+                    Element el = (Element) booleans.item(i);
+                    String name = el.getAttribute("name");
+                    if (!name.isEmpty() && !name.startsWith("_")) {
+                        editor.putBoolean(name, Boolean.parseBoolean(el.getAttribute("value")));
+                        customKeys.add(name);
+                        count++;
                     }
-                    customKeys.add(k);
+                }
+                NodeList longs = doc.getElementsByTagName("long");
+                for (int i = 0; i < longs.getLength(); i++) {
+                    Element el = (Element) longs.item(i);
+                    String name = el.getAttribute("name");
+                    if (!name.isEmpty() && !name.startsWith("_")) {
+                        try { editor.putLong(name, Long.parseLong(el.getAttribute("value"))); }
+                        catch (Exception ignored) {}
+                        customKeys.add(name);
+                        count++;
+                    }
+                }
+                NodeList strings = doc.getElementsByTagName("string");
+                for (int i = 0; i < strings.getLength(); i++) {
+                    Element el = (Element) strings.item(i);
+                    String name = el.getAttribute("name");
+                    if (!name.isEmpty() && !name.startsWith("_")) {
+                        editor.putString(name, el.getTextContent());
+                        customKeys.add(name);
+                        count++;
+                    }
+                }
+            } else {
+                // Key=Value streaming
+                if (parseAndApplyKeyValueLine(trimmedFirst, editor, customKeys)) {
                     count++;
                 }
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    line = line.trim();
+                    if (line.isEmpty() || line.startsWith("#")) continue;
+                    if (parseAndApplyKeyValueLine(line, editor, customKeys)) {
+                        count++;
+                    }
+                }
             }
+
             editor.putStringSet(CUSTOM_FLAGS_KEY, customKeys).apply();
             GooglePhotosAccountAvatar.syncOneGoogleFlags(activity);
         } catch (Exception e) {
-            Logger.printException(() -> "Import failed", e);
+            Logger.printException(() -> "Streaming import failed", e);
         }
         return count;
+    }
+
+    private static boolean parseAndApplyKeyValueLine(String line, SharedPreferences.Editor editor, Set<String> customKeys) {
+        String[] parts = line.split("=", 2);
+        if (parts.length == 2) {
+            String k = parts[0].trim();
+            String v = parts[1].trim();
+            if (k.isEmpty() || k.startsWith("#")) return false;
+            if (v.equalsIgnoreCase("true") || v.equalsIgnoreCase("false")) {
+                editor.putBoolean(k, Boolean.parseBoolean(v));
+            } else if (v.contains(".")) {
+                try { editor.putFloat(k, Float.parseFloat(v)); }
+                catch (Exception ex) {
+                    try { editor.putLong(k, Long.parseLong(v)); }
+                    catch (Exception ex2) { editor.putString(k, v); }
+                }
+            } else {
+                try { editor.putLong(k, Long.parseLong(v)); }
+                catch (Exception ex) { editor.putString(k, v); }
+            }
+            customKeys.add(k);
+            return true;
+        }
+        return false;
     }
 
     private static void applyEntry(SharedPreferences.Editor editor, String key, Object val) {
@@ -1207,7 +1429,7 @@ public final class PhenotypeFlagManager {
                 Set<String> custom = new HashSet<>(prefs.getStringSet(CUSTOM_FLAGS_KEY, Collections.emptySet()));
                 custom.add(k);
                 ed.putStringSet(CUSTOM_FLAGS_KEY, custom).apply();
-                if (k.equals("45531621") || k.equals("45531625")) {
+                if ("45531621".equals(k) || "45531625".equals(k)) {
                     GooglePhotosAccountAvatar.syncOneGoogleFlags(activity);
                 }
                 Toast.makeText(activity, "✓ Saved custom flag (" + typeNames[selectedType[0]] + ")", Toast.LENGTH_SHORT).show();
@@ -1271,8 +1493,8 @@ public final class PhenotypeFlagManager {
                 } else {
                     ed.putString(key, v);
                 }
-                ed.commit();
-                if (key.equals("45531621") || key.equals("45531625")) {
+                ed.apply();
+                if ("45531621".equals(key) || "45531625".equals(key)) {
                     GooglePhotosAccountAvatar.syncOneGoogleFlags(activity);
                 }
                 Toast.makeText(activity, "Updated " + title, Toast.LENGTH_SHORT).show();
