@@ -1,3 +1,9 @@
+## [1.12.1](https://github.com/Akash-Sriram/morphe-google-photos/compare/v1.12.0...v1.12.1) (2026-09-26)
+
+### 🐛 Bug Fixes
+
+* **Google Photos - Flags:** collapse categories by default and align scrollbar outside UI ([0ab74a6](https://github.com/Akash-Sriram/morphe-google-photos/commit/0ab74a6f90e9356da078502a682ac79faec96716)), closes [#22](https://github.com/Akash-Sriram/morphe-google-photos/issues/22) [#24](https://github.com/Akash-Sriram/morphe-google-photos/issues/24) [#22](https://github.com/Akash-Sriram/morphe-google-photos/issues/22) [#24](https://github.com/Akash-Sriram/morphe-google-photos/issues/24)
+
 ## [1.12.0](https://github.com/Akash-Sriram/morphe-google-photos/compare/v1.11.0...v1.12.0) (2026-09-26)
 
 ### ✨ New Features
