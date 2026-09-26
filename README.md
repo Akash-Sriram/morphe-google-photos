@@ -14,8 +14,8 @@ Morphe patches for **Google Photos**, derived from [RookieEnough/De-Vanced](http
 
 **🎯 Supported versions:**
 
-| 7.92.0.977185651 | 7.93.0.982110057 | 🧪&nbsp;7.94.0.984908898 |
-| :---: | :---: | :---: |
+| 7.94.0.984908898 |
+| :---: |
 
 | 💊&nbsp;Patch | 📜&nbsp;Description |
 |----------|----------------|
@@ -35,40 +35,5 @@ Morphe patches for **Google Photos**, derived from [RookieEnough/De-Vanced](http
 </details>
 
 <!-- PATCHES_END -->
-
----
-
-## 🚩 Curated Phenotype Flags
-
-Experimental features toggleable in **Photos Settings &rarr; Phenotype Flags**:
-
-<details>
-<summary>📦 <b>Curated Flags Reference (25 Flags)</b></summary>
-<br>
-
-| Category | Feature | Description |
-|:---|:---|:---|
-| **Photo & Video Editor** | **Tap/Circle Select** | Tap, circle, or brush selection gestures in Magic Editor |
-| | **AI Enhance V2** | Multi-option AI photo enhancement presets |
-| | **Moods Edit Presets** | Adaptive creative edit presets with hold-to-compare |
-| | **New Video Editor & AI** | Redesigned video editor layout with AI-powered video presets |
-| **Navigation & Tabs** | **Collections V2 Layout** | Collections Shelves V2 redesigned grouped layout (`0`=Off, `2`=On) |
-| | **Collections V2 Content** | Modern content card views inside Collections shelves |
-| | **Reels Videos Tab (V1 & V2)** | Full-screen vertical scrollable video feed tab and gesture navigation |
-| **AI Assistant & Search** | **"On this device" Filter** | Quick top-bar filter button to show local on-device media |
-| | **Ask Photos AI** | Conversational Gemini AI search |
-| **Media, Grid & Memories** | **Floating UI** | Floating bottom navigation bar and `[ Today ]` date capsule pill |
-| | **Video Seek Scrubbing** | High-speed video thumbnail scrubbing preview bar |
-| | **Document Scanner Crop** | Perspective document scanner cropping controls |
-| | **Motion Stabilizer** | Motion photo stabilizer and floating playback pill |
-| | **Story Cutouts & Scrapbook** | 3D subject pop-out cutout scrapbook animations and templates in Memories |
-| | **MemoryCard Styles & Templates** | Graphic styling, borders, textures, and scrapbook frames |
-| | **Retrospective Themes** | On-device "N Years Ago" card generator and "Over the Years" scrapbook theme |
-| | **Collage Engine** | Multi-up collage layout, scrapbook generation engine, and transitions |
-| | **Skottie CDN Bundle** | Animation CDN asset version for cutout animations |
-
-</details>
-
----
 
 Ready-to-install builds patched with this bundle are available at **[Akash-Sriram/GooglePhotos-Patched](https://github.com/Akash-Sriram/GooglePhotos-Patched/releases)**.
