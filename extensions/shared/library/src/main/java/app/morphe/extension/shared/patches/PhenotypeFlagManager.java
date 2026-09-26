@@ -995,8 +995,18 @@ public final class PhenotypeFlagManager {
         }));
 
         // 5. Load Recommended Presets
-        items.add(new MenuItem("✨", "Load Recommended Presets", "Restore curated feature presets (coming soon)", () -> {
-            Toast.makeText(activity, "Presets will be configured in an upcoming update", Toast.LENGTH_SHORT).show();
+        items.add(new MenuItem("✨", "Load Recommended Presets", "Apply all 362 Morphe feature flags (story colors, AI tools, Create Tab, Navigation)", () -> {
+            new android.app.AlertDialog.Builder(activity)
+                .setTitle("✨ Load Recommended Presets")
+                .setMessage("This will apply all 362 curated Morphe flags:\n\n• 226 Story colors & collage templates\n• 54 Story player & audio controls\n• 41 3D memories & cutout animations\n• AI video generation & editor tools\n• Create Tab storefront & 8 creative tools\n• Modern navigation & Collections V2\n\nExisting flags will be kept. New flags will be added on top.")
+                .setPositiveButton("Apply All", (d, w) -> {
+                    PhotoFlagsRegistry.applyCuratedDefaults(prefs);
+                    GooglePhotosAccountAvatar.syncOneGoogleFlags(activity);
+                    Toast.makeText(activity, "✓ Loaded 362 Morphe recommended flags", Toast.LENGTH_SHORT).show();
+                    onRefresh.run();
+                })
+                .setNegativeButton("Cancel", null)
+                .show();
         }));
 
         // 6. Diagnostics & Logs

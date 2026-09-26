@@ -428,7 +428,23 @@ public final class PhotoFlagsRegistry {
         register("45459614", "Multi-Asset Creation Recipes", "Allows mixing photos, living photos, and video clips into a single guided creation recipe.", "🎬 Create Tab: Tool 3 — Highlight Video (AMC)", "Tool 3: Multi-Asset Recipes", FlagType.BOOLEAN, Boolean.TRUE);
         register("45726376", "AuraTab Recipe Preview Chips", "Preview chips inside Create Tab to audition highlight video themes before creating.", "🎬 Create Tab: Tool 3 — Highlight Video (AMC)", "Tool 3: Recipe Preview Chips", FlagType.BOOLEAN, Boolean.TRUE);
         register("45726377", "AuraTab Recipe Chip Suggestions", "Contextual smart suggestion chips recommending movies for recent trips or events.", "🎬 Create Tab: Tool 3 — Highlight Video (AMC)", "Tool 3: Smart Movie Chips", FlagType.BOOLEAN, Boolean.TRUE);
+        // ── Lcnwi AI & Settings flags (baked patch flags + extras) ────────
+        register("45699618", "Redesigned Video Editor (Soba)", "Modern video editing UI with beat-matched trim & Soba clip styler engine.", "🪄 AI Photo & Video Editor Tools", "Soba Video Editor", FlagType.BOOLEAN, Boolean.TRUE);
+        register("45729385", "Non-Destructive In-Place Save", "Saves edits without duplicating: overwrites original file path instead of creating copy.", "🪄 AI Photo & Video Editor Tools", "In-Place Save Pipeline", FlagType.BOOLEAN, Boolean.TRUE);
+        register("45729710", "Smart Perspective Crop (Enchilada)", "Auto-corrects lens distortion and rotates subject to align horizon during crop.", "🪄 AI Photo & Video Editor Tools", "Perspective Crop AI", FlagType.BOOLEAN, Boolean.TRUE);
+        register("45733505", "On-Demand Story & Month Recaps", "Triggers memory story and month recap creation on user request via BOM.", "✨ Stories & Memories: 3D Pop-Out & Cutouts", "On-Demand Recap Engine", FlagType.BOOLEAN, Boolean.TRUE);
+        register("45737361", "Feature Discovery Badging", "Shows animated discovery badges on new tools and features to guide first use.", "🏛️ Create Tab: Master Storefront Hub", "Discovery Badges", FlagType.BOOLEAN, Boolean.TRUE);
+        register("45737362", "Video Queue & Background Export", "Queues multiple video exports and processes them in background without blocking UI.", "🪄 AI Photo & Video Editor Tools", "Background Export Queue", FlagType.BOOLEAN, Boolean.TRUE);
+        register("45752498", "Master Media & Codec Pipeline", "Enables HEVC/VP9 codec support and expedited transcoding job scheduling.", "🪄 AI Photo & Video Editor Tools", "Media Codec Pipeline", FlagType.BOOLEAN, Boolean.TRUE);
+        register("45753336", "Bluejay AI Model V3", "Forces Bluejay AI model version 3 backend with caching for video generation.", "🪄 AI Photo & Video Editor Tools", "Bluejay V3 Backend", FlagType.BOOLEAN, Boolean.TRUE);
+        register("45775066", "Editor Navigation Flow", "Controls return-to-start-page flow after editor sessions for consistent navigation.", "🪄 AI Photo & Video Editor Tools", "Editor Return Flow", FlagType.BOOLEAN, Boolean.TRUE);
+        register("45786064", "AI Video Generation (Master)", "Master switch for generative AI video creation with text-to-video prompting.", "🪄 AI Photo & Video Editor Tools", "AI Video Generation", FlagType.BOOLEAN, Boolean.TRUE);
+        register("45796589", "AI Prompt Suggestions", "Provides contextual AI-generated prompt suggestions for video creation.", "🪄 AI Photo & Video Editor Tools", "AI Prompt Suggestions", FlagType.BOOLEAN, Boolean.TRUE);
+        register("45805882", "Texture Lab & Looks Presets", "Unlocks texture lab with creative looks presets and visual styling filters.", "🪄 AI Photo & Video Editor Tools", "Texture Lab Presets", FlagType.BOOLEAN, Boolean.TRUE);
+        register("45818386", "AllPhotosCore Indexing", "Enables full-index AllPhotosCore pipeline for fast media library querying.", "🪄 AI Photo & Video Editor Tools", "AllPhotosCore Index", FlagType.BOOLEAN, Boolean.TRUE);
+        register("45410157", "Settings UI Feature 45410157", "Controls settings UI layout and account configuration panel in Lcnwi.", "🪄 AI Photo & Video Editor Tools", "Settings UI Feature", FlagType.BOOLEAN, Boolean.TRUE);
     }
+
 
     private static void register(String key, String title, String description, String category, String triggerTarget, FlagType type, Object defaultValue) {
         CuratedFlag flag = new CuratedFlag(key, title, description, category, triggerTarget, type, defaultValue);
@@ -462,10 +478,413 @@ public final class PhotoFlagsRegistry {
     }
 
     public static void applyCuratedDefaults(SharedPreferences prefs) {
-        // Kept empty as requested; presets will be populated later
+        SharedPreferences.Editor edit = prefs.edit();
+        // ── Core AI & Editor flags (Lcnwi class) ─────────────────────────
+        edit.putBoolean("45699618", true);   // Redesigned Video Editor & Soba Trim
+        edit.putBoolean("45729385", true);   // Non-Destructive In-Place Save
+        edit.putBoolean("45729710", true);   // Smart Perspective Crop (Enchilada)
+        edit.putBoolean("45733505", true);   // On-Demand Story & Month Recaps
+        edit.putBoolean("45737361", true);   // Feature Discovery Badging
+        edit.putBoolean("45737362", true);   // Video Queue & Background Export
+        edit.putBoolean("45752498", true);   // Master Media & Codec Pipeline
+        edit.putBoolean("45753336", true);   // Bluejay Model V3 Backend & Caching
+        edit.putBoolean("45775066", true);   // Editor Navigation Flow
+        edit.putBoolean("45786064", true);   // AI Video Generation (Master)
+        edit.putBoolean("45796589", true);   // AI Prompt Suggestions
+        edit.putBoolean("45805882", true);   // Texture Lab & Looks Presets
+        edit.putBoolean("45818386", true);   // AllPhotosCore Indexing
+        edit.putBoolean("45410157", true);   // Settings UI Feature 45410157
+        // ── Story Colors & Collage Templates (Lcnzc / 226 flags) ─────────
+        edit.putBoolean("45363460", true);
+        edit.putBoolean("45664970", true);
+        edit.putBoolean("45744293", true);
+        edit.putBoolean("45666355", true);
+        edit.putBoolean("45615686", true);
+        edit.putBoolean("45640764", true);
+        edit.putBoolean("45730325", true);
+        edit.putBoolean("45377748", true);
+        edit.putBoolean("45373147", true);
+        edit.putBoolean("45647280", true);
+        edit.putBoolean("45658726", true);
+        edit.putBoolean("45713555", true);
+        edit.putBoolean("45707670", true);
+        edit.putBoolean("45676289", true);
+        edit.putBoolean("45779285", true);
+        edit.putBoolean("45666907", true);
+        edit.putBoolean("45778870", true);
+        edit.putBoolean("45621573", true);
+        edit.putBoolean("45748649", true);
+        edit.putBoolean("45664049", true);
+        edit.putLong("3999", 118109605L);
+        edit.putBoolean("45664048", true);
+        edit.putBoolean("45812997", true);
+        edit.putBoolean("45749971", true);
+        edit.putBoolean("45640410", true);
+        edit.putBoolean("45615213", true);
+        edit.putBoolean("45643006", true);
+        edit.putBoolean("45666483", true);
+        edit.putBoolean("45806296", true);
+        edit.putBoolean("45754546", true);
+        edit.putBoolean("45659278", true);
+        edit.putBoolean("45642957", true);
+        edit.putBoolean("45659276", true);
+        edit.putBoolean("45750626", true);
+        edit.putBoolean("45614002", true);
+        edit.putBoolean("45693621", true);
+        edit.putBoolean("45632447", true);
+        edit.putBoolean("45719669", true);
+        edit.putBoolean("2797", true);
+        edit.putBoolean("45719668", true);
+        edit.putBoolean("2675", true);
+        edit.putBoolean("45632449", true);
+        edit.putBoolean("45632448", true);
+        edit.putLong("45531625", 3L);
+        edit.putBoolean("45715066", true);
+        edit.putBoolean("45531621", true);
+        edit.putBoolean("3768", true);
+        edit.putBoolean("45816328", true);
+        edit.putBoolean("45421095", true);
+        edit.putBoolean("45426422", true);
+        edit.putBoolean("45619467", true);
+        edit.putBoolean("45678918", true);
+        edit.putBoolean("45795181", true);
+        edit.putBoolean("45768005", true);
+        edit.putBoolean("45780002", true);
+        edit.putBoolean("45741002", true);
+        edit.putBoolean("45391272", true);
+        edit.putBoolean("45766984", true);
+        edit.putBoolean("45691779", true);
+        edit.putBoolean("45768002", true);
+        edit.putBoolean("45890130", true);
+        edit.putBoolean("45680313", true);
+        edit.putBoolean("45818951", true);
+        edit.putBoolean("45638543", true);
+        edit.putBoolean("45622835", true);
+        edit.putBoolean("45398451", true);
+        edit.putBoolean("45376954", true);
+        edit.putBoolean("45623041", true);
+        edit.putBoolean("45668764", true);
+        edit.putBoolean("45669003", true);
+        edit.putBoolean("45653582", true);
+        edit.putBoolean("45740278", true);
+        edit.putBoolean("45721092", true);
+        edit.putBoolean("45740262", true);
+        edit.putBoolean("45722002", true);
+        edit.putBoolean("45721094", true);
+        edit.putBoolean("45773083", true);
+        edit.putBoolean("45773084", true);
+        edit.putBoolean("45835545", true);
+        edit.putBoolean("45835544", true);
+        edit.putBoolean("45839387", true);
+        edit.putBoolean("45810382", true);
+        edit.putBoolean("45769084", true);
+        edit.putBoolean("45802724", true);
+        edit.putBoolean("45836928", true);
+        edit.putBoolean("45766276", true);
+        edit.putBoolean("45768721", true);
+        edit.putBoolean("3756", true);
+        edit.putBoolean("45836696", true);
+        edit.putBoolean("45779528", true);
+        edit.putBoolean("45740594", true);
+        edit.putBoolean("45832857", true);
+        edit.putBoolean("4283", true);
+        edit.putBoolean("4289", true);
+        // ── Memories 3D Pop-Out & Cutouts (Lcoei class) ───────────────────
+        edit.putBoolean("45477626", true);
+        edit.putBoolean("45357085", true);
+        edit.putBoolean("45377479", true);
+        edit.putBoolean("45378815", true);
+        edit.putBoolean("45378823", true);
+        edit.putBoolean("45382673", true);
+        edit.putBoolean("45617431", true);
+        edit.putBoolean("45625283", true);
+        edit.putBoolean("45630552", true);
+        edit.putBoolean("45631283", true);
+        edit.putBoolean("45638473", true);
+        edit.putBoolean("45650855", true);
+        edit.putBoolean("45661385", true);
+        edit.putBoolean("45666946", true);
+        edit.putBoolean("45684593", true);
+        edit.putBoolean("45690149", true);
+        edit.putBoolean("45696874", true);
+        edit.putBoolean("45698703", true);
+        edit.putBoolean("45699860", true);
+        edit.putBoolean("45702733", true);
+        edit.putBoolean("45717954", true);
+        edit.putBoolean("45721596", true);
+        edit.putBoolean("45726890", true);
+        edit.putBoolean("45727343", true);
+        edit.putBoolean("45735093", true);
+        edit.putBoolean("45735409", true);
+        edit.putBoolean("45742883", true);
+        edit.putBoolean("45744988", true);
+        edit.putBoolean("45748861", true);
+        edit.putBoolean("45749793", true);
+        edit.putBoolean("45764779", true);
+        edit.putBoolean("45770987", true);
+        edit.putBoolean("45785454", true);
+        edit.putBoolean("45785531", true);
+        edit.putBoolean("45790156", true);
+        edit.putBoolean("45797069", true);
+        edit.putBoolean("45804059", true);
+        edit.putBoolean("45375377", true);
+        edit.putBoolean("4306", true);
+        edit.putBoolean("4311", true);
+        // ── Story Player Controls & Sound (Lcojt class) ───────────────────
+        edit.putBoolean("3442", true);
+        edit.putBoolean("3459", true);
+        edit.putBoolean("3460", true);
+        edit.putBoolean("3481", true);
+        edit.putBoolean("3489", true);
+        edit.putBoolean("3501", true);
+        edit.putBoolean("3503", true);
+        edit.putBoolean("45356686", true);
+        edit.putBoolean("45357051", true);
+        edit.putBoolean("45357263", true);
+        edit.putBoolean("45358405", true);
+        edit.putBoolean("45362458", true);
+        edit.putBoolean("45388291", true);
+        edit.putBoolean("45389907", true);
+        edit.putBoolean("45409808", true);
+        edit.putBoolean("45417060", true);
+        edit.putBoolean("45425326", true);
+        edit.putBoolean("45430787", true);
+        edit.putBoolean("45461103", true);
+        edit.putBoolean("45478000", true);
+        edit.putBoolean("45531422", true);
+        edit.putBoolean("45531730", true);
+        edit.putBoolean("45612624", true);
+        edit.putBoolean("45613283", true);
+        edit.putBoolean("45615286", true);
+        edit.putBoolean("45624133", true);
+        edit.putBoolean("45634177", true);
+        edit.putBoolean("45662994", true);
+        edit.putBoolean("45665087", true);
+        edit.putBoolean("45669656", true);
+        edit.putBoolean("45676464", true);
+        edit.putBoolean("45681691", true);
+        edit.putBoolean("45681692", true);
+        edit.putBoolean("45691383", true);
+        edit.putBoolean("45709355", true);
+        edit.putBoolean("45709356", true);
+        edit.putBoolean("45709357", true);
+        edit.putBoolean("45717103", true);
+        edit.putBoolean("45719668", true);
+        edit.putBoolean("45719669", true);
+        edit.putBoolean("45731207", true);
+        edit.putBoolean("45737250", true);
+        edit.putBoolean("45737826", true);
+        edit.putBoolean("45739443", true);
+        edit.putBoolean("45741031", true);
+        edit.putBoolean("45755453", true);
+        edit.putBoolean("45757528", true);
+        edit.putBoolean("45760013", true);
+        edit.putBoolean("45804307", true);
+        edit.putBoolean("45807524", true);
+        edit.putBoolean("45815839", true);
+        edit.putBoolean("45827980", true);
+        edit.putBoolean("45830680", true);
+        // ── Create Tab Storefront & Hub ───────────────────────────────────
+        edit.putBoolean("45754248", true);
+        edit.putBoolean("45754250", true);
+        edit.putBoolean("45774010", true);
+        edit.putBoolean("45778099", true);
+        edit.putBoolean("45788224", true);
+        edit.putBoolean("45812600", true);
+        edit.putBoolean("45815129", true);
+        edit.putBoolean("45815130", true);
+        edit.putBoolean("45815131", true);
+        edit.putBoolean("45815512", true);
+        edit.putBoolean("45819223", true);
+        edit.putBoolean("45729170", true);
+        edit.putBoolean("45733872", true);
+        edit.putBoolean("45745690", true);
+        edit.putBoolean("45776097", true);
+        edit.putBoolean("45719431", true);
+        edit.putBoolean("45797840", true);
+        // ── AMC Highlight Video ───────────────────────────────────────────
+        edit.putBoolean("173314", true);
+        edit.putBoolean("45379873", true);
+        edit.putBoolean("45382236", true);
+        edit.putBoolean("45383712", true);
+        edit.putBoolean("45384542", true);
+        edit.putBoolean("45401287", true);
+        edit.putBoolean("45406992", true);
+        edit.putBoolean("45415459", true);
+        edit.putBoolean("45415617", true);
+        edit.putBoolean("45421698", true);
+        edit.putBoolean("45424950", true);
+        edit.putBoolean("45424956", true);
+        edit.putBoolean("45425258", true);
+        edit.putBoolean("45425736", true);
+        edit.putBoolean("45426705", true);
+        edit.putBoolean("45429640", true);
+        edit.putBoolean("45462916", true);
+        edit.putBoolean("45477565", true);
+        edit.putBoolean("45737458", true);
+        edit.putBoolean("45398940", true);
+        edit.putBoolean("45408988", true);
+        edit.putBoolean("45426765", true);
+        edit.putBoolean("45459614", true);
+        edit.putBoolean("45726376", true);
+        edit.putBoolean("45726377", true);
+        // ── Outfit Try-on (My Fits) ───────────────────────────────────────
+        edit.putBoolean("45687123", true);
+        edit.putBoolean("45717505", true);
+        edit.putBoolean("45731265", true);
+        edit.putBoolean("45741844", true);
+        edit.putBoolean("45750774", true);
+        edit.putBoolean("45755043", true);
+        edit.putBoolean("45760092", true);
+        edit.putBoolean("45762091", true);
+        edit.putBoolean("45767205", true);
+        edit.putBoolean("45767208", true);
+        edit.putBoolean("45767701", true);
+        edit.putBoolean("45767702", true);
+        edit.putBoolean("45771188", true);
+        edit.putBoolean("45771700", true);
+        edit.putBoolean("45773219", true);
+        edit.putBoolean("45778389", true);
+        edit.putBoolean("45781522", true);
+        edit.putBoolean("45782800", true);
+        edit.putBoolean("45785003", true);
+        edit.putBoolean("45787071", true);
+        edit.putBoolean("45787072", true);
+        edit.putBoolean("45787073", true);
+        edit.putBoolean("45789155", true);
+        edit.putBoolean("45806341", true);
+        edit.putBoolean("45822351", true);
+        edit.putBoolean("45827899", true);
+        // ── Modern Navigation & Floating Bar ──────────────────────────────
+        edit.putBoolean("45732792", true);
+        edit.putBoolean("45743215", true);
+        edit.putBoolean("45745561", true);
+        edit.putBoolean("45746812", true);
+        edit.putBoolean("45752831", true);
+        edit.putBoolean("45753590", true);
+        edit.putBoolean("2892", true);
+        // ── Collections V2 & Shelves ──────────────────────────────────────
+        edit.putLong("3013", 1L);
+        edit.putBoolean("3023", true);
+        edit.putBoolean("3026", true);
+        edit.putBoolean("3606", true);
+        edit.putBoolean("3611", true);
+        edit.putLong("45762698", 2L);
+        edit.putBoolean("45787397", true);
+        edit.putBoolean("45794037", true);
+        edit.putBoolean("45794038", true);
+        edit.putLong("45802110", 2L);
+        edit.putBoolean("45821034", true);
+        // ── AI Photo & Video Editor ───────────────────────────────────────
+        edit.putBoolean("45683026", true);
+        edit.putBoolean("45683689", true);
+        edit.putBoolean("45705305", true);
+        edit.putBoolean("45709528", true);
+        edit.putBoolean("45724258", true);
+        // ── Cinematic & Animation ─────────────────────────────────────────
+        edit.putBoolean("45418859", true);
+        edit.putBoolean("45430236", true);
+        edit.putBoolean("45353606", true);
+        edit.putBoolean("45694311", true);
+        // ── Extra Lcnzc collage flags ─────────────────────────────────────
+        edit.putBoolean("45621064", true);
+        edit.putBoolean("45621107", true);
+        edit.putBoolean("45621113", true);
+        edit.putBoolean("45622110", true);
+        edit.putBoolean("45622469", true);
+        edit.putBoolean("45628225", true);
+        edit.putBoolean("45628550", true);
+        edit.putBoolean("45631391", true);
+        edit.putBoolean("45631603", true);
+        edit.putBoolean("45632965", true);
+        edit.putBoolean("45634595", true);
+        edit.putBoolean("45637624", true);
+        edit.putBoolean("45638963", true);
+        edit.putBoolean("45639164", true);
+        edit.putBoolean("45640322", true);
+        edit.putBoolean("45640504", true);
+        edit.putBoolean("45640505", true);
+        edit.putBoolean("45640844", true);
+        edit.putBoolean("45644061", true);
+        edit.putBoolean("45644595", true);
+        edit.putBoolean("45644775", true);
+        edit.putBoolean("45645462", true);
+        edit.putBoolean("45646781", true);
+        edit.putBoolean("45647254", true);
+        edit.putBoolean("45648697", true);
+        edit.putBoolean("45648886", true);
+        edit.putBoolean("45650278", true);
+        edit.putBoolean("45651344", true);
+        edit.putBoolean("45651598", true);
+        edit.putBoolean("45651749", true);
+        edit.putBoolean("45651980", true);
+        edit.putBoolean("45653406", true);
+        edit.putBoolean("45653407", true);
+        edit.putBoolean("45653581", true);
+        edit.putBoolean("45655278", true);
+        edit.putBoolean("45656581", true);
+        edit.putBoolean("45657395", true);
+        edit.putBoolean("45658006", true);
+        edit.putBoolean("45658221", true);
+        edit.putBoolean("45659248", true);
+        edit.putBoolean("45660274", true);
+        edit.putBoolean("45661188", true);
+        edit.putBoolean("45661840", true);
+        edit.putBoolean("45662058", true);
+        edit.putBoolean("45664395", true);
+        edit.putBoolean("45667018", true);
+        edit.putBoolean("45667019", true);
+        edit.putBoolean("45676222", true);
+        edit.putBoolean("45677617", true);
+        edit.putBoolean("45678735", true);
+        edit.putBoolean("45691864", true);
+        edit.putBoolean("45693639", true);
+        edit.putBoolean("45694541", true);
+        edit.putBoolean("45694542", true);
+        edit.putBoolean("45696402", true);
+        edit.putBoolean("45699033", true);
+        edit.putBoolean("45704067", true);
+        edit.putBoolean("45705374", true);
+        edit.putBoolean("45706748", true);
+        edit.putBoolean("45712494", true);
+        edit.putBoolean("45719574", true);
+        edit.putBoolean("45724817", true);
+        edit.putBoolean("45726712", true);
+        edit.putBoolean("45742602", true);
+        edit.putBoolean("45742979", true);
+        edit.putBoolean("45743260", true);
+        edit.putBoolean("45743955", true);
+        edit.putBoolean("45751235", true);
+        edit.putBoolean("45761245", true);
+        edit.putBoolean("45761246", true);
+        edit.putBoolean("45761247", true);
+        edit.putBoolean("3746", true);
+        edit.putBoolean("3778", true);
+        edit.putBoolean("45351199", true);
+        edit.putBoolean("45357121", true);
+        edit.putBoolean("45361103", true);
+        edit.putBoolean("45363145", true);
+        edit.putBoolean("45366356", true);
+        edit.putBoolean("45366360", true);
+        edit.putBoolean("45376295", true);
+        edit.putBoolean("45379729", true);
+        edit.putBoolean("45381763", true);
+        edit.putBoolean("45383650", true);
+        edit.putBoolean("45383918", true);
+        edit.putBoolean("45412062", true);
+        edit.putBoolean("45421221", true);
+        edit.putBoolean("45427667", true);
+        edit.putBoolean("45429413", true);
+        edit.putBoolean("45429414", true);
+        edit.putBoolean("45430489", true);
+        edit.putBoolean("45613285", true);
+        edit.putBoolean("45618074", true);
+        edit.putBoolean("45618486", true);
+        edit.apply();
     }
 
     public static void applyAll26Defaults(SharedPreferences prefs) {
         applyCuratedDefaults(prefs);
     }
 }
+
