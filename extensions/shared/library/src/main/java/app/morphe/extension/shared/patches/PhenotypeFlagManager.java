@@ -358,7 +358,7 @@ public final class PhenotypeFlagManager {
         private void updateSubtitleText(int flagsShown) {
             if (totalFlagsCount == 0) {
                 emptyContainer.setVisibility(View.VISIBLE);
-                renderEmptySlate(activity, emptyContainer, prefs, this::reloadData, density);
+                renderEmptySlate(activity, emptyContainer, density);
                 tvSub.setText("0 Flags Configured");
             } else if (flagsShown == 0) {
                 emptyContainer.setVisibility(View.VISIBLE);
@@ -866,12 +866,12 @@ public final class PhenotypeFlagManager {
         }
     }
 
-    private static void renderEmptySlate(Activity activity, LinearLayout container, SharedPreferences prefs, Runnable onRefresh, float density) {
+    private static void renderEmptySlate(Activity activity, LinearLayout container, float density) {
         container.removeAllViews();
         LinearLayout box = new LinearLayout(activity);
         box.setOrientation(LinearLayout.VERTICAL);
         box.setGravity(Gravity.CENTER);
-        int p = (int) (32 * density);
+        int p = (int) (40 * density);
         box.setPadding(p, p, p, p);
 
         TextView icon = new TextView(activity);
@@ -894,20 +894,7 @@ public final class PhenotypeFlagManager {
         desc.setTextSize(13);
         desc.setTextColor(M3_TEXT_SECONDARY);
         desc.setGravity(Gravity.CENTER);
-        desc.setPadding(0, 0, 0, (int) (16 * density));
         box.addView(desc);
-
-        Button btnPresets = new Button(activity);
-        btnPresets.setText("✨ Load Recommended Presets");
-        btnPresets.setTextColor(M3_ON_PRIMARY);
-        btnPresets.setBackground(createRoundedDrawable(M3_PRIMARY, 10 * density));
-        btnPresets.setOnClickListener(v -> {
-            PhotoFlagsRegistry.applyCuratedDefaults(prefs);
-            GooglePhotosAccountAvatar.syncOneGoogleFlags(activity);
-            Toast.makeText(activity, "✓ Loaded recommended presets", Toast.LENGTH_SHORT).show();
-            onRefresh.run();
-        });
-        box.addView(btnPresets);
 
         container.addView(box);
     }
@@ -969,12 +956,9 @@ public final class PhenotypeFlagManager {
             copyAllToClipboard(activity, prefs);
         }));
 
-        // 5. Restore Recommended Presets
-        items.add(new MenuItem("✨", "Restore Recommended Presets", "Enable all 8 Create Tab tools, Stories & Avatar Rings", () -> {
-            PhotoFlagsRegistry.applyCuratedDefaults(prefs);
-            GooglePhotosAccountAvatar.syncOneGoogleFlags(activity);
-            Toast.makeText(activity, "✓ Restored recommended presets", Toast.LENGTH_SHORT).show();
-            onRefresh.run();
+        // 5. Load Recommended Presets
+        items.add(new MenuItem("✨", "Load Recommended Presets", "Restore curated feature presets (coming soon)", () -> {
+            Toast.makeText(activity, "Presets will be configured in an upcoming update", Toast.LENGTH_SHORT).show();
         }));
 
         // 6. Clear All Flags

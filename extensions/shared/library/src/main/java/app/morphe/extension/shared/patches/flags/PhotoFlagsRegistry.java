@@ -462,21 +462,7 @@ public final class PhotoFlagsRegistry {
     }
 
     public static void applyCuratedDefaults(SharedPreferences prefs) {
-        if (prefs == null) return;
-        SharedPreferences.Editor editor = prefs.edit();
-        for (CuratedFlag f : CURATED_FLAGS) {
-            if (f.type == FlagType.BOOLEAN) {
-                editor.putBoolean(f.key, (Boolean) f.defaultValue);
-            } else if (f.type == FlagType.LONG) {
-                editor.putLong(f.key, ((Number) f.defaultValue).longValue());
-            } else if (f.type == FlagType.FLOAT) {
-                editor.putFloat(f.key, ((Number) f.defaultValue).floatValue());
-            } else {
-                editor.putString(f.key, String.valueOf(f.defaultValue));
-            }
-        }
-        editor.apply();
-        Logger.printInfo(() -> "Applied preset flags (" + CURATED_FLAGS.size() + ") to SharedPreferences.");
+        // Kept empty as requested; presets will be populated later
     }
 
     public static void applyAll26Defaults(SharedPreferences prefs) {
