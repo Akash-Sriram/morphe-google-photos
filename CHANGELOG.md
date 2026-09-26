@@ -1,3 +1,9 @@
+## [1.12.2](https://github.com/Akash-Sriram/morphe-google-photos/compare/v1.12.1...v1.12.2) (2026-09-26)
+
+### 🐛 Bug Fixes
+
+* **Google Photos - Flags:** prevent empty search state when categories are collapsed without query ([0db0ccb](https://github.com/Akash-Sriram/morphe-google-photos/commit/0db0ccb7a738c76a6e7b008eb43ebc96d0b8f4b5))
+
 ## [1.12.1](https://github.com/Akash-Sriram/morphe-google-photos/compare/v1.12.0...v1.12.1) (2026-09-26)
 
 ### 🐛 Bug Fixes
