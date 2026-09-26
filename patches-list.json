@@ -30,6 +30,13 @@
               "isExperimental": false,
               "minSdk": null,
               "description": null
+            },
+            {
+              "version": "7.94.0.984908898",
+              "versionCodes": null,
+              "isExperimental": true,
+              "minSdk": null,
+              "description": null
             }
           ]
         }
@@ -66,6 +73,13 @@
               "isExperimental": false,
               "minSdk": null,
               "description": null
+            },
+            {
+              "version": "7.94.0.984908898",
+              "versionCodes": null,
+              "isExperimental": true,
+              "minSdk": null,
+              "description": null
             }
           ]
         }
@@ -100,6 +114,13 @@
               "isExperimental": false,
               "minSdk": null,
               "description": null
+            },
+            {
+              "version": "7.94.0.984908898",
+              "versionCodes": null,
+              "isExperimental": true,
+              "minSdk": null,
+              "description": null
             }
           ]
         }
@@ -132,6 +153,13 @@
               "version": "7.93.0.982110057",
               "versionCodes": null,
               "isExperimental": false,
+              "minSdk": null,
+              "description": null
+            },
+            {
+              "version": "7.94.0.984908898",
+              "versionCodes": null,
+              "isExperimental": true,
               "minSdk": null,
               "description": null
             }
@@ -171,6 +199,13 @@
               "isExperimental": false,
               "minSdk": null,
               "description": null
+            },
+            {
+              "version": "7.94.0.984908898",
+              "versionCodes": null,
+              "isExperimental": true,
+              "minSdk": null,
+              "description": null
             }
           ]
         }
@@ -203,6 +238,13 @@
               "version": "7.93.0.982110057",
               "versionCodes": null,
               "isExperimental": false,
+              "minSdk": null,
+              "description": null
+            },
+            {
+              "version": "7.94.0.984908898",
+              "versionCodes": null,
+              "isExperimental": true,
               "minSdk": null,
               "description": null
             }
@@ -239,6 +281,13 @@
               "isExperimental": false,
               "minSdk": null,
               "description": null
+            },
+            {
+              "version": "7.94.0.984908898",
+              "versionCodes": null,
+              "isExperimental": true,
+              "minSdk": null,
+              "description": null
             }
           ]
         }
@@ -273,6 +322,13 @@
               "version": "7.93.0.982110057",
               "versionCodes": null,
               "isExperimental": false,
+              "minSdk": null,
+              "description": null
+            },
+            {
+              "version": "7.94.0.984908898",
+              "versionCodes": null,
+              "isExperimental": true,
               "minSdk": null,
               "description": null
             }
@@ -313,6 +369,56 @@
               "isExperimental": false,
               "minSdk": null,
               "description": null
+            },
+            {
+              "version": "7.94.0.984908898",
+              "versionCodes": null,
+              "isExperimental": true,
+              "minSdk": null,
+              "description": null
+            }
+          ]
+        }
+      ],
+      "options": []
+    },
+    {
+      "name": "Google One Bento Badge",
+      "description": "Restores the genuine Google One subscription badge in the Google Photos Bento account menu.",
+      "default": true,
+      "category": null,
+      "dependencies": [
+        "BytecodePatch"
+      ],
+      "compatiblePackages": [
+        {
+          "packageName": "com.google.android.apps.photos",
+          "name": "Google Photos",
+          "description": null,
+          "apkFileType": null,
+          "appIconColor": "#FC3F3C",
+          "signatures": null,
+          "targets": [
+            {
+              "version": "7.92.0.977185651",
+              "versionCodes": null,
+              "isExperimental": false,
+              "minSdk": null,
+              "description": null
+            },
+            {
+              "version": "7.93.0.982110057",
+              "versionCodes": null,
+              "isExperimental": false,
+              "minSdk": null,
+              "description": null
+            },
+            {
+              "version": "7.94.0.984908898",
+              "versionCodes": null,
+              "isExperimental": true,
+              "minSdk": null,
+              "description": null
             }
           ]
         }
@@ -347,6 +453,13 @@
               "version": "7.93.0.982110057",
               "versionCodes": null,
               "isExperimental": false,
+              "minSdk": null,
+              "description": null
+            },
+            {
+              "version": "7.94.0.984908898",
+              "versionCodes": null,
+              "isExperimental": true,
               "minSdk": null,
               "description": null
             }
@@ -385,6 +498,13 @@
               "version": "7.93.0.982110057",
               "versionCodes": null,
               "isExperimental": false,
+              "minSdk": null,
+              "description": null
+            },
+            {
+              "version": "7.94.0.984908898",
+              "versionCodes": null,
+              "isExperimental": true,
               "minSdk": null,
               "description": null
             }
