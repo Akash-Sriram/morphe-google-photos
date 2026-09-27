@@ -132,70 +132,103 @@ public final class PhenotypeFlagManager {
         dock.setGravity(Gravity.CENTER);
 
         FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT
         );
         lp.gravity = Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL;
-        lp.setMargins(0, 0, 0, (int) (24 * density));
+        lp.setMargins((int) (12 * density), 0, (int) (12 * density), (int) (20 * density));
         dock.setLayoutParams(lp);
 
-        // Pill 1: Flag Manager
+        int btnHeight = (int) (44 * density);
+        int marginH = (int) (4 * density);
+
+        // Button 1: Flag Manager
         LinearLayout pillFlags = new LinearLayout(activity);
         pillFlags.setOrientation(LinearLayout.HORIZONTAL);
         pillFlags.setGravity(Gravity.CENTER);
         pillFlags.setClickable(true);
         pillFlags.setFocusable(true);
-        pillFlags.setElevation(14f);
-        int padH = (int) (18 * density);
-        pillFlags.setPadding(padH, (int) (12 * density), padH, (int) (12 * density));
+        pillFlags.setElevation(10 * density);
+        LinearLayout.LayoutParams lpFlags = new LinearLayout.LayoutParams(0, btnHeight, 1.0f);
+        lpFlags.setMargins(marginH, 0, marginH, 0);
+        pillFlags.setLayoutParams(lpFlags);
+
         GradientDrawable bgFlags = new GradientDrawable();
-        bgFlags.setCornerRadius(25 * density);
+        bgFlags.setCornerRadius(22 * density);
         bgFlags.setColor(M3_PRIMARY);
         pillFlags.setBackground(bgFlags);
 
         TextView iconFlags = new TextView(activity);
         iconFlags.setText("✨");
-        iconFlags.setTextSize(16);
-        iconFlags.setPadding(0, 0, (int) (8 * density), 0);
+        iconFlags.setTextSize(15);
+        iconFlags.setPadding(0, 0, (int) (4 * density), 0);
         pillFlags.addView(iconFlags);
 
         TextView labelFlags = new TextView(activity);
         labelFlags.setText("Flags");
-        labelFlags.setTextSize(14);
+        labelFlags.setTextSize(13);
         labelFlags.setTextColor(M3_ON_PRIMARY);
         labelFlags.setTypeface(null, Typeface.BOLD);
         pillFlags.addView(labelFlags);
         pillFlags.setOnClickListener(v -> showFlagManagerDialog(activity));
         dock.addView(pillFlags);
 
-        // Space between pills
-        View spacer = new View(activity);
-        LinearLayout.LayoutParams spLp = new LinearLayout.LayoutParams((int) (10 * density), 1);
-        spacer.setLayoutParams(spLp);
-        dock.addView(spacer);
+        // Button 2: Library Toolkit
+        LinearLayout pillToolkit = new LinearLayout(activity);
+        pillToolkit.setOrientation(LinearLayout.HORIZONTAL);
+        pillToolkit.setGravity(Gravity.CENTER);
+        pillToolkit.setClickable(true);
+        pillToolkit.setFocusable(true);
+        pillToolkit.setElevation(10 * density);
+        LinearLayout.LayoutParams lpToolkit = new LinearLayout.LayoutParams(0, btnHeight, 1.0f);
+        lpToolkit.setMargins(marginH, 0, marginH, 0);
+        pillToolkit.setLayoutParams(lpToolkit);
 
-        // Pill 2: Diagnostics & Logs
+        GradientDrawable bgToolkit = new GradientDrawable();
+        bgToolkit.setCornerRadius(22 * density);
+        bgToolkit.setColor(0xFF005A54);
+        pillToolkit.setBackground(bgToolkit);
+
+        TextView iconToolkit = new TextView(activity);
+        iconToolkit.setText("🛠️");
+        iconToolkit.setTextSize(15);
+        iconToolkit.setPadding(0, 0, (int) (4 * density), 0);
+        pillToolkit.addView(iconToolkit);
+
+        TextView labelToolkit = new TextView(activity);
+        labelToolkit.setText("Toolkit");
+        labelToolkit.setTextSize(13);
+        labelToolkit.setTextColor(0xFFFFFFFF);
+        labelToolkit.setTypeface(null, Typeface.BOLD);
+        pillToolkit.addView(labelToolkit);
+        pillToolkit.setOnClickListener(v -> app.morphe.extension.shared.patches.toolkit.PhotosToolkitDialog.show(activity));
+        dock.addView(pillToolkit);
+
+        // Button 3: Diagnostics & Logs
         LinearLayout pillLogs = new LinearLayout(activity);
         pillLogs.setOrientation(LinearLayout.HORIZONTAL);
         pillLogs.setGravity(Gravity.CENTER);
         pillLogs.setClickable(true);
         pillLogs.setFocusable(true);
-        pillLogs.setElevation(14f);
-        pillLogs.setPadding(padH, (int) (12 * density), padH, (int) (12 * density));
+        pillLogs.setElevation(10 * density);
+        LinearLayout.LayoutParams lpLogs = new LinearLayout.LayoutParams(0, btnHeight, 1.0f);
+        lpLogs.setMargins(marginH, 0, marginH, 0);
+        pillLogs.setLayoutParams(lpLogs);
+
         GradientDrawable bgLogs = new GradientDrawable();
-        bgLogs.setCornerRadius(25 * density);
+        bgLogs.setCornerRadius(22 * density);
         bgLogs.setColor(0xFF2E3836);
         pillLogs.setBackground(bgLogs);
 
         TextView iconLogs = new TextView(activity);
         iconLogs.setText("📊");
-        iconLogs.setTextSize(16);
-        iconLogs.setPadding(0, 0, (int) (8 * density), 0);
+        iconLogs.setTextSize(15);
+        iconLogs.setPadding(0, 0, (int) (4 * density), 0);
         pillLogs.addView(iconLogs);
 
         TextView labelLogs = new TextView(activity);
-        labelLogs.setText("Diagnostics");
-        labelLogs.setTextSize(14);
+        labelLogs.setText("Logs");
+        labelLogs.setTextSize(13);
         labelLogs.setTextColor(0xFFFFFFFF);
         labelLogs.setTypeface(null, Typeface.BOLD);
         pillLogs.addView(labelLogs);
