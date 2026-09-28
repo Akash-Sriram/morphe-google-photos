@@ -140,6 +140,8 @@ public final class PhotosDatabaseScanner {
 
             Logger.printInfo(() -> "PhotosDatabaseScanner: Evaluating candidate: " + dbFile.getName() + " (" + dbFile.length() + " bytes)");
 
+            sanitizeDatabase(context, dbFile.getName());
+
             SQLiteDatabase db = null;
             try {
                 db = SQLiteDatabase.openDatabase(dbFile.getPath(), null, SQLiteDatabase.OPEN_READONLY);
@@ -611,6 +613,31 @@ public final class PhotosDatabaseScanner {
         }
     }
 
+    public static void sanitizeDatabase(Context context, String dbName) {
+        if (context == null) return;
+        SQLiteDatabase db = openWritableDatabase(context, dbName);
+        if (db == null) return;
+        try {
+            Set<String> tables = getTableNames(db);
+            if (tables.contains("collections")) {
+                int purgedCol = db.delete("collections", "collection_media_key LIKE 'local_album_%' OR protobuf IS NULL", null);
+                if (purgedCol > 0) {
+                    Logger.printInfo(() -> "PhotosDatabaseScanner: Purged " + purgedCol + " corrupt collections.");
+                }
+            }
+            if (tables.contains("item_collection_data")) {
+                int purgedIcd = db.delete("item_collection_data", "collection_id LIKE 'local_album_%' OR protobuf IS NULL", null);
+                if (purgedIcd > 0) {
+                    Logger.printInfo(() -> "PhotosDatabaseScanner: Purged " + purgedIcd + " corrupt item_collection_data rows.");
+                }
+            }
+        } catch (Throwable t) {
+            Logger.printException(() -> "PhotosDatabaseScanner: Error in sanitizeDatabase", t);
+        } finally {
+            try { db.close(); } catch (Throwable ignored) {}
+        }
+    }
+
     public static AlbumActionResult addItemsToAlbum(
             Context context,
             String dbName,
@@ -623,130 +650,13 @@ public final class PhotosDatabaseScanner {
             return new AlbumActionResult(false, 0, "", "", "No items selected to add.");
         }
 
-        SQLiteDatabase db = openWritableDatabase(context, dbName);
-        if (db == null) {
-            return new AlbumActionResult(false, 0, "", "", "Unable to open Google Photos database with write permissions.");
+        // Direct raw SQLite album insertion is purposefully disabled to prevent
+        // null-protobuf parser crashes and cloud sync desynchronization.
+        if (progressLog != null) {
+            progressLog.accept("Notice: Direct SQLite album writes are disabled to protect database integrity.");
+            progressLog.accept("Please use the 'Share / Add to Album' native action instead.");
         }
-
-        try {
-            Set<String> tables = getTableNames(db);
-            boolean hasCollections = tables.contains("collections");
-            boolean hasEnvelopes = tables.contains("envelopes");
-            boolean hasIcd = tables.contains("item_collection_data");
-
-            if (!hasIcd) {
-                return new AlbumActionResult(false, 0, "", "", "Database missing item_collection_data table.");
-            }
-
-            Set<String> icdCols = getColumnNames(db, "item_collection_data");
-            Set<String> colCols = hasCollections ? getColumnNames(db, "collections") : Collections.emptySet();
-            Set<String> envCols = hasEnvelopes ? getColumnNames(db, "envelopes") : Collections.emptySet();
-
-            String finalAlbumKey = targetAlbumMediaKey;
-            String finalAlbumTitle = newAlbumTitle != null && !newAlbumTitle.trim().isEmpty() ? newAlbumTitle.trim() : "Photos Album";
-
-            // If creating a new album
-            if (finalAlbumKey == null || finalAlbumKey.isEmpty()) {
-                finalAlbumKey = "local_album_" + System.currentTimeMillis();
-                if (hasCollections) {
-                    ContentValues cv = new ContentValues();
-                    if (colCols.contains("collection_media_key")) cv.put("collection_media_key", finalAlbumKey);
-                    if (colCols.contains("title")) cv.put("title", finalAlbumTitle);
-                    if (colCols.contains("title_text")) cv.put("title_text", finalAlbumTitle);
-                    if (colCols.contains("type")) cv.put("type", 1);
-                    if (colCols.contains("display_mode")) cv.put("display_mode", 1);
-                    if (colCols.contains("total_items")) cv.put("total_items", items.size());
-                    if (colCols.contains("last_activity_time_ms")) cv.put("last_activity_time_ms", System.currentTimeMillis());
-
-                    String coverKey = !items.isEmpty() ? (!items.get(0).mediaKey.isEmpty() ? items.get(0).mediaKey : items.get(0).dedupKey) : "";
-                    if (colCols.contains("cover_item_media_key")) cv.put("cover_item_media_key", coverKey);
-
-                    long minTime = Long.MAX_VALUE;
-                    long maxTime = Long.MIN_VALUE;
-                    for (MediaItemSummary it : items) {
-                        if (it.timestamp > 0) {
-                            if (it.timestamp < minTime) minTime = it.timestamp;
-                            if (it.timestamp > maxTime) maxTime = it.timestamp;
-                        }
-                    }
-                    if (minTime != Long.MAX_VALUE && colCols.contains("start")) cv.put("start", minTime);
-                    if (maxTime != Long.MIN_VALUE && colCols.contains("end")) cv.put("end", maxTime);
-
-                    db.insertWithOnConflict("collections", null, cv, SQLiteDatabase.CONFLICT_REPLACE);
-                    if (progressLog != null) {
-                        progressLog.accept("Created new album in collections: \"" + finalAlbumTitle + "\" (" + finalAlbumKey + ")");
-                    }
-                }
-            }
-
-            // Insert items into item_collection_data
-            db.beginTransaction();
-            int addedCount = 0;
-            try {
-                for (int i = 0; i < items.size(); i++) {
-                    MediaItemSummary item = items.get(i);
-                    String canonicalId = (!item.mediaKey.isEmpty()) ? item.mediaKey : item.dedupKey;
-                    if (canonicalId.isEmpty()) canonicalId = "photo_" + item.id;
-
-                    String icdId = finalAlbumKey + "_" + canonicalId;
-
-                    ContentValues cv = new ContentValues();
-                    if (icdCols.contains("icd_id")) cv.put("icd_id", icdId);
-                    if (icdCols.contains("canonical_id")) cv.put("canonical_id", canonicalId);
-                    if (icdCols.contains("collection_id")) cv.put("collection_id", finalAlbumKey);
-                    if (icdCols.contains("provenance")) cv.put("provenance", 1);
-                    if (icdCols.contains("version")) cv.put("version", 1);
-                    if (icdCols.contains("sort_key")) cv.put("sort_key", String.valueOf(item.timestamp > 0 ? item.timestamp : System.currentTimeMillis()));
-
-                    long rowId = db.insertWithOnConflict("item_collection_data", null, cv, SQLiteDatabase.CONFLICT_REPLACE);
-                    if (rowId != -1) {
-                        addedCount++;
-                    }
-
-                    if (progressLog != null && (i == 0 || (i + 1) % 25 == 0 || i == items.size() - 1)) {
-                        progressLog.accept(String.format(Locale.US, "Added %d/%d items to album...", (i + 1), items.size()));
-                    }
-                }
-                db.setTransactionSuccessful();
-            } finally {
-                db.endTransaction();
-            }
-
-            // Update album total item counts in collections
-            if (hasCollections) {
-                try {
-                    db.execSQL("UPDATE collections SET total_items = (SELECT count(1) FROM item_collection_data WHERE collection_id = ?), last_activity_time_ms = ? WHERE collection_media_key = ?",
-                            new Object[]{finalAlbumKey, System.currentTimeMillis(), finalAlbumKey});
-                } catch (Throwable t) {
-                    Logger.printException(() -> "Error updating collections count", t);
-                }
-            }
-            if (hasEnvelopes && envCols.contains("total_item_count")) {
-                try {
-                    String keyCol = envCols.contains("media_key") ? "media_key" : "envelope_media_key";
-                    db.execSQL("UPDATE envelopes SET total_item_count = (SELECT count(1) FROM item_collection_data WHERE collection_id = ?) WHERE " + keyCol + " = ?",
-                            new Object[]{finalAlbumKey, finalAlbumKey});
-                } catch (Throwable t) {
-                    Logger.printException(() -> "Error updating envelopes count", t);
-                }
-            }
-
-            // Notify content providers
-            notifyPhotosContentProviders(context);
-
-            if (progressLog != null) {
-                progressLog.accept(String.format(Locale.US, "✔ Successfully added %d items to \"%s\"!", addedCount, finalAlbumTitle));
-                progressLog.accept("Notified Google Photos ContentProvider. UI updated.");
-            }
-
-            return new AlbumActionResult(true, addedCount, finalAlbumTitle, finalAlbumKey, "Success");
-
-        } catch (Throwable t) {
-            Logger.printException(() -> "PhotosDatabaseScanner: Error in addItemsToAlbum", t);
-            return new AlbumActionResult(false, 0, "", "", "Error: " + t.getMessage());
-        } finally {
-            try { db.close(); } catch (Throwable ignored) {}
-        }
+        return new AlbumActionResult(false, 0, "", "", "Direct SQLite write disabled to prevent database corruption. Use native sharing flow.");
     }
 
     public static int batchTrashItems(

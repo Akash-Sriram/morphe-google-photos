@@ -368,33 +368,29 @@ public final class PhotosToolkitDialog {
         LinearLayout stage3Header = createSectionHeader(activity, density, "3  ACTIONS", "Execute operation on matching media");
         stage3Card.addView(stage3Header);
 
-        // Action Grid: 2 columns across 3 rows
-        LinearLayout actionRow1 = new LinearLayout(activity);
-        actionRow1.setOrientation(LinearLayout.HORIZONTAL);
-        actionRow1.setLayoutParams(new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-        actionRow1.setPadding(0, 0, 0, (int) (5 * density));
+        // Action 1: Preview Items (Prominent full-width button)
+        Button previewItemsBtn = new Button(activity);
+        previewItemsBtn.setText("👁️ Preview Matching Items (0)");
+        previewItemsBtn.setTextSize(12);
+        previewItemsBtn.setTypeface(null, Typeface.BOLD);
+        styleActionButton(previewItemsBtn, density, true);
+        LinearLayout.LayoutParams piLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        piLp.setMargins(0, 0, 0, (int) (6 * density));
+        previewItemsBtn.setLayoutParams(piLp);
+        stage3Card.addView(previewItemsBtn);
 
-        Button addToAlbumBtn = new Button(activity);
-        addToAlbumBtn.setText("📁 ADD TO ALBUM");
-        addToAlbumBtn.setTextSize(11);
-        addToAlbumBtn.setTypeface(null, Typeface.BOLD);
-        styleActionButton(addToAlbumBtn, density, true);
-        LinearLayout.LayoutParams lpR1A = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1.0f);
-        lpR1A.setMargins(0, 0, (int) (4 * density), 0);
-        addToAlbumBtn.setLayoutParams(lpR1A);
-        actionRow1.addView(addToAlbumBtn);
+        // Action 2: Share / Add to Album (Native) (Full-width button)
+        Button shareBtn = new Button(activity);
+        shareBtn.setText("📤 SHARE / ADD TO ALBUM (NATIVE)");
+        shareBtn.setTextSize(12);
+        shareBtn.setTypeface(null, Typeface.BOLD);
+        styleActionButton(shareBtn, density, true);
+        LinearLayout.LayoutParams shareLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        shareLp.setMargins(0, 0, 0, (int) (6 * density));
+        shareBtn.setLayoutParams(shareLp);
+        stage3Card.addView(shareBtn);
 
-        Button newAlbumBtn = new Button(activity);
-        newAlbumBtn.setText("➕ NEW ALBUM");
-        newAlbumBtn.setTextSize(11);
-        newAlbumBtn.setTypeface(null, Typeface.BOLD);
-        styleActionButton(newAlbumBtn, density, true);
-        LinearLayout.LayoutParams lpR1B = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1.0f);
-        lpR1B.setMargins((int) (4 * density), 0, 0, 0);
-        newAlbumBtn.setLayoutParams(lpR1B);
-        actionRow1.addView(newAlbumBtn);
-        stage3Card.addView(actionRow1);
-
+        // Action Row 2: Trash & Archive
         LinearLayout actionRow2 = new LinearLayout(activity);
         actionRow2.setOrientation(LinearLayout.HORIZONTAL);
         actionRow2.setLayoutParams(new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
@@ -421,6 +417,7 @@ public final class PhotosToolkitDialog {
         actionRow2.addView(archiveBtn);
         stage3Card.addView(actionRow2);
 
+        // Action Row 3: Favorite & Export CSV
         LinearLayout actionRow3 = new LinearLayout(activity);
         actionRow3.setOrientation(LinearLayout.HORIZONTAL);
         actionRow3.setLayoutParams(new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
@@ -446,17 +443,6 @@ public final class PhotosToolkitDialog {
         exportCsvBtn.setLayoutParams(lpR3B);
         actionRow3.addView(exportCsvBtn);
         stage3Card.addView(actionRow3);
-
-        // Preview Items Accordion / Button
-        Button previewItemsBtn = new Button(activity);
-        previewItemsBtn.setText("👁️ Preview Matching Items");
-        previewItemsBtn.setTextSize(11);
-        previewItemsBtn.setTextColor(TEXT_MUTED);
-        styleActionButton(previewItemsBtn, density, false);
-        LinearLayout.LayoutParams piLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        piLp.setMargins(0, (int) (2 * density), 0, (int) (6 * density));
-        previewItemsBtn.setLayoutParams(piLp);
-        stage3Card.addView(previewItemsBtn);
 
         // ── LIVE TERMINAL CONSOLE ─────────────────────────────────────────────
         LinearLayout consoleHeaderRow = new LinearLayout(activity);
@@ -696,24 +682,23 @@ public final class PhotosToolkitDialog {
         };
         Runnable refreshLibrary = () -> refreshLibraryRef[0].run();
 
-        // 5. Actions: Add to Album (Existing)
-        addToAlbumBtn.setOnClickListener(v -> {
+        // 5. Actions: Preview Items
+        previewItemsBtn.setOnClickListener(v -> {
             if (filteredList.isEmpty()) {
                 Toast.makeText(activity, "No items match current filter", Toast.LENGTH_SHORT).show();
-                appendLog.accept("Action aborted: No matching items");
                 return;
             }
-            showAddToExistingAlbumDialog(activity, filteredList, activeScanResult, appendLog, refreshLibrary);
+            showItemsPreviewDialog(activity, filteredList);
         });
 
-        // 6. Actions: New Album
-        newAlbumBtn.setOnClickListener(v -> {
+        // 6. Actions: Share / Add to Album (Native)
+        shareBtn.setOnClickListener(v -> {
             if (filteredList.isEmpty()) {
                 Toast.makeText(activity, "No items match current filter", Toast.LENGTH_SHORT).show();
                 appendLog.accept("Action aborted: No matching items");
                 return;
             }
-            showCreateNewAlbumDialog(activity, filteredList, activeScanResult, appendLog, refreshLibrary);
+            executeNativeShare(activity, filteredList, appendLog);
         });
 
         // 7. Actions: Trash
@@ -759,167 +744,83 @@ public final class PhotosToolkitDialog {
             appendLog.accept("Log cleared");
         });
 
-        // 10. Actions: Preview Items
-        previewItemsBtn.setOnClickListener(v -> {
-            if (filteredList.isEmpty()) {
-                Toast.makeText(activity, "No items match current filter", Toast.LENGTH_SHORT).show();
-                return;
-            }
-            showItemsPreviewDialog(activity, filteredList);
-        });
-
         // ── Initial Asynchronous Scan ─────────────────────────────────────────
         refreshLibrary.run();
     }
 
     // ─────────────────────────────────────────────────────────────────────────
-    // Album Action Dialogs
+    // Native Share / Album Action
     // ─────────────────────────────────────────────────────────────────────────
 
-    private static void showAddToExistingAlbumDialog(Activity activity, List<MediaItemSummary> items,
-                                                     ScanResult result, java.util.function.Consumer<String> appendLog,
-                                                     Runnable onComplete) {
-        float density = activity.getResources().getDisplayMetrics().density;
-        AlertDialog.Builder builder = new AlertDialog.Builder(activity, AlertDialog.THEME_DEVICE_DEFAULT_DARK);
-        builder.setTitle("📁 Add " + items.size() + " Items to Album");
-
-        ScrollView sv = new ScrollView(activity);
-        LinearLayout content = new LinearLayout(activity);
-        content.setOrientation(LinearLayout.VERTICAL);
-        content.setPadding((int) (20 * density), (int) (12 * density), (int) (20 * density), (int) (12 * density));
-
-        TextView subtitle = new TextView(activity);
-        subtitle.setText("Select an existing user album from the database:");
-        subtitle.setTextSize(13);
-        subtitle.setTextColor(TEXT_MUTED);
-        subtitle.setPadding(0, 0, 0, (int) (12 * density));
-        content.addView(subtitle);
-
-        AlertDialog dialog = builder.create();
-
-        if (result != null && !result.existingAlbums.isEmpty()) {
-            for (AlbumSummary album : result.existingAlbums) {
-                Button albumBtn = new Button(activity);
-                albumBtn.setText("📁  " + album.title + "  (" + album.itemCount + " items)");
-                albumBtn.setTextSize(13);
-                albumBtn.setSingleLine(true);
-                albumBtn.setEllipsize(TextUtils.TruncateAt.END);
-                styleActionButton(albumBtn, density, false);
-                albumBtn.setGravity(Gravity.START | Gravity.CENTER_VERTICAL);
-                albumBtn.setPadding((int) (16 * density), (int) (12 * density), (int) (16 * density), (int) (12 * density));
-
-                LinearLayout.LayoutParams abLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-                abLp.setMargins(0, (int) (4 * density), 0, (int) (4 * density));
-                albumBtn.setLayoutParams(abLp);
-
-                albumBtn.setOnClickListener(v -> {
-                    dialog.dismiss();
-                    executeAddToAlbum(activity, items, album.title, album.mediaKey,
-                            result != null ? result.scannedDatabase : null, appendLog, onComplete);
-                });
-                content.addView(albumBtn);
-            }
-        } else {
-            TextView noAlbums = new TextView(activity);
-            noAlbums.setText("No existing albums found in the local database.\nUse 'NEW ALBUM' to create one.");
-            noAlbums.setTextSize(13);
-            noAlbums.setTextColor(0xFFEF4444); // Red
-            noAlbums.setPadding(0, (int) (10 * density), 0, (int) (10 * density));
-            content.addView(noAlbums);
-        }
-
-        sv.addView(content);
-        dialog.setView(sv);
-        dialog.setButton(AlertDialog.BUTTON_NEGATIVE, "Cancel", (d, w) -> dialog.dismiss());
-        dialog.show();
-    }
-
-    private static void showCreateNewAlbumDialog(Activity activity, List<MediaItemSummary> items,
-                                                 ScanResult result, java.util.function.Consumer<String> appendLog,
-                                                 Runnable onComplete) {
-        float density = activity.getResources().getDisplayMetrics().density;
-        AlertDialog.Builder builder = new AlertDialog.Builder(activity, AlertDialog.THEME_DEVICE_DEFAULT_DARK);
-        builder.setTitle("➕ Create New Album");
-
-        LinearLayout content = new LinearLayout(activity);
-        content.setOrientation(LinearLayout.VERTICAL);
-        content.setPadding((int) (20 * density), (int) (12 * density), (int) (20 * density), (int) (12 * density));
-
-        TextView hint = new TextView(activity);
-        hint.setText("Enter the title for the new album to receive " + items.size() + " items:");
-        hint.setTextSize(13);
-        hint.setTextColor(TEXT_MUTED);
-        content.addView(hint);
-
-        EditText albumInput = new EditText(activity);
-        albumInput.setText("Storage Consuming Photos");
-        albumInput.setSingleLine(true);
-        albumInput.setTextColor(TEXT_WHITE);
-        albumInput.setTextSize(14);
-        albumInput.setPadding((int) (12 * density), (int) (10 * density), (int) (12 * density), (int) (10 * density));
-        LinearLayout.LayoutParams iLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        iLp.setMargins(0, (int) (10 * density), 0, (int) (10 * density));
-        albumInput.setLayoutParams(iLp);
-
-        GradientDrawable inputBg = new GradientDrawable();
-        inputBg.setColor(CARD_BG);
-        inputBg.setCornerRadius(8 * density);
-        inputBg.setStroke((int) (1 * density), CARD_BORDER);
-        albumInput.setBackground(inputBg);
-
-        content.addView(albumInput);
-
-        builder.setView(content);
-        builder.setPositiveButton("Create & Add", (d, w) -> {
-            String name = albumInput.getText().toString().trim();
-            if (name.isEmpty()) name = "Storage Consuming Photos";
-            executeAddToAlbum(activity, items, name, null,
-                    result != null ? result.scannedDatabase : null, appendLog, onComplete);
-        });
-        builder.setNegativeButton("Cancel", null);
-        builder.show();
-    }
-
-    private static void executeAddToAlbum(Activity activity, List<MediaItemSummary> items,
-                                          String albumName, String albumMediaKey,
-                                          String scannedDb,
-                                          java.util.function.Consumer<String> appendLog,
-                                          Runnable onComplete) {
+    private static void executeNativeShare(Activity activity, List<MediaItemSummary> items,
+                                           java.util.function.Consumer<String> appendLog) {
         if (items == null || items.isEmpty()) {
-            appendLog.accept(">> Error: No items selected to add.");
+            appendLog.accept(">> Error: No items to share.");
             return;
         }
 
-        appendLog.accept(">> Action: ADD TO ALBUM (Native SQLite DEX Execution)");
-        appendLog.accept("Target Album: \"" + albumName + "\"" + (albumMediaKey != null ? " (" + albumMediaKey + ")" : " [New Album]"));
-        appendLog.accept("Writing " + items.size() + " items directly to Google Photos internal database (" + (scannedDb != null ? scannedDb : "gphotos0.db") + ")...");
+        appendLog.accept(">> Action: NATIVE SHARE / ADD TO ALBUM (" + items.size() + " items)");
 
-        SCAN_EXECUTOR.execute(() -> {
-            PhotosDatabaseScanner.AlbumActionResult res = PhotosDatabaseScanner.addItemsToAlbum(
-                    activity, scannedDb, items, albumMediaKey, albumName, appendLog
-            );
+        ArrayList<Uri> uris = new ArrayList<>();
+        int localCount = 0;
+        int remoteOnlyCount = 0;
 
-            MAIN_HANDLER.post(() -> {
-                if (res.success) {
-                    appendLog.accept(">> SUCCESS: Added " + res.count + " items to \"" + res.albumTitle + "\"");
-                    Toast.makeText(activity, "Added " + res.count + " items to " + res.albumTitle, Toast.LENGTH_SHORT).show();
+        try {
+            try {
+                android.os.StrictMode.setVmPolicy(new android.os.StrictMode.VmPolicy.Builder().build());
+            } catch (Throwable ignored) {}
 
-                    AlertDialog.Builder b = new AlertDialog.Builder(activity, AlertDialog.THEME_DEVICE_DEFAULT_DARK);
-                    b.setTitle("📁 Album Updated");
-                    b.setMessage("Successfully added " + res.count + " items to album '" + res.albumTitle + "'.\n\n"
-                            + "• Google Photos local database updated.\n"
-                            + "• MediaContentProvider notified.\n"
-                            + "• Albums count synchronized.");
-                    b.setPositiveButton("OK", null);
-                    b.show();
+            Class<?> fpClass = null;
+            java.lang.reflect.Method getUriMethod = null;
+            try {
+                fpClass = Class.forName("androidx.core.content.FileProvider");
+                getUriMethod = fpClass.getMethod("getUriForFile", Context.class, String.class, File.class);
+            } catch (Throwable ignored) {}
 
-                    if (onComplete != null) onComplete.run();
-                } else {
-                    appendLog.accept(">> ERROR: " + res.message);
-                    Toast.makeText(activity, "Failed to add items: " + res.message, Toast.LENGTH_LONG).show();
+            String authority = activity.getPackageName() + ".fileprovider";
+
+            for (MediaItemSummary item : items) {
+                if (item.filepath != null && !item.filepath.isEmpty()) {
+                    File f = new File(item.filepath);
+                    if (f.exists()) {
+                        Uri uri = null;
+                        if (getUriMethod != null) {
+                            try {
+                                uri = (Uri) getUriMethod.invoke(null, activity, authority, f);
+                            } catch (Throwable ignored) {}
+                        }
+                        if (uri == null) {
+                            uri = Uri.fromFile(f);
+                        }
+                        uris.add(uri);
+                        localCount++;
+                        continue;
+                    }
                 }
-            });
-        });
+                remoteOnlyCount++;
+            }
+
+            appendLog.accept("Resolved " + localCount + " local file URIs (" + remoteOnlyCount + " cloud-only items)");
+
+            if (uris.isEmpty()) {
+                appendLog.accept(">> Note: Selected " + items.size() + " items are stored in Google Cloud without local cached copies.");
+                appendLog.accept(">> Cloud items can be reviewed via 'PREVIEW MATCHING ITEMS' or exported via 'EXPORT CSV'.");
+                Toast.makeText(activity, "Items are stored in Google Cloud only. View in Preview or Export CSV.", Toast.LENGTH_LONG).show();
+                return;
+            }
+
+            Intent shareIntent = new Intent(Intent.ACTION_SEND_MULTIPLE);
+            shareIntent.setType("*/*");
+            shareIntent.putParcelableArrayListExtra(Intent.EXTRA_STREAM, uris);
+            shareIntent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+
+            Intent chooser = Intent.createChooser(shareIntent, "Add to Album / Share via");
+            activity.startActivity(chooser);
+            appendLog.accept(">> Dispatched native Android share sheet for " + uris.size() + " items.");
+        } catch (Throwable t) {
+            appendLog.accept(">> Error launching share: " + t.getMessage());
+            Toast.makeText(activity, "Error: " + t.getMessage(), Toast.LENGTH_SHORT).show();
+        }
     }
 
     private static void executeTrashAction(Activity activity, List<MediaItemSummary> items,
