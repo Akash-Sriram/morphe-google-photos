@@ -5,6 +5,7 @@ import android.app.AlertDialog;
 import android.app.Dialog;
 import android.content.ClipData;
 import android.content.ClipboardManager;
+import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
 import android.graphics.Color;
@@ -368,81 +369,113 @@ public final class PhotosToolkitDialog {
         LinearLayout stage3Header = createSectionHeader(activity, density, "3  ACTIONS", "Execute operation on matching media");
         stage3Card.addView(stage3Header);
 
-        // Action 1: Preview Items (Prominent full-width button)
-        Button previewItemsBtn = new Button(activity);
-        previewItemsBtn.setText("👁️ Preview Matching Items (0)");
-        previewItemsBtn.setTextSize(12);
-        previewItemsBtn.setTypeface(null, Typeface.BOLD);
-        styleActionButton(previewItemsBtn, density, true);
-        LinearLayout.LayoutParams piLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        piLp.setMargins(0, 0, 0, (int) (6 * density));
-        previewItemsBtn.setLayoutParams(piLp);
-        stage3Card.addView(previewItemsBtn);
+        // Action Row 1: Add to Album & New Album
+        LinearLayout actionRow1 = new LinearLayout(activity);
+        actionRow1.setOrientation(LinearLayout.HORIZONTAL);
+        actionRow1.setLayoutParams(new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        actionRow1.setPadding(0, 0, 0, (int) (5 * density));
 
-        // Action 2: Share / Add to Album (Native) (Full-width button)
-        Button shareBtn = new Button(activity);
-        shareBtn.setText("📤 SHARE / ADD TO ALBUM (NATIVE)");
-        shareBtn.setTextSize(12);
-        shareBtn.setTypeface(null, Typeface.BOLD);
-        styleActionButton(shareBtn, density, true);
-        LinearLayout.LayoutParams shareLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        shareLp.setMargins(0, 0, 0, (int) (6 * density));
-        shareBtn.setLayoutParams(shareLp);
-        stage3Card.addView(shareBtn);
+        Button addToAlbumBtn = new Button(activity);
+        addToAlbumBtn.setText("📁 ADD TO ALBUM");
+        addToAlbumBtn.setTextSize(11);
+        addToAlbumBtn.setTypeface(null, Typeface.BOLD);
+        styleActionButton(addToAlbumBtn, density, true);
+        LinearLayout.LayoutParams lpR1A = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1.0f);
+        lpR1A.setMargins(0, 0, (int) (4 * density), 0);
+        addToAlbumBtn.setLayoutParams(lpR1A);
+        actionRow1.addView(addToAlbumBtn);
 
-        // Action Row 2: Trash & Archive
+        Button newAlbumBtn = new Button(activity);
+        newAlbumBtn.setText("➕ NEW ALBUM");
+        newAlbumBtn.setTextSize(11);
+        newAlbumBtn.setTypeface(null, Typeface.BOLD);
+        styleActionButton(newAlbumBtn, density, true);
+        LinearLayout.LayoutParams lpR1B = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1.0f);
+        lpR1B.setMargins((int) (4 * density), 0, 0, 0);
+        newAlbumBtn.setLayoutParams(lpR1B);
+        actionRow1.addView(newAlbumBtn);
+        stage3Card.addView(actionRow1);
+
+        // Action Row 2: Preview & Photos App Upload Flow
         LinearLayout actionRow2 = new LinearLayout(activity);
         actionRow2.setOrientation(LinearLayout.HORIZONTAL);
         actionRow2.setLayoutParams(new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
         actionRow2.setPadding(0, 0, 0, (int) (5 * density));
+
+        Button previewItemsBtn = new Button(activity);
+        previewItemsBtn.setText("👁️ PREVIEW (0)");
+        previewItemsBtn.setTextSize(11);
+        previewItemsBtn.setTypeface(null, Typeface.BOLD);
+        styleActionButton(previewItemsBtn, density, false);
+        LinearLayout.LayoutParams lpR2Preview = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1.0f);
+        lpR2Preview.setMargins(0, 0, (int) (4 * density), 0);
+        previewItemsBtn.setLayoutParams(lpR2Preview);
+        actionRow2.addView(previewItemsBtn);
+
+        Button photosAppBtn = new Button(activity);
+        photosAppBtn.setText("📤 VIA PHOTOS APP");
+        photosAppBtn.setTextSize(11);
+        photosAppBtn.setTypeface(null, Typeface.BOLD);
+        styleActionButton(photosAppBtn, density, false);
+        LinearLayout.LayoutParams lpR2App = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1.0f);
+        lpR2App.setMargins((int) (4 * density), 0, 0, 0);
+        photosAppBtn.setLayoutParams(lpR2App);
+        actionRow2.addView(photosAppBtn);
+        stage3Card.addView(actionRow2);
+
+        // Action Row 3: Trash & Archive
+        LinearLayout actionRow3 = new LinearLayout(activity);
+        actionRow3.setOrientation(LinearLayout.HORIZONTAL);
+        actionRow3.setLayoutParams(new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        actionRow3.setPadding(0, 0, 0, (int) (5 * density));
 
         Button trashBtn = new Button(activity);
         trashBtn.setText("🗑️ TRASH");
         trashBtn.setTextSize(11);
         trashBtn.setTypeface(null, Typeface.BOLD);
         styleActionButton(trashBtn, density, false);
-        LinearLayout.LayoutParams lpR2A = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1.0f);
-        lpR2A.setMargins(0, 0, (int) (4 * density), 0);
-        trashBtn.setLayoutParams(lpR2A);
-        actionRow2.addView(trashBtn);
+        LinearLayout.LayoutParams lpR3A = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1.0f);
+        lpR3A.setMargins(0, 0, (int) (4 * density), 0);
+        trashBtn.setLayoutParams(lpR3A);
+        actionRow3.addView(trashBtn);
 
         Button archiveBtn = new Button(activity);
         archiveBtn.setText("📦 ARCHIVE");
         archiveBtn.setTextSize(11);
         archiveBtn.setTypeface(null, Typeface.BOLD);
         styleActionButton(archiveBtn, density, false);
-        LinearLayout.LayoutParams lpR2B = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1.0f);
-        lpR2B.setMargins((int) (4 * density), 0, 0, 0);
-        archiveBtn.setLayoutParams(lpR2B);
-        actionRow2.addView(archiveBtn);
-        stage3Card.addView(actionRow2);
+        LinearLayout.LayoutParams lpR3B = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1.0f);
+        lpR3B.setMargins((int) (4 * density), 0, 0, 0);
+        archiveBtn.setLayoutParams(lpR3B);
+        actionRow3.addView(archiveBtn);
+        stage3Card.addView(actionRow3);
 
-        // Action Row 3: Favorite & Export CSV
-        LinearLayout actionRow3 = new LinearLayout(activity);
-        actionRow3.setOrientation(LinearLayout.HORIZONTAL);
-        actionRow3.setLayoutParams(new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-        actionRow3.setPadding(0, 0, 0, (int) (5 * density));
+        // Action Row 4: Favorite & Export CSV
+        LinearLayout actionRow4 = new LinearLayout(activity);
+        actionRow4.setOrientation(LinearLayout.HORIZONTAL);
+        actionRow4.setLayoutParams(new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        actionRow4.setPadding(0, 0, 0, (int) (5 * density));
 
         Button favoriteBtn = new Button(activity);
         favoriteBtn.setText("⭐ FAVORITE");
         favoriteBtn.setTextSize(11);
         favoriteBtn.setTypeface(null, Typeface.BOLD);
         styleActionButton(favoriteBtn, density, false);
-        LinearLayout.LayoutParams lpR3A = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1.0f);
-        lpR3A.setMargins(0, 0, (int) (4 * density), 0);
-        favoriteBtn.setLayoutParams(lpR3A);
-        actionRow3.addView(favoriteBtn);
+        LinearLayout.LayoutParams lpR4A = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1.0f);
+        lpR4A.setMargins(0, 0, (int) (4 * density), 0);
+        favoriteBtn.setLayoutParams(lpR4A);
+        actionRow4.addView(favoriteBtn);
 
         Button exportCsvBtn = new Button(activity);
         exportCsvBtn.setText("💾 EXPORT CSV");
         exportCsvBtn.setTextSize(11);
         exportCsvBtn.setTypeface(null, Typeface.BOLD);
         styleActionButton(exportCsvBtn, density, false);
-        LinearLayout.LayoutParams lpR3B = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1.0f);
-        lpR3B.setMargins((int) (4 * density), 0, 0, 0);
-        exportCsvBtn.setLayoutParams(lpR3B);
-        actionRow3.addView(exportCsvBtn);
-        stage3Card.addView(actionRow3);
+        LinearLayout.LayoutParams lpR4B = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1.0f);
+        lpR4B.setMargins((int) (4 * density), 0, 0, 0);
+        exportCsvBtn.setLayoutParams(lpR4B);
+        actionRow4.addView(exportCsvBtn);
+        stage3Card.addView(actionRow4);
 
         // ── LIVE TERMINAL CONSOLE ─────────────────────────────────────────────
         LinearLayout consoleHeaderRow = new LinearLayout(activity);
@@ -592,7 +625,7 @@ public final class PhotosToolkitDialog {
 
             String quotaStr = totalQuotaBytes > 0 ? " (" + formatSize(totalQuotaBytes) + " quota)" : " (" + formatSize(totalSizeBytes) + " size)";
             matchBanner.setText("⚡ " + filteredList.size() + " items match filter" + quotaStr);
-            previewItemsBtn.setText("👁️ Preview Matching Items (" + filteredList.size() + ")");
+            previewItemsBtn.setText("👁️ PREVIEW (" + filteredList.size() + ")");
         };
 
         // ── Setup Click Handlers ──────────────────────────────────────────────
@@ -682,7 +715,25 @@ public final class PhotosToolkitDialog {
         };
         Runnable refreshLibrary = () -> refreshLibraryRef[0].run();
 
-        // 5. Actions: Preview Items
+        // 5. Actions: Add to Album
+        addToAlbumBtn.setOnClickListener(v -> {
+            if (filteredList.isEmpty()) {
+                Toast.makeText(activity, "No items match current filter", Toast.LENGTH_SHORT).show();
+                return;
+            }
+            showAddToExistingAlbumDialog(activity, filteredList, activeScanResult, appendLog, refreshLibrary);
+        });
+
+        // 5b. Actions: New Album
+        newAlbumBtn.setOnClickListener(v -> {
+            if (filteredList.isEmpty()) {
+                Toast.makeText(activity, "No items match current filter", Toast.LENGTH_SHORT).show();
+                return;
+            }
+            showCreateNewAlbumDialog(activity, filteredList, activeScanResult, appendLog, refreshLibrary);
+        });
+
+        // 5c. Actions: Preview Items
         previewItemsBtn.setOnClickListener(v -> {
             if (filteredList.isEmpty()) {
                 Toast.makeText(activity, "No items match current filter", Toast.LENGTH_SHORT).show();
@@ -691,14 +742,14 @@ public final class PhotosToolkitDialog {
             showItemsPreviewDialog(activity, filteredList);
         });
 
-        // 6. Actions: Share / Add to Album (Native)
-        shareBtn.setOnClickListener(v -> {
+        // 6. Actions: Direct Photos App flow
+        photosAppBtn.setOnClickListener(v -> {
             if (filteredList.isEmpty()) {
                 Toast.makeText(activity, "No items match current filter", Toast.LENGTH_SHORT).show();
                 appendLog.accept("Action aborted: No matching items");
                 return;
             }
-            executeNativeShare(activity, filteredList, appendLog);
+            executeDirectPhotosAppFlow(activity, filteredList, appendLog);
         });
 
         // 7. Actions: Trash
@@ -749,17 +800,138 @@ public final class PhotosToolkitDialog {
     }
 
     // ─────────────────────────────────────────────────────────────────────────
-    // Native Share / Album Action
+    // Album Actions (Direct In-App DB Execution & Direct Photos Component)
     // ─────────────────────────────────────────────────────────────────────────
 
-    private static void executeNativeShare(Activity activity, List<MediaItemSummary> items,
-                                           java.util.function.Consumer<String> appendLog) {
+    private static void showAddToExistingAlbumDialog(Activity activity, List<MediaItemSummary> items,
+                                                     PhotosDatabaseScanner.ScanResult scanResult,
+                                                     java.util.function.Consumer<String> appendLog,
+                                                     Runnable onComplete) {
         if (items == null || items.isEmpty()) {
-            appendLog.accept(">> Error: No items to share.");
+            appendLog.accept(">> Error: No items to add.");
             return;
         }
 
-        appendLog.accept(">> Action: NATIVE SHARE / ADD TO ALBUM (" + items.size() + " items)");
+        if (scanResult == null || scanResult.existingAlbums.isEmpty()) {
+            new AlertDialog.Builder(activity, AlertDialog.THEME_DEVICE_DEFAULT_DARK)
+                    .setTitle("📁 Add to Album")
+                    .setMessage("No existing albums were found in local cache.\n\nWould you like to create a new album for these " + items.size() + " items?")
+                    .setPositiveButton("Create New Album", (d, w) -> {
+                        showCreateNewAlbumDialog(activity, items, scanResult, appendLog, onComplete);
+                    })
+                    .setNegativeButton("Cancel", null)
+                    .show();
+            return;
+        }
+
+        List<AlbumSummary> albums = scanResult.existingAlbums;
+        String[] titles = new String[albums.size() + 1];
+        titles[0] = "➕ [ Create New Album ]";
+        for (int i = 0; i < albums.size(); i++) {
+            AlbumSummary a = albums.get(i);
+            titles[i + 1] = "📁 " + a.title + " (" + a.itemCount + " items)";
+        }
+
+        AlertDialog.Builder builder = new AlertDialog.Builder(activity, AlertDialog.THEME_DEVICE_DEFAULT_DARK);
+        builder.setTitle("📁 Select Album (" + items.size() + " items)");
+        builder.setItems(titles, (dialog, which) -> {
+            if (which == 0) {
+                showCreateNewAlbumDialog(activity, items, scanResult, appendLog, onComplete);
+            } else {
+                AlbumSummary chosen = albums.get(which - 1);
+                executeAddToAlbum(activity, items, chosen.title, chosen.mediaKey,
+                        scanResult.scannedDatabase, appendLog, onComplete);
+            }
+        });
+        builder.setNegativeButton("Cancel", null);
+        builder.show();
+    }
+
+    private static void showCreateNewAlbumDialog(Activity activity, List<MediaItemSummary> items,
+                                                 PhotosDatabaseScanner.ScanResult scanResult,
+                                                 java.util.function.Consumer<String> appendLog,
+                                                 Runnable onComplete) {
+        if (items == null || items.isEmpty()) {
+            appendLog.accept(">> Error: No items to add.");
+            return;
+        }
+
+        AlertDialog.Builder builder = new AlertDialog.Builder(activity, AlertDialog.THEME_DEVICE_DEFAULT_DARK);
+        builder.setTitle("➕ Create New Album");
+
+        LinearLayout layout = new LinearLayout(activity);
+        layout.setOrientation(LinearLayout.VERTICAL);
+        float density = activity.getResources().getDisplayMetrics().density;
+        layout.setPadding((int) (20 * density), (int) (12 * density), (int) (20 * density), (int) (8 * density));
+
+        TextView promptTv = new TextView(activity);
+        promptTv.setText("Enter title for new album with " + items.size() + " items:");
+        promptTv.setTextColor(TEXT_MUTED);
+        promptTv.setTextSize(13);
+        layout.addView(promptTv);
+
+        EditText input = new EditText(activity);
+        input.setSingleLine(true);
+        input.setTextColor(TEXT_WHITE);
+        input.setHint("e.g. Cleaned Media, Vacation...");
+        input.setHintTextColor(0xFF71717A);
+        String defaultTitle = "Album " + new SimpleDateFormat("yyyy-MM-dd", Locale.US).format(new Date());
+        input.setText(defaultTitle);
+        input.setSelection(defaultTitle.length());
+        layout.addView(input);
+
+        builder.setView(layout);
+        builder.setPositiveButton("Create & Add", (dialog, which) -> {
+            String title = input.getText().toString().trim();
+            if (title.isEmpty()) {
+                title = defaultTitle;
+            }
+            executeAddToAlbum(activity, items, title, null,
+                    scanResult != null ? scanResult.scannedDatabase : null,
+                    appendLog, onComplete);
+        });
+        builder.setNegativeButton("Cancel", null);
+        builder.show();
+    }
+
+    private static void executeAddToAlbum(Activity activity, List<MediaItemSummary> items,
+                                          String albumName, String albumMediaKey,
+                                          String scannedDb,
+                                          java.util.function.Consumer<String> appendLog,
+                                          Runnable onComplete) {
+        if (items == null || items.isEmpty()) {
+            appendLog.accept(">> Error: No items to add.");
+            return;
+        }
+
+        appendLog.accept(">> Action: ADD TO ALBUM (" + items.size() + " items -> \"" + albumName + "\")");
+        appendLog.accept("Executing native SQLite insertion with non-null protobuf...");
+
+        SCAN_EXECUTOR.execute(() -> {
+            PhotosDatabaseScanner.AlbumActionResult res = PhotosDatabaseScanner.addItemsToAlbum(
+                    activity, scannedDb, items, albumMediaKey, albumName, appendLog
+            );
+            MAIN_HANDLER.post(() -> {
+                if (res.success) {
+                    Toast.makeText(activity, "Added " + res.count + " items to \"" + res.albumTitle + "\"", Toast.LENGTH_LONG).show();
+                    appendLog.accept(">> SUCCESS: " + res.message);
+                    if (onComplete != null) onComplete.run();
+                } else {
+                    Toast.makeText(activity, "Failed to add items: " + res.message, Toast.LENGTH_LONG).show();
+                    appendLog.accept(">> FAILED: " + res.message);
+                }
+            });
+        });
+    }
+
+    private static void executeDirectPhotosAppFlow(Activity activity, List<MediaItemSummary> items,
+                                                  java.util.function.Consumer<String> appendLog) {
+        if (items == null || items.isEmpty()) {
+            appendLog.accept(">> Error: No items to dispatch.");
+            return;
+        }
+
+        appendLog.accept(">> Action: DIRECT PHOTOS APP DISPATCH (" + items.size() + " items)");
 
         ArrayList<Uri> uris = new ArrayList<>();
         int localCount = 0;
@@ -804,21 +976,21 @@ public final class PhotosToolkitDialog {
 
             if (uris.isEmpty()) {
                 appendLog.accept(">> Note: Selected " + items.size() + " items are stored in Google Cloud without local cached copies.");
-                appendLog.accept(">> Cloud items can be reviewed via 'PREVIEW MATCHING ITEMS' or exported via 'EXPORT CSV'.");
                 Toast.makeText(activity, "Items are stored in Google Cloud only. View in Preview or Export CSV.", Toast.LENGTH_LONG).show();
                 return;
             }
 
-            Intent shareIntent = new Intent(Intent.ACTION_SEND_MULTIPLE);
-            shareIntent.setType("*/*");
-            shareIntent.putParcelableArrayListExtra(Intent.EXTRA_STREAM, uris);
-            shareIntent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+            Intent intent = new Intent(Intent.ACTION_SEND_MULTIPLE);
+            intent.setType("*/*");
+            intent.putParcelableArrayListExtra(Intent.EXTRA_STREAM, uris);
+            intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+            // Explicitly target Google Photos upload activity directly, skipping OS share sheet
+            intent.setComponent(new ComponentName(activity.getPackageName(), "com.google.android.apps.photos.upload.intent.UploadContentActivity"));
 
-            Intent chooser = Intent.createChooser(shareIntent, "Add to Album / Share via");
-            activity.startActivity(chooser);
-            appendLog.accept(">> Dispatched native Android share sheet for " + uris.size() + " items.");
+            activity.startActivity(intent);
+            appendLog.accept(">> Dispatched directly to Google Photos UploadContentActivity for " + uris.size() + " items.");
         } catch (Throwable t) {
-            appendLog.accept(">> Error launching share: " + t.getMessage());
+            appendLog.accept(">> Error launching Photos upload: " + t.getMessage());
             Toast.makeText(activity, "Error: " + t.getMessage(), Toast.LENGTH_SHORT).show();
         }
     }
