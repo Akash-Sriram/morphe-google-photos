@@ -1605,42 +1605,81 @@ public final class PhenotypeFlagManager {
         tabBar.addView(tabCustom);
         root.addView(tabBar);
 
-        // 2.6 Global Action Bar (Enable All Flags / Disable All Flags)
+        // 2.6 Global Action Bar (Enable all / Disable all / Expand all / Collapse all)
         LinearLayout globalActionBar = new LinearLayout(activity);
         globalActionBar.setOrientation(LinearLayout.HORIZONTAL);
         globalActionBar.setGravity(Gravity.CENTER_VERTICAL);
         globalActionBar.setPadding(tbPad, (int) (2 * density), tbPad, (int) (6 * density));
 
+        int gap = (int) (2.5f * density);
+        int pillPadH = (int) (4 * density);
+        int pillPadV = (int) (6.5f * density);
+        float pillTextSize = 11.5f;
+
         TextView btnEnableAllGlobal = new TextView(activity);
-        btnEnableAllGlobal.setText("Enable all flags");
-        btnEnableAllGlobal.setTextSize(12.5f);
+        btnEnableAllGlobal.setText("Enable all");
+        btnEnableAllGlobal.setTextSize(pillTextSize);
         btnEnableAllGlobal.setTypeface(null, Typeface.BOLD);
         btnEnableAllGlobal.setGravity(Gravity.CENTER);
-        btnEnableAllGlobal.setPadding(tPadH, (int) (7 * density), tPadH, (int) (7 * density));
+        btnEnableAllGlobal.setSingleLine(true);
+        btnEnableAllGlobal.setPadding(pillPadH, pillPadV, pillPadH, pillPadV);
         btnEnableAllGlobal.setTextColor(theme.enableAllText);
         btnEnableAllGlobal.setBackground(createRoundedDrawable(theme.enableAllBg, 12 * density));
         LinearLayout.LayoutParams eagLp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
-        eagLp.setMargins(0, 0, (int) (4 * density), 0);
+        eagLp.setMargins(0, 0, gap, 0);
         btnEnableAllGlobal.setLayoutParams(eagLp);
         btnEnableAllGlobal.setClickable(true);
         btnEnableAllGlobal.setFocusable(true);
 
         TextView btnDisableAllGlobal = new TextView(activity);
-        btnDisableAllGlobal.setText("Disable all flags");
-        btnDisableAllGlobal.setTextSize(12.5f);
+        btnDisableAllGlobal.setText("Disable all");
+        btnDisableAllGlobal.setTextSize(pillTextSize);
         btnDisableAllGlobal.setTypeface(null, Typeface.BOLD);
         btnDisableAllGlobal.setGravity(Gravity.CENTER);
-        btnDisableAllGlobal.setPadding(tPadH, (int) (7 * density), tPadH, (int) (7 * density));
+        btnDisableAllGlobal.setSingleLine(true);
+        btnDisableAllGlobal.setPadding(pillPadH, pillPadV, pillPadH, pillPadV);
         btnDisableAllGlobal.setTextColor(theme.disableAllText);
         btnDisableAllGlobal.setBackground(createRoundedDrawable(theme.disableAllBg, 12 * density));
         LinearLayout.LayoutParams dagLp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
-        dagLp.setMargins((int) (4 * density), 0, 0, 0);
+        dagLp.setMargins(gap, 0, gap, 0);
         btnDisableAllGlobal.setLayoutParams(dagLp);
         btnDisableAllGlobal.setClickable(true);
         btnDisableAllGlobal.setFocusable(true);
 
+        TextView btnExpandAllGlobal = new TextView(activity);
+        btnExpandAllGlobal.setText("Expand all");
+        btnExpandAllGlobal.setTextSize(pillTextSize);
+        btnExpandAllGlobal.setTypeface(null, Typeface.BOLD);
+        btnExpandAllGlobal.setGravity(Gravity.CENTER);
+        btnExpandAllGlobal.setSingleLine(true);
+        btnExpandAllGlobal.setPadding(pillPadH, pillPadV, pillPadH, pillPadV);
+        btnExpandAllGlobal.setTextColor(theme.textPrimary);
+        btnExpandAllGlobal.setBackground(createRoundedDrawable(theme.surfaceContainer, 12 * density));
+        LinearLayout.LayoutParams expLp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+        expLp.setMargins(gap, 0, gap, 0);
+        btnExpandAllGlobal.setLayoutParams(expLp);
+        btnExpandAllGlobal.setClickable(true);
+        btnExpandAllGlobal.setFocusable(true);
+
+        TextView btnCollapseAllGlobal = new TextView(activity);
+        btnCollapseAllGlobal.setText("Collapse all");
+        btnCollapseAllGlobal.setTextSize(pillTextSize);
+        btnCollapseAllGlobal.setTypeface(null, Typeface.BOLD);
+        btnCollapseAllGlobal.setGravity(Gravity.CENTER);
+        btnCollapseAllGlobal.setSingleLine(true);
+        btnCollapseAllGlobal.setPadding(pillPadH, pillPadV, pillPadH, pillPadV);
+        btnCollapseAllGlobal.setTextColor(theme.textPrimary);
+        btnCollapseAllGlobal.setBackground(createRoundedDrawable(theme.surfaceContainer, 12 * density));
+        LinearLayout.LayoutParams colLp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+        colLp.setMargins(gap, 0, 0, 0);
+        btnCollapseAllGlobal.setLayoutParams(colLp);
+        btnCollapseAllGlobal.setClickable(true);
+        btnCollapseAllGlobal.setFocusable(true);
+
         globalActionBar.addView(btnEnableAllGlobal);
         globalActionBar.addView(btnDisableAllGlobal);
+        globalActionBar.addView(btnExpandAllGlobal);
+        globalActionBar.addView(btnCollapseAllGlobal);
         root.addView(globalActionBar);
 
         // 3. Virtualized List View with Fast-Scroll & Empty Container
@@ -1750,6 +1789,16 @@ public final class PhenotypeFlagManager {
                 adapter.reloadData();
                 Toast.makeText(activity, "Disabled all curated flags", Toast.LENGTH_SHORT).show();
             }).show();
+        });
+
+        btnExpandAllGlobal.setOnClickListener(v -> {
+            adapter.expandAll();
+            Toast.makeText(activity, "Expanded all categories", Toast.LENGTH_SHORT).show();
+        });
+
+        btnCollapseAllGlobal.setOnClickListener(v -> {
+            adapter.collapseAll();
+            Toast.makeText(activity, "Collapsed all categories", Toast.LENGTH_SHORT).show();
         });
 
         tabCurated.setOnClickListener(v -> adapter.setSelectedTab(FlagAdapter.TAB_CURATED));
@@ -1944,109 +1993,7 @@ public final class PhenotypeFlagManager {
 
         List<MenuItem> items = new ArrayList<>();
 
-        // 1. Expand All Categories
-        items.add(new MenuItem(MaterialVectorDrawable.TYPE_EXPAND, "Expand All Categories", "Expand all flag categories to view all flags", () -> {
-            adapter.expandAll();
-            Toast.makeText(activity, "Expanded all categories", Toast.LENGTH_SHORT).show();
-        }));
-
-        // 2. Collapse All Categories
-        items.add(new MenuItem(MaterialVectorDrawable.TYPE_COLLAPSE, "Collapse All Categories", "Collapse all categories to headers only", () -> {
-            adapter.collapseAll();
-            Toast.makeText(activity, "Collapsed all categories", Toast.LENGTH_SHORT).show();
-        }));
-
-        // 3. Enable All Flags
-        items.add(new MenuItem(MaterialVectorDrawable.TYPE_SYNC, "Enable All Flags", "Turn on all " + PhotoFlagsRegistry.CURATED_FLAGS.size() + " curated Morphe flags", () -> {
-            SharedPreferences.Editor edit = prefs.edit();
-            for (CuratedFlag cf : PhotoFlagsRegistry.CURATED_FLAGS) {
-                if (cf.type == PhotoFlagsRegistry.FlagType.BOOLEAN) {
-                    edit.putBoolean(cf.key, true);
-                } else if (cf.type == PhotoFlagsRegistry.FlagType.LONG) {
-                    edit.putLong(cf.key, ((Number) cf.defaultValue).longValue());
-                }
-            }
-            edit.apply();
-            GooglePhotosAccountAvatar.syncOneGoogleFlags(activity);
-            onRefresh.run();
-            Toast.makeText(activity, "Enabled all " + PhotoFlagsRegistry.CURATED_FLAGS.size() + " Morphe flags", Toast.LENGTH_SHORT).show();
-        }));
-
-        // 4. Disable All Flags
-        items.add(new MenuItem(MaterialVectorDrawable.TYPE_CLOSE, "Disable All Flags", "Turn off all " + PhotoFlagsRegistry.CURATED_FLAGS.size() + " curated Morphe flags", () -> {
-            LinearLayout msgLayout = new LinearLayout(activity);
-            msgLayout.setOrientation(LinearLayout.VERTICAL);
-            int mPad = (int) (18 * density);
-            msgLayout.setPadding(mPad, (int) (4 * density), mPad, (int) (12 * density));
-
-            TextView tvMsg = new TextView(activity);
-            tvMsg.setText("Are you sure you want to disable all " + PhotoFlagsRegistry.CURATED_FLAGS.size() + " curated Morphe flags?");
-            tvMsg.setTextSize(13);
-            tvMsg.setTextColor(theme.textPrimary);
-            tvMsg.setLineSpacing(0, 1.25f);
-            msgLayout.addView(tvMsg);
-
-            createM3ActionDialog(activity, "Disable all flags?", msgLayout, "Disable All", () -> {
-                SharedPreferences.Editor edit = prefs.edit();
-                for (CuratedFlag cf : PhotoFlagsRegistry.CURATED_FLAGS) {
-                    if (cf.type == PhotoFlagsRegistry.FlagType.BOOLEAN) {
-                        edit.putBoolean(cf.key, false);
-                    } else if (cf.type == PhotoFlagsRegistry.FlagType.LONG) {
-                        edit.putLong(cf.key, 0L);
-                    }
-                }
-                edit.apply();
-                GooglePhotosAccountAvatar.syncOneGoogleFlags(activity);
-                onRefresh.run();
-                Toast.makeText(activity, "Disabled all curated flags", Toast.LENGTH_SHORT).show();
-            }).show();
-        }));
-
-        // 5. Bulk Import from File (SAF)
-        items.add(new MenuItem(MaterialVectorDrawable.TYPE_IMPORT, "Bulk Import from File (SAF)", "Select a .txt, .json, or .xml file to import flags", () -> {
-            Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
-            intent.addCategory(Intent.CATEGORY_OPENABLE);
-            intent.setType("*/*");
-            activity.startActivity(intent);
-            Toast.makeText(activity, "Select backup/preset file", Toast.LENGTH_LONG).show();
-        }));
-
-        // 6. Bulk Paste Text
-        items.add(new MenuItem(MaterialVectorDrawable.TYPE_PASTE, "Bulk Paste Text", "Paste key=value lines, JSON, or XML directly", () -> {
-            showBulkPasteDialog(activity, prefs, onRefresh);
-        }));
-
-        // 7. Export to File (SAF)
-        items.add(new MenuItem(MaterialVectorDrawable.TYPE_EXPORT, "Export to File (SAF)", "Save all configured flags to a file", () -> {
-            Intent intent = new Intent(Intent.ACTION_CREATE_DOCUMENT);
-            intent.addCategory(Intent.CATEGORY_OPENABLE);
-            intent.setType("text/plain");
-            intent.putExtra(Intent.EXTRA_TITLE, "morphe_photos_flags_backup.txt");
-            activity.startActivity(intent);
-            Toast.makeText(activity, "Choose location to save flags backup", Toast.LENGTH_LONG).show();
-        }));
-
-        // 8. Copy All to Clipboard
-        items.add(new MenuItem(MaterialVectorDrawable.TYPE_CLIPBOARD, "Copy All to Clipboard", "Copy all configured flags to clipboard as JSON", () -> {
-            Map<String, ?> all = prefs.getAll();
-            JSONObject json = new JSONObject();
-            try {
-                for (Map.Entry<String, ?> e : all.entrySet()) {
-                    if (!e.getKey().startsWith("_")) {
-                        json.put(e.getKey(), e.getValue());
-                    }
-                }
-                ClipboardManager cm = (ClipboardManager) activity.getSystemService(Context.CLIPBOARD_SERVICE);
-                if (cm != null) {
-                    cm.setPrimaryClip(ClipData.newPlainText("Flags JSON", json.toString(2)));
-                    Toast.makeText(activity, "Copied " + json.length() + " flags to clipboard", Toast.LENGTH_SHORT).show();
-                }
-            } catch (Exception e) {
-                Toast.makeText(activity, "Export failed: " + e.getMessage(), Toast.LENGTH_SHORT).show();
-            }
-        }));
-
-        // 9. Load Recommended Presets
+        // 1. Load Recommended Presets
         items.add(new MenuItem(MaterialVectorDrawable.TYPE_PRESETS, "Load Recommended Presets", "Apply all " + PhotoFlagsRegistry.CURATED_FLAGS.size() + " Morphe feature flags (story colors, AI tools, Create Tab, Navigation)", () -> {
             LinearLayout msgLayout = new LinearLayout(activity);
             msgLayout.setOrientation(LinearLayout.VERTICAL);
@@ -2068,7 +2015,51 @@ public final class PhenotypeFlagManager {
             }).show();
         }));
 
-        // 10. Clear All Flags
+        // 2. Bulk Import from File (SAF)
+        items.add(new MenuItem(MaterialVectorDrawable.TYPE_IMPORT, "Bulk Import from File (SAF)", "Select a .txt, .json, or .xml file to import flags", () -> {
+            Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+            intent.addCategory(Intent.CATEGORY_OPENABLE);
+            intent.setType("*/*");
+            activity.startActivity(intent);
+            Toast.makeText(activity, "Select backup/preset file", Toast.LENGTH_LONG).show();
+        }));
+
+        // 3. Bulk Paste Text
+        items.add(new MenuItem(MaterialVectorDrawable.TYPE_PASTE, "Bulk Paste Text", "Paste key=value lines, JSON, or XML directly", () -> {
+            showBulkPasteDialog(activity, prefs, onRefresh);
+        }));
+
+        // 4. Export to File (SAF)
+        items.add(new MenuItem(MaterialVectorDrawable.TYPE_EXPORT, "Export to File (SAF)", "Save all configured flags to a file", () -> {
+            Intent intent = new Intent(Intent.ACTION_CREATE_DOCUMENT);
+            intent.addCategory(Intent.CATEGORY_OPENABLE);
+            intent.setType("text/plain");
+            intent.putExtra(Intent.EXTRA_TITLE, "morphe_photos_flags_backup.txt");
+            activity.startActivity(intent);
+            Toast.makeText(activity, "Choose location to save flags backup", Toast.LENGTH_LONG).show();
+        }));
+
+        // 5. Copy All to Clipboard
+        items.add(new MenuItem(MaterialVectorDrawable.TYPE_CLIPBOARD, "Copy All to Clipboard", "Copy all configured flags to clipboard as JSON", () -> {
+            Map<String, ?> all = prefs.getAll();
+            JSONObject json = new JSONObject();
+            try {
+                for (Map.Entry<String, ?> e : all.entrySet()) {
+                    if (!e.getKey().startsWith("_")) {
+                        json.put(e.getKey(), e.getValue());
+                    }
+                }
+                ClipboardManager cm = (ClipboardManager) activity.getSystemService(Context.CLIPBOARD_SERVICE);
+                if (cm != null) {
+                    cm.setPrimaryClip(ClipData.newPlainText("Flags JSON", json.toString(2)));
+                    Toast.makeText(activity, "Copied " + json.length() + " flags to clipboard", Toast.LENGTH_SHORT).show();
+                }
+            } catch (Exception e) {
+                Toast.makeText(activity, "Export failed: " + e.getMessage(), Toast.LENGTH_SHORT).show();
+            }
+        }));
+
+        // 6. Clear All Flags
         items.add(new MenuItem(MaterialVectorDrawable.TYPE_DELETE, "Clear All Flags", "Wipe all flags and restore stock photos state", () -> {
             LinearLayout msgLayout = new LinearLayout(activity);
             msgLayout.setOrientation(LinearLayout.VERTICAL);

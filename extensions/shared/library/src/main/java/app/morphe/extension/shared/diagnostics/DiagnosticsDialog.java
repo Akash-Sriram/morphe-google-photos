@@ -14,6 +14,7 @@ import android.os.Handler;
 import android.os.Looper;
 import android.text.Editable;
 import android.text.InputType;
+import android.text.TextUtils;
 import android.text.TextWatcher;
 import android.view.Gravity;
 import android.view.View;
@@ -149,9 +150,37 @@ public final class DiagnosticsDialog {
         tvSessionLabel.setTextColor(theme.primary);
         sessionCard.addView(tvSessionLabel);
 
-        Spinner spinnerSessions = new Spinner(activity);
-        spinnerSessions.setPadding(0, (int) (4 * density), 0, (int) (4 * density));
-        sessionCard.addView(spinnerSessions);
+        LinearLayout sessionSelectorBox = new LinearLayout(activity);
+        sessionSelectorBox.setOrientation(LinearLayout.HORIZONTAL);
+        sessionSelectorBox.setGravity(Gravity.CENTER_VERTICAL);
+        sessionSelectorBox.setClickable(true);
+        sessionSelectorBox.setFocusable(true);
+        int boxBgColor = theme.isDark ? 0xFF242728 : 0xFFFFFFFF;
+        sessionSelectorBox.setBackground(createRoundedCardDrawable(boxBgColor, theme.outline, 10 * density));
+        sessionSelectorBox.setPadding((int) (12 * density), (int) (9 * density), (int) (12 * density), (int) (9 * density));
+        LinearLayout.LayoutParams ssbLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        ssbLp.topMargin = (int) (6 * density);
+        sessionSelectorBox.setLayoutParams(ssbLp);
+
+        TextView tvSelectedSession = new TextView(activity);
+        tvSelectedSession.setText("Select session...");
+        tvSelectedSession.setTextSize(13f);
+        tvSelectedSession.setTypeface(null, Typeface.BOLD);
+        tvSelectedSession.setTextColor(theme.textPrimary);
+        tvSelectedSession.setSingleLine(true);
+        tvSelectedSession.setEllipsize(TextUtils.TruncateAt.END);
+        LinearLayout.LayoutParams tssLp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+        tvSelectedSession.setLayoutParams(tssLp);
+        sessionSelectorBox.addView(tvSelectedSession);
+
+        ImageView ivChevron = new ImageView(activity);
+        ivChevron.setImageDrawable(new MaterialVectorDrawable(MaterialVectorDrawable.TYPE_CHEVRON_DOWN, theme.textSecondary));
+        LinearLayout.LayoutParams cvLp = new LinearLayout.LayoutParams((int) (16 * density), (int) (16 * density));
+        cvLp.leftMargin = (int) (8 * density);
+        ivChevron.setLayoutParams(cvLp);
+        sessionSelectorBox.addView(ivChevron);
+
+        sessionCard.addView(sessionSelectorBox);
         root.addView(sessionCard);
 
         // ─────────────────────────────────────────────────────────────────────
@@ -330,34 +359,32 @@ public final class DiagnosticsDialog {
             sessions.clear();
             sessions.addAll(SessionLogManager.getAllSessions());
             if (sessions.isEmpty()) {
+                tvSelectedSession.setText("No sessions found");
                 tvLogs.setText("No sessions found yet.");
                 return;
             }
 
-            List<String> names = new ArrayList<>();
             int defaultIndex = 0;
             for (int i = 0; i < sessions.size(); i++) {
                 SessionLogManager.SessionInfo s = sessions.get(i);
-                names.add(s.getDisplayName());
-                if (s.isCurrent) defaultIndex = i;
+                if (s.isCurrent) {
+                    defaultIndex = i;
+                    break;
+                }
             }
 
-            ArrayAdapter<String> spinnerAdapter = new ArrayAdapter<>(activity, android.R.layout.simple_spinner_dropdown_item, names);
-            spinnerSessions.setAdapter(spinnerAdapter);
-            spinnerSessions.setSelection(defaultIndex);
             activeSession[0] = sessions.get(defaultIndex);
+            tvSelectedSession.setText(activeSession[0].getDisplayName());
             loadLogs.run();
         };
 
-        spinnerSessions.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
-            @Override
-            public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
-                if (position >= 0 && position < sessions.size()) {
-                    activeSession[0] = sessions.get(position);
-                    loadLogs.run();
-                }
-            }
-            @Override public void onNothingSelected(AdapterView<?> parent) {}
+        sessionSelectorBox.setOnClickListener(v -> {
+            if (sessions.isEmpty()) return;
+            showSessionPicker(activity, theme, sessions, activeSession[0], selectedSession -> {
+                activeSession[0] = selectedSession;
+                tvSelectedSession.setText(selectedSession.getDisplayName());
+                loadLogs.run();
+            });
         });
 
         // Search text watcher
@@ -469,5 +496,143 @@ public final class DiagnosticsDialog {
         d.setColor(bgColor);
         d.setStroke(1, strokeColor);
         return d;
+    }
+
+    private interface OnSessionSelectedListener {
+        void onSelected(SessionLogManager.SessionInfo session);
+    }
+
+    private static void showSessionPicker(Activity activity, Theme theme,
+                                          List<SessionLogManager.SessionInfo> sessions,
+                                          SessionLogManager.SessionInfo currentActive,
+                                          OnSessionSelectedListener listener) {
+        float density = activity.getResources().getDisplayMetrics().density;
+        Dialog d = new Dialog(activity);
+        d.requestWindowFeature(Window.FEATURE_NO_TITLE);
+
+        LinearLayout root = new LinearLayout(activity);
+        root.setOrientation(LinearLayout.VERTICAL);
+        root.setBackground(createRoundedDrawable(theme.surface, 24 * density));
+
+        LinearLayout header = new LinearLayout(activity);
+        header.setOrientation(LinearLayout.HORIZONTAL);
+        header.setGravity(Gravity.CENTER_VERTICAL);
+        int padH = (int) (20 * density);
+        int padV = (int) (16 * density);
+        header.setPadding(padH, padV, padH, (int) (8 * density));
+
+        LinearLayout titleCol = new LinearLayout(activity);
+        titleCol.setOrientation(LinearLayout.VERTICAL);
+        TextView tvTitle = new TextView(activity);
+        tvTitle.setText("Log Sessions");
+        tvTitle.setTextSize(16.5f);
+        tvTitle.setTextColor(theme.textPrimary);
+        tvTitle.setTypeface(null, Typeface.BOLD);
+        titleCol.addView(tvTitle);
+
+        TextView tvSub = new TextView(activity);
+        tvSub.setText("Select a session to inspect");
+        tvSub.setTextSize(11.5f);
+        tvSub.setTextColor(theme.textSecondary);
+        titleCol.addView(tvSub);
+
+        header.addView(titleCol, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+
+        View btnClose = createHeaderIconButton(activity, new MaterialVectorDrawable(MaterialVectorDrawable.TYPE_CLOSE, theme.textSecondary), (int) (36 * density), (int) (18 * density));
+        btnClose.setOnClickListener(v -> d.dismiss());
+        header.addView(btnClose);
+        root.addView(header);
+
+        ScrollView sv = new ScrollView(activity);
+        LinearLayout.LayoutParams svLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f);
+        svLp.setMargins(0, 0, 0, (int) (8 * density));
+        sv.setLayoutParams(svLp);
+
+        LinearLayout listLayout = new LinearLayout(activity);
+        listLayout.setOrientation(LinearLayout.VERTICAL);
+        listLayout.setPadding(padH, (int) (4 * density), padH, (int) (12 * density));
+
+        for (SessionLogManager.SessionInfo s : sessions) {
+            boolean isSelected = currentActive != null && s.id.equals(currentActive.id);
+
+            LinearLayout card = new LinearLayout(activity);
+            card.setOrientation(LinearLayout.HORIZONTAL);
+            card.setGravity(Gravity.CENTER_VERTICAL);
+            card.setClickable(true);
+            card.setFocusable(true);
+            int cardPadH = (int) (14 * density);
+            int cardPadV = (int) (12 * density);
+            card.setPadding(cardPadH, cardPadV, cardPadH, cardPadV);
+
+            int bgColor = isSelected ? theme.cardActive : (theme.isDark ? 0xFF1E2120 : 0xFFFFFFFF);
+            int strokeColor = isSelected ? theme.cardBorderActive : theme.cardBorder;
+            card.setBackground(createRoundedCardDrawable(bgColor, strokeColor, 12 * density));
+
+            LinearLayout.LayoutParams cLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            cLp.bottomMargin = (int) (8 * density);
+            card.setLayoutParams(cLp);
+
+            View dot = new View(activity);
+            GradientDrawable dotBg = new GradientDrawable();
+            dotBg.setShape(GradientDrawable.OVAL);
+            if (s.isCrashed) {
+                dotBg.setColor(0xFFFF5252);
+            } else if (s.isCurrent) {
+                dotBg.setColor(theme.primary);
+            } else {
+                dotBg.setColor(theme.textTertiary);
+            }
+            dot.setBackground(dotBg);
+            int dotSize = (int) (8 * density);
+            LinearLayout.LayoutParams dotLp = new LinearLayout.LayoutParams(dotSize, dotSize);
+            dotLp.rightMargin = (int) (12 * density);
+            dot.setLayoutParams(dotLp);
+            card.addView(dot);
+
+            LinearLayout infoCol = new LinearLayout(activity);
+            infoCol.setOrientation(LinearLayout.VERTICAL);
+            LinearLayout.LayoutParams icLp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+            infoCol.setLayoutParams(icLp);
+
+            TextView tvName = new TextView(activity);
+            tvName.setText(s.getDisplayName());
+            tvName.setTextSize(13.5f);
+            tvName.setTypeface(null, isSelected ? Typeface.BOLD : Typeface.NORMAL);
+            tvName.setTextColor(isSelected ? theme.primary : theme.textPrimary);
+            infoCol.addView(tvName);
+
+            String sizeStr = (s.sizeBytes > 1024) ? ((s.sizeBytes / 1024) + " KB") : (s.sizeBytes + " B");
+            String meta = sizeStr + (s.isCrashed ? " • Crashed" : "");
+            TextView tvMeta = new TextView(activity);
+            tvMeta.setText(meta);
+            tvMeta.setTextSize(11f);
+            tvMeta.setTextColor(s.isCrashed ? 0xFFFF5252 : theme.textSecondary);
+            infoCol.addView(tvMeta);
+
+            card.addView(infoCol);
+
+            card.setOnClickListener(v -> {
+                d.dismiss();
+                listener.onSelected(s);
+            });
+
+            listLayout.addView(card);
+        }
+
+        sv.addView(listLayout);
+        root.addView(sv);
+
+        d.setContentView(root);
+        Window w = d.getWindow();
+        if (w != null) {
+            w.setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
+            int screenWidth = activity.getResources().getDisplayMetrics().widthPixels;
+            int screenHeight = activity.getResources().getDisplayMetrics().heightPixels;
+            int dialogWidth = Math.min((int) (screenWidth * 0.88f), (int) (400 * density));
+            int dialogHeight = Math.min((int) (screenHeight * 0.60f), (int) (450 * density));
+            w.setLayout(dialogWidth, dialogHeight);
+            w.setGravity(Gravity.CENTER);
+        }
+        d.show();
     }
 }
