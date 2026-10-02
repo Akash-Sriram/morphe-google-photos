@@ -268,7 +268,7 @@ public final class PhotoFlagsRegistry {
         register("45398451", "Collage Grid Layout 45398451", "Controls multi-photo collage layout grids, cutout borders, and scrapbook art styles via Lcnzc.", "📑 Create Tab: Tool 5 — Collage & Scrapbook (Stamp M2)", "Collage Template & Grid Engine", FlagType.BOOLEAN, Boolean.TRUE);
         register("45622835", "Collage Grid Layout 45622835", "Controls multi-photo collage layout grids, cutout borders, and scrapbook art styles via Lcnzc.", "📑 Create Tab: Tool 5 — Collage & Scrapbook (Stamp M2)", "Collage Template & Grid Engine", FlagType.BOOLEAN, Boolean.TRUE);
         register("45623041", "Collage Grid Layout 45623041", "Controls multi-photo collage layout grids, cutout borders, and scrapbook art styles via Lcnzc.", "📑 Create Tab: Tool 5 — Collage & Scrapbook (Stamp M2)", "Collage Template & Grid Engine", FlagType.BOOLEAN, Boolean.TRUE);
-        register("45638543", "Collage Grid Layout 45638543", "Controls multi-photo collage layout grids, cutout borders, and scrapbook art styles via Lcnzc.", "📑 Create Tab: Tool 5 — Collage & Scrapbook (Stamp M2)", "Collage Template & Grid Engine", FlagType.BOOLEAN, Boolean.TRUE);
+        register("45638543", "Collage Grid Layout 45638543", "Controls multi-photo collage layout grids, cutout borders, and scrapbook art styles via Lcnzc.", "📑 Create Tab: Tool 5 — Collage & Scrapbook (Stamp M2)", "Collage Template & Grid Engine", FlagType.LONG, Long.valueOf(5L));
         register("45669003", "Collage Grid Layout 45669003", "Controls multi-photo collage layout grids, cutout borders, and scrapbook art styles via Lcnzc.", "📑 Create Tab: Tool 5 — Collage & Scrapbook (Stamp M2)", "Collage Template & Grid Engine", FlagType.BOOLEAN, Boolean.TRUE);
         register("45721092", "Collage Grid Layout 45721092", "Controls multi-photo collage layout grids, cutout borders, and scrapbook art styles via Lcnzc.", "📑 Create Tab: Tool 5 — Collage & Scrapbook (Stamp M2)", "Collage Template & Grid Engine", FlagType.BOOLEAN, Boolean.TRUE);
         register("45721094", "Collage Grid Layout 45721094", "Controls multi-photo collage layout grids, cutout borders, and scrapbook art styles via Lcnzc.", "📑 Create Tab: Tool 5 — Collage & Scrapbook (Stamp M2)", "Collage Template & Grid Engine", FlagType.BOOLEAN, Boolean.TRUE);
@@ -583,7 +583,7 @@ public final class PhotoFlagsRegistry {
         edit.putBoolean("45890130", true);
         edit.putBoolean("45680313", true);
         edit.putBoolean("45818951", true);
-        edit.putBoolean("45638543", true);
+        edit.putLong("45638543", 5L);
         edit.putBoolean("45622835", true);
         edit.putBoolean("45398451", true);
         edit.putBoolean("45376954", true);
