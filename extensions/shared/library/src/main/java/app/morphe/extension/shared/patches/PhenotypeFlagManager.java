@@ -1,6 +1,7 @@
 package app.morphe.extension.shared.patches;
 
 import android.app.Activity;
+import android.app.AlertDialog;
 import android.app.Dialog;
 import android.content.ClipData;
 import android.content.ClipboardManager;
@@ -120,6 +121,7 @@ public final class PhenotypeFlagManager {
         public static final int TYPE_PRESETS = 16;
         public static final int TYPE_DIAGNOSTICS = 17;
         public static final int TYPE_DELETE = 18;
+        public static final int TYPE_RESTART = 19;
 
         private final int type;
         private final Paint strokePaint;
@@ -332,6 +334,12 @@ public final class PhenotypeFlagManager {
                     canvas.drawPath(can, strokePaint);
                     canvas.drawLine(w * 0.42f, h * 0.40f, w * 0.42f, h * 0.72f, strokePaint);
                     canvas.drawLine(w * 0.58f, h * 0.40f, w * 0.58f, h * 0.72f, strokePaint);
+                    break;
+                }
+                case TYPE_RESTART: {
+                    RectF arc = new RectF(w * 0.20f, h * 0.20f, w * 0.80f, h * 0.80f);
+                    canvas.drawArc(arc, 125, 290, false, strokePaint);
+                    canvas.drawLine(w * 0.50f, h * 0.12f, w * 0.50f, h * 0.46f, strokePaint);
                     break;
                 }
             }
@@ -716,6 +724,11 @@ public final class PhenotypeFlagManager {
         TextView tvKey;
         Switch swToggle;
         TextView valChip;
+        ImageView btnDelete;
+    }
+
+    public interface TabUpdateListener {
+        void onTabsUpdated(int curatedCount, int customCount, int selectedTab);
     }
 
     private static class HeaderViewHolder {
@@ -728,19 +741,45 @@ public final class PhenotypeFlagManager {
     }
 
     public static class FlagAdapter extends BaseAdapter {
+        public static final int TAB_CURATED = 0;
+        public static final int TAB_CUSTOM = 1;
+
         private final Activity activity;
         private final SharedPreferences prefs;
         private final float density;
         private final Theme theme;
         private final List<DisplayItem> allItems = new ArrayList<>();
         private final List<DisplayItem> displayedItems = new ArrayList<>();
+        private final List<DisplayItem> curatedItems = new ArrayList<>();
+        private final List<DisplayItem> customItems = new ArrayList<>();
+        private final Set<String> customKeysSet = new HashSet<>();
         private final Set<String> expandedCategories = new HashSet<>();
         private final Set<String> searchCollapsedCategories = new HashSet<>();
         private final TextView tvSub;
         private final LinearLayout emptyContainer;
+        private int selectedTab = TAB_CURATED;
         private int totalFlagsCount = 0;
         private int activeFlagsCount = 0;
+        private int curatedTotalCount = 0;
         private String currentFilterQuery = "";
+        private TabUpdateListener tabListener;
+
+        public void setTabUpdateListener(TabUpdateListener listener) {
+            this.tabListener = listener;
+        }
+
+        public int getSelectedTab() {
+            return selectedTab;
+        }
+
+        public void setSelectedTab(int tab) {
+            this.selectedTab = tab;
+            updateActiveList();
+            filter(currentFilterQuery);
+            if (tabListener != null) {
+                tabListener.onTabsUpdated(curatedTotalCount, customKeysSet.size(), selectedTab);
+            }
+        }
 
         public void expandAll() {
             if (!currentFilterQuery.isEmpty()) {
@@ -828,11 +867,13 @@ public final class PhenotypeFlagManager {
         }
 
         public void reloadData() {
-            allItems.clear();
+            curatedItems.clear();
+            customItems.clear();
+            customKeysSet.clear();
             Map<String, ?> all = prefs.getAll();
-            int totalCount = 0;
+            curatedTotalCount = 0;
 
-            // 1. Curated Flags that are configured in SharedPreferences
+            // 1. Curated Flags (always retain all categories even if disabled)
             List<String> categories = PhotoFlagsRegistry.getCategories();
             for (String cat : categories) {
                 List<CuratedFlag> flagsInCat = PhotoFlagsRegistry.getFlagsForCategory(cat);
@@ -840,46 +881,64 @@ public final class PhenotypeFlagManager {
                 DisplayItem catHeader = new DisplayItem(cat);
                 List<DisplayItem> catFlags = new ArrayList<>();
                 for (CuratedFlag f : flagsInCat) {
-                    if (!all.containsKey(f.key)) continue; // Only show configured flags
-                    totalCount++;
+                    curatedTotalCount++;
                     Object raw = all.get(f.key);
-                    Object v = sanitizeValue(f.key, raw);
+                    Object v;
+                    if (raw != null) {
+                        v = sanitizeValue(f.key, raw);
+                    } else {
+                        v = f.defaultValue != null ? f.defaultValue : Boolean.FALSE;
+                    }
                     catFlags.add(new DisplayItem(f, v));
                 }
                 if (!catFlags.isEmpty()) {
-                    allItems.add(catHeader);
-                    allItems.addAll(catFlags);
+                    curatedItems.add(catHeader);
+                    curatedItems.addAll(catFlags);
                 }
             }
 
             // 2. Custom / Imported Flags (Strictly non-curated overrides)
             Set<String> customKeys = prefs.getStringSet(CUSTOM_FLAGS_KEY, Collections.emptySet());
-            Set<String> allCustom = new HashSet<>();
             for (String k : customKeys) {
                 if (!k.startsWith("_") && !k.startsWith("__") && !PhotoFlagsRegistry.FLAG_MAP.containsKey(k)) {
-                    allCustom.add(k);
+                    customKeysSet.add(k);
                 }
             }
             for (String k : all.keySet()) {
                 if (!k.startsWith("_") && !k.startsWith("__") && !PhotoFlagsRegistry.FLAG_MAP.containsKey(k)) {
-                    allCustom.add(k);
+                    customKeysSet.add(k);
                 }
             }
 
-            if (!allCustom.isEmpty()) {
-                List<String> sortedKeys = new ArrayList<>(allCustom);
+            if (!customKeysSet.isEmpty()) {
+                List<String> sortedKeys = new ArrayList<>(customKeysSet);
                 Collections.sort(sortedKeys);
                 String headerTitle = "Custom Overrides (" + sortedKeys.size() + ")";
-                allItems.add(new DisplayItem(headerTitle));
+                customItems.add(new DisplayItem(headerTitle));
                 for (String k : sortedKeys) {
-                    totalCount++;
                     Object v = sanitizeValue(k, all.get(k));
-                    allItems.add(new DisplayItem(k, v));
+                    customItems.add(new DisplayItem(k, v));
                 }
+            } else {
+                selectedTab = TAB_CURATED;
             }
 
-            this.totalFlagsCount = totalCount;
+            updateActiveList();
+            if (tabListener != null) {
+                tabListener.onTabsUpdated(curatedTotalCount, customKeysSet.size(), selectedTab);
+            }
             filter(currentFilterQuery);
+        }
+
+        private void updateActiveList() {
+            allItems.clear();
+            if (selectedTab == TAB_CURATED || customKeysSet.isEmpty()) {
+                allItems.addAll(curatedItems);
+                this.totalFlagsCount = curatedTotalCount;
+            } else {
+                allItems.addAll(customItems);
+                this.totalFlagsCount = customKeysSet.size();
+            }
         }
 
         private void updateSubtitleText(int flagsShown, int totalMatched) {
@@ -893,7 +952,9 @@ public final class PhenotypeFlagManager {
                 tvSub.setText("0 Flags Matched (" + totalFlagsCount + " Total)");
             } else {
                 emptyContainer.setVisibility(View.GONE);
-                if (currentFilterQuery.isEmpty()) {
+                if (selectedTab == TAB_CUSTOM) {
+                    tvSub.setText(customKeysSet.size() + " Custom Overrides");
+                } else if (currentFilterQuery.isEmpty()) {
                     tvSub.setText(totalFlagsCount + " Flags Configured");
                 } else {
                     tvSub.setText(totalMatched + " Found (" + totalFlagsCount + " Total)");
@@ -914,23 +975,6 @@ public final class PhenotypeFlagManager {
             int count = 0;
             for (DisplayItem it : allItems) {
                 if (!it.isHeader()) {
-                    String target = it.getKey() + " " + it.getTitle() + " " + (it.getDescription() != null ? it.getDescription() : "") + " " + (it.getTrigger() != null ? it.getTrigger() : "") + " " + it.value;
-                    if (target.toLowerCase().contains(query)) {
-                        count++;
-                    }
-                }
-            }
-            return count;
-        }
-
-        private int countMatchesInCategory(String cat, String query) {
-            if (query == null || query.isEmpty()) return 0;
-            int count = 0;
-            boolean inCat = false;
-            for (DisplayItem it : allItems) {
-                if (it.isHeader()) {
-                    inCat = cat.equals(it.headerTitle);
-                } else if (inCat) {
                     String target = it.getKey() + " " + it.getTitle() + " " + (it.getDescription() != null ? it.getDescription() : "") + " " + (it.getTrigger() != null ? it.getTrigger() : "") + " " + it.value;
                     if (target.toLowerCase().contains(query)) {
                         count++;
@@ -1001,6 +1045,40 @@ public final class PhenotypeFlagManager {
             updateSubtitleText(flagsShown, totalMatched);
         }
 
+        private void clearAllCustomFlagsDialog() {
+            new AlertDialog.Builder(activity)
+                .setTitle("Clear All Custom Flags?")
+                .setMessage("Are you sure you want to remove all " + customKeysSet.size() + " custom overrides? Curated Morphe flags will remain intact.")
+                .setPositiveButton("Clear All", (d, which) -> {
+                    SharedPreferences.Editor ed = prefs.edit();
+                    for (String k : customKeysSet) {
+                        ed.remove(k);
+                    }
+                    ed.remove(CUSTOM_FLAGS_KEY).apply();
+                    selectedTab = TAB_CURATED;
+                    reloadData();
+                    Toast.makeText(activity, "Cleared all custom flags", Toast.LENGTH_SHORT).show();
+                })
+                .setNegativeButton("Cancel", null)
+                .show();
+        }
+
+        private void deleteSingleCustomFlagDialog(String key) {
+            new AlertDialog.Builder(activity)
+                .setTitle("Delete Custom Flag?")
+                .setMessage("Remove custom override \"" + key + "\"?")
+                .setPositiveButton("Delete", (d, which) -> {
+                    prefs.edit().remove(key).apply();
+                    Set<String> set = new HashSet<>(prefs.getStringSet(CUSTOM_FLAGS_KEY, Collections.emptySet()));
+                    set.remove(key);
+                    prefs.edit().putStringSet(CUSTOM_FLAGS_KEY, set).apply();
+                    reloadData();
+                    Toast.makeText(activity, "Removed custom override: " + key, Toast.LENGTH_SHORT).show();
+                })
+                .setNegativeButton("Cancel", null)
+                .show();
+        }
+
         @Override
         public View getView(int position, View convertView, ViewGroup parent) {
             DisplayItem item = getItem(position);
@@ -1052,12 +1130,9 @@ public final class PhenotypeFlagManager {
                     topRow.addView(btnToggle);
 
                     ImageView ivChevron = new ImageView(activity);
-                    int chSize = (int) (20 * density);
-                    LinearLayout.LayoutParams chLp = new LinearLayout.LayoutParams(chSize, chSize);
-                    ivChevron.setLayoutParams(chLp);
-                    ivChevron.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
+                    LinearLayout.LayoutParams cLp = new LinearLayout.LayoutParams((int) (20 * density), (int) (20 * density));
+                    ivChevron.setLayoutParams(cLp);
                     topRow.addView(ivChevron);
-
                     card.addView(topRow);
 
                     TextView tvTrigger = new TextView(activity);
@@ -1069,53 +1144,57 @@ public final class PhenotypeFlagManager {
                     hHolder.tvTitle = tvTitle;
                     hHolder.tvBadge = tvBadge;
                     hHolder.ivChevron = ivChevron;
-                    hHolder.tvTrigger = tvTrigger;
                     hHolder.btnToggleAll = btnToggle;
+                    hHolder.tvTrigger = tvTrigger;
 
                     convertView = card;
                     convertView.setTag(hHolder);
                 }
 
-                // Re-apply styling on recycled views (subtle card border, readable title)
-                GradientDrawable headerBg = new GradientDrawable();
-                headerBg.setCornerRadius(24 * density);
-                headerBg.setColor(theme.headerCardBg);
-                headerBg.setStroke((int) (1 * density), theme.cardBorder);
-                hHolder.root.setBackground(headerBg);
+                hHolder.root.setBackground(createCardDrawable(false, density, theme));
                 hHolder.tvTitle.setTextColor(theme.textPrimary);
                 hHolder.tvTrigger.setTextColor(theme.textSecondary);
 
-                final String cat = item.headerTitle;
-                final List<CuratedFlag> flagsInCat = PhotoFlagsRegistry.getFlagsForCategory(cat);
-
-                int totalInCat = flagsInCat.size();
-                int enabledInCat = 0;
-                for (CuratedFlag cf : flagsInCat) {
-                    if (isFlagEnabled(prefs, cf)) {
-                        enabledInCat++;
-                    }
+                // Handle Custom Overrides Header (with Clear All button)
+                if (item.headerTitle != null && item.headerTitle.startsWith("Custom Overrides")) {
+                    hHolder.tvTitle.setText("Custom Overrides (" + customKeysSet.size() + ")");
+                    hHolder.tvBadge.setVisibility(View.GONE);
+                    hHolder.ivChevron.setVisibility(View.GONE);
+                    hHolder.tvTrigger.setVisibility(View.GONE);
+                    hHolder.btnToggleAll.setVisibility(View.VISIBLE);
+                    hHolder.btnToggleAll.setText("Clear All");
+                    hHolder.btnToggleAll.setTextColor(theme.isDark ? 0xFFFFB4AB : 0xFFBA1A1A);
+                    hHolder.btnToggleAll.setBackground(createRoundedDrawable(theme.isDark ? 0xFF3E1E1E : 0xFFFFDAD6, 10 * density));
+                    hHolder.btnToggleAll.setOnClickListener(v -> clearAllCustomFlagsDialog());
+                    hHolder.root.setOnClickListener(null);
+                    hHolder.root.setClickable(false);
+                    return convertView;
                 }
 
-                boolean isExpanded = currentFilterQuery.isEmpty()
+                String cat = item.headerTitle;
+                hHolder.tvTitle.setText(cleanCategoryTitle(cat));
+                hHolder.tvBadge.setVisibility(View.VISIBLE);
+                hHolder.ivChevron.setVisibility(View.VISIBLE);
+
+                boolean isExp = currentFilterQuery.isEmpty()
                         ? expandedCategories.contains(cat)
                         : !searchCollapsedCategories.contains(cat);
 
-                hHolder.ivChevron.setImageDrawable(new MaterialVectorDrawable(isExpanded ? MaterialVectorDrawable.TYPE_CHEVRON_UP : MaterialVectorDrawable.TYPE_CHEVRON_DOWN, theme.textSecondary));
-                hHolder.tvTitle.setText(cleanCategoryTitle(cat));
+                int chevronType = isExp ? MaterialVectorDrawable.TYPE_CHEVRON_UP : MaterialVectorDrawable.TYPE_CHEVRON_DOWN;
+                hHolder.ivChevron.setImageDrawable(new MaterialVectorDrawable(chevronType, theme.textSecondary));
 
-                if (currentFilterQuery.isEmpty()) {
-                    if (totalInCat > 0) {
-                        hHolder.tvBadge.setVisibility(View.VISIBLE);
-                        hHolder.tvBadge.setText(enabledInCat + "/" + totalInCat);
-                        hHolder.tvBadge.setTextColor(enabledInCat > 0 ? theme.primary : theme.textSecondary);
-                        hHolder.tvBadge.setBackground(createRoundedDrawable(enabledInCat > 0 ? theme.primaryContainer : theme.surfaceContainer, 10 * density));
-                    } else {
-                        hHolder.tvBadge.setVisibility(View.GONE);
-                    }
+                List<CuratedFlag> flagsInCat = PhotoFlagsRegistry.getFlagsForCategory(cat);
+                int totalInCat = flagsInCat.size();
+                int enabledInCat = 0;
+                for (CuratedFlag cf : flagsInCat) {
+                    if (isFlagEnabled(prefs, cf)) enabledInCat++;
+                }
+
+                hHolder.tvBadge.setText(enabledInCat + "/" + totalInCat);
+                if (enabledInCat == 0) {
+                    hHolder.tvBadge.setTextColor(theme.textSecondary);
+                    hHolder.tvBadge.setBackground(createRoundedDrawable(theme.surfaceContainer, 10 * density));
                 } else {
-                    int matchedInCat = countMatchesInCategory(cat, currentFilterQuery);
-                    hHolder.tvBadge.setVisibility(View.VISIBLE);
-                    hHolder.tvBadge.setText(matchedInCat + " matched");
                     hHolder.tvBadge.setTextColor(theme.primary);
                     hHolder.tvBadge.setBackground(createRoundedDrawable(theme.primaryContainer, 10 * density));
                 }
@@ -1170,16 +1249,12 @@ public final class PhenotypeFlagManager {
                         SharedPreferences.Editor edit = prefs.edit();
                         for (CuratedFlag cf : flagsInCat) {
                             if (cf.type == PhotoFlagsRegistry.FlagType.BOOLEAN) {
-                                if (targetState) {
-                                    edit.putBoolean(cf.key, true);
-                                } else {
-                                    edit.remove(cf.key);
-                                }
+                                edit.putBoolean(cf.key, targetState);
                             } else if (cf.type == PhotoFlagsRegistry.FlagType.LONG) {
                                 if (targetState) {
                                     edit.putLong(cf.key, ((Number) cf.defaultValue).longValue());
                                 } else {
-                                    edit.remove(cf.key);
+                                    edit.putLong(cf.key, 0L);
                                 }
                             }
                         }
@@ -1245,6 +1320,17 @@ public final class PhenotypeFlagManager {
                 valChip.setPadding(p, (int) (6 * density), p, (int) (6 * density));
                 row.addView(valChip);
 
+                ImageView btnDelete = new ImageView(activity);
+                int delSize = (int) (34 * density);
+                LinearLayout.LayoutParams delLp = new LinearLayout.LayoutParams(delSize, delSize);
+                delLp.setMargins((int) (6 * density), 0, 0, 0);
+                btnDelete.setLayoutParams(delLp);
+                btnDelete.setClickable(true);
+                btnDelete.setFocusable(true);
+                btnDelete.setPadding((int) (5 * density), (int) (5 * density), (int) (5 * density), (int) (5 * density));
+                btnDelete.setVisibility(View.GONE);
+                row.addView(btnDelete);
+
                 holder.root = row;
                 holder.tvTitle = tvTitle;
                 holder.tvTriggerBadge = tvTriggerBadge;
@@ -1252,6 +1338,7 @@ public final class PhenotypeFlagManager {
                 holder.tvKey = tvKey;
                 holder.swToggle = sw;
                 holder.valChip = valChip;
+                holder.btnDelete = btnDelete;
 
                 convertView = row;
                 convertView.setTag(holder);
@@ -1283,6 +1370,7 @@ public final class PhenotypeFlagManager {
                 holder.tvDesc.setVisibility(View.VISIBLE);
                 holder.tvDesc.setText(item.curatedFlag.description);
                 holder.tvKey.setText("ID: " + item.curatedFlag.key + " • " + item.curatedFlag.type + ": " + item.value);
+                holder.btnDelete.setVisibility(View.GONE);
             } else {
                 holder.tvTitle.setText(item.customKey);
                 holder.tvDesc.setVisibility(View.GONE);
@@ -1290,6 +1378,9 @@ public final class PhenotypeFlagManager {
                         : (item.value instanceof Float || item.value instanceof Double) ? "Float"
                         : (item.value instanceof Number) ? "Long" : "String";
                 holder.tvKey.setText(typeLabel + " • Value: " + item.value);
+                holder.btnDelete.setVisibility(View.VISIBLE);
+                holder.btnDelete.setImageDrawable(new MaterialVectorDrawable(MaterialVectorDrawable.TYPE_DELETE, theme.isDark ? 0xFFFFB4AB : 0xFFBA1A1A));
+                holder.btnDelete.setOnClickListener(v -> deleteSingleCustomFlagDialog(item.getKey()));
             }
 
             if (item.value instanceof Boolean) {
@@ -1307,11 +1398,10 @@ public final class PhenotypeFlagManager {
                     item.value = next;
                     holder.swToggle.setChecked(next);
                     holder.root.setBackground(createCardDrawable(next, density, theme));
+                    prefs.edit().putBoolean(item.getKey(), next).apply();
                     if (next) {
-                        prefs.edit().putBoolean(item.getKey(), true).apply();
                         activeFlagsCount++;
                     } else {
-                        prefs.edit().remove(item.getKey()).apply();
                         activeFlagsCount = Math.max(0, activeFlagsCount - 1);
                     }
                     if ("45531621".equals(item.getKey()) || "45531625".equals(item.getKey())) {
@@ -1476,6 +1566,43 @@ public final class PhenotypeFlagManager {
         searchBox.addView(inputWrapper);
         root.addView(searchBox);
 
+        // 2.5 Dynamic Tab Bar (Morphe Flags vs Custom Overrides)
+        LinearLayout tabBar = new LinearLayout(activity);
+        tabBar.setOrientation(LinearLayout.HORIZONTAL);
+        tabBar.setGravity(Gravity.CENTER_VERTICAL);
+        tabBar.setPadding(tbPad, (int) (2 * density), tbPad, (int) (6 * density));
+        tabBar.setVisibility(View.GONE);
+
+        TextView tabCurated = new TextView(activity);
+        tabCurated.setText("Morphe Flags");
+        tabCurated.setTextSize(13);
+        tabCurated.setTypeface(null, Typeface.BOLD);
+        tabCurated.setGravity(Gravity.CENTER);
+        int tPadH = (int) (14 * density);
+        int tPadV = (int) (7 * density);
+        tabCurated.setPadding(tPadH, tPadV, tPadH, tPadV);
+        LinearLayout.LayoutParams tcLp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+        tcLp.setMargins(0, 0, (int) (4 * density), 0);
+        tabCurated.setLayoutParams(tcLp);
+        tabCurated.setClickable(true);
+        tabCurated.setFocusable(true);
+
+        TextView tabCustom = new TextView(activity);
+        tabCustom.setText("Custom Overrides");
+        tabCustom.setTextSize(13);
+        tabCustom.setTypeface(null, Typeface.BOLD);
+        tabCustom.setGravity(Gravity.CENTER);
+        tabCustom.setPadding(tPadH, tPadV, tPadH, tPadV);
+        LinearLayout.LayoutParams tcustLp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+        tcustLp.setMargins((int) (4 * density), 0, 0, 0);
+        tabCustom.setLayoutParams(tcustLp);
+        tabCustom.setClickable(true);
+        tabCustom.setFocusable(true);
+
+        tabBar.addView(tabCurated);
+        tabBar.addView(tabCustom);
+        root.addView(tabBar);
+
         // 3. Virtualized List View with Fast-Scroll & Empty Container
         FrameLayout listFrame = new FrameLayout(activity);
         LinearLayout.LayoutParams listFrameLp = new LinearLayout.LayoutParams(
@@ -1523,11 +1650,11 @@ public final class PhenotypeFlagManager {
         btnApply.setLayoutParams(applyLp);
 
         ImageView iconRestart = new ImageView(activity);
-        iconRestart.setImageDrawable(new MaterialVectorDrawable(MaterialVectorDrawable.TYPE_SYNC, theme.onPrimary));
-        LinearLayout.LayoutParams syncLp = new LinearLayout.LayoutParams((int) (20 * density), (int) (20 * density));
+        iconRestart.setImageDrawable(new MaterialVectorDrawable(MaterialVectorDrawable.TYPE_RESTART, theme.onPrimary));
+        int icSize = (int) (18 * density);
+        LinearLayout.LayoutParams syncLp = new LinearLayout.LayoutParams(icSize, icSize);
         syncLp.setMargins(0, 0, (int) (8 * density), 0);
         iconRestart.setLayoutParams(syncLp);
-        iconRestart.setPadding(0, 0, (int) (8 * density), 0);
         btnApply.addView(iconRestart);
 
         TextView tvApply = new TextView(activity);
@@ -1548,6 +1675,30 @@ public final class PhenotypeFlagManager {
         // Instantiate Adapter
         FlagAdapter adapter = new FlagAdapter(activity, prefs, tvSub, emptyContainer);
         listView.setAdapter(adapter);
+
+        tabCurated.setOnClickListener(v -> adapter.setSelectedTab(FlagAdapter.TAB_CURATED));
+        tabCustom.setOnClickListener(v -> adapter.setSelectedTab(FlagAdapter.TAB_CUSTOM));
+
+        adapter.setTabUpdateListener((curatedCount, customCount, selTab) -> {
+            if (customCount == 0) {
+                tabBar.setVisibility(View.GONE);
+            } else {
+                tabBar.setVisibility(View.VISIBLE);
+                tabCurated.setText("Morphe Flags (" + curatedCount + ")");
+                tabCustom.setText("Custom Overrides (" + customCount + ")");
+                if (selTab == FlagAdapter.TAB_CURATED) {
+                    tabCurated.setBackground(createRoundedDrawable(theme.primary, 14 * density));
+                    tabCurated.setTextColor(theme.onPrimary);
+                    tabCustom.setBackground(createRoundedCardDrawable(theme.surfaceContainer, theme.outline, 14 * density));
+                    tabCustom.setTextColor(theme.textSecondary);
+                } else {
+                    tabCustom.setBackground(createRoundedDrawable(theme.primary, 14 * density));
+                    tabCustom.setTextColor(theme.onPrimary);
+                    tabCurated.setBackground(createRoundedCardDrawable(theme.surfaceContainer, theme.outline, 14 * density));
+                    tabCurated.setTextColor(theme.textSecondary);
+                }
+            }
+        });
 
         btnSearch.setOnClickListener(v -> {
             if (searchBox.getVisibility() == View.VISIBLE) {
@@ -2687,6 +2838,15 @@ public final class PhenotypeFlagManager {
         gd.setCornerRadius(radiusPx);
         gd.setColor(color);
         return gd;
+    }
+
+    private static GradientDrawable createRoundedCardDrawable(int bgColor, int strokeColor, float radius) {
+        GradientDrawable d = new GradientDrawable();
+        d.setShape(GradientDrawable.RECTANGLE);
+        d.setCornerRadius(radius);
+        d.setColor(bgColor);
+        d.setStroke(1, strokeColor);
+        return d;
     }
 
     private static Dialog createM3Dialog(Activity activity, String title, View customView) {

@@ -26,7 +26,6 @@ import android.widget.AdapterView;
 import android.widget.ArrayAdapter;
 import android.widget.EditText;
 import android.widget.FrameLayout;
-import android.widget.HorizontalScrollView;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
@@ -43,7 +42,7 @@ import app.morphe.extension.shared.patches.PhenotypeFlagManager.Theme;
 /**
  * Material 3 Diagnostics & Log Viewer Dialog.
  *
- * Allows users to inspect session logs, filter errors, crashes, and 1-tap share or copy diagnostics.
+ * Single unified log view with live search, inspection, and 1-tap share or copy diagnostics.
  * Styled to seamlessly match Google Photos Material 3 design language.
  */
 public final class DiagnosticsDialog {
@@ -159,7 +158,7 @@ public final class DiagnosticsDialog {
         root.addView(sessionCard);
 
         // ─────────────────────────────────────────────────────────────────────
-        // 3. Search Box & Filter Chips Bar (No emojis, clean M3 chips)
+        // 3. Search Box (Live log filter covering all logs)
         // ─────────────────────────────────────────────────────────────────────
         LinearLayout filterBar = new LinearLayout(activity);
         filterBar.setOrientation(LinearLayout.VERTICAL);
@@ -181,7 +180,7 @@ public final class DiagnosticsDialog {
         inputWrapper.addView(ivSearchIcon);
 
         EditText etSearch = new EditText(activity);
-        etSearch.setHint("Search logs (e.g. exception, crash)...");
+        etSearch.setHint("Search all logs (e.g. exception, crash, map, flag)...");
         etSearch.setTextSize(13.5f);
         etSearch.setTextColor(theme.textPrimary);
         etSearch.setHintTextColor(theme.textSecondary);
@@ -207,22 +206,10 @@ public final class DiagnosticsDialog {
         inputWrapper.addView(btnClearSearch);
 
         filterBar.addView(inputWrapper);
-
-        // Filter chips (Clean Material 3 chips, no emojis!)
-        HorizontalScrollView hsv = new HorizontalScrollView(activity);
-        hsv.setHorizontalScrollBarEnabled(false);
-        hsv.setPadding(0, (int) (8 * density), 0, 0);
-
-        LinearLayout chipsContainer = new LinearLayout(activity);
-        chipsContainer.setOrientation(LinearLayout.HORIZONTAL);
-
-        String[] chipLabels = {"All", "Errors & Crashes", "Network & GMS", "Flags"};
-        String[] chipValues = {"ALL", "ERROR", "MAPS", "FLAGS"};
-        TextView[] chipViews = new TextView[chipLabels.length];
-        final String[] selectedFilter = {"ALL"};
+        root.addView(filterBar);
 
         // ─────────────────────────────────────────────────────────────────────
-        // 4. Log Content View (Modern Dark Terminal)
+        // 4. Log Content View (Modern Dark Terminal covering all logs)
         // ─────────────────────────────────────────────────────────────────────
         ScrollView scrollView = new ScrollView(activity);
         LinearLayout.LayoutParams svLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f);
@@ -239,8 +226,6 @@ public final class DiagnosticsDialog {
         int logPad = (int) (12 * density);
         tvLogs.setPadding(logPad, logPad, logPad, logPad);
         scrollView.addView(tvLogs);
-
-        root.addView(filterBar);
         root.addView(scrollView);
 
         // ─────────────────────────────────────────────────────────────────────
@@ -335,59 +320,13 @@ public final class DiagnosticsDialog {
             }
             new Thread(() -> {
                 String q = etSearch.getText().toString();
-                String content = SessionLogManager.readSessionContent(activeSession[0], q, selectedFilter[0]);
+                String content = SessionLogManager.readSessionContent(activeSession[0], q, "ALL");
                 MAIN_HANDLER.post(() -> {
                     tvLogs.setText(content);
                     scrollView.post(() -> scrollView.fullScroll(View.FOCUS_DOWN));
                 });
             }).start();
         };
-
-        // Chips setup & click handlers
-        for (int i = 0; i < chipLabels.length; i++) {
-            final int idx = i;
-            TextView chip = new TextView(activity);
-            chip.setText(chipLabels[i]);
-            chip.setTextSize(12);
-            chip.setTypeface(null, Typeface.BOLD);
-            int cPadH = (int) (14 * density);
-            int cPadV = (int) (7 * density);
-            chip.setPadding(cPadH, cPadV, cPadH, cPadV);
-            LinearLayout.LayoutParams cLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-            cLp.setMargins(0, 0, (int) (8 * density), 0);
-            chip.setLayoutParams(cLp);
-            chip.setClickable(true);
-            chip.setFocusable(true);
-
-            chipViews[i] = chip;
-            chip.setOnClickListener(v -> {
-                selectedFilter[0] = chipValues[idx];
-                for (int j = 0; j < chipViews.length; j++) {
-                    boolean isSelected = (j == idx);
-                    if (isSelected) {
-                        chipViews[j].setBackground(createRoundedDrawable(theme.primary, 14 * density));
-                        chipViews[j].setTextColor(theme.onPrimary);
-                    } else {
-                        chipViews[j].setBackground(createRoundedCardDrawable(theme.surfaceContainer, theme.outline, 14 * density));
-                        chipViews[j].setTextColor(theme.textSecondary);
-                    }
-                }
-                loadLogs.run();
-            });
-
-            // Initial style
-            boolean isSelected = (i == 0);
-            if (isSelected) {
-                chip.setBackground(createRoundedDrawable(theme.primary, 14 * density));
-                chip.setTextColor(theme.onPrimary);
-            } else {
-                chip.setBackground(createRoundedCardDrawable(theme.surfaceContainer, theme.outline, 14 * density));
-                chip.setTextColor(theme.textSecondary);
-            }
-            chipsContainer.addView(chip);
-        }
-        hsv.addView(chipsContainer);
-        filterBar.addView(hsv);
 
         // Sessions loader
         Runnable reloadSessions = () -> {
