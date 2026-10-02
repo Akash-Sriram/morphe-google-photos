@@ -1094,37 +1094,55 @@ public final class PhenotypeFlagManager {
         }
 
         private void clearAllCustomFlagsDialog() {
-            new AlertDialog.Builder(activity)
-                .setTitle("Clear All Custom Flags?")
-                .setMessage("Are you sure you want to remove all " + customKeysSet.size() + " custom overrides? Curated Morphe flags will remain intact.")
-                .setPositiveButton("Clear All", (d, which) -> {
-                    SharedPreferences.Editor ed = prefs.edit();
-                    for (String k : customKeysSet) {
-                        ed.remove(k);
-                    }
-                    ed.remove(CUSTOM_FLAGS_KEY).apply();
-                    selectedTab = TAB_CURATED;
-                    reloadData();
-                    Toast.makeText(activity, "Cleared all custom flags", Toast.LENGTH_SHORT).show();
-                })
-                .setNegativeButton("Cancel", null)
-                .show();
+            float density = activity.getResources().getDisplayMetrics().density;
+            Theme theme = Theme.get(activity);
+            LinearLayout layout = new LinearLayout(activity);
+            layout.setOrientation(LinearLayout.VERTICAL);
+            int mPad = (int) (20 * density);
+            layout.setPadding(mPad, (int) (4 * density), mPad, (int) (12 * density));
+
+            TextView tvMsg = new TextView(activity);
+            tvMsg.setText("Are you sure you want to remove all " + customKeysSet.size() + " custom overrides?\n\nCurated Morphe flags will remain intact.");
+            tvMsg.setTextSize(13);
+            tvMsg.setTextColor(theme.textPrimary);
+            tvMsg.setLineSpacing(0, 1.25f);
+            layout.addView(tvMsg);
+
+            createM3ActionDialog(activity, "Clear All Custom Flags?", layout, "Clear all", () -> {
+                SharedPreferences.Editor ed = prefs.edit();
+                for (String k : customKeysSet) {
+                    ed.remove(k);
+                }
+                ed.remove(CUSTOM_FLAGS_KEY).apply();
+                selectedTab = TAB_CURATED;
+                reloadData();
+                Toast.makeText(activity, "Cleared all custom flags", Toast.LENGTH_SHORT).show();
+            }, true).show();
         }
 
         private void deleteSingleCustomFlagDialog(String key) {
-            new AlertDialog.Builder(activity)
-                .setTitle("Delete Custom Flag?")
-                .setMessage("Remove custom override \"" + key + "\"?")
-                .setPositiveButton("Delete", (d, which) -> {
-                    prefs.edit().remove(key).apply();
-                    Set<String> set = new HashSet<>(prefs.getStringSet(CUSTOM_FLAGS_KEY, Collections.emptySet()));
-                    set.remove(key);
-                    prefs.edit().putStringSet(CUSTOM_FLAGS_KEY, set).apply();
-                    reloadData();
-                    Toast.makeText(activity, "Removed custom override: " + key, Toast.LENGTH_SHORT).show();
-                })
-                .setNegativeButton("Cancel", null)
-                .show();
+            float density = activity.getResources().getDisplayMetrics().density;
+            Theme theme = Theme.get(activity);
+            LinearLayout layout = new LinearLayout(activity);
+            layout.setOrientation(LinearLayout.VERTICAL);
+            int mPad = (int) (20 * density);
+            layout.setPadding(mPad, (int) (4 * density), mPad, (int) (12 * density));
+
+            TextView tvMsg = new TextView(activity);
+            tvMsg.setText("Are you sure you want to delete custom override \"" + key + "\"?");
+            tvMsg.setTextSize(13);
+            tvMsg.setTextColor(theme.textPrimary);
+            tvMsg.setLineSpacing(0, 1.25f);
+            layout.addView(tvMsg);
+
+            createM3ActionDialog(activity, "Delete Custom Flag?", layout, "Delete", () -> {
+                prefs.edit().remove(key).apply();
+                Set<String> set = new HashSet<>(prefs.getStringSet(CUSTOM_FLAGS_KEY, Collections.emptySet()));
+                set.remove(key);
+                prefs.edit().putStringSet(CUSTOM_FLAGS_KEY, set).apply();
+                reloadData();
+                Toast.makeText(activity, "Removed custom override: " + key, Toast.LENGTH_SHORT).show();
+            }, true).show();
         }
 
         @Override
@@ -1735,11 +1753,19 @@ public final class PhenotypeFlagManager {
         btnApply.setGravity(Gravity.CENTER);
         btnApply.setClickable(true);
         btnApply.setFocusable(true);
-        btnApply.setBackground(createRoundedDrawable(theme.primary, 24 * density));
-        int btnHeight = (int) (46 * density);
+        btnApply.setBackground(createActionPillDrawable(theme.primary, 24 * density));
+        int btnHeight = (int) (48 * density);
         LinearLayout.LayoutParams applyLp = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, btnHeight);
         btnApply.setLayoutParams(applyLp);
+
+        ImageView ivRestart = new ImageView(activity);
+        ivRestart.setImageDrawable(new MaterialVectorDrawable(MaterialVectorDrawable.TYPE_RESTART, theme.onPrimary));
+        int icRestartSize = (int) (18 * density);
+        LinearLayout.LayoutParams icRestartLp = new LinearLayout.LayoutParams(icRestartSize, icRestartSize);
+        icRestartLp.setMargins(0, 0, (int) (8 * density), 0);
+        ivRestart.setLayoutParams(icRestartLp);
+        btnApply.addView(ivRestart);
 
         TextView tvApply = new TextView(activity);
         tvApply.setText("Apply and restart");
@@ -2010,11 +2036,22 @@ public final class PhenotypeFlagManager {
         int p = (int) (40 * density);
         box.setPadding(p, p, p, p);
 
-        TextView icon = new TextView(activity);
-        icon.setText("✨");
-        icon.setTextSize(36);
-        icon.setGravity(Gravity.CENTER);
-        box.addView(icon);
+        FrameLayout iconCircle = new FrameLayout(activity);
+        int cSize = (int) (64 * density);
+        LinearLayout.LayoutParams cLp = new LinearLayout.LayoutParams(cSize, cSize);
+        iconCircle.setLayoutParams(cLp);
+        GradientDrawable cBg = new GradientDrawable();
+        cBg.setShape(GradientDrawable.OVAL);
+        cBg.setColor(theme.surfaceContainer);
+        iconCircle.setBackground(cBg);
+
+        ImageView ivEmpty = new ImageView(activity);
+        ivEmpty.setImageDrawable(new MaterialVectorDrawable(MaterialVectorDrawable.TYPE_PRESETS, theme.primary));
+        int icEmptySize = (int) (32 * density);
+        FrameLayout.LayoutParams icEmptyLp = new FrameLayout.LayoutParams(icEmptySize, icEmptySize, Gravity.CENTER);
+        ivEmpty.setLayoutParams(icEmptyLp);
+        iconCircle.addView(ivEmpty);
+        box.addView(iconCircle);
 
         TextView title = new TextView(activity);
         title.setText("No Flags Configured");
@@ -2022,23 +2059,22 @@ public final class PhenotypeFlagManager {
         title.setTextColor(theme.textPrimary);
         title.setTypeface(null, Typeface.BOLD);
         title.setGravity(Gravity.CENTER);
-        title.setPadding(0, (int) (10 * density), 0, (int) (4 * density));
+        title.setPadding(0, (int) (14 * density), 0, (int) (4 * density));
         box.addView(title);
 
         TextView desc = new TextView(activity);
-        desc.setText("Google Photos is running in stock mode.\nLoad Morphe presets or tap ➕ to add a flag.");
+        desc.setText("Google Photos is running in stock mode.\nLoad Morphe presets or tap + to add a custom flag.");
         desc.setTextSize(13);
         desc.setTextColor(theme.textSecondary);
         desc.setGravity(Gravity.CENTER);
         box.addView(desc);
 
         if (onLoadPresets != null) {
-            TextView btnLoadPresets = new TextView(activity);
-            btnLoadPresets.setText("✨ Load Recommended Presets");
-            btnLoadPresets.setTextSize(12.5f);
-            btnLoadPresets.setTypeface(null, Typeface.BOLD);
-            btnLoadPresets.setTextColor(theme.onPrimary);
+            LinearLayout btnLoadPresets = new LinearLayout(activity);
+            btnLoadPresets.setOrientation(LinearLayout.HORIZONTAL);
             btnLoadPresets.setGravity(Gravity.CENTER);
+            btnLoadPresets.setClickable(true);
+            btnLoadPresets.setFocusable(true);
             int bPadH = (int) (20 * density);
             int bPadV = (int) (10 * density);
             btnLoadPresets.setPadding(bPadH, bPadV, bPadH, bPadV);
@@ -2046,8 +2082,22 @@ public final class PhenotypeFlagManager {
             LinearLayout.LayoutParams bLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
             bLp.topMargin = (int) (16 * density);
             btnLoadPresets.setLayoutParams(bLp);
-            btnLoadPresets.setClickable(true);
-            btnLoadPresets.setFocusable(true);
+
+            ImageView ivPreset = new ImageView(activity);
+            ivPreset.setImageDrawable(new MaterialVectorDrawable(MaterialVectorDrawable.TYPE_PRESETS, theme.onPrimary));
+            int icSize = (int) (16 * density);
+            LinearLayout.LayoutParams ivLp = new LinearLayout.LayoutParams(icSize, icSize);
+            ivLp.setMargins(0, 0, (int) (8 * density), 0);
+            ivPreset.setLayoutParams(ivLp);
+            btnLoadPresets.addView(ivPreset);
+
+            TextView tvLoad = new TextView(activity);
+            tvLoad.setText("Load Recommended Presets");
+            tvLoad.setTextSize(13f);
+            tvLoad.setTypeface(null, Typeface.BOLD);
+            tvLoad.setTextColor(theme.onPrimary);
+            btnLoadPresets.addView(tvLoad);
+
             btnLoadPresets.setOnClickListener(v -> onLoadPresets.run());
             box.addView(btnLoadPresets);
         }
@@ -2129,7 +2179,7 @@ public final class PhenotypeFlagManager {
             tvMsg.setLineSpacing(0, 1.25f);
             msgLayout.addView(tvMsg);
 
-            createM3ActionDialog(activity, "Load Recommended Presets", msgLayout, "Apply Presets", () -> {
+            createM3ActionDialog(activity, "Load Recommended Presets", msgLayout, "Apply presets", () -> {
                 PhotoFlagsRegistry.applyCuratedDefaults(prefs);
                 prefs.edit().putBoolean("_presets_loaded", true).apply();
                 GooglePhotosAccountAvatar.syncOneGoogleFlags(activity);
@@ -2198,7 +2248,7 @@ public final class PhenotypeFlagManager {
             tvMsg.setLineSpacing(0, 1.25f);
             msgLayout.addView(tvMsg);
 
-            createM3ActionDialog(activity, "Reset All Flags?", msgLayout, "Reset All", () -> {
+            createM3ActionDialog(activity, "Reset All Flags?", msgLayout, "Reset all", () -> {
                 prefs.edit().clear().putBoolean("_presets_loaded", false).apply();
                 GooglePhotosAccountAvatar.syncOneGoogleFlags(activity);
                 try {
@@ -2222,7 +2272,7 @@ public final class PhenotypeFlagManager {
                 adapter.collapseAll();
                 onRefresh.run();
                 Toast.makeText(activity, "All flags removed from list! Restored stock mode.", Toast.LENGTH_LONG).show();
-            }).show();
+            }, true).show();
         }));
 
         Dialog dialog = createM3Dialog(activity, "Flag Options", null);
@@ -2528,15 +2578,33 @@ public final class PhenotypeFlagManager {
         actionRow.setGravity(Gravity.CENTER_VERTICAL);
         actionRow.setPadding(0, 0, 0, (int) (8 * density));
 
-        Button btnPasteClipboard = new Button(activity);
-        btnPasteClipboard.setText("📋 Paste from Clipboard");
-        btnPasteClipboard.setTextSize(12);
-        btnPasteClipboard.setTypeface(null, Typeface.BOLD);
-        btnPasteClipboard.setTextColor(theme.isDark ? theme.onPrimaryContainer : theme.primary);
-        btnPasteClipboard.setBackground(createRoundedDrawable(theme.primaryContainer, 16 * density));
-        btnPasteClipboard.setPadding((int) (12 * density), 0, (int) (12 * density), 0);
-        LinearLayout.LayoutParams btnLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, (int) (36 * density));
+        LinearLayout btnPasteClipboard = new LinearLayout(activity);
+        btnPasteClipboard.setOrientation(LinearLayout.HORIZONTAL);
+        btnPasteClipboard.setGravity(Gravity.CENTER);
+        btnPasteClipboard.setClickable(true);
+        btnPasteClipboard.setFocusable(true);
+        btnPasteClipboard.setBackground(createActionPillDrawable(theme.primaryContainer, 14 * density));
+        int bPadH = (int) (12 * density);
+        int bPadV = (int) (7 * density);
+        btnPasteClipboard.setPadding(bPadH, bPadV, bPadH, bPadV);
+        LinearLayout.LayoutParams btnLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         btnPasteClipboard.setLayoutParams(btnLp);
+
+        int ivPasteColor = theme.isDark ? theme.onPrimaryContainer : theme.primary;
+        ImageView ivPaste = new ImageView(activity);
+        ivPaste.setImageDrawable(new MaterialVectorDrawable(MaterialVectorDrawable.TYPE_PASTE, ivPasteColor));
+        int icPasteSize = (int) (14 * density);
+        LinearLayout.LayoutParams ivPasteLp = new LinearLayout.LayoutParams(icPasteSize, icPasteSize);
+        ivPasteLp.setMargins(0, 0, (int) (6 * density), 0);
+        ivPaste.setLayoutParams(ivPasteLp);
+        btnPasteClipboard.addView(ivPaste);
+
+        TextView tvPaste = new TextView(activity);
+        tvPaste.setText("Paste from clipboard");
+        tvPaste.setTextSize(12);
+        tvPaste.setTypeface(null, Typeface.BOLD);
+        tvPaste.setTextColor(ivPasteColor);
+        btnPasteClipboard.addView(tvPaste);
         actionRow.addView(btnPasteClipboard);
 
         TextView tvCountPreview = new TextView(activity);
@@ -2594,7 +2662,7 @@ public final class PhenotypeFlagManager {
             }
         });
 
-        Dialog dialog = createM3ActionDialog(activity, "📋 Bulk Paste Flags", layout, "Import All", () -> {
+        Dialog dialog = createM3ActionDialog(activity, "Bulk Paste Flags", layout, "Import all", () -> {
             String text = etInput.getText().toString().trim();
             if (!text.isEmpty()) {
                 Dialog loading = showLoadingDialog(activity, "Importing Flags...", "Parsing flags and saving overrides...");
@@ -2888,7 +2956,7 @@ public final class PhenotypeFlagManager {
         typeRow.setPadding(0, 0, 0, (int) (10 * density));
 
         int[] selectedType = new int[]{0}; // 0=Boolean, 1=Long, 2=Float, 3=String
-        Button[] typeButtons = new Button[4];
+        TextView[] typeButtons = new TextView[4];
         String[] typeNames = new String[]{"Boolean", "Long", "Float", "String"};
 
         EditText etKey = new EditText(activity);
@@ -2915,7 +2983,7 @@ public final class PhenotypeFlagManager {
         Runnable updateTypeButtons = () -> {
             for (int i = 0; i < 4; i++) {
                 boolean isSel = (selectedType[0] == i);
-                typeButtons[i].setBackground(createRoundedDrawable(isSel ? theme.primary : theme.searchInputBg, 8 * density));
+                typeButtons[i].setBackground(createActionPillDrawable(isSel ? theme.primary : theme.searchInputBg, 8 * density));
                 typeButtons[i].setTextColor(isSel ? theme.onPrimary : theme.textPrimary);
             }
             if (selectedType[0] == 0) {
@@ -2934,12 +3002,17 @@ public final class PhenotypeFlagManager {
 
         for (int i = 0; i < 4; i++) {
             final int tIdx = i;
-            Button b = new Button(activity);
+            TextView b = new TextView(activity);
             b.setText(typeNames[i]);
-            b.setTextSize(11);
+            b.setTextSize(11.5f);
             b.setTypeface(null, Typeface.BOLD);
-            b.setPadding((int) (8 * density), (int) (4 * density), (int) (8 * density), (int) (4 * density));
-            LinearLayout.LayoutParams bLp = new LinearLayout.LayoutParams(0, (int) (36 * density), 1f);
+            b.setGravity(Gravity.CENTER);
+            b.setClickable(true);
+            b.setFocusable(true);
+            int tPadH = (int) (6 * density);
+            int tPadV = (int) (7 * density);
+            b.setPadding(tPadH, tPadV, tPadH, tPadV);
+            LinearLayout.LayoutParams bLp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
             if (i > 0) bLp.setMargins((int) (4 * density), 0, 0, 0);
             b.setLayoutParams(bLp);
             b.setOnClickListener(v -> {
@@ -2955,7 +3028,7 @@ public final class PhenotypeFlagManager {
         layout.addView(etKey);
         layout.addView(etVal);
 
-        Dialog dialog = createM3ActionDialog(activity, "➕ Add Custom Flag", layout, "Save", () -> {
+        Dialog dialog = createM3ActionDialog(activity, "Add Custom Flag", layout, "Save", () -> {
             String k = etKey.getText().toString().trim();
             String v = etVal.getText().toString().trim();
             if (!k.isEmpty() && !v.isEmpty()) {
@@ -3024,7 +3097,7 @@ public final class PhenotypeFlagManager {
         etVal.setPadding(pad, pad, pad, pad);
         layout.addView(etVal);
 
-        Dialog dialog = createM3ActionDialog(activity, "✏️ Edit Value", layout, "Save", () -> {
+        Dialog dialog = createM3ActionDialog(activity, "Edit Flag Value", layout, "Save", () -> {
             String v = etVal.getText().toString().trim();
             if (!v.isEmpty()) {
                 SharedPreferences.Editor ed = prefs.edit();
@@ -3171,22 +3244,27 @@ public final class PhenotypeFlagManager {
         LinearLayout header = new LinearLayout(activity);
         header.setOrientation(LinearLayout.HORIZONTAL);
         header.setGravity(Gravity.CENTER_VERTICAL);
-        int pad = (int) (18 * density);
+        int pad = (int) (20 * density);
         header.setPadding(pad, pad, pad, (int) (8 * density));
 
         TextView tvT = new TextView(activity);
         tvT.setText(title);
-        tvT.setTextSize(17);
+        tvT.setTextSize(17.5f);
         tvT.setTextColor(theme.textPrimary);
         tvT.setTypeface(null, Typeface.BOLD);
         header.addView(tvT, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
 
-        TextView btnClose = new TextView(activity);
-        btnClose.setText("✕");
-        btnClose.setTextSize(16);
-        btnClose.setTextColor(theme.textSecondary);
-        btnClose.setTypeface(null, Typeface.BOLD);
-        btnClose.setPadding((int) (8 * density), 0, 0, 0);
+        FrameLayout btnClose = new FrameLayout(activity);
+        int cSize = (int) (36 * density);
+        btnClose.setLayoutParams(new LinearLayout.LayoutParams(cSize, cSize));
+        ImageView ivClose = new ImageView(activity);
+        ivClose.setImageDrawable(new MaterialVectorDrawable(MaterialVectorDrawable.TYPE_CLOSE, theme.textSecondary));
+        int icSize = (int) (18 * density);
+        FrameLayout.LayoutParams icLp = new FrameLayout.LayoutParams(icSize, icSize, Gravity.CENTER);
+        ivClose.setLayoutParams(icLp);
+        btnClose.addView(ivClose);
+        btnClose.setClickable(true);
+        btnClose.setFocusable(true);
         btnClose.setOnClickListener(v -> d.dismiss());
         header.addView(btnClose);
         root.addView(header);
@@ -3208,41 +3286,59 @@ public final class PhenotypeFlagManager {
 
     private static Dialog createM3ActionDialog(Activity activity, String title, View customView,
                                                String actionText, Runnable onAction) {
+        return createM3ActionDialog(activity, title, customView, actionText, onAction, false);
+    }
+
+    private static Dialog createM3ActionDialog(Activity activity, String title, View customView,
+                                               String actionText, Runnable onAction, boolean isDestructive) {
         float density = activity.getResources().getDisplayMetrics().density;
         Theme theme = Theme.get(activity);
         Dialog d = createM3Dialog(activity, title, customView);
 
         LinearLayout actions = new LinearLayout(activity);
         actions.setOrientation(LinearLayout.HORIZONTAL);
-        actions.setGravity(Gravity.END);
-        int p = (int) (16 * density);
-        actions.setPadding(p, (int) (6 * density), p, p);
+        actions.setGravity(Gravity.END | Gravity.CENTER_VERTICAL);
+        int p = (int) (20 * density);
+        actions.setPadding(p, (int) (8 * density), p, (int) (18 * density));
 
-        Button btnCancel = new Button(activity);
+        TextView btnCancel = new TextView(activity);
         btnCancel.setText("Cancel");
-        btnCancel.setTextSize(13);
-        btnCancel.setTextColor(theme.textSecondary);
-        btnCancel.setBackground(createRoundedDrawable(theme.surfaceContainer, 18 * density));
+        btnCancel.setTextSize(13.5f);
+        btnCancel.setTypeface(null, Typeface.BOLD);
+        btnCancel.setTextColor(theme.primary);
+        btnCancel.setGravity(Gravity.CENTER);
+        btnCancel.setClickable(true);
+        btnCancel.setFocusable(true);
+        int padH = (int) (16 * density);
+        int padV = (int) (9.5f * density);
+        btnCancel.setPadding(padH, padV, padH, padV);
+        btnCancel.setBackground(createActionPillDrawable(theme.surfaceContainer, 18 * density));
         btnCancel.setOnClickListener(v -> d.dismiss());
         LinearLayout.LayoutParams cLp = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT, (int) (40 * density));
-        cLp.setMargins(0, 0, (int) (8 * density), 0);
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        cLp.setMargins(0, 0, (int) (10 * density), 0);
         actions.addView(btnCancel, cLp);
 
-        Button btnOk = new Button(activity);
+        TextView btnOk = new TextView(activity);
         btnOk.setText(actionText);
-        btnOk.setTextSize(13);
+        btnOk.setTextSize(13.5f);
         btnOk.setTypeface(null, Typeface.BOLD);
         btnOk.setTextColor(theme.onPrimary);
-        btnOk.setBackground(createRoundedDrawable(theme.primary, 18 * density));
+        btnOk.setGravity(Gravity.CENTER);
+        btnOk.setClickable(true);
+        btnOk.setFocusable(true);
+        btnOk.setPadding((int) (20 * density), padV, (int) (20 * density), padV);
+        int actionBg = isDestructive
+                ? (theme.isDark ? 0xFFBA1A1A : 0xFFB3261E)
+                : theme.primary;
+        btnOk.setBackground(createActionPillDrawable(actionBg, 18 * density));
         btnOk.setOnClickListener(v -> {
             d.dismiss();
             if (onAction != null) onAction.run();
         });
         actions.addView(btnOk, new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT, (int) (40 * density)));
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
-        ((ViewGroup) d.findViewById(android.R.id.content)).getChildAt(0);
         ((LinearLayout) ((ViewGroup) d.findViewById(android.R.id.content)).getChildAt(0)).addView(actions);
 
         return d;
