@@ -228,11 +228,19 @@ public final class SessionLogManager {
 
     private static void writeSessionHeader(File file) {
         try (BufferedWriter writer = new BufferedWriter(new FileWriter(file, false))) {
-            writer.write("[Morphe Diagnostics • Session " + sCurrentSessionId + "]\n");
-            writer.write("Photos: v" + Utils.getAppVersionName() + " • Patches: v" + Utils.getPatchesReleaseVersion() + "\n");
+            writer.write("=======================================================\n");
+            writer.write("MORPHE DIAGNOSTICS LOG SESSION\n");
+            writer.write("Session ID:        " + sCurrentSessionId + "\n");
+            writer.write("Start Time:        " + new Date(sSessionStartTime).toString() + "\n");
+            writer.write("Device:            " + Build.MANUFACTURER + " " + Build.MODEL + " (" + Build.DEVICE + " / " + Build.PRODUCT + ")\n");
+            writer.write("Android OS:        " + Build.VERSION.RELEASE + " (API " + Build.VERSION.SDK_INT + ")\n");
+            writer.write("Security Patch:    " + (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M ? Build.VERSION.SECURITY_PATCH : "N/A") + "\n");
+            writer.write("Photos App Ver:    " + Utils.getAppVersionName() + "\n");
+            writer.write("Morphe Patches:    " + Utils.getPatchesReleaseVersion() + "\n");
+            writer.write("Package:           " + (sContext != null ? sContext.getPackageName() : "unknown") + "\n");
             String gmsStatus = checkGmsCoreStatus();
-            writer.write("GmsCore: " + gmsStatus + "\n");
-            writer.write("-------------------------------------------------------\n\n");
+            writer.write("GmsCore Status:    " + gmsStatus + "\n");
+            writer.write("=======================================================\n\n");
             writer.flush();
         } catch (Throwable t) {
             Log.e(TAG, "Error writing session header", t);
@@ -365,9 +373,12 @@ public final class SessionLogManager {
         Thread logcatThread = new Thread(() -> {
             Process process = null;
             BufferedReader reader = null;
+            BufferedWriter fileWriter = null;
+            File activeFile = null;
+            int flushCountdown = 0;
+
             try {
                 int myPid = android.os.Process.myPid();
-                // Filter for current process PID and relevant Morphe / Maps / Gms tags
                 List<String> cmd = new ArrayList<>();
                 cmd.add("logcat");
                 cmd.add("-v");
@@ -380,9 +391,7 @@ public final class SessionLogManager {
                 reader = new BufferedReader(new InputStreamReader(process.getInputStream()));
 
                 String line;
-                int count = 0;
                 while (!Thread.currentThread().isInterrupted() && (line = reader.readLine()) != null) {
-                    // Filter relevant lines to prevent overwhelming logcat noise
                     if (isRelevantLogcatLine(line)) {
                         String sanitized = sanitize(line);
                         synchronized (BUFFER_LOCK) {
@@ -392,21 +401,41 @@ public final class SessionLogManager {
                             sRecentLogBuffer.addLast(sanitized);
                         }
 
-                        if (++count % 5 == 0 && sCurrentSessionFile != null) {
-                            final File f = sCurrentSessionFile;
-                            final String l = sanitized;
-                            IO_EXECUTOR.execute(() -> {
-                                try (BufferedWriter writer = new BufferedWriter(new FileWriter(f, true))) {
-                                    writer.write(l);
-                                    writer.newLine();
+                        File current = sCurrentSessionFile;
+                        if (current != null) {
+                            if (fileWriter == null || activeFile == null || !activeFile.equals(current)) {
+                                if (fileWriter != null) {
+                                    try { fileWriter.flush(); fileWriter.close(); } catch (Throwable ignored) {}
+                                }
+                                try {
+                                    fileWriter = new BufferedWriter(new FileWriter(current, true));
+                                    activeFile = current;
+                                } catch (Throwable t) {
+                                    fileWriter = null;
+                                    activeFile = null;
+                                }
+                            }
+
+                            if (fileWriter != null) {
+                                try {
+                                    fileWriter.write(sanitized);
+                                    fileWriter.newLine();
+                                    boolean isUrgent = line.contains("FATAL") || line.contains("Exception") ||
+                                                       line.contains("Error") || line.contains(" E/") ||
+                                                       line.contains("DEBUG   :") || line.contains("crash_dump");
+                                    if (isUrgent || ++flushCountdown >= 5) {
+                                        fileWriter.flush();
+                                        flushCountdown = 0;
+                                    }
                                 } catch (Throwable ignored) {}
-                            });
+                            }
                         }
                     }
                 }
             } catch (Throwable t) {
                 Log.d(TAG, "Logcat capture completed or unavailable: " + t.getMessage());
             } finally {
+                if (fileWriter != null) try { fileWriter.flush(); fileWriter.close(); } catch (Throwable ignored) {}
                 if (reader != null) try { reader.close(); } catch (Throwable ignored) {}
                 if (process != null) process.destroy();
             }
@@ -427,7 +456,17 @@ public final class SessionLogManager {
                line.contains("AndroidRuntime") ||
                line.contains("FATAL") ||
                line.contains("CameraUpdate") ||
-               line.contains("app.morphe");
+               line.contains("app.morphe") ||
+               line.contains("com.google.android.apps.photos") ||
+               line.contains("System.err") ||
+               line.contains("DEBUG   :") ||
+               line.contains("crash_dump") ||
+               line.contains("Fatal signal") ||
+               line.contains("Exception") ||
+               line.contains("Error") ||
+               line.contains("StrictMode") ||
+               line.contains(" E/") ||
+               line.contains(" F/");
     }
 
     public static String sanitize(String input) {
@@ -491,8 +530,9 @@ public final class SessionLogManager {
             String line;
             while ((line = br.readLine()) != null) {
                 if (line.startsWith("==") || line.startsWith("📱") || line.startsWith("Session") ||
-                    line.startsWith("Device:") || line.startsWith("Android:") || line.startsWith("Photos") ||
-                    line.startsWith("Morphe") || line.startsWith("GmsCore") || line.startsWith("Start Time:")) {
+                    line.startsWith("Device:") || line.startsWith("Android") || line.startsWith("Security") ||
+                    line.startsWith("Photos") || line.startsWith("Morphe") || line.startsWith("MORPHE") ||
+                    line.startsWith("Package:") || line.startsWith("GmsCore") || line.startsWith("Start Time:")) {
                     // Always include header lines
                     sb.append(line).append("\n");
                     continue;

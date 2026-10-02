@@ -248,7 +248,7 @@ public final class DiagnosticsDialog {
         tvLogs.setTextSize(11);
         tvLogs.setTypeface(Typeface.MONOSPACE);
         tvLogs.setTextColor(0xFFE1E3E5);
-        tvLogs.setTextIsSelectable(true);
+        tvLogs.setTextIsSelectable(false);
         int logPad = (int) (12 * density);
         tvLogs.setPadding(logPad, logPad, logPad, logPad);
         scrollView.addView(tvLogs);
