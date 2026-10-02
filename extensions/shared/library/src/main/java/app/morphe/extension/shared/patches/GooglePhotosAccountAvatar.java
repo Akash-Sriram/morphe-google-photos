@@ -828,7 +828,7 @@ public final class GooglePhotosAccountAvatar {
                 }
                 if (anyReady) Utils.runOnMainThread(() -> refresh(activity, root));
             } catch (Exception e) {
-                Logger.printException(() -> "Could not prefetch account avatars", e);
+                Logger.printDebug(() -> "Could not prefetch account avatars: " + e.getMessage());
             }
         });
     }
@@ -855,14 +855,14 @@ public final class GooglePhotosAccountAvatar {
                         }
                     }
                 } catch (Exception e) {
-                    Logger.printException(() -> "Could not load account avatar", e);
+                    Logger.printDebug(() -> "Could not load account avatar: " + e.getMessage());
                 } finally {
                     FETCHING_ACCOUNTS.remove(key);
                 }
             });
         } catch (Exception e) {
             FETCHING_ACCOUNTS.remove(key);
-            Logger.printException(() -> "Could not request avatar token", e);
+            Logger.printDebug(() -> "Could not request avatar token: " + e.getMessage());
         }
     }
 
@@ -951,7 +951,7 @@ public final class GooglePhotosAccountAvatar {
             if (bmp != null) MEMORY_AVATARS.put(key, bmp);
             return bmp;
         } catch (Exception e) {
-            Logger.printException(() -> "Could not read cached avatar", e);
+            Logger.printDebug(() -> "Could not read cached avatar: " + e.getMessage());
             return null;
         }
     }
@@ -963,7 +963,7 @@ public final class GooglePhotosAccountAvatar {
             try (FileOutputStream out = new FileOutputStream(cacheFile(activity, email))) {
                 bitmap.compress(Bitmap.CompressFormat.PNG, 100, out);
             } catch (Exception e) {
-                Logger.printException(() -> "Could not cache avatar", e);
+                Logger.printDebug(() -> "Could not cache avatar: " + e.getMessage());
             }
         });
     }

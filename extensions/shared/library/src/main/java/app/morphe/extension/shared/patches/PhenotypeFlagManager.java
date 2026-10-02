@@ -1759,14 +1759,6 @@ public final class PhenotypeFlagManager {
                 ViewGroup.LayoutParams.MATCH_PARENT, btnHeight);
         btnApply.setLayoutParams(applyLp);
 
-        ImageView ivRestart = new ImageView(activity);
-        ivRestart.setImageDrawable(new MaterialVectorDrawable(MaterialVectorDrawable.TYPE_RESTART, theme.onPrimary));
-        int icRestartSize = (int) (18 * density);
-        LinearLayout.LayoutParams icRestartLp = new LinearLayout.LayoutParams(icRestartSize, icRestartSize);
-        icRestartLp.setMargins(0, 0, (int) (8 * density), 0);
-        ivRestart.setLayoutParams(icRestartLp);
-        btnApply.addView(ivRestart);
-
         TextView tvApply = new TextView(activity);
         tvApply.setText("Apply and restart");
         tvApply.setTextSize(14.5f);
@@ -1924,6 +1916,16 @@ public final class PhenotypeFlagManager {
             } else {
                 globalActionBar.setVisibility(View.GONE);
             }
+            if (selTab == FlagAdapter.TAB_CUSTOM) {
+                btnExpandAllGlobal.setVisibility(View.GONE);
+                btnCollapseAllGlobal.setVisibility(View.GONE);
+                p2.rightMargin = 0;
+            } else {
+                btnExpandAllGlobal.setVisibility(View.VISIBLE);
+                btnCollapseAllGlobal.setVisibility(View.VISIBLE);
+                p2.rightMargin = gap;
+            }
+            btnDisableAllGlobal.setLayoutParams(p2);
             if (customCount == 0) {
                 tabBar.setVisibility(View.GONE);
             } else {
