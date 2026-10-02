@@ -179,14 +179,14 @@ public final class GooglePhotosAccountAvatar {
         if (context == null) return;
         try {
             SharedPreferences phenoPrefs = context.getSharedPreferences("com.google.android.apps.photos.phenotype", Context.MODE_PRIVATE);
-            boolean ringMaster = false;
+            boolean ringMaster = true;
             long ringStyle = 3L;
 
             if (phenoPrefs.contains("45531621")) {
                 try {
-                    ringMaster = phenoPrefs.getBoolean("45531621", false);
+                    ringMaster = phenoPrefs.getBoolean("45531621", true);
                 } catch (Exception ex) {
-                    ringMaster = "true".equalsIgnoreCase(phenoPrefs.getString("45531621", "false"));
+                    ringMaster = !"false".equalsIgnoreCase(phenoPrefs.getString("45531621", "true"));
                 }
             }
             if (phenoPrefs.contains("45531625")) {
