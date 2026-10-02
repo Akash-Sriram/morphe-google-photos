@@ -23,6 +23,7 @@ import android.graphics.drawable.BitmapDrawable;
 import android.graphics.drawable.ColorDrawable;
 import android.graphics.drawable.Drawable;
 import android.graphics.drawable.GradientDrawable;
+import android.graphics.drawable.RippleDrawable;
 import android.net.Uri;
 import android.content.res.ColorStateList;
 import android.content.res.Configuration;
@@ -1619,7 +1620,8 @@ public final class PhenotypeFlagManager {
         LinearLayout globalActionBar = new LinearLayout(activity);
         globalActionBar.setOrientation(LinearLayout.HORIZONTAL);
         globalActionBar.setGravity(Gravity.CENTER_VERTICAL);
-        globalActionBar.setPadding(tbPad, (int) (2 * density), tbPad, (int) (6 * density));
+        int barPadH = (int) (12 * density);
+        globalActionBar.setPadding(barPadH, (int) (3 * density), barPadH, (int) (8 * density));
 
         int gap = (int) (4 * density);
 
@@ -2918,28 +2920,43 @@ public final class PhenotypeFlagManager {
         return createHeaderIconButton(activity, iconDrawable, touchSizePx, (int) (touchSizePx * 0.55f));
     }
 
+    private static Drawable createActionPillDrawable(int bgColor, float radiusPx) {
+        GradientDrawable shape = new GradientDrawable();
+        shape.setCornerRadius(radiusPx);
+        shape.setColor(bgColor);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+            GradientDrawable mask = new GradientDrawable();
+            mask.setCornerRadius(radiusPx);
+            mask.setColor(Color.WHITE);
+            ColorStateList rippleColor = ColorStateList.valueOf(0x22888888);
+            return new RippleDrawable(rippleColor, shape, mask);
+        }
+        return shape;
+    }
+
     private static LinearLayout createQuickActionPill(Activity activity, int iconType, String text, float density, Theme theme) {
         LinearLayout pill = new LinearLayout(activity);
         pill.setOrientation(LinearLayout.HORIZONTAL);
         pill.setGravity(Gravity.CENTER);
         pill.setClickable(true);
         pill.setFocusable(true);
-        int padH = (int) (3 * density);
-        int padV = (int) (6.5f * density);
+        pill.setMinimumHeight((int) (38 * density));
+        int padH = (int) (3.5f * density);
+        int padV = (int) (8.5f * density);
         pill.setPadding(padH, padV, padH, padV);
-        pill.setBackground(createRoundedDrawable(theme.surfaceContainer, 12 * density));
+        pill.setBackground(createActionPillDrawable(theme.surfaceContainer, 14 * density));
 
         ImageView iv = new ImageView(activity);
-        int iconSize = (int) (12 * density);
+        int iconSize = (int) (15 * density);
         LinearLayout.LayoutParams ivLp = new LinearLayout.LayoutParams(iconSize, iconSize);
-        ivLp.rightMargin = (int) (3 * density);
+        ivLp.rightMargin = (int) (3.5f * density);
         iv.setLayoutParams(ivLp);
         iv.setImageDrawable(new MaterialVectorDrawable(iconType, theme.textPrimary));
         pill.addView(iv);
 
         TextView tv = new TextView(activity);
         tv.setText(text);
-        tv.setTextSize(10f);
+        tv.setTextSize(11f);
         tv.setTypeface(null, Typeface.BOLD);
         tv.setTextColor(theme.textPrimary);
         tv.setIncludeFontPadding(false);
