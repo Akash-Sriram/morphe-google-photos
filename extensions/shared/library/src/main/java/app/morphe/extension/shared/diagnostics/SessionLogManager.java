@@ -232,7 +232,6 @@ public final class SessionLogManager {
             writer.write("MORPHE DIAGNOSTICS LOG SESSION\n");
             writer.write("Session ID:        " + sCurrentSessionId + "\n");
             writer.write("Start Time:        " + new Date(sSessionStartTime).toString() + "\n");
-            writer.write("Device:            " + Build.MANUFACTURER + " " + Build.MODEL + " (" + Build.DEVICE + " / " + Build.PRODUCT + ")\n");
             writer.write("Android OS:        " + Build.VERSION.RELEASE + " (API " + Build.VERSION.SDK_INT + ")\n");
             writer.write("Security Patch:    " + (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M ? Build.VERSION.SECURITY_PATCH : "N/A") + "\n");
             writer.write("Photos App Ver:    " + Utils.getAppVersionName() + "\n");
