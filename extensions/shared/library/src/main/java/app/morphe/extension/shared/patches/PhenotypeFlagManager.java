@@ -818,6 +818,31 @@ public final class PhenotypeFlagManager {
             filter(currentFilterQuery);
         }
 
+        public List<DisplayItem> getActiveFilteredFlags() {
+            List<DisplayItem> list = new ArrayList<>();
+            if (currentFilterQuery == null || currentFilterQuery.isEmpty()) {
+                for (DisplayItem it : allItems) {
+                    if (!it.isHeader()) {
+                        list.add(it);
+                    }
+                }
+            } else {
+                for (DisplayItem it : allItems) {
+                    if (!it.isHeader()) {
+                        String target = it.getKey() + " " + it.getTitle() + " " + (it.getDescription() != null ? it.getDescription() : "") + " " + (it.getTrigger() != null ? it.getTrigger() : "") + " " + it.value;
+                        if (target.toLowerCase().contains(currentFilterQuery)) {
+                            list.add(it);
+                        }
+                    }
+                }
+            }
+            return list;
+        }
+
+        public String getCurrentFilterQuery() {
+            return currentFilterQuery != null ? currentFilterQuery : "";
+        }
+
         public FlagAdapter(Activity activity, SharedPreferences prefs, TextView tvSub, LinearLayout emptyContainer) {
             this.activity = activity;
             this.prefs = prefs;
@@ -884,27 +909,30 @@ public final class PhenotypeFlagManager {
             Map<String, ?> all = prefs.getAll();
             curatedTotalCount = 0;
 
-            // 1. Curated Flags (always retain all categories even if disabled)
-            List<String> categories = PhotoFlagsRegistry.getCategories();
-            for (String cat : categories) {
-                List<CuratedFlag> flagsInCat = PhotoFlagsRegistry.getFlagsForCategory(cat);
-                if (flagsInCat.isEmpty()) continue;
-                DisplayItem catHeader = new DisplayItem(cat);
-                List<DisplayItem> catFlags = new ArrayList<>();
-                for (CuratedFlag f : flagsInCat) {
-                    curatedTotalCount++;
-                    Object raw = all.get(f.key);
-                    Object v;
-                    if (raw != null) {
-                        v = sanitizeValue(f.key, raw);
-                    } else {
-                        v = f.defaultValue != null ? f.defaultValue : Boolean.FALSE;
+            boolean presetsLoaded = prefs.getBoolean("_presets_loaded", true);
+            if (presetsLoaded) {
+                // 1. Curated Flags
+                List<String> categories = PhotoFlagsRegistry.getCategories();
+                for (String cat : categories) {
+                    List<CuratedFlag> flagsInCat = PhotoFlagsRegistry.getFlagsForCategory(cat);
+                    if (flagsInCat.isEmpty()) continue;
+                    DisplayItem catHeader = new DisplayItem(cat);
+                    List<DisplayItem> catFlags = new ArrayList<>();
+                    for (CuratedFlag f : flagsInCat) {
+                        curatedTotalCount++;
+                        Object raw = all.get(f.key);
+                        Object v;
+                        if (raw != null) {
+                            v = sanitizeValue(f.key, raw);
+                        } else {
+                            v = f.defaultValue != null ? f.defaultValue : Boolean.FALSE;
+                        }
+                        catFlags.add(new DisplayItem(f, v));
                     }
-                    catFlags.add(new DisplayItem(f, v));
-                }
-                if (!catFlags.isEmpty()) {
-                    curatedItems.add(catHeader);
-                    curatedItems.addAll(catFlags);
+                    if (!catFlags.isEmpty()) {
+                        curatedItems.add(catHeader);
+                        curatedItems.addAll(catFlags);
+                    }
                 }
             }
 
@@ -955,7 +983,13 @@ public final class PhenotypeFlagManager {
         private void updateSubtitleText(int flagsShown, int totalMatched) {
             if (totalFlagsCount == 0) {
                 emptyContainer.setVisibility(View.VISIBLE);
-                renderEmptySlate(activity, emptyContainer, density, theme);
+                renderEmptySlate(activity, emptyContainer, density, theme, () -> {
+                    PhotoFlagsRegistry.applyCuratedDefaults(prefs);
+                    prefs.edit().putBoolean("_presets_loaded", true).apply();
+                    GooglePhotosAccountAvatar.syncOneGoogleFlags(activity);
+                    reloadData();
+                    Toast.makeText(activity, "Loaded " + PhotoFlagsRegistry.CURATED_FLAGS.size() + " Morphe presets!", Toast.LENGTH_SHORT).show();
+                });
                 tvSub.setText("0 Flags Configured");
             } else if (!currentFilterQuery.isEmpty() && totalMatched == 0) {
                 emptyContainer.setVisibility(View.VISIBLE);
@@ -1196,7 +1230,18 @@ public final class PhenotypeFlagManager {
                 int chevronType = isExp ? MaterialVectorDrawable.TYPE_CHEVRON_UP : MaterialVectorDrawable.TYPE_CHEVRON_DOWN;
                 hHolder.ivChevron.setImageDrawable(new MaterialVectorDrawable(chevronType, theme.textSecondary));
 
-                List<CuratedFlag> flagsInCat = PhotoFlagsRegistry.getFlagsForCategory(cat);
+                List<CuratedFlag> allInCat = PhotoFlagsRegistry.getFlagsForCategory(cat);
+                List<CuratedFlag> flagsInCat = new ArrayList<>();
+                if (currentFilterQuery.isEmpty()) {
+                    flagsInCat.addAll(allInCat);
+                } else {
+                    for (CuratedFlag cf : allInCat) {
+                        String target = cf.key + " " + cf.title + " " + (cf.description != null ? cf.description : "") + " " + (cf.triggerTarget != null ? cf.triggerTarget : "");
+                        if (target.toLowerCase().contains(currentFilterQuery)) {
+                            flagsInCat.add(cf);
+                        }
+                    }
+                }
                 int totalInCat = flagsInCat.size();
                 int enabledInCat = 0;
                 for (CuratedFlag cf : flagsInCat) {
@@ -1715,60 +1760,120 @@ public final class PhenotypeFlagManager {
         listView.setAdapter(adapter);
 
         btnEnableAllGlobal.setOnClickListener(v -> {
+            List<DisplayItem> targetFlags = adapter.getActiveFilteredFlags();
+            if (targetFlags.isEmpty()) {
+                Toast.makeText(activity, "No matching flags to enable", Toast.LENGTH_SHORT).show();
+                return;
+            }
+            int count = targetFlags.size();
+            boolean isCustom = adapter.getSelectedTab() == FlagAdapter.TAB_CUSTOM;
+            String filterQuery = adapter.getCurrentFilterQuery();
+            String title = isCustom ? "Enable " + count + " Custom Flags?" : "Enable " + count + " Flags?";
+            String msg = filterQuery.isEmpty()
+                    ? "Are you sure you want to enable all " + count + (isCustom ? " custom overrides?" : " Morphe flags?")
+                    : "Are you sure you want to enable " + count + " flags matching \"" + filterQuery + "\"?";
+
             LinearLayout msgLayout = new LinearLayout(activity);
             msgLayout.setOrientation(LinearLayout.VERTICAL);
             int mPad = (int) (18 * density);
             msgLayout.setPadding(mPad, (int) (4 * density), mPad, (int) (12 * density));
 
             TextView tvMsg = new TextView(activity);
-            tvMsg.setText("Are you sure you want to enable all " + PhotoFlagsRegistry.CURATED_FLAGS.size() + " curated Morphe flags?");
+            tvMsg.setText(msg);
             tvMsg.setTextSize(13);
             tvMsg.setTextColor(theme.textPrimary);
             tvMsg.setLineSpacing(0, 1.25f);
             msgLayout.addView(tvMsg);
 
-            createM3ActionDialog(activity, "Enable all flags?", msgLayout, "Enable All", () -> {
+            createM3ActionDialog(activity, title, msgLayout, "Enable (" + count + ")", () -> {
                 SharedPreferences.Editor edit = prefs.edit();
-                for (CuratedFlag cf : PhotoFlagsRegistry.CURATED_FLAGS) {
-                    if (cf.type == PhotoFlagsRegistry.FlagType.BOOLEAN) {
-                        edit.putBoolean(cf.key, true);
-                    } else if (cf.type == PhotoFlagsRegistry.FlagType.LONG) {
-                        edit.putLong(cf.key, ((Number) cf.defaultValue).longValue());
+                if (!isCustom) {
+                    for (DisplayItem item : targetFlags) {
+                        if (item.curatedFlag != null) {
+                            CuratedFlag cf = item.curatedFlag;
+                            if (cf.type == PhotoFlagsRegistry.FlagType.BOOLEAN) {
+                                edit.putBoolean(cf.key, true);
+                            } else if (cf.type == PhotoFlagsRegistry.FlagType.LONG) {
+                                edit.putLong(cf.key, ((Number) cf.defaultValue).longValue());
+                            }
+                        }
+                    }
+                } else {
+                    for (DisplayItem item : targetFlags) {
+                        String k = item.getKey();
+                        if (item.value instanceof Boolean) {
+                            edit.putBoolean(k, true);
+                        } else if (item.value instanceof Long) {
+                            long lv = ((Long) item.value);
+                            edit.putLong(k, lv == 0L ? 1L : lv);
+                        } else if (item.value instanceof Integer) {
+                            int iv = ((Integer) item.value);
+                            edit.putInt(k, iv == 0 ? 1 : iv);
+                        }
                     }
                 }
                 edit.apply();
                 GooglePhotosAccountAvatar.syncOneGoogleFlags(activity);
                 adapter.reloadData();
-                Toast.makeText(activity, "Enabled all " + PhotoFlagsRegistry.CURATED_FLAGS.size() + " Morphe flags", Toast.LENGTH_SHORT).show();
+                Toast.makeText(activity, "Enabled " + count + " flags", Toast.LENGTH_SHORT).show();
             }).show();
         });
 
         btnDisableAllGlobal.setOnClickListener(v -> {
+            List<DisplayItem> targetFlags = adapter.getActiveFilteredFlags();
+            if (targetFlags.isEmpty()) {
+                Toast.makeText(activity, "No matching flags to disable", Toast.LENGTH_SHORT).show();
+                return;
+            }
+            int count = targetFlags.size();
+            boolean isCustom = adapter.getSelectedTab() == FlagAdapter.TAB_CUSTOM;
+            String filterQuery = adapter.getCurrentFilterQuery();
+            String title = isCustom ? "Disable " + count + " Custom Flags?" : "Disable " + count + " Flags?";
+            String msg = filterQuery.isEmpty()
+                    ? "Are you sure you want to disable all " + count + (isCustom ? " custom overrides?" : " Morphe flags?")
+                    : "Are you sure you want to disable " + count + " flags matching \"" + filterQuery + "\"?";
+
             LinearLayout msgLayout = new LinearLayout(activity);
             msgLayout.setOrientation(LinearLayout.VERTICAL);
             int mPad = (int) (18 * density);
             msgLayout.setPadding(mPad, (int) (4 * density), mPad, (int) (12 * density));
 
             TextView tvMsg = new TextView(activity);
-            tvMsg.setText("Are you sure you want to disable all " + PhotoFlagsRegistry.CURATED_FLAGS.size() + " curated Morphe flags?");
+            tvMsg.setText(msg);
             tvMsg.setTextSize(13);
             tvMsg.setTextColor(theme.textPrimary);
             tvMsg.setLineSpacing(0, 1.25f);
             msgLayout.addView(tvMsg);
 
-            createM3ActionDialog(activity, "Disable all flags?", msgLayout, "Disable All", () -> {
+            createM3ActionDialog(activity, title, msgLayout, "Disable (" + count + ")", () -> {
                 SharedPreferences.Editor edit = prefs.edit();
-                for (CuratedFlag cf : PhotoFlagsRegistry.CURATED_FLAGS) {
-                    if (cf.type == PhotoFlagsRegistry.FlagType.BOOLEAN) {
-                        edit.putBoolean(cf.key, false);
-                    } else if (cf.type == PhotoFlagsRegistry.FlagType.LONG) {
-                        edit.putLong(cf.key, 0L);
+                if (!isCustom) {
+                    for (DisplayItem item : targetFlags) {
+                        if (item.curatedFlag != null) {
+                            CuratedFlag cf = item.curatedFlag;
+                            if (cf.type == PhotoFlagsRegistry.FlagType.BOOLEAN) {
+                                edit.putBoolean(cf.key, false);
+                            } else if (cf.type == PhotoFlagsRegistry.FlagType.LONG) {
+                                edit.putLong(cf.key, 0L);
+                            }
+                        }
+                    }
+                } else {
+                    for (DisplayItem item : targetFlags) {
+                        String k = item.getKey();
+                        if (item.value instanceof Boolean) {
+                            edit.putBoolean(k, false);
+                        } else if (item.value instanceof Long) {
+                            edit.putLong(k, 0L);
+                        } else if (item.value instanceof Integer) {
+                            edit.putInt(k, 0);
+                        }
                     }
                 }
                 edit.apply();
                 GooglePhotosAccountAvatar.syncOneGoogleFlags(activity);
                 adapter.reloadData();
-                Toast.makeText(activity, "Disabled all curated flags", Toast.LENGTH_SHORT).show();
+                Toast.makeText(activity, "Disabled " + count + " flags", Toast.LENGTH_SHORT).show();
             }).show();
         });
 
@@ -1786,7 +1891,8 @@ public final class PhenotypeFlagManager {
         tabCustom.setOnClickListener(v -> adapter.setSelectedTab(FlagAdapter.TAB_CUSTOM));
 
         adapter.setTabUpdateListener((curatedCount, customCount, selTab) -> {
-            if (selTab == FlagAdapter.TAB_CURATED) {
+            int activeCount = (selTab == FlagAdapter.TAB_CURATED) ? curatedCount : customCount;
+            if (activeCount > 0) {
                 globalActionBar.setVisibility(View.VISIBLE);
             } else {
                 globalActionBar.setVisibility(View.GONE);
@@ -1895,7 +2001,7 @@ public final class PhenotypeFlagManager {
         }
     }
 
-    private static void renderEmptySlate(Activity activity, LinearLayout container, float density, Theme theme) {
+    private static void renderEmptySlate(Activity activity, LinearLayout container, float density, Theme theme, Runnable onLoadPresets) {
         container.removeAllViews();
         LinearLayout box = new LinearLayout(activity);
         box.setOrientation(LinearLayout.VERTICAL);
@@ -1919,13 +2025,37 @@ public final class PhenotypeFlagManager {
         box.addView(title);
 
         TextView desc = new TextView(activity);
-        desc.setText("Google Photos is running in stock mode.\nTap ➕ to add a flag, or tap ⋮ to import.");
+        desc.setText("Google Photos is running in stock mode.\nLoad Morphe presets or tap ➕ to add a flag.");
         desc.setTextSize(13);
         desc.setTextColor(theme.textSecondary);
         desc.setGravity(Gravity.CENTER);
         box.addView(desc);
 
+        if (onLoadPresets != null) {
+            TextView btnLoadPresets = new TextView(activity);
+            btnLoadPresets.setText("✨ Load Recommended Presets");
+            btnLoadPresets.setTextSize(12.5f);
+            btnLoadPresets.setTypeface(null, Typeface.BOLD);
+            btnLoadPresets.setTextColor(theme.onPrimary);
+            btnLoadPresets.setGravity(Gravity.CENTER);
+            int bPadH = (int) (20 * density);
+            int bPadV = (int) (10 * density);
+            btnLoadPresets.setPadding(bPadH, bPadV, bPadH, bPadV);
+            btnLoadPresets.setBackground(createActionPillDrawable(theme.primary, 18 * density));
+            LinearLayout.LayoutParams bLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            bLp.topMargin = (int) (16 * density);
+            btnLoadPresets.setLayoutParams(bLp);
+            btnLoadPresets.setClickable(true);
+            btnLoadPresets.setFocusable(true);
+            btnLoadPresets.setOnClickListener(v -> onLoadPresets.run());
+            box.addView(btnLoadPresets);
+        }
+
         container.addView(box);
+    }
+
+    private static void renderEmptySlate(Activity activity, LinearLayout container, float density, Theme theme) {
+        renderEmptySlate(activity, container, density, theme, null);
     }
 
     private static void renderEmptySlate(Activity activity, LinearLayout container, float density) {
@@ -1990,37 +2120,19 @@ public final class PhenotypeFlagManager {
 
             createM3ActionDialog(activity, "Load Recommended Presets", msgLayout, "Apply Presets", () -> {
                 PhotoFlagsRegistry.applyCuratedDefaults(prefs);
+                prefs.edit().putBoolean("_presets_loaded", true).apply();
                 GooglePhotosAccountAvatar.syncOneGoogleFlags(activity);
                 onRefresh.run();
-                Toast.makeText(activity, "Activated " + PhotoFlagsRegistry.CURATED_FLAGS.size() + " Morphe flags! Restart to take effect.", Toast.LENGTH_LONG).show();
+                Toast.makeText(activity, "Loaded " + PhotoFlagsRegistry.CURATED_FLAGS.size() + " Morphe presets! Restart to take effect.", Toast.LENGTH_LONG).show();
             }).show();
         }));
 
-        // 2. Bulk Import from File (SAF)
-        items.add(new MenuItem(MaterialVectorDrawable.TYPE_IMPORT, "Bulk Import from File (SAF)", "Select a .txt, .json, or .xml file to import flags", () -> {
-            Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
-            intent.addCategory(Intent.CATEGORY_OPENABLE);
-            intent.setType("*/*");
-            activity.startActivity(intent);
-            Toast.makeText(activity, "Select backup/preset file", Toast.LENGTH_LONG).show();
-        }));
-
-        // 3. Bulk Paste Text
+        // 2. Bulk Paste Text
         items.add(new MenuItem(MaterialVectorDrawable.TYPE_PASTE, "Bulk Paste Text", "Paste key=value lines, JSON, or XML directly", () -> {
             showBulkPasteDialog(activity, prefs, onRefresh);
         }));
 
-        // 4. Export to File (SAF)
-        items.add(new MenuItem(MaterialVectorDrawable.TYPE_EXPORT, "Export to File (SAF)", "Save all configured flags to a file", () -> {
-            Intent intent = new Intent(Intent.ACTION_CREATE_DOCUMENT);
-            intent.addCategory(Intent.CATEGORY_OPENABLE);
-            intent.setType("text/plain");
-            intent.putExtra(Intent.EXTRA_TITLE, "morphe_photos_flags_backup.txt");
-            activity.startActivity(intent);
-            Toast.makeText(activity, "Choose location to save flags backup", Toast.LENGTH_LONG).show();
-        }));
-
-        // 5. Copy All to Clipboard
+        // 3. Copy All to Clipboard
         items.add(new MenuItem(MaterialVectorDrawable.TYPE_CLIPBOARD, "Copy All to Clipboard", "Copy all configured flags to clipboard as JSON", () -> {
             Map<String, ?> all = prefs.getAll();
             JSONObject json = new JSONObject();
@@ -2040,26 +2152,47 @@ public final class PhenotypeFlagManager {
             }
         }));
 
-        // 6. Reset All Flags
-        items.add(new MenuItem(MaterialVectorDrawable.TYPE_DELETE, "Reset All Flags", "Delete all flag overrides and restore stock unconfigured state", () -> {
+        // 4. Share Flags Backup
+        items.add(new MenuItem(MaterialVectorDrawable.TYPE_EXPORT, "Share Flags Backup", "Share active flags JSON via messaging, cloud, or notes", () -> {
+            Map<String, ?> all = prefs.getAll();
+            JSONObject json = new JSONObject();
+            try {
+                for (Map.Entry<String, ?> e : all.entrySet()) {
+                    if (!e.getKey().startsWith("_")) {
+                        json.put(e.getKey(), e.getValue());
+                    }
+                }
+                Intent sendIntent = new Intent();
+                sendIntent.setAction(Intent.ACTION_SEND);
+                sendIntent.putExtra(Intent.EXTRA_TEXT, json.toString(2));
+                sendIntent.setType("text/plain");
+                Intent shareIntent = Intent.createChooser(sendIntent, "Share Flags Backup");
+                activity.startActivity(shareIntent);
+            } catch (Exception e) {
+                Toast.makeText(activity, "Share failed: " + e.getMessage(), Toast.LENGTH_SHORT).show();
+            }
+        }));
+
+        // 5. Reset All Flags
+        items.add(new MenuItem(MaterialVectorDrawable.TYPE_DELETE, "Reset All Flags", "Remove all flags from list and restore stock photos mode", () -> {
             LinearLayout msgLayout = new LinearLayout(activity);
             msgLayout.setOrientation(LinearLayout.VERTICAL);
             int mPad = (int) (18 * density);
             msgLayout.setPadding(mPad, (int) (4 * density), mPad, (int) (12 * density));
 
             TextView tvMsg = new TextView(activity);
-            tvMsg.setText("Are you sure you want to wipe all stored flag overrides?\n\n• Custom flags will be completely deleted.\n• Curated flags will reset to stock unconfigured (disabled) state.\n• Restores stock Google Photos behavior on next restart.");
+            tvMsg.setText("Are you sure you want to remove all flags from the list?\n\n• All stored overrides will be deleted.\n• Curated flags will be unloaded from the list.\n• Restores clean stock Google Photos behavior.\n• You can reload recommended presets anytime.");
             tvMsg.setTextSize(13);
             tvMsg.setTextColor(theme.textPrimary);
             tvMsg.setLineSpacing(0, 1.25f);
             msgLayout.addView(tvMsg);
 
             createM3ActionDialog(activity, "Reset All Flags?", msgLayout, "Reset All", () -> {
-                prefs.edit().clear().apply();
+                prefs.edit().clear().putBoolean("_presets_loaded", false).apply();
                 GooglePhotosAccountAvatar.syncOneGoogleFlags(activity);
                 adapter.collapseAll();
                 onRefresh.run();
-                Toast.makeText(activity, "All flags reset to unconfigured! Restart Photos.", Toast.LENGTH_LONG).show();
+                Toast.makeText(activity, "All flags removed from list! Restored stock mode.", Toast.LENGTH_LONG).show();
             }).show();
         }));
 
