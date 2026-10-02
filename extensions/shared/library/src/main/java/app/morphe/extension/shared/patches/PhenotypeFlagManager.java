@@ -64,6 +64,7 @@ import org.w3c.dom.NodeList;
 import org.xml.sax.InputSource;
 
 import java.io.BufferedReader;
+import java.io.File;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.OutputStream;
@@ -2104,7 +2105,17 @@ public final class PhenotypeFlagManager {
 
         List<MenuItem> items = new ArrayList<>();
 
-        // 1. Load Recommended Presets
+        // 1. Import from File (SAF)
+        items.add(new MenuItem(MaterialVectorDrawable.TYPE_IMPORT, "Import from File", "Load flags from a .json or .txt backup via system file picker", () -> {
+            launchSafImport(activity, prefs, onRefresh);
+        }));
+
+        // 2. Export to File (SAF)
+        items.add(new MenuItem(MaterialVectorDrawable.TYPE_EXPORT, "Export to File", "Save configured flags to storage via system document creator", () -> {
+            launchSafExport(activity, prefs);
+        }));
+
+        // 3. Load Recommended Presets
         items.add(new MenuItem(MaterialVectorDrawable.TYPE_PRESETS, "Load Recommended Presets", "Apply all " + PhotoFlagsRegistry.CURATED_FLAGS.size() + " Morphe feature flags (story colors, AI tools, Create Tab, Navigation)", () -> {
             LinearLayout msgLayout = new LinearLayout(activity);
             msgLayout.setOrientation(LinearLayout.VERTICAL);
@@ -2127,12 +2138,12 @@ public final class PhenotypeFlagManager {
             }).show();
         }));
 
-        // 2. Bulk Paste Text
+        // 4. Bulk Paste Text
         items.add(new MenuItem(MaterialVectorDrawable.TYPE_PASTE, "Bulk Paste Text", "Paste key=value lines, JSON, or XML directly", () -> {
             showBulkPasteDialog(activity, prefs, onRefresh);
         }));
 
-        // 3. Copy All to Clipboard
+        // 5. Copy All to Clipboard
         items.add(new MenuItem(MaterialVectorDrawable.TYPE_CLIPBOARD, "Copy All to Clipboard", "Copy all configured flags to clipboard as JSON", () -> {
             Map<String, ?> all = prefs.getAll();
             JSONObject json = new JSONObject();
@@ -2152,7 +2163,7 @@ public final class PhenotypeFlagManager {
             }
         }));
 
-        // 4. Share Flags Backup
+        // 6. Share Flags Backup
         items.add(new MenuItem(MaterialVectorDrawable.TYPE_EXPORT, "Share Flags Backup", "Share active flags JSON via messaging, cloud, or notes", () -> {
             Map<String, ?> all = prefs.getAll();
             JSONObject json = new JSONObject();
@@ -2173,7 +2184,7 @@ public final class PhenotypeFlagManager {
             }
         }));
 
-        // 5. Reset All Flags
+        // 7. Reset All Flags
         items.add(new MenuItem(MaterialVectorDrawable.TYPE_DELETE, "Reset All Flags", "Remove all flags from list and restore stock photos mode", () -> {
             LinearLayout msgLayout = new LinearLayout(activity);
             msgLayout.setOrientation(LinearLayout.VERTICAL);
@@ -2190,6 +2201,24 @@ public final class PhenotypeFlagManager {
             createM3ActionDialog(activity, "Reset All Flags?", msgLayout, "Reset All", () -> {
                 prefs.edit().clear().putBoolean("_presets_loaded", false).apply();
                 GooglePhotosAccountAvatar.syncOneGoogleFlags(activity);
+                try {
+                    File sharedDir = new File(activity.getFilesDir(), "phenotype/shared");
+                    if (sharedDir.exists()) {
+                        File[] fList = sharedDir.listFiles();
+                        if (fList != null) {
+                            for (File f : fList) f.delete();
+                        }
+                    }
+                    File phenoDir = new File(activity.getFilesDir(), "phenotype");
+                    if (phenoDir.exists()) {
+                        File[] pList = phenoDir.listFiles();
+                        if (pList != null) {
+                            for (File f : pList) {
+                                if (f.isFile()) f.delete();
+                            }
+                        }
+                    }
+                } catch (Throwable ignored) {}
                 adapter.collapseAll();
                 onRefresh.run();
                 Toast.makeText(activity, "All flags removed from list! Restored stock mode.", Toast.LENGTH_LONG).show();

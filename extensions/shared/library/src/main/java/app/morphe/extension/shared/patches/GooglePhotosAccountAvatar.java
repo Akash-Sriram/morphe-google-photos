@@ -179,14 +179,14 @@ public final class GooglePhotosAccountAvatar {
         if (context == null) return;
         try {
             SharedPreferences phenoPrefs = context.getSharedPreferences("com.google.android.apps.photos.phenotype", Context.MODE_PRIVATE);
-            boolean ringMaster = true;
+            boolean ringMaster = false;
             long ringStyle = 3L;
 
             if (phenoPrefs.contains("45531621")) {
                 try {
-                    ringMaster = phenoPrefs.getBoolean("45531621", true);
+                    ringMaster = phenoPrefs.getBoolean("45531621", false);
                 } catch (Exception ex) {
-                    ringMaster = !"false".equalsIgnoreCase(phenoPrefs.getString("45531621", "true"));
+                    ringMaster = "true".equalsIgnoreCase(phenoPrefs.getString("45531621", "false"));
                 }
             }
             if (phenoPrefs.contains("45531625")) {
@@ -233,6 +233,7 @@ public final class GooglePhotosAccountAvatar {
                         pbFile.delete();
                     }
                 }
+                Logger.printInfo(() -> "Cleared OneGoogle ring flags (.pb removed, base baked avatar active)");
             }
         } catch (Throwable t) {
             Logger.printException(() -> "Could not sync OneGoogle phenotype flags", t);
