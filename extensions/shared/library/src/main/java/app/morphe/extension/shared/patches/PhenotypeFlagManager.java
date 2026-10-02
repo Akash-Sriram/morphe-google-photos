@@ -17,6 +17,7 @@ import android.graphics.PixelFormat;
 import android.graphics.ColorFilter;
 import android.graphics.Path;
 import android.graphics.RectF;
+import android.graphics.Outline;
 import android.graphics.drawable.BitmapDrawable;
 import android.graphics.drawable.ColorDrawable;
 import android.graphics.drawable.Drawable;
@@ -34,6 +35,7 @@ import android.view.Gravity;
 import android.view.KeyEvent;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.ViewOutlineProvider;
 import android.view.ViewTreeObserver;
 import android.view.Window;
 import android.view.WindowManager;
@@ -1381,16 +1383,24 @@ public final class PhenotypeFlagManager {
 
         LinearLayout root = new LinearLayout(activity);
         root.setOrientation(LinearLayout.VERTICAL);
-        root.setBackground(createRoundedDrawable(theme.bg, 28 * density));
+        root.setBackground(createRoundedDrawable(theme.surface, 28 * density));
         root.setLayoutParams(new ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+            root.setOutlineProvider(new ViewOutlineProvider() {
+                @Override
+                public void getOutline(View view, Outline outline) {
+                    outline.setRoundRect(0, 0, view.getWidth(), view.getHeight(), 28 * density);
+                }
+            });
+            root.setClipToOutline(true);
+        }
 
         // 1. Top Bar
         LinearLayout topBar = new LinearLayout(activity);
         topBar.setOrientation(LinearLayout.HORIZONTAL);
         topBar.setGravity(Gravity.CENTER_VERTICAL);
         int tbPad = (int) (16 * density);
-        topBar.setPadding(tbPad, (int) (8 * density), (int) (10 * density), (int) (8 * density));
-        topBar.setBackgroundColor(theme.surface);
+        topBar.setPadding(tbPad, (int) (12 * density), (int) (10 * density), (int) (8 * density));
 
         LinearLayout titleCol = new LinearLayout(activity);
         titleCol.setOrientation(LinearLayout.VERTICAL);
@@ -1428,7 +1438,6 @@ public final class PhenotypeFlagManager {
         searchBox.setOrientation(LinearLayout.HORIZONTAL);
         searchBox.setGravity(Gravity.CENTER_VERTICAL);
         searchBox.setPadding(tbPad, (int) (6 * density), tbPad, (int) (10 * density));
-        searchBox.setBackgroundColor(theme.surface);
         searchBox.setVisibility(View.GONE);
 
         LinearLayout inputWrapper = new LinearLayout(activity);
@@ -1500,10 +1509,7 @@ public final class PhenotypeFlagManager {
         bottomDock.setOrientation(LinearLayout.VERTICAL);
         bottomDock.setGravity(Gravity.CENTER);
         int dPadH = (int) (16 * density);
-        int dPadV = (int) (12 * density);
-        bottomDock.setPadding(dPadH, dPadV, dPadH, dPadV);
-        bottomDock.setBackgroundColor(theme.surface);
-        bottomDock.setElevation(10f);
+        bottomDock.setPadding(dPadH, (int) (8 * density), dPadH, (int) (14 * density));
 
         LinearLayout btnApply = new LinearLayout(activity);
         btnApply.setOrientation(LinearLayout.HORIZONTAL);
@@ -1624,11 +1630,6 @@ public final class PhenotypeFlagManager {
             int dialogHeight = (int) (screenHeight * 0.88f);
             window.setLayout(dialogWidth, dialogHeight);
             window.setGravity(Gravity.CENTER);
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-                window.addFlags(WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS);
-                window.setNavigationBarColor(theme.surface);
-                window.setStatusBarColor(theme.surface);
-            }
         }
     }
 
@@ -1789,12 +1790,7 @@ public final class PhenotypeFlagManager {
             }).show();
         }));
 
-        // 8. Diagnostics & Logs
-        items.add(new MenuItem(MaterialVectorDrawable.TYPE_DIAGNOSTICS, "Diagnostics & Logs", "View session logs, errors, crashes, and export/share diagnostics", () -> {
-            app.morphe.extension.shared.diagnostics.DiagnosticsDialog.show(activity);
-        }));
-
-        // 9. Clear All Flags
+        // 8. Clear All Flags
         items.add(new MenuItem(MaterialVectorDrawable.TYPE_DELETE, "Clear All Flags", "Wipe all flags and restore stock photos state", () -> {
             LinearLayout msgLayout = new LinearLayout(activity);
             msgLayout.setOrientation(LinearLayout.VERTICAL);

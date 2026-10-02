@@ -3,22 +3,31 @@ package app.morphe.extension.shared.diagnostics;
 import android.app.Activity;
 import android.app.AlertDialog;
 import android.app.Dialog;
+import android.content.Context;
 import android.graphics.Color;
+import android.graphics.Outline;
 import android.graphics.Typeface;
 import android.graphics.drawable.ColorDrawable;
 import android.graphics.drawable.GradientDrawable;
+import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
 import android.text.Editable;
+import android.text.InputType;
 import android.text.TextWatcher;
 import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.ViewOutlineProvider;
 import android.view.Window;
+import android.view.inputmethod.EditorInfo;
+import android.view.inputmethod.InputMethodManager;
 import android.widget.AdapterView;
 import android.widget.ArrayAdapter;
 import android.widget.EditText;
+import android.widget.FrameLayout;
 import android.widget.HorizontalScrollView;
+import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.Spinner;
@@ -28,27 +37,16 @@ import android.widget.Toast;
 import java.util.ArrayList;
 import java.util.List;
 
+import app.morphe.extension.shared.patches.PhenotypeFlagManager.MaterialVectorDrawable;
+import app.morphe.extension.shared.patches.PhenotypeFlagManager.Theme;
+
 /**
  * Material 3 Diagnostics & Log Viewer Dialog.
  *
  * Allows users to inspect session logs, filter errors, crashes, and 1-tap share or copy diagnostics.
+ * Styled to seamlessly match Google Photos Material 3 design language.
  */
 public final class DiagnosticsDialog {
-
-    // Material 3 Color Palette
-    private static final int M3_BG = 0xFFF5F7F6;
-    private static final int M3_SURFACE = 0xFFFFFFFF;
-    private static final int M3_PRIMARY = 0xFF006A60;
-    private static final int M3_PRIMARY_CONTAINER = 0xFFCCE8E3;
-    private static final int M3_ON_PRIMARY = 0xFFFFFFFF;
-    private static final int M3_TEXT_PRIMARY = 0xFF191C1D;
-    private static final int M3_TEXT_SECONDARY = 0xFF53605D;
-    private static final int M3_OUTLINE = 0xFFD8E3E0;
-    private static final int M3_ERROR = 0xFFBA1A1A;
-    private static final int M3_ERROR_CONTAINER = 0xFFFFDAD6;
-    private static final int M3_ON_ERROR = 0xFF410002;
-    private static final int M3_LOG_BG = 0xFF1E2022;
-    private static final int M3_LOG_TEXT = 0xFFE1E3E5;
 
     private static final Handler MAIN_HANDLER = new Handler(Looper.getMainLooper());
 
@@ -58,66 +56,101 @@ public final class DiagnosticsDialog {
         if (activity == null || activity.isFinishing() || activity.isDestroyed()) return;
 
         float density = activity.getResources().getDisplayMetrics().density;
+        Theme theme = Theme.get(activity);
+
         Dialog dialog = new Dialog(activity);
         dialog.requestWindowFeature(Window.FEATURE_NO_TITLE);
 
         LinearLayout root = new LinearLayout(activity);
         root.setOrientation(LinearLayout.VERTICAL);
-        root.setBackground(createRoundedDrawable(M3_SURFACE, 24 * density));
+        root.setBackground(createRoundedDrawable(theme.surface, 28 * density));
+        root.setLayoutParams(new ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+            root.setOutlineProvider(new ViewOutlineProvider() {
+                @Override
+                public void getOutline(View view, Outline outline) {
+                    outline.setRoundRect(0, 0, view.getWidth(), view.getHeight(), 28 * density);
+                }
+            });
+            root.setClipToOutline(true);
+        }
 
         // ─────────────────────────────────────────────────────────────────────
-        // 1. Top Bar
+        // 1. Top Bar (Tailor-made M3 title with vector icon and action buttons)
         // ─────────────────────────────────────────────────────────────────────
         LinearLayout topBar = new LinearLayout(activity);
         topBar.setOrientation(LinearLayout.HORIZONTAL);
         topBar.setGravity(Gravity.CENTER_VERTICAL);
         int padH = (int) (18 * density);
-        int padV = (int) (14 * density);
-        topBar.setPadding(padH, padV, padH, padV);
+        int padV = (int) (12 * density);
+        topBar.setPadding(padH, padV, (int) (10 * density), (int) (8 * density));
+
+        // Diagnostics leading vector icon in subtle tonal capsule
+        FrameLayout iconContainer = new FrameLayout(activity);
+        int icBox = (int) (34 * density);
+        LinearLayout.LayoutParams icBoxLp = new LinearLayout.LayoutParams(icBox, icBox);
+        icBoxLp.setMargins(0, 0, (int) (10 * density), 0);
+        iconContainer.setLayoutParams(icBoxLp);
+        GradientDrawable icBg = new GradientDrawable();
+        icBg.setCornerRadius(10 * density);
+        icBg.setColor(theme.surfaceContainer);
+        iconContainer.setBackground(icBg);
+
+        ImageView ivLead = new ImageView(activity);
+        ivLead.setImageDrawable(new MaterialVectorDrawable(MaterialVectorDrawable.TYPE_DIAGNOSTICS, theme.primary));
+        int ivLeadSize = (int) (20 * density);
+        FrameLayout.LayoutParams ivLeadLp = new FrameLayout.LayoutParams(ivLeadSize, ivLeadSize, Gravity.CENTER);
+        ivLead.setLayoutParams(ivLeadLp);
+        iconContainer.addView(ivLead);
+        topBar.addView(iconContainer);
+
+        LinearLayout titleCol = new LinearLayout(activity);
+        titleCol.setOrientation(LinearLayout.VERTICAL);
+        LinearLayout.LayoutParams titleLp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+        titleCol.setLayoutParams(titleLp);
 
         TextView tvTitle = new TextView(activity);
-        tvTitle.setText("📊 Diagnostics & Logs");
-        tvTitle.setTextSize(18);
+        tvTitle.setText("Diagnostics & Logs");
+        tvTitle.setTextSize(17.5f);
         tvTitle.setTypeface(null, Typeface.BOLD);
-        tvTitle.setTextColor(M3_TEXT_PRIMARY);
-        LinearLayout.LayoutParams titleLp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
-        tvTitle.setLayoutParams(titleLp);
-        topBar.addView(tvTitle);
+        tvTitle.setTextColor(theme.textPrimary);
+        titleCol.addView(tvTitle);
 
-        TextView btnRefresh = new TextView(activity);
-        btnRefresh.setText("🔄");
-        btnRefresh.setTextSize(18);
-        btnRefresh.setPadding((int) (8 * density), (int) (4 * density), (int) (8 * density), (int) (4 * density));
-        btnRefresh.setClickable(true);
-        topBar.addView(btnRefresh);
+        TextView tvSub = new TextView(activity);
+        tvSub.setText("Inspection & Session Analyzer");
+        tvSub.setTextSize(11);
+        tvSub.setTextColor(theme.textSecondary);
+        titleCol.addView(tvSub);
 
-        TextView btnClose = new TextView(activity);
-        btnClose.setText("✕");
-        btnClose.setTextSize(18);
-        btnClose.setPadding((int) (10 * density), (int) (4 * density), (int) (4 * density), (int) (4 * density));
-        btnClose.setClickable(true);
-        btnClose.setTextColor(M3_TEXT_SECONDARY);
+        topBar.addView(titleCol);
+
+        // Header Actions: Refresh & Close (40dp touch targets)
+        View btnRefresh = createHeaderIconButton(activity, new MaterialVectorDrawable(MaterialVectorDrawable.TYPE_SYNC, theme.textPrimary), (int) (40 * density), (int) (20 * density));
+        View btnClose = createHeaderIconButton(activity, new MaterialVectorDrawable(MaterialVectorDrawable.TYPE_CLOSE, theme.textSecondary), (int) (40 * density), (int) (20 * density));
         btnClose.setOnClickListener(v -> dialog.dismiss());
+
+        topBar.addView(btnRefresh);
         topBar.addView(btnClose);
         root.addView(topBar);
 
         // ─────────────────────────────────────────────────────────────────────
-        // 2. Session Selector & Status Card
+        // 2. Active Session Selector Card
         // ─────────────────────────────────────────────────────────────────────
         LinearLayout sessionCard = new LinearLayout(activity);
         sessionCard.setOrientation(LinearLayout.VERTICAL);
-        sessionCard.setBackground(createRoundedDrawable(M3_PRIMARY_CONTAINER, 14 * density));
+        sessionCard.setBackground(createRoundedDrawable(theme.surfaceContainer, 14 * density));
         int sPad = (int) (12 * density);
         sessionCard.setPadding(sPad, (int) (8 * density), sPad, (int) (8 * density));
         LinearLayout.LayoutParams scLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        scLp.setMargins(padH, 0, padH, (int) (8 * density));
+        scLp.setMargins(padH, (int) (4 * density), padH, (int) (8 * density));
         sessionCard.setLayoutParams(scLp);
 
         TextView tvSessionLabel = new TextView(activity);
-        tvSessionLabel.setText("Active Log Session:");
-        tvSessionLabel.setTextSize(11);
+        tvSessionLabel.setText("Active Log Session");
+        tvSessionLabel.setTextSize(11.5f);
         tvSessionLabel.setTypeface(null, Typeface.BOLD);
-        tvSessionLabel.setTextColor(M3_PRIMARY);
+        tvSessionLabel.setTextColor(theme.primary);
         sessionCard.addView(tvSessionLabel);
 
         Spinner spinnerSessions = new Spinner(activity);
@@ -126,100 +159,165 @@ public final class DiagnosticsDialog {
         root.addView(sessionCard);
 
         // ─────────────────────────────────────────────────────────────────────
-        // 3. Search Box & Filter Chips Bar
+        // 3. Search Box & Filter Chips Bar (No emojis, clean M3 chips)
         // ─────────────────────────────────────────────────────────────────────
         LinearLayout filterBar = new LinearLayout(activity);
         filterBar.setOrientation(LinearLayout.VERTICAL);
         filterBar.setPadding(padH, 0, padH, (int) (6 * density));
 
-        EditText etSearch = new EditText(activity);
-        etSearch.setHint("🔍 Search in log (e.g. exception, map, crash)...");
-        etSearch.setTextSize(13);
-        etSearch.setTextColor(M3_TEXT_PRIMARY);
-        etSearch.setHintTextColor(M3_TEXT_SECONDARY);
-        etSearch.setBackground(createRoundedDrawable(0xFFEEF2F0, 10 * density));
-        int etPad = (int) (10 * density);
-        etSearch.setPadding(etPad, (int) (6 * density), etPad, (int) (6 * density));
-        filterBar.addView(etSearch);
+        LinearLayout inputWrapper = new LinearLayout(activity);
+        inputWrapper.setOrientation(LinearLayout.HORIZONTAL);
+        inputWrapper.setGravity(Gravity.CENTER_VERTICAL);
+        inputWrapper.setBackground(createRoundedDrawable(theme.searchInputBg, 12 * density));
+        LinearLayout.LayoutParams iwLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, (int) (44 * density));
+        inputWrapper.setLayoutParams(iwLp);
 
-        // Filter chips (All, Crashes/Errors, Maps, Flags)
+        ImageView ivSearchIcon = new ImageView(activity);
+        ivSearchIcon.setImageDrawable(new MaterialVectorDrawable(MaterialVectorDrawable.TYPE_SEARCH, theme.textSecondary));
+        int siSize = (int) (18 * density);
+        LinearLayout.LayoutParams siLp = new LinearLayout.LayoutParams(siSize, siSize);
+        siLp.setMargins((int) (12 * density), 0, (int) (4 * density), 0);
+        ivSearchIcon.setLayoutParams(siLp);
+        inputWrapper.addView(ivSearchIcon);
+
+        EditText etSearch = new EditText(activity);
+        etSearch.setHint("Search logs (e.g. exception, crash)...");
+        etSearch.setTextSize(13.5f);
+        etSearch.setTextColor(theme.textPrimary);
+        etSearch.setHintTextColor(theme.textSecondary);
+        etSearch.setBackground(null);
+        etSearch.setSingleLine(true);
+        etSearch.setMaxLines(1);
+        etSearch.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_FILTER);
+        etSearch.setImeOptions(EditorInfo.IME_ACTION_SEARCH | EditorInfo.IME_FLAG_NO_EXTRACT_UI);
+        int etPad = (int) (8 * density);
+        etSearch.setPadding(etPad, 0, etPad, 0);
+        LinearLayout.LayoutParams etLp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1f);
+        etSearch.setLayoutParams(etLp);
+        inputWrapper.addView(etSearch);
+
+        ImageView btnClearSearch = new ImageView(activity);
+        btnClearSearch.setImageDrawable(new MaterialVectorDrawable(MaterialVectorDrawable.TYPE_CLOSE, theme.textSecondary));
+        btnClearSearch.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
+        int cPad = (int) (10 * density);
+        btnClearSearch.setPadding(cPad, 0, cPad, 0);
+        btnClearSearch.setVisibility(View.GONE);
+        btnClearSearch.setClickable(true);
+        btnClearSearch.setFocusable(true);
+        inputWrapper.addView(btnClearSearch);
+
+        filterBar.addView(inputWrapper);
+
+        // Filter chips (Clean Material 3 chips, no emojis!)
         HorizontalScrollView hsv = new HorizontalScrollView(activity);
         hsv.setHorizontalScrollBarEnabled(false);
-        hsv.setPadding(0, (int) (6 * density), 0, 0);
+        hsv.setPadding(0, (int) (8 * density), 0, 0);
 
         LinearLayout chipsContainer = new LinearLayout(activity);
         chipsContainer.setOrientation(LinearLayout.HORIZONTAL);
 
-        String[] chipLabels = {"All", "🚨 Crashes / Errors", "🗺️ Maps & GMS", "⚙️ Flags"};
+        String[] chipLabels = {"All", "Errors & Crashes", "Network & GMS", "Flags"};
         String[] chipValues = {"ALL", "ERROR", "MAPS", "FLAGS"};
         TextView[] chipViews = new TextView[chipLabels.length];
         final String[] selectedFilter = {"ALL"};
 
         // ─────────────────────────────────────────────────────────────────────
-        // 4. Log Content View (Monospace Terminal style)
+        // 4. Log Content View (Modern Dark Terminal)
         // ─────────────────────────────────────────────────────────────────────
         ScrollView scrollView = new ScrollView(activity);
         LinearLayout.LayoutParams svLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f);
-        svLp.setMargins(padH, 0, padH, (int) (8 * density));
+        svLp.setMargins(padH, (int) (4 * density), padH, (int) (8 * density));
         scrollView.setLayoutParams(svLp);
-        scrollView.setBackground(createRoundedDrawable(M3_LOG_BG, 12 * density));
+        int logBg = theme.isDark ? 0xFF141616 : 0xFF1E2022;
+        scrollView.setBackground(createRoundedDrawable(logBg, 14 * density));
 
         TextView tvLogs = new TextView(activity);
         tvLogs.setTextSize(11);
         tvLogs.setTypeface(Typeface.MONOSPACE);
-        tvLogs.setTextColor(M3_LOG_TEXT);
+        tvLogs.setTextColor(0xFFE1E3E5);
         tvLogs.setTextIsSelectable(true);
         int logPad = (int) (12 * density);
         tvLogs.setPadding(logPad, logPad, logPad, logPad);
         scrollView.addView(tvLogs);
+
         root.addView(filterBar);
         root.addView(scrollView);
 
         // ─────────────────────────────────────────────────────────────────────
-        // 5. Bottom Action Dock (Share, Copy, Clear)
+        // 5. Bottom Action Dock (Tailored M3 Share, Copy, and Clear buttons)
         // ─────────────────────────────────────────────────────────────────────
         LinearLayout bottomDock = new LinearLayout(activity);
         bottomDock.setOrientation(LinearLayout.HORIZONTAL);
         bottomDock.setGravity(Gravity.CENTER_VERTICAL);
-        bottomDock.setPadding(padH, (int) (8 * density), padH, (int) (14 * density));
+        bottomDock.setPadding(padH, (int) (6 * density), padH, (int) (16 * density));
 
-        // Share Button (Primary)
-        TextView btnShare = new TextView(activity);
-        btnShare.setText("📤 Share Log");
-        btnShare.setTextSize(14);
-        btnShare.setTypeface(null, Typeface.BOLD);
-        btnShare.setTextColor(M3_ON_PRIMARY);
+        // Share Button (Primary Pill)
+        LinearLayout btnShare = new LinearLayout(activity);
+        btnShare.setOrientation(LinearLayout.HORIZONTAL);
         btnShare.setGravity(Gravity.CENTER);
-        btnShare.setBackground(createRoundedDrawable(M3_PRIMARY, 20 * density));
-        LinearLayout.LayoutParams shareLp = new LinearLayout.LayoutParams(0, (int) (44 * density), 1.2f);
+        btnShare.setBackground(createRoundedDrawable(theme.primary, 22 * density));
+        btnShare.setClickable(true);
+        btnShare.setFocusable(true);
+        LinearLayout.LayoutParams shareLp = new LinearLayout.LayoutParams(0, (int) (44 * density), 1.25f);
         shareLp.setMargins(0, 0, (int) (8 * density), 0);
         btnShare.setLayoutParams(shareLp);
-        btnShare.setClickable(true);
+
+        ImageView ivShare = new ImageView(activity);
+        ivShare.setImageDrawable(new MaterialVectorDrawable(MaterialVectorDrawable.TYPE_EXPORT, theme.onPrimary));
+        LinearLayout.LayoutParams ivShareLp = new LinearLayout.LayoutParams((int) (18 * density), (int) (18 * density));
+        ivShareLp.setMargins(0, 0, (int) (8 * density), 0);
+        ivShare.setLayoutParams(ivShareLp);
+        btnShare.addView(ivShare);
+
+        TextView tvShare = new TextView(activity);
+        tvShare.setText("Share Log");
+        tvShare.setTextSize(13.5f);
+        tvShare.setTypeface(null, Typeface.BOLD);
+        tvShare.setTextColor(theme.onPrimary);
+        btnShare.addView(tvShare);
         bottomDock.addView(btnShare);
 
-        // Copy Button (Secondary)
-        TextView btnCopy = new TextView(activity);
-        btnCopy.setText("📋 Copy");
-        btnCopy.setTextSize(13);
-        btnCopy.setTypeface(null, Typeface.BOLD);
-        btnCopy.setTextColor(M3_PRIMARY);
+        // Copy Button (Tonal Outlined Pill)
+        LinearLayout btnCopy = new LinearLayout(activity);
+        btnCopy.setOrientation(LinearLayout.HORIZONTAL);
         btnCopy.setGravity(Gravity.CENTER);
-        btnCopy.setBackground(createRoundedOutlineDrawable(M3_OUTLINE, 20 * density));
+        btnCopy.setBackground(createRoundedCardDrawable(theme.surfaceContainer, theme.outline, 22 * density));
+        btnCopy.setClickable(true);
+        btnCopy.setFocusable(true);
         LinearLayout.LayoutParams copyLp = new LinearLayout.LayoutParams(0, (int) (44 * density), 1.0f);
         copyLp.setMargins(0, 0, (int) (8 * density), 0);
         btnCopy.setLayoutParams(copyLp);
-        btnCopy.setClickable(true);
+
+        ImageView ivCopy = new ImageView(activity);
+        ivCopy.setImageDrawable(new MaterialVectorDrawable(MaterialVectorDrawable.TYPE_CLIPBOARD, theme.primary));
+        LinearLayout.LayoutParams ivCopyLp = new LinearLayout.LayoutParams((int) (18 * density), (int) (18 * density));
+        ivCopyLp.setMargins(0, 0, (int) (6 * density), 0);
+        ivCopy.setLayoutParams(ivCopyLp);
+        btnCopy.addView(ivCopy);
+
+        TextView tvCopy = new TextView(activity);
+        tvCopy.setText("Copy");
+        tvCopy.setTextSize(13.5f);
+        tvCopy.setTypeface(null, Typeface.BOLD);
+        tvCopy.setTextColor(theme.primary);
+        btnCopy.addView(tvCopy);
         bottomDock.addView(btnCopy);
 
-        // Clear Button (Destructive outline)
-        TextView btnClear = new TextView(activity);
-        btnClear.setText("🗑️");
-        btnClear.setTextSize(16);
-        btnClear.setGravity(Gravity.CENTER);
-        btnClear.setBackground(createRoundedOutlineDrawable(0xFFFFCDD2, 20 * density));
+        // Clear Button (Destructive Tonal Pill)
+        FrameLayout btnClear = new FrameLayout(activity);
+        int clearColor = theme.isDark ? 0xFFFFB4AB : 0xFFBA1A1A;
+        int clearStroke = theme.isDark ? 0xFF5C2020 : 0xFFFFDAD6;
+        btnClear.setBackground(createRoundedCardDrawable(theme.surfaceContainer, clearStroke, 22 * density));
+        btnClear.setClickable(true);
+        btnClear.setFocusable(true);
         LinearLayout.LayoutParams clearLp = new LinearLayout.LayoutParams((int) (44 * density), (int) (44 * density));
         btnClear.setLayoutParams(clearLp);
-        btnClear.setClickable(true);
+
+        ImageView ivClear = new ImageView(activity);
+        ivClear.setImageDrawable(new MaterialVectorDrawable(MaterialVectorDrawable.TYPE_DELETE, clearColor));
+        FrameLayout.LayoutParams ivClearLp = new FrameLayout.LayoutParams((int) (20 * density), (int) (20 * density), Gravity.CENTER);
+        ivClear.setLayoutParams(ivClearLp);
+        btnClear.addView(ivClear);
         bottomDock.addView(btnClear);
 
         root.addView(bottomDock);
@@ -245,36 +343,47 @@ public final class DiagnosticsDialog {
             }).start();
         };
 
-        // Chips click handlers
+        // Chips setup & click handlers
         for (int i = 0; i < chipLabels.length; i++) {
             final int idx = i;
             TextView chip = new TextView(activity);
             chip.setText(chipLabels[i]);
             chip.setTextSize(12);
             chip.setTypeface(null, Typeface.BOLD);
-            int cPadH = (int) (12 * density);
-            int cPadV = (int) (6 * density);
+            int cPadH = (int) (14 * density);
+            int cPadV = (int) (7 * density);
             chip.setPadding(cPadH, cPadV, cPadH, cPadV);
             LinearLayout.LayoutParams cLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
             cLp.setMargins(0, 0, (int) (8 * density), 0);
             chip.setLayoutParams(cLp);
             chip.setClickable(true);
+            chip.setFocusable(true);
 
             chipViews[i] = chip;
             chip.setOnClickListener(v -> {
                 selectedFilter[0] = chipValues[idx];
                 for (int j = 0; j < chipViews.length; j++) {
                     boolean isSelected = (j == idx);
-                    chipViews[j].setBackground(createRoundedDrawable(isSelected ? M3_PRIMARY : 0xFFE2E7E4, 14 * density));
-                    chipViews[j].setTextColor(isSelected ? M3_ON_PRIMARY : M3_TEXT_PRIMARY);
+                    if (isSelected) {
+                        chipViews[j].setBackground(createRoundedDrawable(theme.primary, 14 * density));
+                        chipViews[j].setTextColor(theme.onPrimary);
+                    } else {
+                        chipViews[j].setBackground(createRoundedCardDrawable(theme.surfaceContainer, theme.outline, 14 * density));
+                        chipViews[j].setTextColor(theme.textSecondary);
+                    }
                 }
                 loadLogs.run();
             });
 
             // Initial style
             boolean isSelected = (i == 0);
-            chip.setBackground(createRoundedDrawable(isSelected ? M3_PRIMARY : 0xFFE2E7E4, 14 * density));
-            chip.setTextColor(isSelected ? M3_ON_PRIMARY : M3_TEXT_PRIMARY);
+            if (isSelected) {
+                chip.setBackground(createRoundedDrawable(theme.primary, 14 * density));
+                chip.setTextColor(theme.onPrimary);
+            } else {
+                chip.setBackground(createRoundedCardDrawable(theme.surfaceContainer, theme.outline, 14 * density));
+                chip.setTextColor(theme.textSecondary);
+            }
             chipsContainer.addView(chip);
         }
         hsv.addView(chipsContainer);
@@ -325,6 +434,7 @@ public final class DiagnosticsDialog {
         etSearch.addTextChangedListener(new TextWatcher() {
             @Override public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
             @Override public void onTextChanged(CharSequence s, int start, int before, int count) {
+                btnClearSearch.setVisibility(s.length() > 0 ? View.VISIBLE : View.GONE);
                 if (searchDelay[0] != null) MAIN_HANDLER.removeCallbacks(searchDelay[0]);
                 searchDelay[0] = loadLogs;
                 MAIN_HANDLER.postDelayed(searchDelay[0], 250);
@@ -332,7 +442,25 @@ public final class DiagnosticsDialog {
             @Override public void afterTextChanged(Editable s) {}
         });
 
-        // Action Buttons
+        btnClearSearch.setOnClickListener(v -> {
+            etSearch.setText("");
+            loadLogs.run();
+        });
+
+        etSearch.setOnEditorActionListener((v, actionId, event) -> {
+            if (actionId == EditorInfo.IME_ACTION_SEARCH ||
+                    actionId == EditorInfo.IME_ACTION_DONE) {
+                InputMethodManager imm = (InputMethodManager) activity.getSystemService(Context.INPUT_METHOD_SERVICE);
+                if (imm != null) {
+                    imm.hideSoftInputFromWindow(etSearch.getWindowToken(), 0);
+                }
+                etSearch.clearFocus();
+                return true;
+            }
+            return false;
+        });
+
+        // Action Buttons Click Handlers
         btnShare.setOnClickListener(v -> {
             if (activeSession[0] != null) {
                 SessionLogManager.shareSession(activity, activeSession[0]);
@@ -348,7 +476,7 @@ public final class DiagnosticsDialog {
         btnClear.setOnClickListener(v -> {
             new AlertDialog.Builder(activity)
                 .setTitle("Clear Old Sessions?")
-                .setMessage("This will delete all previous session logs. Current session log will be kept.")
+                .setMessage("This will delete all previous session logs. The active session log will be kept.")
                 .setPositiveButton("Clear", (d, which) -> {
                     SessionLogManager.clearAllSessions(reloadSessions);
                     Toast.makeText(activity, "Cleared previous sessions", Toast.LENGTH_SHORT).show();
@@ -357,11 +485,18 @@ public final class DiagnosticsDialog {
                 .show();
         });
 
+        dialog.setOnDismissListener(d -> {
+            InputMethodManager imm = (InputMethodManager) activity.getSystemService(Context.INPUT_METHOD_SERVICE);
+            if (imm != null && activity.getCurrentFocus() != null) {
+                imm.hideSoftInputFromWindow(activity.getCurrentFocus().getWindowToken(), 0);
+            }
+        });
+
         reloadSessions.run();
         dialog.setContentView(root);
         dialog.show();
 
-        // Responsive popup window sizing
+        // Responsive popup window sizing with clean rounded geometry
         Window window = dialog.getWindow();
         if (window != null) {
             window.setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
@@ -374,6 +509,20 @@ public final class DiagnosticsDialog {
         }
     }
 
+    private static View createHeaderIconButton(Activity activity, MaterialVectorDrawable icon, int sizePx, int iconPx) {
+        FrameLayout frame = new FrameLayout(activity);
+        frame.setLayoutParams(new LinearLayout.LayoutParams(sizePx, sizePx));
+        frame.setClickable(true);
+        frame.setFocusable(true);
+
+        ImageView iv = new ImageView(activity);
+        iv.setImageDrawable(icon);
+        FrameLayout.LayoutParams flp = new FrameLayout.LayoutParams(iconPx, iconPx, Gravity.CENTER);
+        iv.setLayoutParams(flp);
+        frame.addView(iv);
+        return frame;
+    }
+
     private static GradientDrawable createRoundedDrawable(int color, float radius) {
         GradientDrawable d = new GradientDrawable();
         d.setShape(GradientDrawable.RECTANGLE);
@@ -382,12 +531,12 @@ public final class DiagnosticsDialog {
         return d;
     }
 
-    private static GradientDrawable createRoundedOutlineDrawable(int strokeColor, float radius) {
+    private static GradientDrawable createRoundedCardDrawable(int bgColor, int strokeColor, float radius) {
         GradientDrawable d = new GradientDrawable();
         d.setShape(GradientDrawable.RECTANGLE);
         d.setCornerRadius(radius);
-        d.setColor(Color.TRANSPARENT);
-        d.setStroke(2, strokeColor);
+        d.setColor(bgColor);
+        d.setStroke(1, strokeColor);
         return d;
     }
 }
