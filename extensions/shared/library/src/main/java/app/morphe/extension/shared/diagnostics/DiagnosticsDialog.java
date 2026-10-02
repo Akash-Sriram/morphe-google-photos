@@ -124,12 +124,9 @@ public final class DiagnosticsDialog {
 
         topBar.addView(titleCol);
 
-        // Header Actions: Refresh & Close (40dp touch targets)
-        View btnRefresh = createHeaderIconButton(activity, new MaterialVectorDrawable(MaterialVectorDrawable.TYPE_SYNC, theme.textPrimary), (int) (40 * density), (int) (20 * density));
+        // Header Action: Close (40dp touch target)
         View btnClose = createHeaderIconButton(activity, new MaterialVectorDrawable(MaterialVectorDrawable.TYPE_CLOSE, theme.textSecondary), (int) (40 * density), (int) (20 * density));
         btnClose.setOnClickListener(v -> dialog.dismiss());
-
-        topBar.addView(btnRefresh);
         topBar.addView(btnClose);
         root.addView(topBar);
 
@@ -361,11 +358,6 @@ public final class DiagnosticsDialog {
                 }
             }
             @Override public void onNothingSelected(AdapterView<?> parent) {}
-        });
-
-        btnRefresh.setOnClickListener(v -> {
-            reloadSessions.run();
-            Toast.makeText(activity, "Refreshed logs", Toast.LENGTH_SHORT).show();
         });
 
         // Search text watcher

@@ -99,7 +99,7 @@ public final class SessionLogManager {
             if (isCurrent) {
                 return "● Current (" + formattedDate + ")";
             } else if (isCrashed) {
-                return "🚨 Crashed (" + formattedDate + ")";
+                return "Crashed (" + formattedDate + ")";
             } else {
                 return "Session " + formattedDate;
             }
@@ -180,7 +180,7 @@ public final class SessionLogManager {
 
             StringBuilder crashDump = new StringBuilder();
             crashDump.append("\n=======================================================\n");
-            crashDump.append("🚨 FATAL UNCAUGHT EXCEPTION CRASH DUMP\n");
+            crashDump.append("[FATAL UNCAUGHT EXCEPTION] CRASH DUMP\n");
             crashDump.append("Timestamp: ").append(new Date().toString()).append("\n");
             crashDump.append("Thread: ").append(thread.getName()).append(" (ID: ").append(thread.getId()).append(")\n");
             crashDump.append("Exception: ").append(throwable.getClass().getName()).append(": ").append(throwable.getMessage()).append("\n");
@@ -228,21 +228,11 @@ public final class SessionLogManager {
 
     private static void writeSessionHeader(File file) {
         try (BufferedWriter writer = new BufferedWriter(new FileWriter(file, false))) {
-            writer.write("=======================================================\n");
-            writer.write("📱 MORPHE DIAGNOSTICS LOG SESSION\n");
-            writer.write("Session ID:        " + sCurrentSessionId + "\n");
-            writer.write("Start Time:        " + new Date(sSessionStartTime).toString() + "\n");
-            writer.write("Device:            " + Build.MANUFACTURER + " " + Build.MODEL + " (" + Build.DEVICE + " / " + Build.PRODUCT + ")\n");
-            writer.write("Android OS:        " + Build.VERSION.RELEASE + " (API " + Build.VERSION.SDK_INT + ")\n");
-            writer.write("Security Patch:    " + (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M ? Build.VERSION.SECURITY_PATCH : "N/A") + "\n");
-            writer.write("Photos App Ver:    " + Utils.getAppVersionName() + "\n");
-            writer.write("Morphe Patches:    " + Utils.getPatchesReleaseVersion() + "\n");
-            writer.write("Package:           " + (sContext != null ? sContext.getPackageName() : "unknown") + "\n");
-
-            // MicroG / GmsCore Detection
+            writer.write("[Morphe Diagnostics • Session " + sCurrentSessionId + "]\n");
+            writer.write("Photos: v" + Utils.getAppVersionName() + " • Patches: v" + Utils.getPatchesReleaseVersion() + "\n");
             String gmsStatus = checkGmsCoreStatus();
-            writer.write("GmsCore Status:    " + gmsStatus + "\n");
-            writer.write("=======================================================\n\n");
+            writer.write("GmsCore: " + gmsStatus + "\n");
+            writer.write("-------------------------------------------------------\n\n");
             writer.flush();
         } catch (Throwable t) {
             Log.e(TAG, "Error writing session header", t);
@@ -277,7 +267,7 @@ public final class SessionLogManager {
                     try (BufferedReader br = new BufferedReader(new FileReader(latest))) {
                         String line;
                         while ((line = br.readLine()) != null) {
-                            if (line.contains("🚨 FATAL UNCAUGHT EXCEPTION")) {
+                            if (line.contains("[FATAL UNCAUGHT EXCEPTION]")) {
                                 sLastSessionCrashed = true;
                                 sLastCrashSummary = readCrashSummary(latest);
                                 break;

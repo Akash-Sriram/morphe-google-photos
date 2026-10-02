@@ -1001,9 +1001,10 @@ public final class PhenotypeFlagManager {
                     if (currentHeader != null) {
                         if (currentFilterQuery.isEmpty() || !currentSection.isEmpty()) {
                             displayedItems.add(currentHeader);
-                            boolean isExpanded = currentFilterQuery.isEmpty()
-                                    ? expandedCategories.contains(currentHeader.headerTitle)
-                                    : !searchCollapsedCategories.contains(currentHeader.headerTitle);
+                            boolean isExpanded = (currentHeader.headerTitle != null && currentHeader.headerTitle.startsWith("Custom Overrides"))
+                                    || (currentFilterQuery.isEmpty()
+                                        ? expandedCategories.contains(currentHeader.headerTitle)
+                                        : !searchCollapsedCategories.contains(currentHeader.headerTitle));
                             if (isExpanded) {
                                 displayedItems.addAll(currentSection);
                             }
@@ -1026,9 +1027,10 @@ public final class PhenotypeFlagManager {
             if (currentHeader != null) {
                 if (currentFilterQuery.isEmpty() || !currentSection.isEmpty()) {
                     displayedItems.add(currentHeader);
-                    boolean isExpanded = currentFilterQuery.isEmpty()
-                            ? expandedCategories.contains(currentHeader.headerTitle)
-                            : !searchCollapsedCategories.contains(currentHeader.headerTitle);
+                    boolean isExpanded = (currentHeader.headerTitle != null && currentHeader.headerTitle.startsWith("Custom Overrides"))
+                            || (currentFilterQuery.isEmpty()
+                                ? expandedCategories.contains(currentHeader.headerTitle)
+                                : !searchCollapsedCategories.contains(currentHeader.headerTitle));
                     if (isExpanded) {
                         displayedItems.addAll(currentSection);
                     }
@@ -1603,6 +1605,44 @@ public final class PhenotypeFlagManager {
         tabBar.addView(tabCustom);
         root.addView(tabBar);
 
+        // 2.6 Global Action Bar (Enable All Flags / Disable All Flags)
+        LinearLayout globalActionBar = new LinearLayout(activity);
+        globalActionBar.setOrientation(LinearLayout.HORIZONTAL);
+        globalActionBar.setGravity(Gravity.CENTER_VERTICAL);
+        globalActionBar.setPadding(tbPad, (int) (2 * density), tbPad, (int) (6 * density));
+
+        TextView btnEnableAllGlobal = new TextView(activity);
+        btnEnableAllGlobal.setText("Enable all flags");
+        btnEnableAllGlobal.setTextSize(12.5f);
+        btnEnableAllGlobal.setTypeface(null, Typeface.BOLD);
+        btnEnableAllGlobal.setGravity(Gravity.CENTER);
+        btnEnableAllGlobal.setPadding(tPadH, (int) (7 * density), tPadH, (int) (7 * density));
+        btnEnableAllGlobal.setTextColor(theme.enableAllText);
+        btnEnableAllGlobal.setBackground(createRoundedDrawable(theme.enableAllBg, 12 * density));
+        LinearLayout.LayoutParams eagLp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+        eagLp.setMargins(0, 0, (int) (4 * density), 0);
+        btnEnableAllGlobal.setLayoutParams(eagLp);
+        btnEnableAllGlobal.setClickable(true);
+        btnEnableAllGlobal.setFocusable(true);
+
+        TextView btnDisableAllGlobal = new TextView(activity);
+        btnDisableAllGlobal.setText("Disable all flags");
+        btnDisableAllGlobal.setTextSize(12.5f);
+        btnDisableAllGlobal.setTypeface(null, Typeface.BOLD);
+        btnDisableAllGlobal.setGravity(Gravity.CENTER);
+        btnDisableAllGlobal.setPadding(tPadH, (int) (7 * density), tPadH, (int) (7 * density));
+        btnDisableAllGlobal.setTextColor(theme.disableAllText);
+        btnDisableAllGlobal.setBackground(createRoundedDrawable(theme.disableAllBg, 12 * density));
+        LinearLayout.LayoutParams dagLp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+        dagLp.setMargins((int) (4 * density), 0, 0, 0);
+        btnDisableAllGlobal.setLayoutParams(dagLp);
+        btnDisableAllGlobal.setClickable(true);
+        btnDisableAllGlobal.setFocusable(true);
+
+        globalActionBar.addView(btnEnableAllGlobal);
+        globalActionBar.addView(btnDisableAllGlobal);
+        root.addView(globalActionBar);
+
         // 3. Virtualized List View with Fast-Scroll & Empty Container
         FrameLayout listFrame = new FrameLayout(activity);
         LinearLayout.LayoutParams listFrameLp = new LinearLayout.LayoutParams(
@@ -1649,14 +1689,6 @@ public final class PhenotypeFlagManager {
                 ViewGroup.LayoutParams.MATCH_PARENT, btnHeight);
         btnApply.setLayoutParams(applyLp);
 
-        ImageView iconRestart = new ImageView(activity);
-        iconRestart.setImageDrawable(new MaterialVectorDrawable(MaterialVectorDrawable.TYPE_RESTART, theme.onPrimary));
-        int icSize = (int) (18 * density);
-        LinearLayout.LayoutParams syncLp = new LinearLayout.LayoutParams(icSize, icSize);
-        syncLp.setMargins(0, 0, (int) (8 * density), 0);
-        iconRestart.setLayoutParams(syncLp);
-        btnApply.addView(iconRestart);
-
         TextView tvApply = new TextView(activity);
         tvApply.setText("Apply and restart");
         tvApply.setTextSize(14.5f);
@@ -1676,10 +1708,59 @@ public final class PhenotypeFlagManager {
         FlagAdapter adapter = new FlagAdapter(activity, prefs, tvSub, emptyContainer);
         listView.setAdapter(adapter);
 
+        btnEnableAllGlobal.setOnClickListener(v -> {
+            SharedPreferences.Editor edit = prefs.edit();
+            for (CuratedFlag cf : PhotoFlagsRegistry.CURATED_FLAGS) {
+                if (cf.type == PhotoFlagsRegistry.FlagType.BOOLEAN) {
+                    edit.putBoolean(cf.key, true);
+                } else if (cf.type == PhotoFlagsRegistry.FlagType.LONG) {
+                    edit.putLong(cf.key, ((Number) cf.defaultValue).longValue());
+                }
+            }
+            edit.apply();
+            GooglePhotosAccountAvatar.syncOneGoogleFlags(activity);
+            adapter.reloadData();
+            Toast.makeText(activity, "Enabled all " + PhotoFlagsRegistry.CURATED_FLAGS.size() + " Morphe flags", Toast.LENGTH_SHORT).show();
+        });
+
+        btnDisableAllGlobal.setOnClickListener(v -> {
+            LinearLayout msgLayout = new LinearLayout(activity);
+            msgLayout.setOrientation(LinearLayout.VERTICAL);
+            int mPad = (int) (18 * density);
+            msgLayout.setPadding(mPad, (int) (4 * density), mPad, (int) (12 * density));
+
+            TextView tvMsg = new TextView(activity);
+            tvMsg.setText("Are you sure you want to disable all " + PhotoFlagsRegistry.CURATED_FLAGS.size() + " curated Morphe flags?");
+            tvMsg.setTextSize(13);
+            tvMsg.setTextColor(theme.textPrimary);
+            tvMsg.setLineSpacing(0, 1.25f);
+            msgLayout.addView(tvMsg);
+
+            createM3ActionDialog(activity, "Disable all flags?", msgLayout, "Disable All", () -> {
+                SharedPreferences.Editor edit = prefs.edit();
+                for (CuratedFlag cf : PhotoFlagsRegistry.CURATED_FLAGS) {
+                    if (cf.type == PhotoFlagsRegistry.FlagType.BOOLEAN) {
+                        edit.putBoolean(cf.key, false);
+                    } else if (cf.type == PhotoFlagsRegistry.FlagType.LONG) {
+                        edit.putLong(cf.key, 0L);
+                    }
+                }
+                edit.apply();
+                GooglePhotosAccountAvatar.syncOneGoogleFlags(activity);
+                adapter.reloadData();
+                Toast.makeText(activity, "Disabled all curated flags", Toast.LENGTH_SHORT).show();
+            }).show();
+        });
+
         tabCurated.setOnClickListener(v -> adapter.setSelectedTab(FlagAdapter.TAB_CURATED));
         tabCustom.setOnClickListener(v -> adapter.setSelectedTab(FlagAdapter.TAB_CUSTOM));
 
         adapter.setTabUpdateListener((curatedCount, customCount, selTab) -> {
+            if (selTab == FlagAdapter.TAB_CURATED) {
+                globalActionBar.setVisibility(View.VISIBLE);
+            } else {
+                globalActionBar.setVisibility(View.GONE);
+            }
             if (customCount == 0) {
                 tabBar.setVisibility(View.GONE);
             } else {
@@ -1875,7 +1956,53 @@ public final class PhenotypeFlagManager {
             Toast.makeText(activity, "Collapsed all categories", Toast.LENGTH_SHORT).show();
         }));
 
-        // 3. Bulk Import from File (SAF)
+        // 3. Enable All Flags
+        items.add(new MenuItem(MaterialVectorDrawable.TYPE_SYNC, "Enable All Flags", "Turn on all 362 curated Morphe flags", () -> {
+            SharedPreferences.Editor edit = prefs.edit();
+            for (CuratedFlag cf : PhotoFlagsRegistry.CURATED_FLAGS) {
+                if (cf.type == PhotoFlagsRegistry.FlagType.BOOLEAN) {
+                    edit.putBoolean(cf.key, true);
+                } else if (cf.type == PhotoFlagsRegistry.FlagType.LONG) {
+                    edit.putLong(cf.key, ((Number) cf.defaultValue).longValue());
+                }
+            }
+            edit.apply();
+            GooglePhotosAccountAvatar.syncOneGoogleFlags(activity);
+            onRefresh.run();
+            Toast.makeText(activity, "Enabled all " + PhotoFlagsRegistry.CURATED_FLAGS.size() + " Morphe flags", Toast.LENGTH_SHORT).show();
+        }));
+
+        // 4. Disable All Flags
+        items.add(new MenuItem(MaterialVectorDrawable.TYPE_CLOSE, "Disable All Flags", "Turn off all 362 curated Morphe flags", () -> {
+            LinearLayout msgLayout = new LinearLayout(activity);
+            msgLayout.setOrientation(LinearLayout.VERTICAL);
+            int mPad = (int) (18 * density);
+            msgLayout.setPadding(mPad, (int) (4 * density), mPad, (int) (12 * density));
+
+            TextView tvMsg = new TextView(activity);
+            tvMsg.setText("Are you sure you want to disable all " + PhotoFlagsRegistry.CURATED_FLAGS.size() + " curated Morphe flags?");
+            tvMsg.setTextSize(13);
+            tvMsg.setTextColor(theme.textPrimary);
+            tvMsg.setLineSpacing(0, 1.25f);
+            msgLayout.addView(tvMsg);
+
+            createM3ActionDialog(activity, "Disable all flags?", msgLayout, "Disable All", () -> {
+                SharedPreferences.Editor edit = prefs.edit();
+                for (CuratedFlag cf : PhotoFlagsRegistry.CURATED_FLAGS) {
+                    if (cf.type == PhotoFlagsRegistry.FlagType.BOOLEAN) {
+                        edit.putBoolean(cf.key, false);
+                    } else if (cf.type == PhotoFlagsRegistry.FlagType.LONG) {
+                        edit.putLong(cf.key, 0L);
+                    }
+                }
+                edit.apply();
+                GooglePhotosAccountAvatar.syncOneGoogleFlags(activity);
+                onRefresh.run();
+                Toast.makeText(activity, "Disabled all curated flags", Toast.LENGTH_SHORT).show();
+            }).show();
+        }));
+
+        // 5. Bulk Import from File (SAF)
         items.add(new MenuItem(MaterialVectorDrawable.TYPE_IMPORT, "Bulk Import from File (SAF)", "Select a .txt, .json, or .xml file to import flags", () -> {
             Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
             intent.addCategory(Intent.CATEGORY_OPENABLE);
