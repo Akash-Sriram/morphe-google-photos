@@ -12,6 +12,9 @@ import android.graphics.Typeface;
 import android.graphics.Bitmap;
 import android.graphics.Canvas;
 import android.graphics.Paint;
+import android.graphics.Rect;
+import android.graphics.PixelFormat;
+import android.graphics.ColorFilter;
 import android.graphics.Path;
 import android.graphics.RectF;
 import android.graphics.drawable.BitmapDrawable;
@@ -43,6 +46,7 @@ import android.widget.FrameLayout;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.ListView;
+import android.widget.ScrollView;
 import android.widget.ProgressBar;
 import android.widget.Switch;
 import android.widget.TextView;
@@ -95,185 +99,288 @@ public final class PhenotypeFlagManager {
     // Programmatic Material 3 Vector Icons (Resolution-Independent)
     // ─────────────────────────────────────────────────────────────────────────
 
-    private static Drawable createTuneIcon(int color, int sizePx) {
-        Bitmap bitmap = Bitmap.createBitmap(sizePx, sizePx, Bitmap.Config.ARGB_8888);
-        Canvas canvas = new Canvas(bitmap);
-        Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
-        paint.setColor(color);
-        paint.setStyle(Paint.Style.STROKE);
-        paint.setStrokeCap(Paint.Cap.ROUND);
-        paint.setStrokeWidth(sizePx * 0.10f);
+    public static class MaterialVectorDrawable extends Drawable {
+        public static final int TYPE_TUNE = 1;
+        public static final int TYPE_LOGS = 2;
+        public static final int TYPE_SEARCH = 3;
+        public static final int TYPE_ADD = 4;
+        public static final int TYPE_MORE = 5;
+        public static final int TYPE_CLOSE = 6;
+        public static final int TYPE_CHEVRON_DOWN = 7;
+        public static final int TYPE_CHEVRON_UP = 8;
+        public static final int TYPE_SYNC = 9;
+        public static final int TYPE_EXPAND = 10;
+        public static final int TYPE_COLLAPSE = 11;
+        public static final int TYPE_IMPORT = 12;
+        public static final int TYPE_PASTE = 13;
+        public static final int TYPE_EXPORT = 14;
+        public static final int TYPE_CLIPBOARD = 15;
+        public static final int TYPE_PRESETS = 16;
+        public static final int TYPE_DIAGNOSTICS = 17;
+        public static final int TYPE_DELETE = 18;
 
-        float s = sizePx;
-        canvas.drawLine(s * 0.16f, s * 0.28f, s * 0.84f, s * 0.28f, paint);
-        canvas.drawLine(s * 0.16f, s * 0.50f, s * 0.84f, s * 0.50f, paint);
-        canvas.drawLine(s * 0.16f, s * 0.72f, s * 0.84f, s * 0.72f, paint);
+        private final int type;
+        private final Paint strokePaint;
+        private final Paint fillPaint;
 
-        Paint knobPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
-        knobPaint.setColor(color);
-        knobPaint.setStyle(Paint.Style.FILL);
-        float r = s * 0.11f;
-        canvas.drawCircle(s * 0.40f, s * 0.28f, r, knobPaint);
-        canvas.drawCircle(s * 0.68f, s * 0.50f, r, knobPaint);
-        canvas.drawCircle(s * 0.34f, s * 0.72f, r, knobPaint);
+        public MaterialVectorDrawable(int type, int color) {
+            this.type = type;
 
-        return new BitmapDrawable(bitmap);
-    }
+            this.strokePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+            this.strokePaint.setColor(color);
+            this.strokePaint.setStyle(Paint.Style.STROKE);
+            this.strokePaint.setStrokeCap(Paint.Cap.ROUND);
+            this.strokePaint.setStrokeJoin(Paint.Join.ROUND);
 
-    private static Drawable createLogsIcon(int color, int sizePx) {
-        Bitmap bitmap = Bitmap.createBitmap(sizePx, sizePx, Bitmap.Config.ARGB_8888);
-        Canvas canvas = new Canvas(bitmap);
-        Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
-        paint.setColor(color);
-        paint.setStyle(Paint.Style.STROKE);
-        paint.setStrokeCap(Paint.Cap.ROUND);
-        paint.setStrokeWidth(sizePx * 0.10f);
-
-        float s = sizePx;
-        Paint dotPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
-        dotPaint.setColor(color);
-        dotPaint.setStyle(Paint.Style.FILL);
-        float r = s * 0.06f;
-
-        canvas.drawCircle(s * 0.22f, s * 0.30f, r, dotPaint);
-        canvas.drawLine(s * 0.36f, s * 0.30f, s * 0.80f, s * 0.30f, paint);
-
-        canvas.drawCircle(s * 0.22f, s * 0.50f, r, dotPaint);
-        canvas.drawLine(s * 0.36f, s * 0.50f, s * 0.72f, s * 0.50f, paint);
-
-        canvas.drawCircle(s * 0.22f, s * 0.70f, r, dotPaint);
-        canvas.drawLine(s * 0.36f, s * 0.70f, s * 0.84f, s * 0.70f, paint);
-
-        return new BitmapDrawable(bitmap);
-    }
-
-    private static Drawable createSearchIcon(int color, int sizePx) {
-        Bitmap bitmap = Bitmap.createBitmap(sizePx, sizePx, Bitmap.Config.ARGB_8888);
-        Canvas canvas = new Canvas(bitmap);
-        Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
-        paint.setColor(color);
-        paint.setStyle(Paint.Style.STROKE);
-        paint.setStrokeCap(Paint.Cap.ROUND);
-        paint.setStrokeWidth(sizePx * 0.11f);
-
-        float s = sizePx;
-        canvas.drawCircle(s * 0.42f, s * 0.42f, s * 0.24f, paint);
-        canvas.drawLine(s * 0.59f, s * 0.59f, s * 0.82f, s * 0.82f, paint);
-
-        return new BitmapDrawable(bitmap);
-    }
-
-    private static Drawable createChevronIcon(int color, int sizePx, boolean isExpanded) {
-        Bitmap bitmap = Bitmap.createBitmap(sizePx, sizePx, Bitmap.Config.ARGB_8888);
-        Canvas canvas = new Canvas(bitmap);
-        Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
-        paint.setColor(color);
-        paint.setStyle(Paint.Style.STROKE);
-        paint.setStrokeCap(Paint.Cap.ROUND);
-        paint.setStrokeJoin(Paint.Join.ROUND);
-        paint.setStrokeWidth(sizePx * 0.12f);
-
-        float s = sizePx;
-        Path path = new Path();
-        if (isExpanded) {
-            path.moveTo(s * 0.26f, s * 0.60f);
-            path.lineTo(s * 0.50f, s * 0.36f);
-            path.lineTo(s * 0.74f, s * 0.60f);
-        } else {
-            path.moveTo(s * 0.26f, s * 0.38f);
-            path.lineTo(s * 0.50f, s * 0.62f);
-            path.lineTo(s * 0.74f, s * 0.38f);
+            this.fillPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+            this.fillPaint.setColor(color);
+            this.fillPaint.setStyle(Paint.Style.FILL);
         }
-        canvas.drawPath(path, paint);
-        return new BitmapDrawable(bitmap);
-    }
 
-    private static Drawable createCloseIcon(int color, int sizePx) {
-        Bitmap bitmap = Bitmap.createBitmap(sizePx, sizePx, Bitmap.Config.ARGB_8888);
-        Canvas canvas = new Canvas(bitmap);
-        Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
-        paint.setColor(color);
-        paint.setStyle(Paint.Style.STROKE);
-        paint.setStrokeCap(Paint.Cap.ROUND);
-        paint.setStrokeWidth(sizePx * 0.11f);
+        @Override
+        public void draw(Canvas canvas) {
+            Rect b = getBounds();
+            if (b.isEmpty()) return;
 
-        float s = sizePx;
-        canvas.drawLine(s * 0.28f, s * 0.28f, s * 0.72f, s * 0.72f, paint);
-        canvas.drawLine(s * 0.28f, s * 0.72f, s * 0.72f, s * 0.28f, paint);
-        return new BitmapDrawable(bitmap);
-    }
+            float w = b.width();
+            float h = b.height();
+            float left = b.left;
+            float top = b.top;
 
-    private static Drawable createAddIcon(int color, int sizePx) {
-        Bitmap bitmap = Bitmap.createBitmap(sizePx, sizePx, Bitmap.Config.ARGB_8888);
-        Canvas canvas = new Canvas(bitmap);
-        Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
-        paint.setColor(color);
-        paint.setStyle(Paint.Style.STROKE);
-        paint.setStrokeCap(Paint.Cap.ROUND);
-        paint.setStrokeWidth(sizePx * 0.11f);
+            float strokeW = Math.max(2.2f, Math.min(w, h) * 0.095f);
+            strokePaint.setStrokeWidth(strokeW);
 
-        float s = sizePx;
-        canvas.drawLine(s * 0.50f, s * 0.24f, s * 0.50f, s * 0.76f, paint);
-        canvas.drawLine(s * 0.24f, s * 0.50f, s * 0.76f, s * 0.50f, paint);
-        return new BitmapDrawable(bitmap);
-    }
+            canvas.save();
+            canvas.translate(left, top);
 
-    private static Drawable createMoreIcon(int color, int sizePx) {
-        Bitmap bitmap = Bitmap.createBitmap(sizePx, sizePx, Bitmap.Config.ARGB_8888);
-        Canvas canvas = new Canvas(bitmap);
-        Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
-        paint.setColor(color);
-        paint.setStyle(Paint.Style.FILL);
+            switch (type) {
+                case TYPE_TUNE: {
+                    // Line 1: y=0.28, knob at 0.40
+                    canvas.drawLine(w * 0.12f, h * 0.28f, w * 0.88f, h * 0.28f, strokePaint);
+                    canvas.drawCircle(w * 0.38f, h * 0.28f, Math.min(w, h) * 0.12f, fillPaint);
 
-        float s = sizePx;
-        float r = s * 0.08f;
-        canvas.drawCircle(s * 0.50f, s * 0.28f, r, paint);
-        canvas.drawCircle(s * 0.50f, s * 0.50f, r, paint);
-        canvas.drawCircle(s * 0.50f, s * 0.72f, r, paint);
-        return new BitmapDrawable(bitmap);
-    }
+                    // Line 2: y=0.50, knob at 0.68
+                    canvas.drawLine(w * 0.12f, h * 0.50f, w * 0.88f, h * 0.50f, strokePaint);
+                    canvas.drawCircle(w * 0.68f, h * 0.50f, Math.min(w, h) * 0.12f, fillPaint);
 
-    private static Drawable createSyncIcon(int color, int sizePx) {
-        Bitmap bitmap = Bitmap.createBitmap(sizePx, sizePx, Bitmap.Config.ARGB_8888);
-        Canvas canvas = new Canvas(bitmap);
-        Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
-        paint.setColor(color);
-        paint.setStyle(Paint.Style.STROKE);
-        paint.setStrokeCap(Paint.Cap.ROUND);
-        paint.setStrokeWidth(sizePx * 0.12f);
+                    // Line 3: y=0.72, knob at 0.32
+                    canvas.drawLine(w * 0.12f, h * 0.72f, w * 0.88f, h * 0.72f, strokePaint);
+                    canvas.drawCircle(w * 0.32f, h * 0.72f, Math.min(w, h) * 0.12f, fillPaint);
+                    break;
+                }
+                case TYPE_LOGS: {
+                    float dotR = Math.min(w, h) * 0.065f;
+                    canvas.drawCircle(w * 0.18f, h * 0.28f, dotR, fillPaint);
+                    canvas.drawLine(w * 0.34f, h * 0.28f, w * 0.85f, h * 0.28f, strokePaint);
 
-        float s = sizePx;
-        RectF oval = new RectF(s * 0.22f, s * 0.22f, s * 0.78f, s * 0.78f);
-        canvas.drawArc(oval, 50, 275, false, paint);
+                    canvas.drawCircle(w * 0.18f, h * 0.50f, dotR, fillPaint);
+                    canvas.drawLine(w * 0.34f, h * 0.50f, w * 0.72f, h * 0.50f, strokePaint);
 
-        Paint fillPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
-        fillPaint.setColor(color);
-        fillPaint.setStyle(Paint.Style.FILL);
-        Path arrow = new Path();
-        float ax = s * 0.70f;
-        float ay = s * 0.40f;
-        arrow.moveTo(ax, ay);
-        arrow.lineTo(ax + s * 0.15f, ay);
-        arrow.lineTo(ax, ay + s * 0.15f);
-        arrow.close();
-        canvas.drawPath(arrow, fillPaint);
+                    canvas.drawCircle(w * 0.18f, h * 0.72f, dotR, fillPaint);
+                    canvas.drawLine(w * 0.34f, h * 0.72f, w * 0.88f, h * 0.72f, strokePaint);
+                    break;
+                }
+                case TYPE_SEARCH: {
+                    float cx = w * 0.42f;
+                    float cy = h * 0.42f;
+                    float r = Math.min(w, h) * 0.26f;
+                    canvas.drawCircle(cx, cy, r, strokePaint);
+                    canvas.drawLine(w * 0.60f, h * 0.60f, w * 0.86f, h * 0.86f, strokePaint);
+                    break;
+                }
+                case TYPE_ADD: {
+                    canvas.drawLine(w * 0.50f, h * 0.18f, w * 0.50f, h * 0.82f, strokePaint);
+                    canvas.drawLine(w * 0.18f, h * 0.50f, w * 0.82f, h * 0.50f, strokePaint);
+                    break;
+                }
+                case TYPE_MORE: {
+                    float r = Math.min(w, h) * 0.085f;
+                    canvas.drawCircle(w * 0.50f, h * 0.24f, r, fillPaint);
+                    canvas.drawCircle(w * 0.50f, h * 0.50f, r, fillPaint);
+                    canvas.drawCircle(w * 0.50f, h * 0.76f, r, fillPaint);
+                    break;
+                }
+                case TYPE_CLOSE: {
+                    canvas.drawLine(w * 0.24f, h * 0.24f, w * 0.76f, h * 0.76f, strokePaint);
+                    canvas.drawLine(w * 0.24f, h * 0.76f, w * 0.76f, h * 0.24f, strokePaint);
+                    break;
+                }
+                case TYPE_CHEVRON_DOWN: {
+                    Path p = new Path();
+                    p.moveTo(w * 0.24f, h * 0.38f);
+                    p.lineTo(w * 0.50f, h * 0.64f);
+                    p.lineTo(w * 0.76f, h * 0.38f);
+                    canvas.drawPath(p, strokePaint);
+                    break;
+                }
+                case TYPE_CHEVRON_UP: {
+                    Path p = new Path();
+                    p.moveTo(w * 0.24f, h * 0.64f);
+                    p.lineTo(w * 0.50f, h * 0.38f);
+                    p.lineTo(w * 0.76f, h * 0.64f);
+                    canvas.drawPath(p, strokePaint);
+                    break;
+                }
+                case TYPE_SYNC: {
+                    RectF arc = new RectF(w * 0.18f, h * 0.18f, w * 0.82f, h * 0.82f);
+                    canvas.drawArc(arc, 45, 275, false, strokePaint);
+                    Path arrow = new Path();
+                    float ax = w * 0.74f;
+                    float ay = h * 0.38f;
+                    arrow.moveTo(ax, ay);
+                    arrow.lineTo(ax + w * 0.18f, ay);
+                    arrow.lineTo(ax, ay + h * 0.18f);
+                    arrow.close();
+                    canvas.drawPath(arrow, fillPaint);
+                    break;
+                }
+                case TYPE_EXPAND: {
+                    Path p = new Path();
+                    p.moveTo(w * 0.16f, h * 0.28f);
+                    p.lineTo(w * 0.42f, h * 0.28f);
+                    p.lineTo(w * 0.52f, h * 0.38f);
+                    p.lineTo(w * 0.84f, h * 0.38f);
+                    p.lineTo(w * 0.84f, h * 0.78f);
+                    p.lineTo(w * 0.16f, h * 0.78f);
+                    p.close();
+                    canvas.drawPath(p, strokePaint);
+                    canvas.drawLine(w * 0.34f, h * 0.58f, w * 0.66f, h * 0.58f, strokePaint);
+                    canvas.drawLine(w * 0.50f, h * 0.44f, w * 0.50f, h * 0.72f, strokePaint);
+                    break;
+                }
+                case TYPE_COLLAPSE: {
+                    Path p = new Path();
+                    p.moveTo(w * 0.16f, h * 0.28f);
+                    p.lineTo(w * 0.42f, h * 0.28f);
+                    p.lineTo(w * 0.52f, h * 0.38f);
+                    p.lineTo(w * 0.84f, h * 0.38f);
+                    p.lineTo(w * 0.84f, h * 0.78f);
+                    p.lineTo(w * 0.16f, h * 0.78f);
+                    p.close();
+                    canvas.drawPath(p, strokePaint);
+                    canvas.drawLine(w * 0.34f, h * 0.58f, w * 0.66f, h * 0.58f, strokePaint);
+                    break;
+                }
+                case TYPE_IMPORT: {
+                    RectF doc = new RectF(w * 0.22f, h * 0.16f, w * 0.78f, h * 0.84f);
+                    canvas.drawRoundRect(doc, w * 0.10f, h * 0.10f, strokePaint);
+                    canvas.drawLine(w * 0.50f, h * 0.30f, w * 0.50f, h * 0.66f, strokePaint);
+                    Path arr = new Path();
+                    arr.moveTo(w * 0.34f, h * 0.52f);
+                    arr.lineTo(w * 0.50f, h * 0.68f);
+                    arr.lineTo(w * 0.66f, h * 0.52f);
+                    canvas.drawPath(arr, strokePaint);
+                    break;
+                }
+                case TYPE_PASTE: {
+                    RectF clip = new RectF(w * 0.22f, h * 0.24f, w * 0.78f, h * 0.84f);
+                    canvas.drawRoundRect(clip, w * 0.08f, h * 0.08f, strokePaint);
+                    RectF topBar = new RectF(w * 0.36f, h * 0.16f, w * 0.64f, h * 0.30f);
+                    canvas.drawRoundRect(topBar, w * 0.04f, h * 0.04f, strokePaint);
+                    canvas.drawLine(w * 0.34f, h * 0.46f, w * 0.66f, h * 0.46f, strokePaint);
+                    canvas.drawLine(w * 0.34f, h * 0.62f, w * 0.56f, h * 0.62f, strokePaint);
+                    break;
+                }
+                case TYPE_EXPORT: {
+                    RectF doc = new RectF(w * 0.22f, h * 0.16f, w * 0.78f, h * 0.84f);
+                    canvas.drawRoundRect(doc, w * 0.10f, h * 0.10f, strokePaint);
+                    canvas.drawLine(w * 0.50f, h * 0.68f, w * 0.50f, h * 0.32f, strokePaint);
+                    Path arr = new Path();
+                    arr.moveTo(w * 0.34f, h * 0.46f);
+                    arr.lineTo(w * 0.50f, h * 0.30f);
+                    arr.lineTo(w * 0.66f, h * 0.46f);
+                    canvas.drawPath(arr, strokePaint);
+                    break;
+                }
+                case TYPE_CLIPBOARD: {
+                    RectF s1 = new RectF(w * 0.30f, h * 0.16f, w * 0.82f, h * 0.70f);
+                    canvas.drawRoundRect(s1, w * 0.08f, h * 0.08f, strokePaint);
+                    RectF s2 = new RectF(w * 0.18f, h * 0.30f, w * 0.70f, h * 0.84f);
+                    canvas.drawRoundRect(s2, w * 0.08f, h * 0.08f, strokePaint);
+                    break;
+                }
+                case TYPE_PRESETS: {
+                    Path star = new Path();
+                    float cx = w * 0.50f;
+                    float cy = h * 0.50f;
+                    star.moveTo(cx, h * 0.16f);
+                    star.quadTo(cx, cy, w * 0.84f, cy);
+                    star.quadTo(cx, cy, cx, h * 0.84f);
+                    star.quadTo(cx, cy, w * 0.16f, cy);
+                    star.quadTo(cx, cy, cx, h * 0.16f);
+                    star.close();
+                    canvas.drawPath(star, fillPaint);
+                    break;
+                }
+                case TYPE_DIAGNOSTICS: {
+                    canvas.drawLine(w * 0.16f, h * 0.82f, w * 0.84f, h * 0.82f, strokePaint);
+                    canvas.drawLine(w * 0.30f, h * 0.82f, w * 0.30f, h * 0.50f, strokePaint);
+                    canvas.drawLine(w * 0.50f, h * 0.82f, w * 0.50f, h * 0.24f, strokePaint);
+                    canvas.drawLine(w * 0.70f, h * 0.82f, w * 0.70f, h * 0.38f, strokePaint);
+                    break;
+                }
+                case TYPE_DELETE: {
+                    canvas.drawLine(w * 0.20f, h * 0.28f, w * 0.80f, h * 0.28f, strokePaint);
+                    canvas.drawLine(w * 0.38f, h * 0.20f, w * 0.62f, h * 0.20f, strokePaint);
+                    Path can = new Path();
+                    can.moveTo(w * 0.26f, h * 0.28f);
+                    can.lineTo(w * 0.30f, h * 0.82f);
+                    can.lineTo(w * 0.70f, h * 0.82f);
+                    can.lineTo(w * 0.74f, h * 0.28f);
+                    canvas.drawPath(can, strokePaint);
+                    canvas.drawLine(w * 0.42f, h * 0.40f, w * 0.42f, h * 0.72f, strokePaint);
+                    canvas.drawLine(w * 0.58f, h * 0.40f, w * 0.58f, h * 0.72f, strokePaint);
+                    break;
+                }
+            }
+            canvas.restore();
+        }
 
-        return new BitmapDrawable(bitmap);
+        @Override public void setAlpha(int alpha) { strokePaint.setAlpha(alpha); fillPaint.setAlpha(alpha); }
+        @Override public void setColorFilter(ColorFilter cf) { strokePaint.setColorFilter(cf); fillPaint.setColorFilter(cf); }
+        @Override public int getOpacity() { return PixelFormat.TRANSLUCENT; }
     }
 
     private static String cleanCategoryTitle(String cat) {
         if (cat == null) return "";
-        String cleaned = cat.replaceAll("^[\\p{So}\\p{Cs}\\p{Cn}\\p{Sk}\\p{Sc}\\s]+", "");
-        cleaned = cleaned.replaceAll("[🎨🎬👗📄🎥🎞️✨⚡📊🛠️🔍➕⋮✕▶▼▲]", "").trim();
-        return cleaned;
+        String s = cat.trim();
+        if (s.contains("Video Remix")) return "Video Remix & AI Styling";
+        if (s.contains("Photo Remix")) return "Photo Remix (Prompt Art)";
+        if (s.contains("Highlight Video")) return "Highlight Video Recipes";
+        if (s.contains("Outfit Try-on") || s.contains("My Fits")) return "Virtual Outfit Try-On";
+        if (s.contains("Collage") || s.contains("Scrapbook")) return "Collage & Scrapbook";
+        if (s.contains("Cinematic Photo")) return "Cinematic 3D Photos";
+        if (s.contains("Animation")) return "Animations & GIF Editor";
+        if (s.contains("Moods")) return "Moods Color Grading";
+        if (s.contains("Storefront") || s.contains("Creative Studio")) return "Creative Studio Hub";
+        if (s.contains("3D Pop-Out") || s.contains("Cutouts")) return "Memories: 3D Pop-Out";
+        if (s.contains("Player Controls") || s.contains("Sound")) return "Memories: Player & Music";
+        if (s.contains("Navigation") || s.contains("Floating Bar")) return "Floating Navigation Bar";
+        if (s.contains("Collections") || s.contains("Shelves")) return "Collections & Shelves V2";
+        if (s.contains("AI Photo") || s.contains("Editor Tools") || s.contains("Magic Editor")) return "AI Magic Editor Suite";
+        if (s.contains("OneGoogle") || s.contains("Avatar Rings")) return "Subscriber Avatar Ring";
+
+        s = s.replaceAll("^[\\p{So}\\p{Cs}\\p{Cn}\\p{Sk}\\p{Sc}\\s]+", "");
+        s = s.replaceAll("(?i)^Create\\s*Tab:\\s*(Tool\\s*\\d+\\s*—\\s*)?", "");
+        s = s.replaceAll("(?i)^Editor:\\s*", "");
+        s = s.replaceAll("\\s*\\(Stamp\\s*M2\\)", "");
+        s = s.replaceAll("\\s*\\(AMC\\s*Recipes\\)", "");
+        s = s.replaceAll("[🎨🎬👗📄🎥🎞️✨⚡📊🛠️🔍➕⋮✕▶▼▲⭕🏛️🎵🧭📁🪄🖼️]", "").trim();
+        return s.isEmpty() ? cat : s;
     }
 
-    private static String cleanTriggerDescription(String desc) {
+    private static String cleanCategorySubtitle(String desc, String cat) {
+        if (desc == null || desc.isEmpty()) {
+            desc = PhotoFlagsRegistry.getCategoryTriggerDescription(cat);
+        }
         if (desc == null) return null;
-        return desc.replaceAll("^[\\p{So}\\s]*⚡?\\s*Triggers:\\s*", "Affects: ").trim();
+        String s = desc.trim();
+        s = s.replaceAll("^[\\p{So}\\s]*⚡?\\s*Triggers:\\s*", "");
+        s = s.replaceAll("(?i)\\s*in\\s*Create\\s*Tab$", "");
+        s = s.replaceAll("[⚡✨🎨🎬👗📄🎥🎞️]", "").trim();
+        if (s.isEmpty()) return null;
+        return Character.toUpperCase(s.charAt(0)) + s.substring(1);
     }
-
-
     // Dynamic Material 3 Palette Engine
     public static final class Theme {
         public final boolean isDark;
@@ -449,7 +556,6 @@ public final class PhenotypeFlagManager {
         Theme theme = Theme.get(activity);
         float density = activity.getResources().getDisplayMetrics().density;
 
-        // Single unified stadium capsule toolbar
         LinearLayout dock = new LinearLayout(activity);
         dock.setTag(SETTINGS_PILL_TAG);
         dock.setOrientation(LinearLayout.HORIZONTAL);
@@ -457,7 +563,7 @@ public final class PhenotypeFlagManager {
 
         FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT,
-                (int) (50 * density)
+                (int) (52 * density)
         );
         lp.gravity = Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL;
         lp.setMargins(0, 0, 0, (int) (22 * density));
@@ -467,20 +573,19 @@ public final class PhenotypeFlagManager {
         dock.setPadding(padOuter, padOuter, padOuter, padOuter);
         dock.setElevation(8 * density);
 
-        // M3 Surface Container High with subtle border
         GradientDrawable bgDock = new GradientDrawable();
-        bgDock.setCornerRadius(25 * density);
+        bgDock.setCornerRadius(26 * density);
         bgDock.setColor(theme.surfaceContainer);
         bgDock.setStroke((int) (1 * density), theme.outline);
         dock.setBackground(bgDock);
 
-        // Segment 1: Flags (Active / Primary tonal)
+        // Segment 1: Flags
         LinearLayout itemFlags = new LinearLayout(activity);
         itemFlags.setOrientation(LinearLayout.HORIZONTAL);
         itemFlags.setGravity(Gravity.CENTER);
         itemFlags.setClickable(true);
         itemFlags.setFocusable(true);
-        int itemPadH = (int) (16 * density);
+        int itemPadH = (int) (18 * density);
         itemFlags.setPadding(itemPadH, 0, itemPadH, 0);
         LinearLayout.LayoutParams lpFlags = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT,
@@ -489,33 +594,36 @@ public final class PhenotypeFlagManager {
         itemFlags.setLayoutParams(lpFlags);
 
         GradientDrawable bgFlags = new GradientDrawable();
-        bgFlags.setCornerRadius(21 * density);
+        bgFlags.setCornerRadius(22 * density);
         bgFlags.setColor(theme.primaryContainer);
         itemFlags.setBackground(bgFlags);
 
         ImageView iconFlags = new ImageView(activity);
-        iconFlags.setImageDrawable(createTuneIcon(theme.onPrimaryContainer, (int) (18 * density)));
-        iconFlags.setPadding(0, 0, (int) (8 * density), 0);
+        iconFlags.setImageDrawable(new MaterialVectorDrawable(MaterialVectorDrawable.TYPE_TUNE, theme.onPrimaryContainer));
+        int iconSize = (int) (20 * density);
+        LinearLayout.LayoutParams icLp1 = new LinearLayout.LayoutParams(iconSize, iconSize);
+        icLp1.setMargins(0, 0, (int) (8 * density), 0);
+        iconFlags.setLayoutParams(icLp1);
         itemFlags.addView(iconFlags);
 
         TextView labelFlags = new TextView(activity);
         labelFlags.setText("Flags");
-        labelFlags.setTextSize(13.5f);
+        labelFlags.setTextSize(14f);
         labelFlags.setTextColor(theme.onPrimaryContainer);
         labelFlags.setTypeface(null, Typeface.BOLD);
         itemFlags.addView(labelFlags);
         itemFlags.setOnClickListener(v -> showFlagManagerDialog(activity));
         dock.addView(itemFlags);
 
-        // Divider line between segments
+        // Divider line
         View divider = new View(activity);
         divider.setBackgroundColor(theme.outline);
-        LinearLayout.LayoutParams divLp = new LinearLayout.LayoutParams((int) (1 * density), (int) (20 * density));
+        LinearLayout.LayoutParams divLp = new LinearLayout.LayoutParams((int) (1 * density), (int) (22 * density));
         divLp.setMargins((int) (4 * density), 0, (int) (4 * density), 0);
         divider.setLayoutParams(divLp);
         dock.addView(divider);
 
-        // Segment 2: Logs (Secondary / Neutral tonal)
+        // Segment 2: Logs
         LinearLayout itemLogs = new LinearLayout(activity);
         itemLogs.setOrientation(LinearLayout.HORIZONTAL);
         itemLogs.setGravity(Gravity.CENTER);
@@ -529,18 +637,20 @@ public final class PhenotypeFlagManager {
         itemLogs.setLayoutParams(lpLogs);
 
         GradientDrawable bgLogs = new GradientDrawable();
-        bgLogs.setCornerRadius(21 * density);
+        bgLogs.setCornerRadius(22 * density);
         bgLogs.setColor(Color.TRANSPARENT);
         itemLogs.setBackground(bgLogs);
 
         ImageView iconLogs = new ImageView(activity);
-        iconLogs.setImageDrawable(createLogsIcon(theme.textPrimary, (int) (18 * density)));
-        iconLogs.setPadding(0, 0, (int) (8 * density), 0);
+        iconLogs.setImageDrawable(new MaterialVectorDrawable(MaterialVectorDrawable.TYPE_LOGS, theme.textPrimary));
+        LinearLayout.LayoutParams icLp2 = new LinearLayout.LayoutParams(iconSize, iconSize);
+        icLp2.setMargins(0, 0, (int) (8 * density), 0);
+        iconLogs.setLayoutParams(icLp2);
         itemLogs.addView(iconLogs);
 
         TextView labelLogs = new TextView(activity);
         labelLogs.setText("Logs");
-        labelLogs.setTextSize(13.5f);
+        labelLogs.setTextSize(14f);
         labelLogs.setTextColor(theme.textPrimary);
         labelLogs.setTypeface(null, Typeface.BOLD);
         itemLogs.addView(labelLogs);
@@ -966,7 +1076,7 @@ public final class PhenotypeFlagManager {
 
                 // Re-apply styling on recycled views (subtle card border, readable title)
                 GradientDrawable headerBg = new GradientDrawable();
-                headerBg.setCornerRadius(14 * density);
+                headerBg.setCornerRadius(24 * density);
                 headerBg.setColor(theme.headerCardBg);
                 headerBg.setStroke((int) (1 * density), theme.cardBorder);
                 hHolder.root.setBackground(headerBg);
@@ -988,7 +1098,7 @@ public final class PhenotypeFlagManager {
                         ? expandedCategories.contains(cat)
                         : !searchCollapsedCategories.contains(cat);
 
-                hHolder.ivChevron.setImageDrawable(createChevronIcon(theme.textSecondary, (int) (18 * density), isExpanded));
+                hHolder.ivChevron.setImageDrawable(new MaterialVectorDrawable(isExpanded ? MaterialVectorDrawable.TYPE_CHEVRON_UP : MaterialVectorDrawable.TYPE_CHEVRON_DOWN, theme.textSecondary));
                 hHolder.tvTitle.setText(cleanCategoryTitle(cat));
 
                 if (currentFilterQuery.isEmpty()) {
@@ -1008,8 +1118,7 @@ public final class PhenotypeFlagManager {
                     hHolder.tvBadge.setBackground(createRoundedDrawable(theme.primaryContainer, 10 * density));
                 }
 
-                String triggerDesc = PhotoFlagsRegistry.getCategoryTriggerDescription(cat);
-                String cleanDesc = cleanTriggerDescription(triggerDesc);
+                String cleanDesc = cleanCategorySubtitle(null, cat);
                 if (cleanDesc != null && !cleanDesc.isEmpty()) {
                     hHolder.tvTrigger.setVisibility(View.VISIBLE);
                     hHolder.tvTrigger.setText(cleanDesc);
@@ -1162,7 +1271,7 @@ public final class PhenotypeFlagManager {
             String triggerStr = item.getTrigger();
             if (triggerStr != null && !triggerStr.isEmpty()) {
                 holder.tvTriggerBadge.setVisibility(View.VISIBLE);
-                holder.tvTriggerBadge.setText(cleanTriggerDescription("Triggers: " + triggerStr));
+                holder.tvTriggerBadge.setText(cleanCategorySubtitle(triggerStr, null));
             } else {
                 holder.tvTriggerBadge.setVisibility(View.GONE);
             }
@@ -1302,11 +1411,11 @@ public final class PhenotypeFlagManager {
         titleCol.addView(tvSub);
         topBar.addView(titleCol);
 
-        // Action Icons (Vector drawables)
-        View btnSearch = createHeaderIconButton(activity, createSearchIcon(theme.textPrimary, (int) (20 * density)), (int) (42 * density), theme);
-        View btnAdd = createHeaderIconButton(activity, createAddIcon(theme.textPrimary, (int) (20 * density)), (int) (42 * density), theme);
-        View btnMenu = createHeaderIconButton(activity, createMoreIcon(theme.textPrimary, (int) (20 * density)), (int) (42 * density), theme);
-        View btnClose = createHeaderIconButton(activity, createCloseIcon(theme.textPrimary, (int) (20 * density)), (int) (42 * density), theme);
+        // Action Icons (Proper 22dp icons inside 42dp touch targets)
+        View btnSearch = createHeaderIconButton(activity, new MaterialVectorDrawable(MaterialVectorDrawable.TYPE_SEARCH, theme.textPrimary), (int) (42 * density), (int) (22 * density));
+        View btnAdd = createHeaderIconButton(activity, new MaterialVectorDrawable(MaterialVectorDrawable.TYPE_ADD, theme.textPrimary), (int) (42 * density), (int) (22 * density));
+        View btnMenu = createHeaderIconButton(activity, new MaterialVectorDrawable(MaterialVectorDrawable.TYPE_MORE, theme.textPrimary), (int) (42 * density), (int) (22 * density));
+        View btnClose = createHeaderIconButton(activity, new MaterialVectorDrawable(MaterialVectorDrawable.TYPE_CLOSE, theme.textPrimary), (int) (42 * density), (int) (22 * density));
 
         topBar.addView(btnSearch);
         topBar.addView(btnAdd);
@@ -1346,7 +1455,7 @@ public final class PhenotypeFlagManager {
         inputWrapper.addView(etSearch);
 
         ImageView btnClearSearch = new ImageView(activity);
-        btnClearSearch.setImageDrawable(createCloseIcon(theme.textSecondary, (int) (16 * density)));
+        btnClearSearch.setImageDrawable(new MaterialVectorDrawable(MaterialVectorDrawable.TYPE_CLOSE, theme.textSecondary));
         btnClearSearch.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
         int cPad = (int) (12 * density);
         btnClearSearch.setPadding(cPad, 0, cPad, 0);
@@ -1408,7 +1517,10 @@ public final class PhenotypeFlagManager {
         btnApply.setLayoutParams(applyLp);
 
         ImageView iconRestart = new ImageView(activity);
-        iconRestart.setImageDrawable(createSyncIcon(theme.onPrimary, (int) (18 * density)));
+        iconRestart.setImageDrawable(new MaterialVectorDrawable(MaterialVectorDrawable.TYPE_SYNC, theme.onPrimary));
+        LinearLayout.LayoutParams syncLp = new LinearLayout.LayoutParams((int) (20 * density), (int) (20 * density));
+        syncLp.setMargins(0, 0, (int) (8 * density), 0);
+        iconRestart.setLayoutParams(syncLp);
         iconRestart.setPadding(0, 0, (int) (8 * density), 0);
         btnApply.addView(iconRestart);
 
@@ -1585,12 +1697,12 @@ public final class PhenotypeFlagManager {
         list.setPadding((int) (16 * density), (int) (4 * density), (int) (16 * density), (int) (16 * density));
 
         class MenuItem {
-            final String icon;
+            final int iconType;
             final String title;
             final String subtitle;
             final Runnable action;
-            MenuItem(String icon, String title, String subtitle, Runnable action) {
-                this.icon = icon;
+            MenuItem(int iconType, String title, String subtitle, Runnable action) {
+                this.iconType = iconType;
                 this.title = title;
                 this.subtitle = subtitle;
                 this.action = action;
@@ -1600,124 +1712,180 @@ public final class PhenotypeFlagManager {
         List<MenuItem> items = new ArrayList<>();
 
         // 1. Expand All Categories
-        items.add(new MenuItem("📂", "Expand All Categories", "Expand all flag categories to view all flags", () -> {
+        items.add(new MenuItem(MaterialVectorDrawable.TYPE_EXPAND, "Expand All Categories", "Expand all flag categories to view all flags", () -> {
             adapter.expandAll();
             Toast.makeText(activity, "Expanded all categories", Toast.LENGTH_SHORT).show();
         }));
 
         // 2. Collapse All Categories
-        items.add(new MenuItem("📁", "Collapse All Categories", "Collapse all categories to headers only", () -> {
+        items.add(new MenuItem(MaterialVectorDrawable.TYPE_COLLAPSE, "Collapse All Categories", "Collapse all categories to headers only", () -> {
             adapter.collapseAll();
             Toast.makeText(activity, "Collapsed all categories", Toast.LENGTH_SHORT).show();
         }));
 
         // 3. Bulk Import from File (SAF)
-        items.add(new MenuItem("📁", "Bulk Import from File (SAF)", "Select a .txt, .json, or .xml file to import flags", () -> {
-            launchSafImport(activity, prefs, onRefresh);
+        items.add(new MenuItem(MaterialVectorDrawable.TYPE_IMPORT, "Bulk Import from File (SAF)", "Select a .txt, .json, or .xml file to import flags", () -> {
+            Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+            intent.addCategory(Intent.CATEGORY_OPENABLE);
+            intent.setType("*/*");
+            activity.startActivity(intent);
+            Toast.makeText(activity, "Select backup/preset file", Toast.LENGTH_LONG).show();
         }));
 
         // 4. Bulk Paste Text
-        items.add(new MenuItem("📋", "Bulk Paste Text", "Paste key=value lines, JSON, or XML directly", () -> {
+        items.add(new MenuItem(MaterialVectorDrawable.TYPE_PASTE, "Bulk Paste Text", "Paste key=value lines, JSON, or XML directly", () -> {
             showBulkPasteDialog(activity, prefs, onRefresh);
         }));
 
         // 5. Export to File (SAF)
-        items.add(new MenuItem("💾", "Export to File (SAF)", "Save all configured flags to a file", () -> {
-            launchSafExport(activity, prefs);
+        items.add(new MenuItem(MaterialVectorDrawable.TYPE_EXPORT, "Export to File (SAF)", "Save all configured flags to a file", () -> {
+            Intent intent = new Intent(Intent.ACTION_CREATE_DOCUMENT);
+            intent.addCategory(Intent.CATEGORY_OPENABLE);
+            intent.setType("text/plain");
+            intent.putExtra(Intent.EXTRA_TITLE, "morphe_photos_flags_backup.txt");
+            activity.startActivity(intent);
+            Toast.makeText(activity, "Choose location to save flags backup", Toast.LENGTH_LONG).show();
         }));
 
         // 6. Copy All to Clipboard
-        items.add(new MenuItem("📤", "Copy All to Clipboard", "Copy all configured flags to clipboard as JSON", () -> {
-            copyAllToClipboard(activity, prefs);
+        items.add(new MenuItem(MaterialVectorDrawable.TYPE_CLIPBOARD, "Copy All to Clipboard", "Copy all configured flags to clipboard as JSON", () -> {
+            Map<String, ?> all = prefs.getAll();
+            JSONObject json = new JSONObject();
+            try {
+                for (Map.Entry<String, ?> e : all.entrySet()) {
+                    if (!e.getKey().startsWith("_")) {
+                        json.put(e.getKey(), e.getValue());
+                    }
+                }
+                ClipboardManager cm = (ClipboardManager) activity.getSystemService(Context.CLIPBOARD_SERVICE);
+                if (cm != null) {
+                    cm.setPrimaryClip(ClipData.newPlainText("Flags JSON", json.toString(2)));
+                    Toast.makeText(activity, "Copied " + json.length() + " flags to clipboard", Toast.LENGTH_SHORT).show();
+                }
+            } catch (Exception e) {
+                Toast.makeText(activity, "Export failed: " + e.getMessage(), Toast.LENGTH_SHORT).show();
+            }
         }));
 
         // 7. Load Recommended Presets
-        items.add(new MenuItem("✨", "Load Recommended Presets", "Apply all 362 Morphe feature flags (story colors, AI tools, Create Tab, Navigation)", () -> {
+        items.add(new MenuItem(MaterialVectorDrawable.TYPE_PRESETS, "Load Recommended Presets", "Apply all 362 Morphe feature flags (story colors, AI tools, Create Tab, Navigation)", () -> {
             LinearLayout msgLayout = new LinearLayout(activity);
             msgLayout.setOrientation(LinearLayout.VERTICAL);
             int mPad = (int) (18 * density);
             msgLayout.setPadding(mPad, (int) (4 * density), mPad, (int) (12 * density));
 
             TextView tvMsg = new TextView(activity);
-            tvMsg.setText("This will apply all 362 curated Morphe flags:\n\n• 226 Story colors & collage templates\n• 54 Story player & audio controls\n• 41 3D memories & cutout animations\n• AI video generation & editor tools\n• Create Tab storefront & 8 creative tools\n• Modern navigation & Collections V2\n\nExisting flags will be kept. New flags will be added on top.");
+            tvMsg.setText("This will activate all 362 curated Morphe feature flags across AI tools, Create Tab, Stories, and Navigation.\n\nExisting values will be kept, and missing overrides will be enabled.");
             tvMsg.setTextSize(13);
             tvMsg.setTextColor(theme.textPrimary);
             tvMsg.setLineSpacing(0, 1.25f);
             msgLayout.addView(tvMsg);
 
-            Dialog presetDialog = createM3ActionDialog(activity, "✨ Load Recommended Presets", msgLayout, "Apply All", () -> {
+            createM3ActionDialog(activity, "Load Recommended Presets", msgLayout, "Apply Presets", () -> {
                 PhotoFlagsRegistry.applyCuratedDefaults(prefs);
                 GooglePhotosAccountAvatar.syncOneGoogleFlags(activity);
-                Toast.makeText(activity, "✓ Loaded 362 Morphe recommended flags", Toast.LENGTH_SHORT).show();
                 onRefresh.run();
-            });
-            presetDialog.show();
+                Toast.makeText(activity, "Activated 362 Morphe flags! Restart to take effect.", Toast.LENGTH_LONG).show();
+            }).show();
         }));
 
         // 8. Diagnostics & Logs
-        items.add(new MenuItem("📊", "Diagnostics & Logs", "View session logs, errors, crashes, and export/share diagnostics", () -> {
+        items.add(new MenuItem(MaterialVectorDrawable.TYPE_DIAGNOSTICS, "Diagnostics & Logs", "View session logs, errors, crashes, and export/share diagnostics", () -> {
             app.morphe.extension.shared.diagnostics.DiagnosticsDialog.show(activity);
         }));
 
         // 9. Clear All Flags
-        items.add(new MenuItem("🗑️", "Clear All Flags", "Wipe all flags and restore stock photos state", () -> {
-            prefs.edit().clear().apply();
-            GooglePhotosAccountAvatar.syncOneGoogleFlags(activity);
-            adapter.collapseAll();
-            Toast.makeText(activity, "✓ Cleared all flags (stock photos state)", Toast.LENGTH_SHORT).show();
-            onRefresh.run();
+        items.add(new MenuItem(MaterialVectorDrawable.TYPE_DELETE, "Clear All Flags", "Wipe all flags and restore stock photos state", () -> {
+            LinearLayout msgLayout = new LinearLayout(activity);
+            msgLayout.setOrientation(LinearLayout.VERTICAL);
+            int mPad = (int) (18 * density);
+            msgLayout.setPadding(mPad, (int) (4 * density), mPad, (int) (12 * density));
+
+            TextView tvMsg = new TextView(activity);
+            tvMsg.setText("Are you sure you want to remove all configured phenotype flags?\n\nThis will restore stock Google Photos behavior on next restart.");
+            tvMsg.setTextSize(13);
+            tvMsg.setTextColor(theme.textPrimary);
+            tvMsg.setLineSpacing(0, 1.25f);
+            msgLayout.addView(tvMsg);
+
+            createM3ActionDialog(activity, "Clear All Flags?", msgLayout, "Clear All", () -> {
+                prefs.edit().clear().apply();
+                GooglePhotosAccountAvatar.syncOneGoogleFlags(activity);
+                adapter.collapseAll();
+                onRefresh.run();
+                Toast.makeText(activity, "All flags cleared! Restart Photos.", Toast.LENGTH_LONG).show();
+            }).show();
         }));
 
-        Dialog menuDialog = createM3Dialog(activity, "⚙️ Flag Options", list);
+        Dialog dialog = createM3Dialog(activity, "Flag Options", null);
 
-        for (MenuItem item : items) {
+        for (MenuItem mi : items) {
             LinearLayout row = new LinearLayout(activity);
             row.setOrientation(LinearLayout.HORIZONTAL);
             row.setGravity(Gravity.CENTER_VERTICAL);
-            int p = (int) (14 * density);
-            row.setPadding(p, p, p, p);
-            row.setBackground(createCardDrawable(false, density, theme));
-            LinearLayout.LayoutParams rLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-            rLp.setMargins(0, 0, 0, (int) (8 * density));
-            row.setLayoutParams(rLp);
-
-            TextView tvIcon = new TextView(activity);
-            tvIcon.setText(item.icon);
-            tvIcon.setTextSize(20);
-            tvIcon.setPadding(0, 0, (int) (14 * density), 0);
-            row.addView(tvIcon);
-
-            LinearLayout col = new LinearLayout(activity);
-            col.setOrientation(LinearLayout.VERTICAL);
-            LinearLayout.LayoutParams cLp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
-            col.setLayoutParams(cLp);
-
-            TextView tvT = new TextView(activity);
-            tvT.setText(item.title);
-            tvT.setTextSize(15);
-            tvT.setTextColor(theme.textPrimary);
-            tvT.setTypeface(null, Typeface.BOLD);
-            col.addView(tvT);
-
-            TextView tvS = new TextView(activity);
-            tvS.setText(item.subtitle);
-            tvS.setTextSize(12);
-            tvS.setTextColor(theme.textSecondary);
-            tvS.setPadding(0, (int) (2 * density), 0, 0);
-            col.addView(tvS);
-            row.addView(col);
-
             row.setClickable(true);
             row.setFocusable(true);
-            row.setOnClickListener(v -> {
-                menuDialog.dismiss();
-                item.action.run();
-            });
+            int padH = (int) (14 * density);
+            int padV = (int) (10 * density);
+            row.setPadding(padH, padV, padH, padV);
+            row.setBackground(createCardDrawable(false, density, theme));
+            LinearLayout.LayoutParams rLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            rLp.bottomMargin = (int) (6 * density);
+            row.setLayoutParams(rLp);
 
+            // Icon container: 36dp rounded box with surfaceContainer
+            FrameLayout iconBox = new FrameLayout(activity);
+            int boxSize = (int) (36 * density);
+            LinearLayout.LayoutParams ibLp = new LinearLayout.LayoutParams(boxSize, boxSize);
+            iconBox.setLayoutParams(ibLp);
+            GradientDrawable ibBg = new GradientDrawable();
+            ibBg.setCornerRadius(12 * density);
+            ibBg.setColor(theme.surfaceContainer);
+            iconBox.setBackground(ibBg);
+
+            ImageView ivIcon = new ImageView(activity);
+            int iconColor = mi.iconType == MaterialVectorDrawable.TYPE_DELETE ? (theme.isDark ? 0xFFFFB4AB : 0xFFBA1A1A) : theme.primary;
+            ivIcon.setImageDrawable(new MaterialVectorDrawable(mi.iconType, iconColor));
+            int ivSize = (int) (22 * density);
+            FrameLayout.LayoutParams ivLp = new FrameLayout.LayoutParams(ivSize, ivSize, Gravity.CENTER);
+            ivIcon.setLayoutParams(ivLp);
+            iconBox.addView(ivIcon);
+            row.addView(iconBox);
+
+            // Text column
+            LinearLayout textCol = new LinearLayout(activity);
+            textCol.setOrientation(LinearLayout.VERTICAL);
+            textCol.setPadding((int) (12 * density), 0, 0, 0);
+            LinearLayout.LayoutParams tcLp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+            textCol.setLayoutParams(tcLp);
+
+            TextView tvTitle = new TextView(activity);
+            tvTitle.setText(mi.title);
+            tvTitle.setTextSize(14.5f);
+            tvTitle.setTextColor(mi.iconType == MaterialVectorDrawable.TYPE_DELETE ? (theme.isDark ? 0xFFFFB4AB : 0xFFBA1A1A) : theme.textPrimary);
+            tvTitle.setTypeface(null, Typeface.BOLD);
+            textCol.addView(tvTitle);
+
+            TextView tvSub = new TextView(activity);
+            tvSub.setText(mi.subtitle);
+            tvSub.setTextSize(11.5f);
+            tvSub.setTextColor(theme.textSecondary);
+            textCol.addView(tvSub);
+
+            row.addView(textCol);
+            row.setOnClickListener(v -> {
+                dialog.dismiss();
+                mi.action.run();
+            });
             list.addView(row);
         }
 
-        menuDialog.show();
+        ScrollView scroll = new ScrollView(activity);
+        scroll.addView(list);
+
+        LinearLayout contentRoot = (LinearLayout) ((ViewGroup) dialog.findViewById(android.R.id.content)).getChildAt(0);
+        contentRoot.addView(scroll, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, (int) (activity.getResources().getDisplayMetrics().heightPixels * 0.65f)));
+        dialog.show();
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -2487,25 +2655,22 @@ public final class PhenotypeFlagManager {
     // Helpers & UI Components
     // ─────────────────────────────────────────────────────────────────────────
 
-    private static View createHeaderIconButton(Activity activity, Drawable iconDrawable, int sizePx, Theme theme) {
+    private static View createHeaderIconButton(Activity activity, Drawable iconDrawable, int touchSizePx, int iconSizePx) {
+        FrameLayout box = new FrameLayout(activity);
+        box.setClickable(true);
+        box.setFocusable(true);
+        box.setLayoutParams(new LinearLayout.LayoutParams(touchSizePx, touchSizePx));
+
         ImageView iv = new ImageView(activity);
         iv.setImageDrawable(iconDrawable);
-        iv.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
-        iv.setClickable(true);
-        iv.setFocusable(true);
-        int pad = (int) (10 * activity.getResources().getDisplayMetrics().density);
-        iv.setPadding(pad, pad, pad, pad);
-        GradientDrawable ripple = new GradientDrawable();
-        ripple.setShape(GradientDrawable.OVAL);
-        ripple.setColor(Color.TRANSPARENT);
-        iv.setBackground(ripple);
-        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(sizePx, sizePx);
-        iv.setLayoutParams(lp);
-        return iv;
+        FrameLayout.LayoutParams ivLp = new FrameLayout.LayoutParams(iconSizePx, iconSizePx, Gravity.CENTER);
+        iv.setLayoutParams(ivLp);
+        box.addView(iv);
+        return box;
     }
 
-    private static View createHeaderIconButton(Activity activity, Drawable iconDrawable, int sizePx) {
-        return createHeaderIconButton(activity, iconDrawable, sizePx, Theme.get(activity));
+    private static View createHeaderIconButton(Activity activity, Drawable iconDrawable, int touchSizePx) {
+        return createHeaderIconButton(activity, iconDrawable, touchSizePx, (int) (touchSizePx * 0.55f));
     }
 
     private static GradientDrawable createCardDrawable(boolean active, float density, Theme theme) {
@@ -2536,7 +2701,7 @@ public final class PhenotypeFlagManager {
 
         LinearLayout root = new LinearLayout(activity);
         root.setOrientation(LinearLayout.VERTICAL);
-        root.setBackground(createRoundedDrawable(theme.surface, 24 * density));
+        root.setBackground(createRoundedDrawable(theme.surface, 28 * density));
 
         LinearLayout header = new LinearLayout(activity);
         header.setOrientation(LinearLayout.HORIZONTAL);
