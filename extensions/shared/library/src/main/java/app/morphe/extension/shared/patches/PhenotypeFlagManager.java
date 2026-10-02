@@ -31,6 +31,7 @@ import android.os.Handler;
 import android.os.Looper;
 import android.text.Editable;
 import android.text.InputType;
+import android.text.TextUtils;
 import android.text.TextWatcher;
 import android.view.Gravity;
 import android.view.KeyEvent;
@@ -122,6 +123,7 @@ public final class PhenotypeFlagManager {
         public static final int TYPE_DIAGNOSTICS = 17;
         public static final int TYPE_DELETE = 18;
         public static final int TYPE_RESTART = 19;
+        public static final int TYPE_CHECK = 20;
 
         private final int type;
         private final Paint strokePaint;
@@ -340,6 +342,14 @@ public final class PhenotypeFlagManager {
                     RectF arc = new RectF(w * 0.20f, h * 0.20f, w * 0.80f, h * 0.80f);
                     canvas.drawArc(arc, 125, 290, false, strokePaint);
                     canvas.drawLine(w * 0.50f, h * 0.12f, w * 0.50f, h * 0.46f, strokePaint);
+                    break;
+                }
+                case TYPE_CHECK: {
+                    Path p = new Path();
+                    p.moveTo(w * 0.20f, h * 0.50f);
+                    p.lineTo(w * 0.42f, h * 0.72f);
+                    p.lineTo(w * 0.80f, h * 0.28f);
+                    canvas.drawPath(p, strokePaint);
                     break;
                 }
             }
@@ -1611,70 +1621,26 @@ public final class PhenotypeFlagManager {
         globalActionBar.setGravity(Gravity.CENTER_VERTICAL);
         globalActionBar.setPadding(tbPad, (int) (2 * density), tbPad, (int) (6 * density));
 
-        int gap = (int) (2.5f * density);
-        int pillPadH = (int) (4 * density);
-        int pillPadV = (int) (6.5f * density);
-        float pillTextSize = 11.5f;
+        int gap = (int) (4 * density);
 
-        TextView btnEnableAllGlobal = new TextView(activity);
-        btnEnableAllGlobal.setText("Enable all");
-        btnEnableAllGlobal.setTextSize(pillTextSize);
-        btnEnableAllGlobal.setTypeface(null, Typeface.BOLD);
-        btnEnableAllGlobal.setGravity(Gravity.CENTER);
-        btnEnableAllGlobal.setSingleLine(true);
-        btnEnableAllGlobal.setPadding(pillPadH, pillPadV, pillPadH, pillPadV);
-        btnEnableAllGlobal.setTextColor(theme.enableAllText);
-        btnEnableAllGlobal.setBackground(createRoundedDrawable(theme.enableAllBg, 12 * density));
-        LinearLayout.LayoutParams eagLp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
-        eagLp.setMargins(0, 0, gap, 0);
-        btnEnableAllGlobal.setLayoutParams(eagLp);
-        btnEnableAllGlobal.setClickable(true);
-        btnEnableAllGlobal.setFocusable(true);
+        LinearLayout btnEnableAllGlobal = createQuickActionPill(activity, MaterialVectorDrawable.TYPE_CHECK, "Enable all", density, theme);
+        LinearLayout.LayoutParams p1 = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+        p1.rightMargin = gap;
+        btnEnableAllGlobal.setLayoutParams(p1);
 
-        TextView btnDisableAllGlobal = new TextView(activity);
-        btnDisableAllGlobal.setText("Disable all");
-        btnDisableAllGlobal.setTextSize(pillTextSize);
-        btnDisableAllGlobal.setTypeface(null, Typeface.BOLD);
-        btnDisableAllGlobal.setGravity(Gravity.CENTER);
-        btnDisableAllGlobal.setSingleLine(true);
-        btnDisableAllGlobal.setPadding(pillPadH, pillPadV, pillPadH, pillPadV);
-        btnDisableAllGlobal.setTextColor(theme.disableAllText);
-        btnDisableAllGlobal.setBackground(createRoundedDrawable(theme.disableAllBg, 12 * density));
-        LinearLayout.LayoutParams dagLp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
-        dagLp.setMargins(gap, 0, gap, 0);
-        btnDisableAllGlobal.setLayoutParams(dagLp);
-        btnDisableAllGlobal.setClickable(true);
-        btnDisableAllGlobal.setFocusable(true);
+        LinearLayout btnDisableAllGlobal = createQuickActionPill(activity, MaterialVectorDrawable.TYPE_CLOSE, "Disable all", density, theme);
+        LinearLayout.LayoutParams p2 = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+        p2.rightMargin = gap;
+        btnDisableAllGlobal.setLayoutParams(p2);
 
-        TextView btnExpandAllGlobal = new TextView(activity);
-        btnExpandAllGlobal.setText("Expand all");
-        btnExpandAllGlobal.setTextSize(pillTextSize);
-        btnExpandAllGlobal.setTypeface(null, Typeface.BOLD);
-        btnExpandAllGlobal.setGravity(Gravity.CENTER);
-        btnExpandAllGlobal.setSingleLine(true);
-        btnExpandAllGlobal.setPadding(pillPadH, pillPadV, pillPadH, pillPadV);
-        btnExpandAllGlobal.setTextColor(theme.textPrimary);
-        btnExpandAllGlobal.setBackground(createRoundedDrawable(theme.surfaceContainer, 12 * density));
-        LinearLayout.LayoutParams expLp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
-        expLp.setMargins(gap, 0, gap, 0);
-        btnExpandAllGlobal.setLayoutParams(expLp);
-        btnExpandAllGlobal.setClickable(true);
-        btnExpandAllGlobal.setFocusable(true);
+        LinearLayout btnExpandAllGlobal = createQuickActionPill(activity, MaterialVectorDrawable.TYPE_EXPAND, "Expand all", density, theme);
+        LinearLayout.LayoutParams p3 = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+        p3.rightMargin = gap;
+        btnExpandAllGlobal.setLayoutParams(p3);
 
-        TextView btnCollapseAllGlobal = new TextView(activity);
-        btnCollapseAllGlobal.setText("Collapse all");
-        btnCollapseAllGlobal.setTextSize(pillTextSize);
-        btnCollapseAllGlobal.setTypeface(null, Typeface.BOLD);
-        btnCollapseAllGlobal.setGravity(Gravity.CENTER);
-        btnCollapseAllGlobal.setSingleLine(true);
-        btnCollapseAllGlobal.setPadding(pillPadH, pillPadV, pillPadH, pillPadV);
-        btnCollapseAllGlobal.setTextColor(theme.textPrimary);
-        btnCollapseAllGlobal.setBackground(createRoundedDrawable(theme.surfaceContainer, 12 * density));
-        LinearLayout.LayoutParams colLp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
-        colLp.setMargins(gap, 0, 0, 0);
-        btnCollapseAllGlobal.setLayoutParams(colLp);
-        btnCollapseAllGlobal.setClickable(true);
-        btnCollapseAllGlobal.setFocusable(true);
+        LinearLayout btnCollapseAllGlobal = createQuickActionPill(activity, MaterialVectorDrawable.TYPE_COLLAPSE, "Collapse all", density, theme);
+        LinearLayout.LayoutParams p4 = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+        btnCollapseAllGlobal.setLayoutParams(p4);
 
         globalActionBar.addView(btnEnableAllGlobal);
         globalActionBar.addView(btnDisableAllGlobal);
@@ -1696,8 +1662,7 @@ public final class PhenotypeFlagManager {
         listView.setPadding(tbPad, (int) (8 * density), tbPad, (int) (16 * density));
         listView.setClipToPadding(false);
         listView.setFastScrollEnabled(false);
-        listView.setVerticalScrollBarEnabled(true);
-        listView.setScrollBarStyle(View.SCROLLBARS_OUTSIDE_OVERLAY);
+        listView.setVerticalScrollBarEnabled(false);
         listFrame.addView(listView);
 
         LinearLayout emptyContainer = new LinearLayout(activity);
@@ -1748,18 +1713,32 @@ public final class PhenotypeFlagManager {
         listView.setAdapter(adapter);
 
         btnEnableAllGlobal.setOnClickListener(v -> {
-            SharedPreferences.Editor edit = prefs.edit();
-            for (CuratedFlag cf : PhotoFlagsRegistry.CURATED_FLAGS) {
-                if (cf.type == PhotoFlagsRegistry.FlagType.BOOLEAN) {
-                    edit.putBoolean(cf.key, true);
-                } else if (cf.type == PhotoFlagsRegistry.FlagType.LONG) {
-                    edit.putLong(cf.key, ((Number) cf.defaultValue).longValue());
+            LinearLayout msgLayout = new LinearLayout(activity);
+            msgLayout.setOrientation(LinearLayout.VERTICAL);
+            int mPad = (int) (18 * density);
+            msgLayout.setPadding(mPad, (int) (4 * density), mPad, (int) (12 * density));
+
+            TextView tvMsg = new TextView(activity);
+            tvMsg.setText("Are you sure you want to enable all " + PhotoFlagsRegistry.CURATED_FLAGS.size() + " curated Morphe flags?");
+            tvMsg.setTextSize(13);
+            tvMsg.setTextColor(theme.textPrimary);
+            tvMsg.setLineSpacing(0, 1.25f);
+            msgLayout.addView(tvMsg);
+
+            createM3ActionDialog(activity, "Enable all flags?", msgLayout, "Enable All", () -> {
+                SharedPreferences.Editor edit = prefs.edit();
+                for (CuratedFlag cf : PhotoFlagsRegistry.CURATED_FLAGS) {
+                    if (cf.type == PhotoFlagsRegistry.FlagType.BOOLEAN) {
+                        edit.putBoolean(cf.key, true);
+                    } else if (cf.type == PhotoFlagsRegistry.FlagType.LONG) {
+                        edit.putLong(cf.key, ((Number) cf.defaultValue).longValue());
+                    }
                 }
-            }
-            edit.apply();
-            GooglePhotosAccountAvatar.syncOneGoogleFlags(activity);
-            adapter.reloadData();
-            Toast.makeText(activity, "Enabled all " + PhotoFlagsRegistry.CURATED_FLAGS.size() + " Morphe flags", Toast.LENGTH_SHORT).show();
+                edit.apply();
+                GooglePhotosAccountAvatar.syncOneGoogleFlags(activity);
+                adapter.reloadData();
+                Toast.makeText(activity, "Enabled all " + PhotoFlagsRegistry.CURATED_FLAGS.size() + " Morphe flags", Toast.LENGTH_SHORT).show();
+            }).show();
         });
 
         btnDisableAllGlobal.setOnClickListener(v -> {
@@ -2059,26 +2038,26 @@ public final class PhenotypeFlagManager {
             }
         }));
 
-        // 6. Clear All Flags
-        items.add(new MenuItem(MaterialVectorDrawable.TYPE_DELETE, "Clear All Flags", "Wipe all flags and restore stock photos state", () -> {
+        // 6. Reset All Flags
+        items.add(new MenuItem(MaterialVectorDrawable.TYPE_DELETE, "Reset All Flags", "Delete all flag overrides and restore stock unconfigured state", () -> {
             LinearLayout msgLayout = new LinearLayout(activity);
             msgLayout.setOrientation(LinearLayout.VERTICAL);
             int mPad = (int) (18 * density);
             msgLayout.setPadding(mPad, (int) (4 * density), mPad, (int) (12 * density));
 
             TextView tvMsg = new TextView(activity);
-            tvMsg.setText("Are you sure you want to remove all configured phenotype flags?\n\nThis will restore stock Google Photos behavior on next restart.");
+            tvMsg.setText("Are you sure you want to wipe all stored flag overrides?\n\n• Custom flags will be completely deleted.\n• Curated flags will reset to stock unconfigured (disabled) state.\n• Restores stock Google Photos behavior on next restart.");
             tvMsg.setTextSize(13);
             tvMsg.setTextColor(theme.textPrimary);
             tvMsg.setLineSpacing(0, 1.25f);
             msgLayout.addView(tvMsg);
 
-            createM3ActionDialog(activity, "Clear All Flags?", msgLayout, "Clear All", () -> {
+            createM3ActionDialog(activity, "Reset All Flags?", msgLayout, "Reset All", () -> {
                 prefs.edit().clear().apply();
                 GooglePhotosAccountAvatar.syncOneGoogleFlags(activity);
                 adapter.collapseAll();
                 onRefresh.run();
-                Toast.makeText(activity, "All flags cleared! Restart Photos.", Toast.LENGTH_LONG).show();
+                Toast.makeText(activity, "All flags reset to unconfigured! Restart Photos.", Toast.LENGTH_LONG).show();
             }).show();
         }));
 
@@ -2146,6 +2125,7 @@ public final class PhenotypeFlagManager {
         }
 
         ScrollView scroll = new ScrollView(activity);
+        scroll.setVerticalScrollBarEnabled(false);
         scroll.addView(list);
 
         LinearLayout contentRoot = (LinearLayout) ((ViewGroup) dialog.findViewById(android.R.id.content)).getChildAt(0);
@@ -2936,6 +2916,38 @@ public final class PhenotypeFlagManager {
 
     private static View createHeaderIconButton(Activity activity, Drawable iconDrawable, int touchSizePx) {
         return createHeaderIconButton(activity, iconDrawable, touchSizePx, (int) (touchSizePx * 0.55f));
+    }
+
+    private static LinearLayout createQuickActionPill(Activity activity, int iconType, String text, float density, Theme theme) {
+        LinearLayout pill = new LinearLayout(activity);
+        pill.setOrientation(LinearLayout.HORIZONTAL);
+        pill.setGravity(Gravity.CENTER);
+        pill.setClickable(true);
+        pill.setFocusable(true);
+        int padH = (int) (3 * density);
+        int padV = (int) (6.5f * density);
+        pill.setPadding(padH, padV, padH, padV);
+        pill.setBackground(createRoundedDrawable(theme.surfaceContainer, 12 * density));
+
+        ImageView iv = new ImageView(activity);
+        int iconSize = (int) (12 * density);
+        LinearLayout.LayoutParams ivLp = new LinearLayout.LayoutParams(iconSize, iconSize);
+        ivLp.rightMargin = (int) (3 * density);
+        iv.setLayoutParams(ivLp);
+        iv.setImageDrawable(new MaterialVectorDrawable(iconType, theme.textPrimary));
+        pill.addView(iv);
+
+        TextView tv = new TextView(activity);
+        tv.setText(text);
+        tv.setTextSize(10f);
+        tv.setTypeface(null, Typeface.BOLD);
+        tv.setTextColor(theme.textPrimary);
+        tv.setIncludeFontPadding(false);
+        tv.setSingleLine(true);
+        tv.setEllipsize(TextUtils.TruncateAt.END);
+        pill.addView(tv);
+
+        return pill;
     }
 
     private static GradientDrawable createCardDrawable(boolean active, float density, Theme theme) {

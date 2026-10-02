@@ -238,6 +238,7 @@ public final class DiagnosticsDialog {
         // 4. Log Content View (Modern Dark Terminal covering all logs)
         // ─────────────────────────────────────────────────────────────────────
         ScrollView scrollView = new ScrollView(activity);
+        scrollView.setVerticalScrollBarEnabled(false);
         LinearLayout.LayoutParams svLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f);
         svLp.setMargins(padH, (int) (4 * density), padH, (int) (8 * density));
         scrollView.setLayoutParams(svLp);
@@ -544,6 +545,7 @@ public final class DiagnosticsDialog {
         root.addView(header);
 
         ScrollView sv = new ScrollView(activity);
+        sv.setVerticalScrollBarEnabled(false);
         LinearLayout.LayoutParams svLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f);
         svLp.setMargins(0, 0, 0, (int) (8 * density));
         sv.setLayoutParams(svLp);
