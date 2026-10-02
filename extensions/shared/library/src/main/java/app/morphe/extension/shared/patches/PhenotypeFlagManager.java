@@ -1957,7 +1957,7 @@ public final class PhenotypeFlagManager {
         }));
 
         // 3. Enable All Flags
-        items.add(new MenuItem(MaterialVectorDrawable.TYPE_SYNC, "Enable All Flags", "Turn on all 362 curated Morphe flags", () -> {
+        items.add(new MenuItem(MaterialVectorDrawable.TYPE_SYNC, "Enable All Flags", "Turn on all " + PhotoFlagsRegistry.CURATED_FLAGS.size() + " curated Morphe flags", () -> {
             SharedPreferences.Editor edit = prefs.edit();
             for (CuratedFlag cf : PhotoFlagsRegistry.CURATED_FLAGS) {
                 if (cf.type == PhotoFlagsRegistry.FlagType.BOOLEAN) {
@@ -1973,7 +1973,7 @@ public final class PhenotypeFlagManager {
         }));
 
         // 4. Disable All Flags
-        items.add(new MenuItem(MaterialVectorDrawable.TYPE_CLOSE, "Disable All Flags", "Turn off all 362 curated Morphe flags", () -> {
+        items.add(new MenuItem(MaterialVectorDrawable.TYPE_CLOSE, "Disable All Flags", "Turn off all " + PhotoFlagsRegistry.CURATED_FLAGS.size() + " curated Morphe flags", () -> {
             LinearLayout msgLayout = new LinearLayout(activity);
             msgLayout.setOrientation(LinearLayout.VERTICAL);
             int mPad = (int) (18 * density);
@@ -2011,12 +2011,12 @@ public final class PhenotypeFlagManager {
             Toast.makeText(activity, "Select backup/preset file", Toast.LENGTH_LONG).show();
         }));
 
-        // 4. Bulk Paste Text
+        // 6. Bulk Paste Text
         items.add(new MenuItem(MaterialVectorDrawable.TYPE_PASTE, "Bulk Paste Text", "Paste key=value lines, JSON, or XML directly", () -> {
             showBulkPasteDialog(activity, prefs, onRefresh);
         }));
 
-        // 5. Export to File (SAF)
+        // 7. Export to File (SAF)
         items.add(new MenuItem(MaterialVectorDrawable.TYPE_EXPORT, "Export to File (SAF)", "Save all configured flags to a file", () -> {
             Intent intent = new Intent(Intent.ACTION_CREATE_DOCUMENT);
             intent.addCategory(Intent.CATEGORY_OPENABLE);
@@ -2026,7 +2026,7 @@ public final class PhenotypeFlagManager {
             Toast.makeText(activity, "Choose location to save flags backup", Toast.LENGTH_LONG).show();
         }));
 
-        // 6. Copy All to Clipboard
+        // 8. Copy All to Clipboard
         items.add(new MenuItem(MaterialVectorDrawable.TYPE_CLIPBOARD, "Copy All to Clipboard", "Copy all configured flags to clipboard as JSON", () -> {
             Map<String, ?> all = prefs.getAll();
             JSONObject json = new JSONObject();
@@ -2046,15 +2046,15 @@ public final class PhenotypeFlagManager {
             }
         }));
 
-        // 7. Load Recommended Presets
-        items.add(new MenuItem(MaterialVectorDrawable.TYPE_PRESETS, "Load Recommended Presets", "Apply all 362 Morphe feature flags (story colors, AI tools, Create Tab, Navigation)", () -> {
+        // 9. Load Recommended Presets
+        items.add(new MenuItem(MaterialVectorDrawable.TYPE_PRESETS, "Load Recommended Presets", "Apply all " + PhotoFlagsRegistry.CURATED_FLAGS.size() + " Morphe feature flags (story colors, AI tools, Create Tab, Navigation)", () -> {
             LinearLayout msgLayout = new LinearLayout(activity);
             msgLayout.setOrientation(LinearLayout.VERTICAL);
             int mPad = (int) (18 * density);
             msgLayout.setPadding(mPad, (int) (4 * density), mPad, (int) (12 * density));
 
             TextView tvMsg = new TextView(activity);
-            tvMsg.setText("This will activate all 362 curated Morphe feature flags across AI tools, Create Tab, Stories, and Navigation.\n\nExisting values will be kept, and missing overrides will be enabled.");
+            tvMsg.setText("This will activate all " + PhotoFlagsRegistry.CURATED_FLAGS.size() + " curated Morphe feature flags across AI tools, Create Tab, Stories, and Navigation.\n\nExisting values will be kept, and missing overrides will be enabled.");
             tvMsg.setTextSize(13);
             tvMsg.setTextColor(theme.textPrimary);
             tvMsg.setLineSpacing(0, 1.25f);
@@ -2064,11 +2064,11 @@ public final class PhenotypeFlagManager {
                 PhotoFlagsRegistry.applyCuratedDefaults(prefs);
                 GooglePhotosAccountAvatar.syncOneGoogleFlags(activity);
                 onRefresh.run();
-                Toast.makeText(activity, "Activated 362 Morphe flags! Restart to take effect.", Toast.LENGTH_LONG).show();
+                Toast.makeText(activity, "Activated " + PhotoFlagsRegistry.CURATED_FLAGS.size() + " Morphe flags! Restart to take effect.", Toast.LENGTH_LONG).show();
             }).show();
         }));
 
-        // 8. Clear All Flags
+        // 10. Clear All Flags
         items.add(new MenuItem(MaterialVectorDrawable.TYPE_DELETE, "Clear All Flags", "Wipe all flags and restore stock photos state", () -> {
             LinearLayout msgLayout = new LinearLayout(activity);
             msgLayout.setOrientation(LinearLayout.VERTICAL);
