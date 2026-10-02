@@ -12,15 +12,23 @@ import android.graphics.Typeface;
 import android.graphics.drawable.ColorDrawable;
 import android.graphics.drawable.GradientDrawable;
 import android.net.Uri;
+import android.content.res.ColorStateList;
+import android.content.res.Configuration;
+import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
 import android.text.Editable;
+import android.text.InputType;
 import android.text.TextWatcher;
 import android.view.Gravity;
+import android.view.KeyEvent;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.ViewTreeObserver;
 import android.view.Window;
+import android.view.WindowManager;
+import android.view.inputmethod.EditorInfo;
+import android.view.inputmethod.InputMethodManager;
 import android.widget.BaseAdapter;
 import android.widget.Button;
 import android.widget.EditText;
@@ -75,7 +83,129 @@ public final class PhenotypeFlagManager {
     private static final ExecutorService IO_EXECUTOR = Executors.newSingleThreadExecutor();
     private static final Handler MAIN_HANDLER = new Handler(Looper.getMainLooper());
 
-    // Material 3 Palette
+    // Dynamic Material 3 Palette Engine
+    public static final class Theme {
+        public final boolean isDark;
+        public final int bg;
+        public final int surface;
+        public final int surfaceContainer;
+        public final int headerCardBg;
+        public final int card;
+        public final int cardActive;
+        public final int cardBorder;
+        public final int cardBorderActive;
+        public final int primary;
+        public final int primaryContainer;
+        public final int onPrimary;
+        public final int onPrimaryContainer;
+        public final int textPrimary;
+        public final int textSecondary;
+        public final int textTertiary;
+        public final int outline;
+        public final int searchInputBg;
+        public final int disableAllText;
+        public final int disableAllBg;
+        public final int enableAllText;
+        public final int enableAllBg;
+
+        public Theme(boolean isDark, int bg, int surface, int surfaceContainer, int headerCardBg,
+                     int card, int cardActive, int cardBorder, int cardBorderActive,
+                     int primary, int primaryContainer, int onPrimary, int onPrimaryContainer,
+                     int textPrimary, int textSecondary, int textTertiary, int outline,
+                     int searchInputBg, int disableAllText, int disableAllBg,
+                     int enableAllText, int enableAllBg) {
+            this.isDark = isDark;
+            this.bg = bg;
+            this.surface = surface;
+            this.surfaceContainer = surfaceContainer;
+            this.headerCardBg = headerCardBg;
+            this.card = card;
+            this.cardActive = cardActive;
+            this.cardBorder = cardBorder;
+            this.cardBorderActive = cardBorderActive;
+            this.primary = primary;
+            this.primaryContainer = primaryContainer;
+            this.onPrimary = onPrimary;
+            this.onPrimaryContainer = onPrimaryContainer;
+            this.textPrimary = textPrimary;
+            this.textSecondary = textSecondary;
+            this.textTertiary = textTertiary;
+            this.outline = outline;
+            this.searchInputBg = searchInputBg;
+            this.disableAllText = disableAllText;
+            this.disableAllBg = disableAllBg;
+            this.enableAllText = enableAllText;
+            this.enableAllBg = enableAllBg;
+        }
+
+        public static Theme get(Context context) {
+            boolean isDark = isDarkTheme(context);
+            if (isDark) {
+                return new Theme(
+                        true,
+                        0xFF121414, // bg
+                        0xFF1A1C1C, // surface
+                        0xFF202322, // surfaceContainer
+                        0xFF242827, // headerCardBg
+                        0xFF1D201F, // card
+                        0xFF152A26, // cardActive (subtle dark teal tint)
+                        0xFF2F3432, // cardBorder
+                        0xFF4CDAC6, // cardBorderActive
+                        0xFF4CDAC6, // primary (M3 teal)
+                        0xFF005048, // primaryContainer
+                        0xFF003731, // onPrimary
+                        0xFF70F7E3, // onPrimaryContainer
+                        0xFFE1E3E1, // textPrimary
+                        0xFF8A938F, // textSecondary
+                        0xFF6C7572, // textTertiary
+                        0xFF3A423F, // outline
+                        0xFF292C2B, // searchInputBg
+                        0xFFFFB4AB, // disableAllText (M3 error container on dark)
+                        0xFF5A1210, // disableAllBg
+                        0xFF70F7E3, // enableAllText
+                        0xFF005048  // enableAllBg
+                );
+            } else {
+                return new Theme(
+                        false,
+                        0xFFF5F7F6, // bg
+                        0xFFFFFFFF, // surface
+                        0xFFF0F4F2, // surfaceContainer
+                        0xFFEAEFEB, // headerCardBg
+                        0xFFFFFFFF, // card
+                        0xFFE6F4F1, // cardActive
+                        0xFFD8E3E0, // cardBorder
+                        0xFF006A60, // cardBorderActive
+                        0xFF006A60, // primary
+                        0xFFCCE8E3, // primaryContainer
+                        0xFFFFFFFF, // onPrimary
+                        0xFF00201C, // onPrimaryContainer
+                        0xFF191C1D, // textPrimary
+                        0xFF53605D, // textSecondary
+                        0xFF8B9B97, // textTertiary
+                        0xFFD8E3E0, // outline
+                        0xFFEAEFEB, // searchInputBg
+                        0xFFBA1A1A, // disableAllText
+                        0xFFFFDAD6, // disableAllBg
+                        0xFF006A60, // enableAllText
+                        0xFFCCE8E3  // enableAllBg
+                );
+            }
+        }
+    }
+
+    public static boolean isDarkTheme(Context context) {
+        if (context != null) {
+            try {
+                int mode = context.getResources().getConfiguration().uiMode & Configuration.UI_MODE_NIGHT_MASK;
+                if (mode == Configuration.UI_MODE_NIGHT_YES) return true;
+                if (mode == Configuration.UI_MODE_NIGHT_NO) return false;
+            } catch (Throwable ignored) {}
+        }
+        return app.morphe.extension.shared.Utils.isDarkModeEnabled();
+    }
+
+    // Material 3 Fallback Palette
     private static final int M3_BG = 0xFFF5F7F6;
     private static final int M3_SURFACE = 0xFFFFFFFF;
     private static final int M3_CARD = 0xFFFFFFFF;
@@ -126,6 +256,7 @@ public final class PhenotypeFlagManager {
 
     private static LinearLayout createFloatingPill(Activity activity) {
         float density = activity.getResources().getDisplayMetrics().density;
+        Theme theme = Theme.get(activity);
         LinearLayout dock = new LinearLayout(activity);
         dock.setTag(SETTINGS_PILL_TAG);
         dock.setOrientation(LinearLayout.HORIZONTAL);
@@ -155,7 +286,7 @@ public final class PhenotypeFlagManager {
 
         GradientDrawable bgFlags = new GradientDrawable();
         bgFlags.setCornerRadius(22 * density);
-        bgFlags.setColor(M3_PRIMARY);
+        bgFlags.setColor(theme.primary);
         pillFlags.setBackground(bgFlags);
 
         TextView iconFlags = new TextView(activity);
@@ -167,7 +298,7 @@ public final class PhenotypeFlagManager {
         TextView labelFlags = new TextView(activity);
         labelFlags.setText("Flags");
         labelFlags.setTextSize(13);
-        labelFlags.setTextColor(M3_ON_PRIMARY);
+        labelFlags.setTextColor(theme.onPrimary);
         labelFlags.setTypeface(null, Typeface.BOLD);
         pillFlags.addView(labelFlags);
         pillFlags.setOnClickListener(v -> showFlagManagerDialog(activity));
@@ -186,7 +317,7 @@ public final class PhenotypeFlagManager {
 
         GradientDrawable bgToolkit = new GradientDrawable();
         bgToolkit.setCornerRadius(22 * density);
-        bgToolkit.setColor(0xFF005A54);
+        bgToolkit.setColor(theme.isDark ? 0xFF004D40 : 0xFF005A54);
         pillToolkit.setBackground(bgToolkit);
 
         TextView iconToolkit = new TextView(activity);
@@ -217,7 +348,7 @@ public final class PhenotypeFlagManager {
 
         GradientDrawable bgLogs = new GradientDrawable();
         bgLogs.setCornerRadius(22 * density);
-        bgLogs.setColor(0xFF2E3836);
+        bgLogs.setColor(theme.isDark ? 0xFF282F2E : 0xFF2E3836);
         pillLogs.setBackground(bgLogs);
 
         TextView iconLogs = new TextView(activity);
@@ -306,9 +437,11 @@ public final class PhenotypeFlagManager {
         private final Activity activity;
         private final SharedPreferences prefs;
         private final float density;
+        private final Theme theme;
         private final List<DisplayItem> allItems = new ArrayList<>();
         private final List<DisplayItem> displayedItems = new ArrayList<>();
         private final Set<String> expandedCategories = new HashSet<>();
+        private final Set<String> searchCollapsedCategories = new HashSet<>();
         private final TextView tvSub;
         private final LinearLayout emptyContainer;
         private int totalFlagsCount = 0;
@@ -316,16 +449,28 @@ public final class PhenotypeFlagManager {
         private String currentFilterQuery = "";
 
         public void expandAll() {
-            for (DisplayItem it : allItems) {
-                if (it.isHeader()) {
-                    expandedCategories.add(it.headerTitle);
+            if (!currentFilterQuery.isEmpty()) {
+                searchCollapsedCategories.clear();
+            } else {
+                for (DisplayItem it : allItems) {
+                    if (it.isHeader()) {
+                        expandedCategories.add(it.headerTitle);
+                    }
                 }
             }
             filter(currentFilterQuery);
         }
 
         public void collapseAll() {
-            expandedCategories.clear();
+            if (!currentFilterQuery.isEmpty()) {
+                for (DisplayItem it : allItems) {
+                    if (it.isHeader()) {
+                        searchCollapsedCategories.add(it.headerTitle);
+                    }
+                }
+            } else {
+                expandedCategories.clear();
+            }
             filter(currentFilterQuery);
         }
 
@@ -333,6 +478,7 @@ public final class PhenotypeFlagManager {
             this.activity = activity;
             this.prefs = prefs;
             this.density = activity.getResources().getDisplayMetrics().density;
+            this.theme = Theme.get(activity);
             this.tvSub = tvSub;
             this.emptyContainer = emptyContainer;
         }
@@ -442,21 +588,21 @@ public final class PhenotypeFlagManager {
             filter(currentFilterQuery);
         }
 
-        private void updateSubtitleText(int flagsShown) {
+        private void updateSubtitleText(int flagsShown, int totalMatched) {
             if (totalFlagsCount == 0) {
                 emptyContainer.setVisibility(View.VISIBLE);
-                renderEmptySlate(activity, emptyContainer, density);
+                renderEmptySlate(activity, emptyContainer, density, theme);
                 tvSub.setText("0 Flags Configured");
-            } else if (!currentFilterQuery.isEmpty() && flagsShown == 0) {
+            } else if (!currentFilterQuery.isEmpty() && totalMatched == 0) {
                 emptyContainer.setVisibility(View.VISIBLE);
-                renderEmptyMessage(activity, emptyContainer, "No flags matched \"" + currentFilterQuery + "\"", density);
+                renderEmptyMessage(activity, emptyContainer, "No flags matched \"" + currentFilterQuery + "\"", density, theme);
                 tvSub.setText("0 Flags Matched (" + totalFlagsCount + " Total)");
             } else {
                 emptyContainer.setVisibility(View.GONE);
                 if (currentFilterQuery.isEmpty()) {
                     tvSub.setText(totalFlagsCount + " Flags Configured");
                 } else {
-                    tvSub.setText(flagsShown + " Shown (" + totalFlagsCount + " Total)");
+                    tvSub.setText(totalMatched + " Found (" + totalFlagsCount + " Total)");
                 }
             }
         }
@@ -466,22 +612,64 @@ public final class PhenotypeFlagManager {
             for (DisplayItem it : displayedItems) {
                 if (!it.isHeader()) flagsShown++;
             }
-            updateSubtitleText(flagsShown);
+            updateSubtitleText(flagsShown, countTotalMatches(currentFilterQuery));
+        }
+
+        private int countTotalMatches(String query) {
+            if (query == null || query.isEmpty()) return totalFlagsCount;
+            int count = 0;
+            for (DisplayItem it : allItems) {
+                if (!it.isHeader()) {
+                    String target = it.getKey() + " " + it.getTitle() + " " + (it.getDescription() != null ? it.getDescription() : "") + " " + (it.getTrigger() != null ? it.getTrigger() : "") + " " + it.value;
+                    if (target.toLowerCase().contains(query)) {
+                        count++;
+                    }
+                }
+            }
+            return count;
+        }
+
+        private int countMatchesInCategory(String cat, String query) {
+            if (query == null || query.isEmpty()) return 0;
+            int count = 0;
+            boolean inCat = false;
+            for (DisplayItem it : allItems) {
+                if (it.isHeader()) {
+                    inCat = cat.equals(it.headerTitle);
+                } else if (inCat) {
+                    String target = it.getKey() + " " + it.getTitle() + " " + (it.getDescription() != null ? it.getDescription() : "") + " " + (it.getTrigger() != null ? it.getTrigger() : "") + " " + it.value;
+                    if (target.toLowerCase().contains(query)) {
+                        count++;
+                    }
+                }
+            }
+            return count;
         }
 
         public void filter(String query) {
-            this.currentFilterQuery = query == null ? "" : query.toLowerCase().trim();
+            String newQuery = query == null ? "" : query.toLowerCase().trim();
+            if (!newQuery.equals(this.currentFilterQuery)) {
+                searchCollapsedCategories.clear();
+            }
+            this.currentFilterQuery = newQuery;
             displayedItems.clear();
 
             DisplayItem currentHeader = null;
             List<DisplayItem> currentSection = new ArrayList<>();
+            int totalMatched = 0;
+
             for (DisplayItem it : allItems) {
                 if (it.isHeader()) {
                     if (currentHeader != null) {
-                        displayedItems.add(currentHeader);
-                        boolean isExpanded = !currentFilterQuery.isEmpty() || expandedCategories.contains(currentHeader.headerTitle);
-                        if (isExpanded) {
-                            displayedItems.addAll(currentSection);
+                        if (currentFilterQuery.isEmpty() || !currentSection.isEmpty()) {
+                            displayedItems.add(currentHeader);
+                            boolean isExpanded = currentFilterQuery.isEmpty()
+                                    ? expandedCategories.contains(currentHeader.headerTitle)
+                                    : !searchCollapsedCategories.contains(currentHeader.headerTitle);
+                            if (isExpanded) {
+                                displayedItems.addAll(currentSection);
+                            }
+                            totalMatched += currentSection.size();
                         }
                     }
                     currentHeader = it;
@@ -500,10 +688,13 @@ public final class PhenotypeFlagManager {
             if (currentHeader != null) {
                 if (currentFilterQuery.isEmpty() || !currentSection.isEmpty()) {
                     displayedItems.add(currentHeader);
-                    boolean isExpanded = !currentFilterQuery.isEmpty() || expandedCategories.contains(currentHeader.headerTitle);
+                    boolean isExpanded = currentFilterQuery.isEmpty()
+                            ? expandedCategories.contains(currentHeader.headerTitle)
+                            : !searchCollapsedCategories.contains(currentHeader.headerTitle);
                     if (isExpanded) {
                         displayedItems.addAll(currentSection);
                     }
+                    totalMatched += currentSection.size();
                 }
             }
 
@@ -513,7 +704,7 @@ public final class PhenotypeFlagManager {
             for (DisplayItem it : displayedItems) {
                 if (!it.isHeader()) flagsShown++;
             }
-            updateSubtitleText(flagsShown);
+            updateSubtitleText(flagsShown, totalMatched);
         }
 
         @Override
@@ -528,7 +719,6 @@ public final class PhenotypeFlagManager {
                     hHolder = new HeaderViewHolder();
                     LinearLayout card = new LinearLayout(activity);
                     card.setOrientation(LinearLayout.VERTICAL);
-                    card.setBackground(createRoundedDrawable(0xFFEAEFEB, 14 * density));
                     int padH = (int) (14 * density);
                     int padV = (int) (10 * density);
                     card.setPadding(padH, padV, padH, padV);
@@ -539,7 +729,6 @@ public final class PhenotypeFlagManager {
 
                     TextView tvTitle = new TextView(activity);
                     tvTitle.setTextSize(13);
-                    tvTitle.setTextColor(M3_PRIMARY);
                     tvTitle.setTypeface(null, Typeface.BOLD);
                     LinearLayout.LayoutParams tLp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
                     tvTitle.setLayoutParams(tLp);
@@ -547,7 +736,6 @@ public final class PhenotypeFlagManager {
 
                     TextView tvArrow = new TextView(activity);
                     tvArrow.setTextSize(14);
-                    tvArrow.setTextColor(M3_PRIMARY);
                     tvArrow.setTypeface(null, Typeface.BOLD);
                     int aPadH = (int) (6 * density);
                     tvArrow.setPadding(aPadH, 0, aPadH, 0);
@@ -565,7 +753,6 @@ public final class PhenotypeFlagManager {
 
                     TextView tvTrigger = new TextView(activity);
                     tvTrigger.setTextSize(11);
-                    tvTrigger.setTextColor(M3_TEXT_SECONDARY);
                     tvTrigger.setPadding(0, (int) (3 * density), 0, 0);
                     card.addView(tvTrigger);
 
@@ -579,6 +766,12 @@ public final class PhenotypeFlagManager {
                     convertView.setTag(hHolder);
                 }
 
+                // Re-apply styling on recycled views
+                hHolder.root.setBackground(createRoundedDrawable(theme.headerCardBg, 14 * density));
+                hHolder.tvTitle.setTextColor(theme.primary);
+                hHolder.tvArrow.setTextColor(theme.primary);
+                hHolder.tvTrigger.setTextColor(theme.textSecondary);
+
                 final String cat = item.headerTitle;
                 final List<CuratedFlag> flagsInCat = PhotoFlagsRegistry.getFlagsForCategory(cat);
 
@@ -590,16 +783,32 @@ public final class PhenotypeFlagManager {
                     }
                 }
 
-                boolean isExpanded = !currentFilterQuery.isEmpty() || expandedCategories.contains(cat);
+                boolean isExpanded = currentFilterQuery.isEmpty()
+                        ? expandedCategories.contains(cat)
+                        : !searchCollapsedCategories.contains(cat);
+
                 hHolder.tvArrow.setText(isExpanded ? "▼" : "▶");
-                hHolder.tvTitle.setText(cat + (totalInCat > 0 ? " (" + enabledInCat + "/" + totalInCat + ")" : ""));
+                if (currentFilterQuery.isEmpty()) {
+                    hHolder.tvTitle.setText(cat + (totalInCat > 0 ? " (" + enabledInCat + "/" + totalInCat + ")" : ""));
+                } else {
+                    int matchedInCat = countMatchesInCategory(cat, currentFilterQuery);
+                    hHolder.tvTitle.setText(cat + " (" + matchedInCat + " matched)");
+                }
                 hHolder.tvTrigger.setText(PhotoFlagsRegistry.getCategoryTriggerDescription(cat));
 
                 View.OnClickListener toggleCollapse = v -> {
-                    if (expandedCategories.contains(cat)) {
-                        expandedCategories.remove(cat);
+                    if (currentFilterQuery.isEmpty()) {
+                        if (expandedCategories.contains(cat)) {
+                            expandedCategories.remove(cat);
+                        } else {
+                            expandedCategories.add(cat);
+                        }
                     } else {
-                        expandedCategories.add(cat);
+                        if (searchCollapsedCategories.contains(cat)) {
+                            searchCollapsedCategories.remove(cat);
+                        } else {
+                            searchCollapsedCategories.add(cat);
+                        }
                     }
                     filter(currentFilterQuery);
                 };
@@ -615,12 +824,12 @@ public final class PhenotypeFlagManager {
                     boolean allEnabled = enabledInCat == totalInCat;
                     if (allEnabled) {
                         hHolder.btnToggleAll.setText("DISABLE ALL");
-                        hHolder.btnToggleAll.setTextColor(0xFFBA1A1A);
-                        hHolder.btnToggleAll.setBackground(createRoundedDrawable(0xFFFFDAD6, 8 * density));
+                        hHolder.btnToggleAll.setTextColor(theme.disableAllText);
+                        hHolder.btnToggleAll.setBackground(createRoundedDrawable(theme.disableAllBg, 8 * density));
                     } else {
                         hHolder.btnToggleAll.setText("ENABLE ALL");
-                        hHolder.btnToggleAll.setTextColor(M3_PRIMARY);
-                        hHolder.btnToggleAll.setBackground(createRoundedDrawable(M3_PRIMARY_CONTAINER, 8 * density));
+                        hHolder.btnToggleAll.setTextColor(theme.enableAllText);
+                        hHolder.btnToggleAll.setBackground(createRoundedDrawable(theme.enableAllBg, 8 * density));
                     }
 
                     hHolder.btnToggleAll.setOnClickListener(v -> {
@@ -669,15 +878,12 @@ public final class PhenotypeFlagManager {
 
                 TextView tvTitle = new TextView(activity);
                 tvTitle.setTextSize(14);
-                tvTitle.setTextColor(M3_TEXT_PRIMARY);
                 tvTitle.setTypeface(null, Typeface.BOLD);
                 textCol.addView(tvTitle);
 
                 TextView tvTriggerBadge = new TextView(activity);
                 tvTriggerBadge.setTextSize(10);
                 tvTriggerBadge.setTypeface(null, Typeface.BOLD);
-                tvTriggerBadge.setTextColor(M3_PRIMARY);
-                tvTriggerBadge.setBackground(createRoundedDrawable(0xFFE6F4F1, 6 * density));
                 int bPad = (int) (6 * density);
                 tvTriggerBadge.setPadding(bPad, (int) (2 * density), bPad, (int) (2 * density));
                 LinearLayout.LayoutParams tbLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
@@ -688,13 +894,11 @@ public final class PhenotypeFlagManager {
 
                 TextView tvDesc = new TextView(activity);
                 tvDesc.setTextSize(12);
-                tvDesc.setTextColor(M3_TEXT_SECONDARY);
                 tvDesc.setPadding(0, (int) (2 * density), 0, (int) (2 * density));
                 textCol.addView(tvDesc);
 
                 TextView tvKey = new TextView(activity);
                 tvKey.setTextSize(10);
-                tvKey.setTextColor(0xFF8B9B97);
                 textCol.addView(tvKey);
                 row.addView(textCol);
 
@@ -704,8 +908,6 @@ public final class PhenotypeFlagManager {
                 TextView valChip = new TextView(activity);
                 valChip.setTextSize(13);
                 valChip.setTypeface(null, Typeface.BOLD);
-                valChip.setTextColor(M3_PRIMARY);
-                valChip.setBackground(createRoundedDrawable(M3_PRIMARY_CONTAINER, 8 * density));
                 int p = (int) (10 * density);
                 valChip.setPadding(p, (int) (6 * density), p, (int) (6 * density));
                 row.addView(valChip);
@@ -723,6 +925,16 @@ public final class PhenotypeFlagManager {
             } else {
                 holder = (FlagViewHolder) convertView.getTag();
             }
+
+            // Re-apply styling on recycled views
+            holder.tvTitle.setTextColor(theme.textPrimary);
+            holder.tvDesc.setTextColor(theme.textSecondary);
+            holder.tvKey.setTextColor(theme.textTertiary);
+            holder.tvTriggerBadge.setTextColor(theme.primary);
+            holder.tvTriggerBadge.setBackground(createRoundedDrawable(theme.isDark ? 0xFF173832 : 0xFFE6F4F1, 6 * density));
+            holder.valChip.setTextColor(theme.primary);
+            holder.valChip.setBackground(createRoundedDrawable(theme.primaryContainer, 8 * density));
+            applySwitchTint(holder.swToggle, theme);
 
             // Bind Data
             String triggerStr = item.getTrigger();
@@ -752,7 +964,7 @@ public final class PhenotypeFlagManager {
                 holder.swToggle.setVisibility(View.VISIBLE);
 
                 boolean isChecked = Boolean.TRUE.equals(item.value);
-                holder.root.setBackground(createCardDrawable(isChecked, density));
+                holder.root.setBackground(createCardDrawable(isChecked, density, theme));
 
                 holder.swToggle.setOnClickListener(null);
                 holder.swToggle.setChecked(isChecked);
@@ -761,7 +973,7 @@ public final class PhenotypeFlagManager {
                     boolean next = !Boolean.TRUE.equals(item.value);
                     item.value = next;
                     holder.swToggle.setChecked(next);
-                    holder.root.setBackground(createCardDrawable(next, density));
+                    holder.root.setBackground(createCardDrawable(next, density, theme));
                     if (next) {
                         prefs.edit().putBoolean(item.getKey(), true).apply();
                         activeFlagsCount++;
@@ -783,7 +995,7 @@ public final class PhenotypeFlagManager {
             } else {
                 holder.swToggle.setVisibility(View.GONE);
                 holder.valChip.setVisibility(View.VISIBLE);
-                holder.root.setBackground(createCardDrawable(false, density));
+                holder.root.setBackground(createCardDrawable(false, density, theme));
 
                 String chipText = ((item.value instanceof Float || item.value instanceof Double) ? "[Float] "
                         : (item.value instanceof Number) ? "[Long] " : "[String] ") + item.value;
@@ -801,6 +1013,25 @@ public final class PhenotypeFlagManager {
 
             return convertView;
         }
+
+        private void applySwitchTint(Switch sw, Theme theme) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                int[][] states = new int[][]{
+                        new int[]{android.R.attr.state_checked},
+                        new int[]{-android.R.attr.state_checked}
+                };
+                int[] thumbColors = new int[]{
+                        theme.primary,
+                        theme.textSecondary
+                };
+                int[] trackColors = new int[]{
+                        theme.primaryContainer,
+                        theme.isDark ? 0xFF353A38 : theme.outline
+                };
+                sw.setThumbTintList(new ColorStateList(states, thumbColors));
+                sw.setTrackTintList(new ColorStateList(states, trackColors));
+            }
+        }
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -811,6 +1042,7 @@ public final class PhenotypeFlagManager {
         if (activity == null || activity.isFinishing() || activity.isDestroyed()) return;
 
         float density = activity.getResources().getDisplayMetrics().density;
+        Theme theme = Theme.get(activity);
         SharedPreferences prefs = getPrefs(activity);
 
         Dialog dialog = new Dialog(activity);
@@ -818,7 +1050,7 @@ public final class PhenotypeFlagManager {
 
         LinearLayout root = new LinearLayout(activity);
         root.setOrientation(LinearLayout.VERTICAL);
-        root.setBackground(createRoundedDrawable(M3_BG, 28 * density));
+        root.setBackground(createRoundedDrawable(theme.bg, 28 * density));
         root.setLayoutParams(new ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
 
         // 1. Top Bar
@@ -827,7 +1059,7 @@ public final class PhenotypeFlagManager {
         topBar.setGravity(Gravity.CENTER_VERTICAL);
         int tbPad = (int) (16 * density);
         topBar.setPadding(tbPad, (int) (8 * density), (int) (10 * density), (int) (8 * density));
-        topBar.setBackgroundColor(M3_SURFACE);
+        topBar.setBackgroundColor(theme.surface);
 
         LinearLayout titleCol = new LinearLayout(activity);
         titleCol.setOrientation(LinearLayout.VERTICAL);
@@ -837,22 +1069,22 @@ public final class PhenotypeFlagManager {
         TextView tvTitle = new TextView(activity);
         tvTitle.setText("Photos Flags");
         tvTitle.setTextSize(18);
-        tvTitle.setTextColor(M3_TEXT_PRIMARY);
+        tvTitle.setTextColor(theme.textPrimary);
         tvTitle.setTypeface(null, Typeface.BOLD);
         titleCol.addView(tvTitle);
 
         TextView tvSub = new TextView(activity);
         tvSub.setText("Loading flags...");
         tvSub.setTextSize(11);
-        tvSub.setTextColor(M3_TEXT_SECONDARY);
+        tvSub.setTextColor(theme.textSecondary);
         titleCol.addView(tvSub);
         topBar.addView(titleCol);
 
         // Action Icons
-        View btnSearch = createHeaderIconButton(activity, "🔍", (int) (48 * density));
-        View btnAdd = createHeaderIconButton(activity, "➕", (int) (48 * density));
-        View btnMenu = createHeaderIconButton(activity, "⋮", (int) (48 * density));
-        View btnClose = createHeaderIconButton(activity, "✕", (int) (48 * density));
+        View btnSearch = createHeaderIconButton(activity, "🔍", (int) (44 * density), theme);
+        View btnAdd = createHeaderIconButton(activity, "➕", (int) (44 * density), theme);
+        View btnMenu = createHeaderIconButton(activity, "⋮", (int) (44 * density), theme);
+        View btnClose = createHeaderIconButton(activity, "✕", (int) (44 * density), theme);
 
         topBar.addView(btnSearch);
         topBar.addView(btnAdd);
@@ -865,20 +1097,45 @@ public final class PhenotypeFlagManager {
         searchBox.setOrientation(LinearLayout.HORIZONTAL);
         searchBox.setGravity(Gravity.CENTER_VERTICAL);
         searchBox.setPadding(tbPad, (int) (6 * density), tbPad, (int) (10 * density));
-        searchBox.setBackgroundColor(M3_SURFACE);
+        searchBox.setBackgroundColor(theme.surface);
         searchBox.setVisibility(View.GONE);
+
+        LinearLayout inputWrapper = new LinearLayout(activity);
+        inputWrapper.setOrientation(LinearLayout.HORIZONTAL);
+        inputWrapper.setGravity(Gravity.CENTER_VERTICAL);
+        inputWrapper.setBackground(createRoundedDrawable(theme.searchInputBg, 14 * density));
+        LinearLayout.LayoutParams iwLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, (int) (46 * density));
+        inputWrapper.setLayoutParams(iwLp);
 
         EditText etSearch = new EditText(activity);
         etSearch.setHint("Search flags, keys or values...");
         etSearch.setTextSize(14);
-        etSearch.setTextColor(M3_TEXT_PRIMARY);
-        etSearch.setHintTextColor(M3_TEXT_SECONDARY);
-        etSearch.setBackground(createRoundedDrawable(0xFFEAEFEB, 14 * density));
-        int sPad = (int) (12 * density);
-        etSearch.setPadding(sPad, (int) (10 * density), sPad, (int) (10 * density));
-        LinearLayout.LayoutParams sLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, (int) (46 * density));
+        etSearch.setTextColor(theme.textPrimary);
+        etSearch.setHintTextColor(theme.textSecondary);
+        etSearch.setBackground(null);
+        etSearch.setSingleLine(true);
+        etSearch.setMaxLines(1);
+        etSearch.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_FILTER);
+        etSearch.setImeOptions(EditorInfo.IME_ACTION_SEARCH | EditorInfo.IME_FLAG_NO_EXTRACT_UI);
+        int sPad = (int) (14 * density);
+        etSearch.setPadding(sPad, 0, (int) (6 * density), 0);
+        LinearLayout.LayoutParams sLp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1f);
         etSearch.setLayoutParams(sLp);
-        searchBox.addView(etSearch);
+        inputWrapper.addView(etSearch);
+
+        TextView btnClearSearch = new TextView(activity);
+        btnClearSearch.setText("✕");
+        btnClearSearch.setTextSize(14);
+        btnClearSearch.setTextColor(theme.textSecondary);
+        btnClearSearch.setGravity(Gravity.CENTER);
+        int cPad = (int) (12 * density);
+        btnClearSearch.setPadding(cPad, 0, cPad, 0);
+        btnClearSearch.setVisibility(View.GONE);
+        btnClearSearch.setClickable(true);
+        btnClearSearch.setFocusable(true);
+        inputWrapper.addView(btnClearSearch);
+
+        searchBox.addView(inputWrapper);
         root.addView(searchBox);
 
         // 3. Virtualized List View with Fast-Scroll & Empty Container
@@ -916,15 +1173,15 @@ public final class PhenotypeFlagManager {
         int dPadH = (int) (16 * density);
         int dPadV = (int) (12 * density);
         bottomDock.setPadding(dPadH, dPadV, dPadH, dPadV);
-        bottomDock.setBackgroundColor(M3_SURFACE);
+        bottomDock.setBackgroundColor(theme.surface);
         bottomDock.setElevation(10f);
 
         Button btnApply = new Button(activity);
         btnApply.setText("⚡ Apply & Restart Photos");
         btnApply.setTextSize(15);
         btnApply.setTypeface(null, Typeface.BOLD);
-        btnApply.setTextColor(M3_ON_PRIMARY);
-        btnApply.setBackground(createRoundedDrawable(M3_PRIMARY, 26 * density));
+        btnApply.setTextColor(theme.onPrimary);
+        btnApply.setBackground(createRoundedDrawable(theme.primary, 26 * density));
         LinearLayout.LayoutParams applyLp = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, (int) (52 * density));
         btnApply.setLayoutParams(applyLp);
@@ -944,10 +1201,37 @@ public final class PhenotypeFlagManager {
             if (searchBox.getVisibility() == View.VISIBLE) {
                 searchBox.setVisibility(View.GONE);
                 etSearch.setText("");
+                InputMethodManager imm = (InputMethodManager) activity.getSystemService(Context.INPUT_METHOD_SERVICE);
+                if (imm != null) {
+                    imm.hideSoftInputFromWindow(etSearch.getWindowToken(), 0);
+                }
             } else {
                 searchBox.setVisibility(View.VISIBLE);
                 etSearch.requestFocus();
+                InputMethodManager imm = (InputMethodManager) activity.getSystemService(Context.INPUT_METHOD_SERVICE);
+                if (imm != null) {
+                    imm.showSoftInput(etSearch, InputMethodManager.SHOW_IMPLICIT);
+                }
             }
+        });
+
+        btnClearSearch.setOnClickListener(v -> {
+            etSearch.setText("");
+            adapter.filter("");
+        });
+
+        etSearch.setOnEditorActionListener((v, actionId, event) -> {
+            if (actionId == EditorInfo.IME_ACTION_SEARCH ||
+                    actionId == EditorInfo.IME_ACTION_DONE ||
+                    (event != null && event.getKeyCode() == KeyEvent.KEYCODE_ENTER)) {
+                InputMethodManager imm = (InputMethodManager) activity.getSystemService(Context.INPUT_METHOD_SERVICE);
+                if (imm != null) {
+                    imm.hideSoftInputFromWindow(etSearch.getWindowToken(), 0);
+                }
+                etSearch.clearFocus();
+                return true;
+            }
+            return false;
         });
 
         btnClose.setOnClickListener(v -> dialog.dismiss());
@@ -962,6 +1246,7 @@ public final class PhenotypeFlagManager {
         etSearch.addTextChangedListener(new TextWatcher() {
             @Override public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
             @Override public void onTextChanged(CharSequence s, int start, int before, int count) {
+                btnClearSearch.setVisibility(s.length() > 0 ? View.VISIBLE : View.GONE);
                 if (searchRunnable[0] != null) {
                     MAIN_HANDLER.removeCallbacks(searchRunnable[0]);
                 }
@@ -970,6 +1255,13 @@ public final class PhenotypeFlagManager {
                 MAIN_HANDLER.postDelayed(searchRunnable[0], 200);
             }
             @Override public void afterTextChanged(Editable s) {}
+        });
+
+        dialog.setOnDismissListener(d -> {
+            InputMethodManager imm = (InputMethodManager) activity.getSystemService(Context.INPUT_METHOD_SERVICE);
+            if (imm != null && activity.getCurrentFocus() != null) {
+                imm.hideSoftInputFromWindow(activity.getCurrentFocus().getWindowToken(), 0);
+            }
         });
 
         refreshUi.run();
@@ -986,10 +1278,15 @@ public final class PhenotypeFlagManager {
             int dialogHeight = (int) (screenHeight * 0.88f);
             window.setLayout(dialogWidth, dialogHeight);
             window.setGravity(Gravity.CENTER);
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                window.addFlags(WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS);
+                window.setNavigationBarColor(theme.surface);
+                window.setStatusBarColor(theme.surface);
+            }
         }
     }
 
-    private static void renderEmptySlate(Activity activity, LinearLayout container, float density) {
+    private static void renderEmptySlate(Activity activity, LinearLayout container, float density, Theme theme) {
         container.removeAllViews();
         LinearLayout box = new LinearLayout(activity);
         box.setOrientation(LinearLayout.VERTICAL);
@@ -1006,7 +1303,7 @@ public final class PhenotypeFlagManager {
         TextView title = new TextView(activity);
         title.setText("No Flags Configured");
         title.setTextSize(16);
-        title.setTextColor(M3_TEXT_PRIMARY);
+        title.setTextColor(theme.textPrimary);
         title.setTypeface(null, Typeface.BOLD);
         title.setGravity(Gravity.CENTER);
         title.setPadding(0, (int) (10 * density), 0, (int) (4 * density));
@@ -1015,23 +1312,31 @@ public final class PhenotypeFlagManager {
         TextView desc = new TextView(activity);
         desc.setText("Google Photos is running in stock mode.\nTap ➕ to add a flag, or tap ⋮ to import.");
         desc.setTextSize(13);
-        desc.setTextColor(M3_TEXT_SECONDARY);
+        desc.setTextColor(theme.textSecondary);
         desc.setGravity(Gravity.CENTER);
         box.addView(desc);
 
         container.addView(box);
     }
 
-    private static void renderEmptyMessage(Activity activity, LinearLayout container, String msg, float density) {
+    private static void renderEmptySlate(Activity activity, LinearLayout container, float density) {
+        renderEmptySlate(activity, container, density, Theme.get(activity));
+    }
+
+    private static void renderEmptyMessage(Activity activity, LinearLayout container, String msg, float density, Theme theme) {
         container.removeAllViews();
         TextView tv = new TextView(activity);
         tv.setText(msg);
         tv.setTextSize(13);
-        tv.setTextColor(M3_TEXT_SECONDARY);
+        tv.setTextColor(theme.textSecondary);
         tv.setGravity(Gravity.CENTER);
         int p = (int) (32 * density);
         tv.setPadding(p, p, p, p);
         container.addView(tv);
+    }
+
+    private static void renderEmptyMessage(Activity activity, LinearLayout container, String msg, float density) {
+        renderEmptyMessage(activity, container, msg, density, Theme.get(activity));
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -1040,6 +1345,7 @@ public final class PhenotypeFlagManager {
 
     private static void showProperOptionsMenu(Activity activity, SharedPreferences prefs, FlagAdapter adapter, Runnable onRefresh) {
         float density = activity.getResources().getDisplayMetrics().density;
+        Theme theme = Theme.get(activity);
         LinearLayout list = new LinearLayout(activity);
         list.setOrientation(LinearLayout.VERTICAL);
         list.setPadding((int) (16 * density), (int) (4 * density), (int) (16 * density), (int) (16 * density));
@@ -1101,7 +1407,7 @@ public final class PhenotypeFlagManager {
             TextView tvMsg = new TextView(activity);
             tvMsg.setText("This will apply all 362 curated Morphe flags:\n\n• 226 Story colors & collage templates\n• 54 Story player & audio controls\n• 41 3D memories & cutout animations\n• AI video generation & editor tools\n• Create Tab storefront & 8 creative tools\n• Modern navigation & Collections V2\n\nExisting flags will be kept. New flags will be added on top.");
             tvMsg.setTextSize(13);
-            tvMsg.setTextColor(M3_TEXT_PRIMARY);
+            tvMsg.setTextColor(theme.textPrimary);
             tvMsg.setLineSpacing(0, 1.25f);
             msgLayout.addView(tvMsg);
 
@@ -1136,7 +1442,7 @@ public final class PhenotypeFlagManager {
             row.setGravity(Gravity.CENTER_VERTICAL);
             int p = (int) (14 * density);
             row.setPadding(p, p, p, p);
-            row.setBackground(createCardDrawable(false, density));
+            row.setBackground(createCardDrawable(false, density, theme));
             LinearLayout.LayoutParams rLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
             rLp.setMargins(0, 0, 0, (int) (8 * density));
             row.setLayoutParams(rLp);
@@ -1155,14 +1461,14 @@ public final class PhenotypeFlagManager {
             TextView tvT = new TextView(activity);
             tvT.setText(item.title);
             tvT.setTextSize(15);
-            tvT.setTextColor(M3_TEXT_PRIMARY);
+            tvT.setTextColor(theme.textPrimary);
             tvT.setTypeface(null, Typeface.BOLD);
             col.addView(tvT);
 
             TextView tvS = new TextView(activity);
             tvS.setText(item.subtitle);
             tvS.setTextSize(12);
-            tvS.setTextColor(M3_TEXT_SECONDARY);
+            tvS.setTextColor(theme.textSecondary);
             tvS.setPadding(0, (int) (2 * density), 0, 0);
             col.addView(tvS);
             row.addView(col);
@@ -1186,6 +1492,7 @@ public final class PhenotypeFlagManager {
 
     public static Dialog showLoadingDialog(Activity activity, String title, String message) {
         float density = activity.getResources().getDisplayMetrics().density;
+        Theme theme = Theme.get(activity);
         Dialog d = new Dialog(activity);
         d.requestWindowFeature(Window.FEATURE_NO_TITLE);
         d.setCancelable(false);
@@ -1195,7 +1502,7 @@ public final class PhenotypeFlagManager {
         root.setGravity(Gravity.CENTER_VERTICAL);
         int p = (int) (20 * density);
         root.setPadding(p, p, p, p);
-        root.setBackground(createRoundedDrawable(M3_SURFACE, 20 * density));
+        root.setBackground(createRoundedDrawable(theme.surface, 20 * density));
 
         ProgressBar pb = new ProgressBar(activity);
         LinearLayout.LayoutParams pbLp = new LinearLayout.LayoutParams((int) (40 * density), (int) (40 * density));
@@ -1211,14 +1518,14 @@ public final class PhenotypeFlagManager {
         TextView tvT = new TextView(activity);
         tvT.setText(title);
         tvT.setTextSize(16);
-        tvT.setTextColor(M3_TEXT_PRIMARY);
+        tvT.setTextColor(theme.textPrimary);
         tvT.setTypeface(null, Typeface.BOLD);
         textCol.addView(tvT);
 
         TextView tvM = new TextView(activity);
         tvM.setText(message);
         tvM.setTextSize(12);
-        tvM.setTextColor(M3_TEXT_SECONDARY);
+        tvM.setTextColor(theme.textSecondary);
         tvM.setPadding(0, (int) (2 * density), 0, 0);
         textCol.addView(tvM);
 
@@ -1392,6 +1699,7 @@ public final class PhenotypeFlagManager {
 
     private static void showBulkPasteDialog(Activity activity, SharedPreferences prefs, Runnable onRefresh) {
         float density = activity.getResources().getDisplayMetrics().density;
+        Theme theme = Theme.get(activity);
         LinearLayout layout = new LinearLayout(activity);
         layout.setOrientation(LinearLayout.VERTICAL);
         int p = (int) (18 * density);
@@ -1400,7 +1708,7 @@ public final class PhenotypeFlagManager {
         TextView tvHelp = new TextView(activity);
         tvHelp.setText("Paste Key=Value lines, JSON preset, or Phenotype XML:");
         tvHelp.setTextSize(12);
-        tvHelp.setTextColor(M3_TEXT_SECONDARY);
+        tvHelp.setTextColor(theme.textSecondary);
         tvHelp.setPadding(0, 0, 0, (int) (6 * density));
         layout.addView(tvHelp);
 
@@ -1413,8 +1721,8 @@ public final class PhenotypeFlagManager {
         btnPasteClipboard.setText("📋 Paste from Clipboard");
         btnPasteClipboard.setTextSize(12);
         btnPasteClipboard.setTypeface(null, Typeface.BOLD);
-        btnPasteClipboard.setTextColor(M3_PRIMARY);
-        btnPasteClipboard.setBackground(createRoundedDrawable(M3_PRIMARY_CONTAINER, 16 * density));
+        btnPasteClipboard.setTextColor(theme.isDark ? theme.onPrimaryContainer : theme.primary);
+        btnPasteClipboard.setBackground(createRoundedDrawable(theme.primaryContainer, 16 * density));
         btnPasteClipboard.setPadding((int) (12 * density), 0, (int) (12 * density), 0);
         LinearLayout.LayoutParams btnLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, (int) (36 * density));
         btnPasteClipboard.setLayoutParams(btnLp);
@@ -1423,7 +1731,7 @@ public final class PhenotypeFlagManager {
         TextView tvCountPreview = new TextView(activity);
         tvCountPreview.setText("0 flags detected");
         tvCountPreview.setTextSize(12);
-        tvCountPreview.setTextColor(M3_TEXT_SECONDARY);
+        tvCountPreview.setTextColor(theme.textSecondary);
         tvCountPreview.setGravity(Gravity.END);
         LinearLayout.LayoutParams cLp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
         tvCountPreview.setLayoutParams(cLp);
@@ -1433,9 +1741,9 @@ public final class PhenotypeFlagManager {
         EditText etInput = new EditText(activity);
         etInput.setHint("Paste flags here...\ne.g.\n45705305=true\n45762698=2\n45531621=true");
         etInput.setTextSize(13);
-        etInput.setTextColor(M3_TEXT_PRIMARY);
-        etInput.setHintTextColor(M3_TEXT_SECONDARY);
-        etInput.setBackground(createRoundedDrawable(0xFFEAEFEB, 12 * density));
+        etInput.setTextColor(theme.textPrimary);
+        etInput.setHintTextColor(theme.textSecondary);
+        etInput.setBackground(createRoundedDrawable(theme.searchInputBg, 12 * density));
         int pad = (int) (12 * density);
         etInput.setPadding(pad, pad, pad, pad);
         etInput.setMinLines(6);
@@ -1750,6 +2058,7 @@ public final class PhenotypeFlagManager {
 
     private static void showAddCustomFlagDialog(Activity activity, SharedPreferences prefs, Runnable onRefresh) {
         float density = activity.getResources().getDisplayMetrics().density;
+        Theme theme = Theme.get(activity);
         LinearLayout layout = new LinearLayout(activity);
         layout.setOrientation(LinearLayout.VERTICAL);
         int p = (int) (18 * density);
@@ -1758,7 +2067,7 @@ public final class PhenotypeFlagManager {
         TextView tvTypeLabel = new TextView(activity);
         tvTypeLabel.setText("Flag Data Type:");
         tvTypeLabel.setTextSize(12);
-        tvTypeLabel.setTextColor(M3_TEXT_SECONDARY);
+        tvTypeLabel.setTextColor(theme.textSecondary);
         tvTypeLabel.setPadding(0, 0, 0, (int) (6 * density));
         layout.addView(tvTypeLabel);
 
@@ -1774,8 +2083,9 @@ public final class PhenotypeFlagManager {
         EditText etKey = new EditText(activity);
         etKey.setHint("Flag ID (e.g. 45705305)");
         etKey.setTextSize(14);
-        etKey.setTextColor(M3_TEXT_PRIMARY);
-        etKey.setBackground(createRoundedDrawable(0xFFEAEFEB, 10 * density));
+        etKey.setTextColor(theme.textPrimary);
+        etKey.setHintTextColor(theme.textSecondary);
+        etKey.setBackground(createRoundedDrawable(theme.searchInputBg, 10 * density));
         int pad = (int) (10 * density);
         etKey.setPadding(pad, pad, pad, pad);
 
@@ -1783,8 +2093,9 @@ public final class PhenotypeFlagManager {
         etVal.setText("true");
         etVal.setHint("Value (true / false)");
         etVal.setTextSize(14);
-        etVal.setTextColor(M3_TEXT_PRIMARY);
-        etVal.setBackground(createRoundedDrawable(0xFFEAEFEB, 10 * density));
+        etVal.setTextColor(theme.textPrimary);
+        etVal.setHintTextColor(theme.textSecondary);
+        etVal.setBackground(createRoundedDrawable(theme.searchInputBg, 10 * density));
         etVal.setPadding(pad, pad, pad, pad);
         LinearLayout.LayoutParams vLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         vLp.setMargins(0, (int) (8 * density), 0, 0);
@@ -1793,8 +2104,8 @@ public final class PhenotypeFlagManager {
         Runnable updateTypeButtons = () -> {
             for (int i = 0; i < 4; i++) {
                 boolean isSel = (selectedType[0] == i);
-                typeButtons[i].setBackground(createRoundedDrawable(isSel ? M3_PRIMARY : 0xFFEAEFEB, 8 * density));
-                typeButtons[i].setTextColor(isSel ? M3_ON_PRIMARY : M3_TEXT_PRIMARY);
+                typeButtons[i].setBackground(createRoundedDrawable(isSel ? theme.primary : theme.searchInputBg, 8 * density));
+                typeButtons[i].setTextColor(isSel ? theme.onPrimary : theme.textPrimary);
             }
             if (selectedType[0] == 0) {
                 etVal.setHint("true or false");
@@ -1875,6 +2186,7 @@ public final class PhenotypeFlagManager {
                                             String key, String title, Object currentVal,
                                             Runnable onRefresh) {
         float density = activity.getResources().getDisplayMetrics().density;
+        Theme theme = Theme.get(activity);
         LinearLayout layout = new LinearLayout(activity);
         layout.setOrientation(LinearLayout.VERTICAL);
         int p = (int) (18 * density);
@@ -1887,15 +2199,16 @@ public final class PhenotypeFlagManager {
         TextView tvDesc = new TextView(activity);
         tvDesc.setText("Editing " + typeDesc + " for:\n" + title);
         tvDesc.setTextSize(13);
-        tvDesc.setTextColor(M3_TEXT_SECONDARY);
+        tvDesc.setTextColor(theme.textSecondary);
         tvDesc.setPadding(0, 0, 0, (int) (8 * density));
         layout.addView(tvDesc);
 
         EditText etVal = new EditText(activity);
         etVal.setText(String.valueOf(currentVal));
         etVal.setTextSize(14);
-        etVal.setTextColor(M3_TEXT_PRIMARY);
-        etVal.setBackground(createRoundedDrawable(0xFFEAEFEB, 10 * density));
+        etVal.setTextColor(theme.textPrimary);
+        etVal.setHintTextColor(theme.textSecondary);
+        etVal.setBackground(createRoundedDrawable(theme.searchInputBg, 10 * density));
         int pad = (int) (10 * density);
         etVal.setPadding(pad, pad, pad, pad);
         layout.addView(etVal);
@@ -1940,12 +2253,12 @@ public final class PhenotypeFlagManager {
     // Helpers & UI Components
     // ─────────────────────────────────────────────────────────────────────────
 
-    private static View createHeaderIconButton(Activity activity, String icon, int sizePx) {
+    private static View createHeaderIconButton(Activity activity, String icon, int sizePx, Theme theme) {
         TextView tv = new TextView(activity);
         tv.setText(icon);
         tv.setTextSize(18);
         tv.setGravity(Gravity.CENTER);
-        tv.setTextColor(M3_TEXT_PRIMARY);
+        tv.setTextColor(theme.textPrimary);
         tv.setClickable(true);
         tv.setFocusable(true);
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(sizePx, sizePx);
@@ -1953,13 +2266,21 @@ public final class PhenotypeFlagManager {
         return tv;
     }
 
-    private static GradientDrawable createCardDrawable(boolean active, float density) {
+    private static View createHeaderIconButton(Activity activity, String icon, int sizePx) {
+        return createHeaderIconButton(activity, icon, sizePx, Theme.get(activity));
+    }
+
+    private static GradientDrawable createCardDrawable(boolean active, float density, Theme theme) {
         GradientDrawable gd = new GradientDrawable();
         gd.setCornerRadius(16 * density);
-        gd.setColor(active ? M3_CARD_ACTIVE : M3_CARD);
+        gd.setColor(active ? theme.cardActive : theme.card);
         gd.setStroke(active ? (int) (1.5f * density) : (int) (1 * density),
-                active ? M3_PRIMARY : M3_OUTLINE);
+                active ? theme.cardBorderActive : theme.cardBorder);
         return gd;
+    }
+
+    private static GradientDrawable createCardDrawable(boolean active, float density) {
+        return createCardDrawable(active, density, Theme.get(null));
     }
 
     private static GradientDrawable createRoundedDrawable(int color, float radiusPx) {
@@ -1971,12 +2292,13 @@ public final class PhenotypeFlagManager {
 
     private static Dialog createM3Dialog(Activity activity, String title, View customView) {
         float density = activity.getResources().getDisplayMetrics().density;
+        Theme theme = Theme.get(activity);
         Dialog d = new Dialog(activity);
         d.requestWindowFeature(Window.FEATURE_NO_TITLE);
 
         LinearLayout root = new LinearLayout(activity);
         root.setOrientation(LinearLayout.VERTICAL);
-        root.setBackground(createRoundedDrawable(M3_SURFACE, 24 * density));
+        root.setBackground(createRoundedDrawable(theme.surface, 24 * density));
 
         LinearLayout header = new LinearLayout(activity);
         header.setOrientation(LinearLayout.HORIZONTAL);
@@ -1987,14 +2309,14 @@ public final class PhenotypeFlagManager {
         TextView tvT = new TextView(activity);
         tvT.setText(title);
         tvT.setTextSize(17);
-        tvT.setTextColor(M3_TEXT_PRIMARY);
+        tvT.setTextColor(theme.textPrimary);
         tvT.setTypeface(null, Typeface.BOLD);
         header.addView(tvT, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
 
         TextView btnClose = new TextView(activity);
         btnClose.setText("✕");
         btnClose.setTextSize(16);
-        btnClose.setTextColor(M3_TEXT_SECONDARY);
+        btnClose.setTextColor(theme.textSecondary);
         btnClose.setTypeface(null, Typeface.BOLD);
         btnClose.setPadding((int) (8 * density), 0, 0, 0);
         btnClose.setOnClickListener(v -> d.dismiss());
@@ -2019,6 +2341,7 @@ public final class PhenotypeFlagManager {
     private static Dialog createM3ActionDialog(Activity activity, String title, View customView,
                                                String actionText, Runnable onAction) {
         float density = activity.getResources().getDisplayMetrics().density;
+        Theme theme = Theme.get(activity);
         Dialog d = createM3Dialog(activity, title, customView);
 
         LinearLayout actions = new LinearLayout(activity);
@@ -2030,8 +2353,8 @@ public final class PhenotypeFlagManager {
         Button btnCancel = new Button(activity);
         btnCancel.setText("Cancel");
         btnCancel.setTextSize(13);
-        btnCancel.setTextColor(M3_TEXT_SECONDARY);
-        btnCancel.setBackground(createRoundedDrawable(0xFFEAEFEB, 18 * density));
+        btnCancel.setTextColor(theme.textSecondary);
+        btnCancel.setBackground(createRoundedDrawable(theme.surfaceContainer, 18 * density));
         btnCancel.setOnClickListener(v -> d.dismiss());
         LinearLayout.LayoutParams cLp = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT, (int) (40 * density));
@@ -2042,8 +2365,8 @@ public final class PhenotypeFlagManager {
         btnOk.setText(actionText);
         btnOk.setTextSize(13);
         btnOk.setTypeface(null, Typeface.BOLD);
-        btnOk.setTextColor(M3_ON_PRIMARY);
-        btnOk.setBackground(createRoundedDrawable(M3_PRIMARY, 18 * density));
+        btnOk.setTextColor(theme.onPrimary);
+        btnOk.setBackground(createRoundedDrawable(theme.primary, 18 * density));
         btnOk.setOnClickListener(v -> {
             d.dismiss();
             if (onAction != null) onAction.run();
