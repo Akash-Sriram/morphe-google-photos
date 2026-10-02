@@ -1816,7 +1816,7 @@ public final class PhenotypeFlagManager {
                 edit.apply();
                 GooglePhotosAccountAvatar.syncOneGoogleFlags(activity);
                 adapter.reloadData();
-                Toast.makeText(activity, "Enabled " + count + " flags", Toast.LENGTH_SHORT).show();
+                Toast.makeText(activity, "Enabled " + count + " flags! Tap 'Apply and restart' to apply.", Toast.LENGTH_SHORT).show();
             }).show();
         });
 
@@ -1874,7 +1874,7 @@ public final class PhenotypeFlagManager {
                 edit.apply();
                 GooglePhotosAccountAvatar.syncOneGoogleFlags(activity);
                 adapter.reloadData();
-                Toast.makeText(activity, "Disabled " + count + " flags", Toast.LENGTH_SHORT).show();
+                Toast.makeText(activity, "Disabled " + count + " flags! Tap 'Apply and restart' to apply.", Toast.LENGTH_SHORT).show();
             }).show();
         });
 

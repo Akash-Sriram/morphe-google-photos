@@ -445,6 +445,8 @@ public final class PhotoFlagsRegistry {
         register("45805882", "Texture Lab & Looks Presets", "Unlocks texture lab with creative looks presets and visual styling filters.", "🪄 AI Photo & Video Editor Tools", "Texture Lab Presets", FlagType.BOOLEAN, Boolean.TRUE);
         register("45818386", "AllPhotosCore Indexing", "Enables full-index AllPhotosCore pipeline for fast media library querying.", "🪄 AI Photo & Video Editor Tools", "AllPhotosCore Index", FlagType.BOOLEAN, Boolean.TRUE);
         register("45410157", "Settings UI Feature 45410157", "Controls settings UI layout and account configuration panel in Lcnwi.", "🪄 AI Photo & Video Editor Tools", "Settings UI Feature", FlagType.BOOLEAN, Boolean.TRUE);
+        register("45531621", "OneGoogle Avatar Ring Master", "Forces the Google One subscriber metallic ring and Bento profile card layout.", "⭕ OneGoogle: Subscriber Avatar Rings", "OneGoogle Bento & Avatar Ring", FlagType.BOOLEAN, Boolean.TRUE);
+        register("45531625", "Subscriber Ring Style (3 = Blue Pro)", "Controls the ring decoration visual style (3 = solid blue with Pro badge).", "⭕ OneGoogle: Subscriber Avatar Rings", "Avatar Ring Visual Style", FlagType.LONG, 3L);
     }
 
 
@@ -859,6 +861,8 @@ public final class PhotoFlagsRegistry {
         edit.putBoolean("45613285", true);
         edit.putBoolean("45618074", true);
         edit.putBoolean("45618486", true);
+        edit.putBoolean("45531621", true);
+        edit.putLong("45531625", 3L);
         edit.apply();
     }
 
