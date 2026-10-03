@@ -387,6 +387,11 @@ public class GmsCoreSupportPatch {
     private static volatile java.lang.ref.WeakReference<Object> sCurrentMixinRef;
     private static final java.util.concurrent.atomic.AtomicBoolean sIsLocatingAnimation = new java.util.concurrent.atomic.AtomicBoolean(false);
     private static final java.util.Set<Object> sConfiguredMapboxMaps = java.util.Collections.newSetFromMap(new java.util.WeakHashMap<>());
+    private static volatile Object sAppCameraIdleListener;
+    private static volatile Object sAppMapClickListener;
+    private static volatile Object sGoogleMapDelegate;
+    private static final java.util.Set<Object> sWrappedMapObjects = java.util.Collections.newSetFromMap(new java.util.WeakHashMap<>());
+    private static final java.util.concurrent.atomic.AtomicBoolean sInitialSelectionCleared = new java.util.concurrent.atomic.AtomicBoolean(false);
 
     private static class LocationSourceBinder extends android.os.Binder implements android.os.IInterface {
         private volatile android.os.IBinder listenerBinder;
@@ -563,6 +568,232 @@ public class GmsCoreSupportPatch {
             android.util.Log.e("MorpheLocation", "Error extracting map binder", t);
         }
         return null;
+    }
+
+    private static Object toGmsLatLng(java.lang.reflect.Constructor<?> ctor, Object mbLatLng) {
+        if (mbLatLng == null) return null;
+        try {
+            Class<?> c = mbLatLng.getClass();
+            double lat = 0.0, lon = 0.0;
+            try {
+                lat = (double) c.getMethod("getLatitude").invoke(mbLatLng);
+                lon = (double) c.getMethod("getLongitude").invoke(mbLatLng);
+            } catch (Throwable t) {
+                lat = c.getField("latitude").getDouble(mbLatLng);
+                lon = c.getField("longitude").getDouble(mbLatLng);
+            }
+            return ctor.newInstance(lat, lon);
+        } catch (Throwable t) {
+            android.util.Log.e("MorpheLocation", "Error converting Mapbox LatLng to GMS LatLng", t);
+            return null;
+        }
+    }
+
+    private static Object getLiveVisibleRegion(ClassLoader cl) {
+        try {
+            Object mapbox = sMapboxMap;
+            if (mapbox == null) return null;
+            java.lang.reflect.Method mGetProj = mapbox.getClass().getMethod("getProjection");
+            Object mapboxProj = mGetProj.invoke(mapbox);
+            if (mapboxProj == null) return null;
+
+            java.lang.reflect.Method mGetVis = mapboxProj.getClass().getMethod("getVisibleRegion", boolean.class);
+            Object mbVisibleRegion = mGetVis.invoke(mapboxProj, false);
+            if (mbVisibleRegion == null) return null;
+
+            Class<?> mbVrClass = mbVisibleRegion.getClass();
+            Object mbNL = mbVrClass.getField("nearLeft").get(mbVisibleRegion);
+            Object mbNR = mbVrClass.getField("nearRight").get(mbVisibleRegion);
+            Object mbFL = mbVrClass.getField("farLeft").get(mbVisibleRegion);
+            Object mbFR = mbVrClass.getField("farRight").get(mbVisibleRegion);
+            Object mbBounds = mbVrClass.getField("latLngBounds").get(mbVisibleRegion);
+
+            Class<?> gmsLatLngClass = Class.forName("com.google.android.gms.maps.model.LatLng", true, cl);
+            java.lang.reflect.Constructor<?> latLngCtor = gmsLatLngClass.getConstructor(double.class, double.class);
+
+            Object gmsNL = toGmsLatLng(latLngCtor, mbNL);
+            Object gmsNR = toGmsLatLng(latLngCtor, mbNR);
+            Object gmsFL = toGmsLatLng(latLngCtor, mbFL);
+            Object gmsFR = toGmsLatLng(latLngCtor, mbFR);
+
+            Class<?> gmsBoundsClass = Class.forName("com.google.android.gms.maps.model.LatLngBounds", true, cl);
+            java.lang.reflect.Constructor<?> boundsCtor = gmsBoundsClass.getConstructor(gmsLatLngClass, gmsLatLngClass);
+
+            Object gmsSW = null;
+            Object gmsNE = null;
+            if (mbBounds != null) {
+                java.lang.reflect.Method mGetSW = mbBounds.getClass().getMethod("getSouthWest");
+                java.lang.reflect.Method mGetNE = mbBounds.getClass().getMethod("getNorthEast");
+                gmsSW = toGmsLatLng(latLngCtor, mGetSW.invoke(mbBounds));
+                gmsNE = toGmsLatLng(latLngCtor, mGetNE.invoke(mbBounds));
+            } else {
+                gmsSW = gmsNL;
+                gmsNE = gmsFR;
+            }
+            Object gmsBounds = boundsCtor.newInstance(gmsSW, gmsNE);
+
+            Class<?> gmsVisibleRegionClass = Class.forName("com.google.android.gms.maps.model.VisibleRegion", true, cl);
+            java.lang.reflect.Constructor<?> vrCtor = gmsVisibleRegionClass.getConstructor(
+                gmsLatLngClass, gmsLatLngClass, gmsLatLngClass, gmsLatLngClass, gmsBoundsClass
+            );
+            return vrCtor.newInstance(gmsNL, gmsNR, gmsFL, gmsFR, gmsBounds);
+        } catch (Throwable t) {
+            android.util.Log.e("MorpheLocation", "Error creating live VisibleRegion", t);
+            return null;
+        }
+    }
+
+    private static Object wrapProjectionDelegate(Object origProj, ClassLoader cl) {
+        if (origProj == null || origProj instanceof java.lang.reflect.Proxy) {
+            return origProj;
+        }
+        try {
+            Class<?>[] interfaces = origProj.getClass().getInterfaces();
+            if (interfaces == null || interfaces.length == 0) {
+                interfaces = new Class<?>[]{
+                    Class.forName("com.google.android.gms.maps.internal.IProjectionDelegate", true, cl),
+                    android.os.IInterface.class
+                };
+            }
+            return java.lang.reflect.Proxy.newProxyInstance(cl, interfaces, (proxy, method, args) -> {
+                String methodName = method.getName();
+                if ("getVisibleRegion".equals(methodName)) {
+                    Object live = getLiveVisibleRegion(cl);
+                    if (live != null) {
+                        return live;
+                    }
+                }
+                return method.invoke(origProj, args);
+            });
+        } catch (Throwable t) {
+            android.util.Log.e("MorpheLocation", "Failed to wrap IProjectionDelegate", t);
+            return origProj;
+        }
+    }
+
+    private static Object extractMapboxMapFromGoogleMap(Object mapObj) {
+        if (mapObj == null) return null;
+        try {
+            for (Class<?> c = mapObj.getClass(); c != null && c != Object.class; c = c.getSuperclass()) {
+                for (java.lang.reflect.Field f : c.getDeclaredFields()) {
+                    f.setAccessible(true);
+                    Object val = f.get(mapObj);
+                    if (val == null) continue;
+                    if (val.getClass().getName().contains("MapboxMap")) {
+                        return val;
+                    }
+                    for (Class<?> c2 = val.getClass(); c2 != null && c2 != Object.class; c2 = c2.getSuperclass()) {
+                        for (java.lang.reflect.Field f2 : c2.getDeclaredFields()) {
+                            if (f2.getType().getName().contains("MapboxMap")) {
+                                f2.setAccessible(true);
+                                Object mb = f2.get(val);
+                                if (mb != null) return mb;
+                            }
+                        }
+                    }
+                }
+            }
+        } catch (Throwable ignored) {}
+        return null;
+    }
+
+    private static Object extractGoogleMapDelegate(Object mapObj) {
+        if (mapObj == null) return null;
+        try {
+            for (Class<?> clazz = mapObj.getClass(); clazz != null && clazz != Object.class; clazz = clazz.getSuperclass()) {
+                for (java.lang.reflect.Field f : clazz.getDeclaredFields()) {
+                    f.setAccessible(true);
+                    Object val = f.get(mapObj);
+                    if (val == null) continue;
+                    if (val instanceof android.os.IInterface) {
+                        android.os.IBinder b = ((android.os.IInterface) val).asBinder();
+                        if (isGoogleMapDelegateBinder(b)) {
+                            return val;
+                        }
+                    }
+                }
+            }
+        } catch (Throwable ignored) {}
+        return null;
+    }
+
+    private static Object getMapClickListener() {
+        if (sAppMapClickListener != null) return sAppMapClickListener;
+        Object delegate = sGoogleMapDelegate;
+        if (delegate == null && sAttachedMapObj != null) {
+            delegate = extractGoogleMapDelegate(sAttachedMapObj);
+            if (delegate != null) sGoogleMapDelegate = delegate;
+        }
+        if (delegate != null) {
+            for (Class<?> c = delegate.getClass(); c != null && c != Object.class; c = c.getSuperclass()) {
+                for (java.lang.reflect.Field f : c.getDeclaredFields()) {
+                    if (f.getName().contains("mapClickListener") || f.getName().contains("MapClick")) {
+                        try {
+                            f.setAccessible(true);
+                            Object listener = f.get(delegate);
+                            if (listener != null) {
+                                sAppMapClickListener = listener;
+                                android.util.Log.d("MorpheLocation", "Discovered mapClickListener on delegate: " + listener);
+                                return listener;
+                            }
+                        } catch (Throwable ignored) {}
+                    }
+                }
+            }
+        }
+        return null;
+    }
+
+    private static void wrapGoogleMapIfNeeded(Object mapObj) {
+        if (mapObj == null || sWrappedMapObjects.contains(mapObj)) return;
+        sWrappedMapObjects.add(mapObj);
+        try {
+            Object delegate = extractGoogleMapDelegate(mapObj);
+            if (delegate != null) {
+                sGoogleMapDelegate = delegate;
+                android.util.Log.d("MorpheLocation", "Captured sGoogleMapDelegate: " + delegate.getClass().getName());
+            }
+
+            if (sMapboxMap == null) {
+                Object mb = extractMapboxMapFromGoogleMap(mapObj);
+                if (mb == null && delegate != null) {
+                    mb = extractMapboxMapFromGoogleMap(delegate);
+                }
+                if (mb != null) {
+                    sMapboxMap = mb;
+                    attachMapboxListeners(mb, sCurrentMixinRef != null ? sCurrentMixinRef.get() : null);
+                    android.util.Log.d("MorpheLocation", "Discovered and attached MapboxMap: " + mb.getClass().getName());
+                }
+            }
+        } catch (Throwable t) {
+            android.util.Log.e("MorpheLocation", "Failed to wrap GoogleMap delegate", t);
+        }
+    }
+
+    public static void clearMarkerSelection() {
+        // No-op: Marker selection is natively managed by Google Photos.
+        // Firing synthetic onMapClick at the camera target coordinates actively selects/locks
+        // the marker, causing a purple circle selection ring and switching off aggregate viewport mode.
+    }
+
+    public static int adjustScrollPosition(int pos) {
+        if (pos <= 1) {
+            android.util.Log.d("MorpheLocation", "adjustScrollPosition: adjusting pos " + pos + " to 0 (top header)");
+            return 0;
+        }
+        return pos;
+    }
+
+    public static int adjustScrollOffset(int pos, int offset) {
+        if (pos <= 1) {
+            android.util.Log.d("MorpheLocation", "adjustScrollOffset: resetting offset " + offset + " to 0 for pos " + pos);
+            return 0;
+        }
+        return offset;
+    }
+
+    public static int adjustScrollTargetPosition(int pos) {
+        return adjustScrollPosition(pos);
     }
 
     private static void setLocationSource(android.os.IBinder mapBinder, android.os.IBinder locationSource) {
@@ -805,6 +1036,11 @@ public class GmsCoreSupportPatch {
                     f.setAccessible(true);
                     Object val = f.get(activity);
                     if (val != null) {
+                        String valCls = val.getClass().getName().toLowerCase(Locale.ROOT);
+                        if (valCls.contains("mapexplore")) {
+                            android.util.Log.d("MorpheLocation", "Found MapExploreController by name: " + f.getName() + " (" + val.getClass().getName() + ")");
+                            return val;
+                        }
                         try {
                             val.getClass().getDeclaredMethod("ba");
                             android.util.Log.d("MorpheLocation", "Found MapExploreController in field: " + f.getName() + " (" + val.getClass().getName() + ")");
@@ -813,6 +1049,26 @@ public class GmsCoreSupportPatch {
                     }
                 }
             }
+
+            try {
+                Class<?> faClass = Class.forName("androidx.fragment.app.FragmentActivity");
+                if (faClass.isInstance(activity)) {
+                    java.lang.reflect.Method mGetFM = faClass.getMethod("getSupportFragmentManager");
+                    Object fm = mGetFM.invoke(activity);
+                    if (fm != null) {
+                        java.lang.reflect.Method mGetFrags = fm.getClass().getMethod("getFragments");
+                        java.util.List<?> frags = (java.util.List<?>) mGetFrags.invoke(fm);
+                        if (frags != null) {
+                            for (Object frag : frags) {
+                                if (frag != null && frag.getClass().getName().toLowerCase(Locale.ROOT).contains("mapexplore")) {
+                                    android.util.Log.d("MorpheLocation", "Found MapExplore fragment: " + frag.getClass().getName());
+                                    return frag;
+                                }
+                            }
+                        }
+                    }
+                }
+            } catch (Throwable ignored) {}
         } catch (Throwable t) {
             android.util.Log.e("MorpheLocation", "Error finding MapExploreController", t);
         }
@@ -820,27 +1076,169 @@ public class GmsCoreSupportPatch {
     }
 
     private static void refreshPhotosForCurrentBounds(Object controller) {
-        if (controller == null) return;
-        new android.os.Handler(android.os.Looper.getMainLooper()).post(() -> {
-            try {
-                Class<?> c = controller.getClass();
-                for (java.lang.reflect.Field f : c.getDeclaredFields()) {
-                    if (f.getType() == boolean.class && f.getName().equals("aU")) {
-                        try {
-                            f.setAccessible(true);
-                            f.setBoolean(controller, false);
-                        } catch (Throwable ignored) {}
+        // No-op: Photos updates viewport bounds query via onCameraIdle natively.
+        // Calling obfuscated methods (ba) in 7.95 causes UI state corruption and blanks the header.
+    }
+
+    // Set to true after the first field dump so we only dump once.
+    private static final java.util.concurrent.atomic.AtomicBoolean sDumpedGoogleMapImplFields =
+            new java.util.concurrent.atomic.AtomicBoolean(false);
+
+    /**
+     * Fires the GMS OnCameraIdleListener that Google Photos registered via
+     * IGoogleMapDelegate.setOnCameraIdleListener (transaction 32 on GoogleMapImpl).
+     *
+     * KEY: sGoogleMapDelegate is a client-side IInterface proxy. The OnCameraIdleListener is
+     * stored on the SERVER side — MicroG's GoogleMapImpl, which is the Binder itself.
+     * Since MicroG runs in-process, sGoogleMapDelegate.asBinder() IS the GoogleMapImpl object,
+     * and we can walk its fields directly.
+     *
+     * We walk the fields of GoogleMapImpl looking for any stored IInterface / IBinder whose
+     * interface descriptor contains "CameraIdle" and call onCameraIdle() on it.
+     *
+     * Fallback: call onCameraIdle() as a named method directly on GoogleMapImpl itself
+     * (MicroG might dispatch internally without storing as a named binder field).
+     */
+    private static final android.os.Handler sCameraIdleHandler = new android.os.Handler(android.os.Looper.getMainLooper());
+    private static final Runnable sCameraIdleRunnable = () -> doTriggerGmsCameraIdle();
+
+    private static void triggerGmsCameraIdle() {
+        sCameraIdleHandler.removeCallbacks(sCameraIdleRunnable);
+        sCameraIdleHandler.postDelayed(sCameraIdleRunnable, 100);
+    }
+
+    private static void doTriggerGmsCameraIdle() {
+        Object delegate = sGoogleMapDelegate;
+        if (delegate == null) return;
+        try {
+            // Step 1: Obtain the server-side GoogleMapImpl.
+            // sGoogleMapDelegate is a client IInterface proxy. asBinder() returns the actual
+            // GoogleMapImpl Binder object (same process, so no BinderProxy intermediary).
+            android.os.IBinder serverBinder = null;
+            if (delegate instanceof android.os.IInterface) {
+                serverBinder = ((android.os.IInterface) delegate).asBinder();
+            } else if (delegate instanceof android.os.IBinder) {
+                serverBinder = (android.os.IBinder) delegate;
+            }
+
+            android.util.Log.d("MorpheLocation",
+                    "triggerGmsCameraIdle: serverBinder=" +
+                    (serverBinder != null ? serverBinder.getClass().getName() : "null") +
+                    " isLocalBinder=" + (serverBinder instanceof android.os.Binder));
+
+            // Diagnostic: dump GoogleMapImpl fields once to identify the listener field name.
+            if (serverBinder != null && sDumpedGoogleMapImplFields.compareAndSet(false, true)) {
+                StringBuilder sb = new StringBuilder("GoogleMapImpl fields: ");
+                for (Class<?> c = serverBinder.getClass(); c != null && c != Object.class; c = c.getSuperclass()) {
+                    for (java.lang.reflect.Field f : c.getDeclaredFields()) {
+                        f.setAccessible(true);
+                        Object val;
+                        try { val = f.get(serverBinder); } catch (Throwable e) { val = "<err>"; }
+                        sb.append(f.getName()).append("=").append(val == null ? "null" : val.getClass().getSimpleName()).append(", ");
                     }
                 }
-                java.lang.reflect.Method mBa = c.getDeclaredMethod("ba");
-                mBa.setAccessible(true);
-                mBa.invoke(controller);
-                android.util.Log.d("MorpheLocation", "Successfully invoked controller.ba() to refresh photos for bounds");
-            } catch (Throwable t) {
-                android.util.Log.e("MorpheLocation", "Failed to invoke controller.ba()", t);
+                android.util.Log.d("MorpheLocation", sb.toString());
             }
-        });
+
+            // Step 2: Walk GoogleMapImpl's fields (server side) for the stored listener.
+            if (serverBinder != null && searchAndFireCameraIdleListener(serverBinder)) return;
+
+            // Step 3: Also try delegate proxy's fields in case it's a local Binder subclass itself.
+            if (delegate != serverBinder && searchAndFireCameraIdleListener(delegate)) return;
+
+            // Step 4: Last resort — call onCameraIdle() directly on GoogleMapImpl via reflection.
+            // MicroG may handle it internally by dispatching to all registered listeners.
+            if (serverBinder != null) {
+                for (java.lang.reflect.Method m : serverBinder.getClass().getDeclaredMethods()) {
+                    if ("onCameraIdle".equals(m.getName()) && m.getParameterTypes().length == 0) {
+                        m.setAccessible(true);
+                        m.invoke(serverBinder);
+                        android.util.Log.d("MorpheLocation",
+                                "triggerGmsCameraIdle: called onCameraIdle() directly on GoogleMapImpl");
+                        return;
+                    }
+                }
+                // Also check superclasses
+                for (Class<?> c = serverBinder.getClass().getSuperclass(); c != null && c != Object.class; c = c.getSuperclass()) {
+                    for (java.lang.reflect.Method m : c.getDeclaredMethods()) {
+                        if ("onCameraIdle".equals(m.getName()) && m.getParameterTypes().length == 0) {
+                            m.setAccessible(true);
+                            m.invoke(serverBinder);
+                            android.util.Log.d("MorpheLocation",
+                                    "triggerGmsCameraIdle: called onCameraIdle() on superclass " + c.getSimpleName());
+                            return;
+                        }
+                    }
+                }
+            }
+
+            android.util.Log.w("MorpheLocation",
+                    "triggerGmsCameraIdle: could not fire camera-idle event");
+        } catch (Throwable t) {
+            android.util.Log.e("MorpheLocation", "triggerGmsCameraIdle failed", t);
+        }
     }
+
+    /**
+     * Walks obj's fields (and superclass fields) looking for any stored IInterface/IBinder
+     * whose interface descriptor contains "cameraidle" (case-insensitive), then invokes
+     * onCameraIdle() on it via reflection or Binder transaction.
+     *
+     * @return true if successfully invoked, false if not found
+     */
+    private static boolean searchAndFireCameraIdleListener(Object obj) {
+        for (Class<?> c = obj.getClass(); c != null && c != Object.class; c = c.getSuperclass()) {
+            for (java.lang.reflect.Field f : c.getDeclaredFields()) {
+                f.setAccessible(true);
+                Object val;
+                try { val = f.get(obj); } catch (Throwable ignored) { continue; }
+                if (val == null) continue;
+
+                android.os.IBinder binder = null;
+                if (val instanceof android.os.IBinder) {
+                    binder = (android.os.IBinder) val;
+                } else if (val instanceof android.os.IInterface) {
+                    binder = ((android.os.IInterface) val).asBinder();
+                }
+
+                if (binder != null) {
+                    String descriptor = null;
+                    try { descriptor = binder.getInterfaceDescriptor(); } catch (Throwable ignored) {}
+                    if (descriptor != null && descriptor.toLowerCase().contains("cameraidle")) {
+                        android.util.Log.d("MorpheLocation",
+                                "searchAndFire: found CameraIdle listener in field " + f.getName() +
+                                " descriptor=" + descriptor + " on " + c.getSimpleName());
+                        // Try direct reflection first
+                        try {
+                            java.lang.reflect.Method m = val.getClass().getMethod("onCameraIdle");
+                            m.invoke(val);
+                            android.util.Log.d("MorpheLocation", "searchAndFire: invoked via reflection");
+                            return true;
+                        } catch (NoSuchMethodException | IllegalAccessException | java.lang.reflect.InvocationTargetException ignored) {}
+                        // Try binder transaction (code 1 = first method = onCameraIdle)
+                        try {
+                            android.os.Parcel data = android.os.Parcel.obtain();
+                            android.os.Parcel reply = android.os.Parcel.obtain();
+                            try {
+                                data.writeInterfaceToken(descriptor);
+                                binder.transact(1, data, reply, 0);
+                                reply.readException();
+                                android.util.Log.d("MorpheLocation", "searchAndFire: invoked via transact(1)");
+                            } finally {
+                                data.recycle();
+                                reply.recycle();
+                            }
+                            return true;
+                        } catch (Throwable t) {
+                            android.util.Log.w("MorpheLocation", "searchAndFire: transact failed", t);
+                        }
+                    }
+                }
+            }
+        }
+        return false;
+    }
+
 
     private static void attachMapboxListeners(Object mapboxMap, Object mixinObj) {
         if (mapboxMap == null || sConfiguredMapboxMaps.contains(mapboxMap)) return;
@@ -854,14 +1252,11 @@ public class GmsCoreSupportPatch {
                 if ("onCameraIdle".equals(method.getName())) {
                     android.util.Log.d("MorpheLocation", "MapboxMap.onCameraIdle triggered");
                     sIsLocatingAnimation.set(false);
-                    Object ctrl = sMapExploreController;
-                    if (ctrl == null && mixinObj != null) {
-                        ctrl = findMapExploreController(mixinObj);
-                        sMapExploreController = ctrl;
-                    }
-                    if (ctrl != null) {
-                        refreshPhotosForCurrentBounds(ctrl);
-                    }
+                    // Forward the GMS camera-idle event to the listener Photos registered.
+                    // Without this, Photos' viewport query (Lazbh.b -> Laxej.e) never fires
+                    // after our programmatic MapboxMap.animateCamera() calls, so the photo
+                    // count goes stale and the header header text disappears.
+                    new android.os.Handler(android.os.Looper.getMainLooper()).post(() -> triggerGmsCameraIdle());
                 }
                 return null;
             });
@@ -927,6 +1322,7 @@ public class GmsCoreSupportPatch {
         }
     }
 
+
     public static void initMapLocation(Object mixinObj) {
         if (mixinObj == null) return;
         try {
@@ -936,9 +1332,11 @@ public class GmsCoreSupportPatch {
             }
             android.util.Log.d("MorpheLocation", "initMapLocation called for: " + mixinObj.getClass().getName());
             sCurrentMixinRef = new java.lang.ref.WeakReference<>(mixinObj);
+            sInitialSelectionCleared.set(false);
             if (sMapExploreController == null) {
                 sMapExploreController = findMapExploreController(mixinObj);
             }
+
             final Object finalMixin = mixinObj;
             new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(new Runnable() {
                 int attempts = 0;
@@ -948,6 +1346,7 @@ public class GmsCoreSupportPatch {
                         Object mapObj = findMapObject(finalMixin);
                         if (mapObj != null) {
                             android.util.Log.d("MorpheLocation", "initMapLocation: mapObj found on attempt " + attempts);
+                            wrapGoogleMapIfNeeded(mapObj);
                             android.os.IBinder mapBinder = extractMapBinder(mapObj);
                             if (mapBinder != null) {
                                 if (sLocationSource == null) {
@@ -958,26 +1357,10 @@ public class GmsCoreSupportPatch {
                                     sLocationComponent = null;
                                     setLocationSource(mapBinder, sLocationSource);
                                 }
-                                setMyLocationEnabled(mapBinder, true);
                             }
-                            try {
-                                for (java.lang.reflect.Method m : mapObj.getClass().getMethods()) {
-                                    if (m.getName().equals("f") && m.getParameterTypes().length == 1 && m.getParameterTypes()[0] == boolean.class) {
-                                        m.invoke(mapObj, true);
-                                        break;
-                                    }
-                                }
-                            } catch (Throwable ignored) {}
 
-                            if (sLocationComponent == null) {
-                                sLocationComponent = findLocationComponent(mapObj, 0, new HashSet<>());
-                            }
                             if (sMapboxMap != null) {
                                 attachMapboxListeners(sMapboxMap, finalMixin);
-                            }
-
-                            if (sLastLocation != null && sLocationSource != null) {
-                                sLocationSource.pushLocation(sLastLocation);
                             }
                         } else if (attempts < 6) {
                             attempts++;
@@ -1347,6 +1730,7 @@ public class GmsCoreSupportPatch {
                             android.util.Log.e("MorpheLocation", "Map object not found on mixin");
                             return;
                         }
+                        wrapGoogleMapIfNeeded(mapObj);
 
                         // Wire custom LocationSource to map if needed
                         android.os.IBinder mapBinder = extractMapBinder(mapObj);
@@ -1452,7 +1836,25 @@ public class GmsCoreSupportPatch {
                                     Class<?> mbCamUpdateClass = Class.forName("com.mapbox.mapboxsdk.camera.CameraUpdate", true, mbCl);
                                     Class<?> mbCancelCallbackClass = Class.forName("com.mapbox.mapboxsdk.maps.MapboxMap$CancelableCallback", true, mbCl);
                                     java.lang.reflect.Method mAnimate = mapboxMap.getClass().getMethod("animateCamera", mbCamUpdateClass, int.class, mbCancelCallbackClass);
-                                    mAnimate.invoke(mapboxMap, mbCamUpdate, 500, null);
+                                    // Use a real CancelableCallback so we know exactly when animation ends.
+                                    // In onFinish(), trigger the GMS OnCameraIdleListener that Photos registered —
+                                    // this is what fires Lazbh.b() -> Laxej.e() (the viewport photo-count query).
+                                    Object cancelableCallback = java.lang.reflect.Proxy.newProxyInstance(
+                                            mbCl,
+                                            new Class<?>[]{mbCancelCallbackClass},
+                                            (proxy, method, args) -> {
+                                                String mn = method.getName();
+                                                if ("onFinish".equals(mn)) {
+                                                    android.util.Log.d("MorpheLocation",
+                                                            "CancelableCallback.onFinish: animation done, triggering GMS camera-idle");
+                                                    triggerGmsCameraIdle();
+                                                } else if ("onCancel".equals(mn)) {
+                                                    android.util.Log.d("MorpheLocation",
+                                                            "CancelableCallback.onCancel: animation cancelled");
+                                                }
+                                                return null;
+                                            });
+                                    mAnimate.invoke(mapboxMap, mbCamUpdate, 500, cancelableCallback);
                                     android.util.Log.d("MorpheLocation", "Direct MapboxMap.animateCamera succeeded");
                                     mapAnimated = true;
                                 } catch (Throwable t) {
@@ -1529,17 +1931,8 @@ public class GmsCoreSupportPatch {
                                 }
                             }
 
-                            // Guaranteed photo refresh for current bounds after camera moves
                             new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(() -> {
                                 sIsLocatingAnimation.set(false);
-                                Object ctrl = sMapExploreController;
-                                if (ctrl == null) {
-                                    ctrl = findMapExploreController(finalMixin);
-                                    sMapExploreController = ctrl;
-                                }
-                                if (ctrl != null) {
-                                    refreshPhotosForCurrentBounds(ctrl);
-                                }
                             }, 600);
                         }
                     } catch (Throwable t) {
