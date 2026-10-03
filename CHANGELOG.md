@@ -1,3 +1,9 @@
+## [1.13.1](https://github.com/Akash-Sriram/morphe-google-photos/compare/v1.13.0...v1.13.1) (2026-10-03)
+
+### 🚀 Updated App Support
+
+* **Google Photos:** promote 7.95.0.989626323 as sole supported version ([0aa6704](https://github.com/Akash-Sriram/morphe-google-photos/commit/0aa6704ad3b2cc6cbbcf66577c604a0a65cba1b6))
+
 ## [1.13.0](https://github.com/Akash-Sriram/morphe-google-photos/compare/v1.12.2...v1.13.0) (2026-10-03)
 
 ### 🐛 Bug Fixes
