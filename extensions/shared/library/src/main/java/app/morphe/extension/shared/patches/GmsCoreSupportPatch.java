@@ -378,15 +378,12 @@ public class GmsCoreSupportPatch {
     }
 
     private static volatile Object sAttachedMapObj;
-    private static volatile Object sLocationComponent;
-    private static volatile Object sMapboxMap;
     private static volatile LocationSourceBinder sLocationSource;
     private static volatile android.location.Location sLastLocation;
     private static android.location.LocationListener sContinuousListener;
     private static volatile Object sMapExploreController;
     private static volatile java.lang.ref.WeakReference<Object> sCurrentMixinRef;
     private static final java.util.concurrent.atomic.AtomicBoolean sIsLocatingAnimation = new java.util.concurrent.atomic.AtomicBoolean(false);
-    private static final java.util.Set<Object> sConfiguredMapboxMaps = java.util.Collections.newSetFromMap(new java.util.WeakHashMap<>());
     private static volatile Object sAppCameraIdleListener;
     private static volatile Object sAppMapClickListener;
     private static volatile Object sGoogleMapDelegate;
@@ -570,133 +567,6 @@ public class GmsCoreSupportPatch {
         return null;
     }
 
-    private static Object toGmsLatLng(java.lang.reflect.Constructor<?> ctor, Object mbLatLng) {
-        if (mbLatLng == null) return null;
-        try {
-            Class<?> c = mbLatLng.getClass();
-            double lat = 0.0, lon = 0.0;
-            try {
-                lat = (double) c.getMethod("getLatitude").invoke(mbLatLng);
-                lon = (double) c.getMethod("getLongitude").invoke(mbLatLng);
-            } catch (Throwable t) {
-                lat = c.getField("latitude").getDouble(mbLatLng);
-                lon = c.getField("longitude").getDouble(mbLatLng);
-            }
-            return ctor.newInstance(lat, lon);
-        } catch (Throwable t) {
-            android.util.Log.e("MorpheLocation", "Error converting Mapbox LatLng to GMS LatLng", t);
-            return null;
-        }
-    }
-
-    private static Object getLiveVisibleRegion(ClassLoader cl) {
-        try {
-            Object mapbox = sMapboxMap;
-            if (mapbox == null) return null;
-            java.lang.reflect.Method mGetProj = mapbox.getClass().getMethod("getProjection");
-            Object mapboxProj = mGetProj.invoke(mapbox);
-            if (mapboxProj == null) return null;
-
-            java.lang.reflect.Method mGetVis = mapboxProj.getClass().getMethod("getVisibleRegion", boolean.class);
-            Object mbVisibleRegion = mGetVis.invoke(mapboxProj, false);
-            if (mbVisibleRegion == null) return null;
-
-            Class<?> mbVrClass = mbVisibleRegion.getClass();
-            Object mbNL = mbVrClass.getField("nearLeft").get(mbVisibleRegion);
-            Object mbNR = mbVrClass.getField("nearRight").get(mbVisibleRegion);
-            Object mbFL = mbVrClass.getField("farLeft").get(mbVisibleRegion);
-            Object mbFR = mbVrClass.getField("farRight").get(mbVisibleRegion);
-            Object mbBounds = mbVrClass.getField("latLngBounds").get(mbVisibleRegion);
-
-            Class<?> gmsLatLngClass = Class.forName("com.google.android.gms.maps.model.LatLng", true, cl);
-            java.lang.reflect.Constructor<?> latLngCtor = gmsLatLngClass.getConstructor(double.class, double.class);
-
-            Object gmsNL = toGmsLatLng(latLngCtor, mbNL);
-            Object gmsNR = toGmsLatLng(latLngCtor, mbNR);
-            Object gmsFL = toGmsLatLng(latLngCtor, mbFL);
-            Object gmsFR = toGmsLatLng(latLngCtor, mbFR);
-
-            Class<?> gmsBoundsClass = Class.forName("com.google.android.gms.maps.model.LatLngBounds", true, cl);
-            java.lang.reflect.Constructor<?> boundsCtor = gmsBoundsClass.getConstructor(gmsLatLngClass, gmsLatLngClass);
-
-            Object gmsSW = null;
-            Object gmsNE = null;
-            if (mbBounds != null) {
-                java.lang.reflect.Method mGetSW = mbBounds.getClass().getMethod("getSouthWest");
-                java.lang.reflect.Method mGetNE = mbBounds.getClass().getMethod("getNorthEast");
-                gmsSW = toGmsLatLng(latLngCtor, mGetSW.invoke(mbBounds));
-                gmsNE = toGmsLatLng(latLngCtor, mGetNE.invoke(mbBounds));
-            } else {
-                gmsSW = gmsNL;
-                gmsNE = gmsFR;
-            }
-            Object gmsBounds = boundsCtor.newInstance(gmsSW, gmsNE);
-
-            Class<?> gmsVisibleRegionClass = Class.forName("com.google.android.gms.maps.model.VisibleRegion", true, cl);
-            java.lang.reflect.Constructor<?> vrCtor = gmsVisibleRegionClass.getConstructor(
-                gmsLatLngClass, gmsLatLngClass, gmsLatLngClass, gmsLatLngClass, gmsBoundsClass
-            );
-            return vrCtor.newInstance(gmsNL, gmsNR, gmsFL, gmsFR, gmsBounds);
-        } catch (Throwable t) {
-            android.util.Log.e("MorpheLocation", "Error creating live VisibleRegion", t);
-            return null;
-        }
-    }
-
-    private static Object wrapProjectionDelegate(Object origProj, ClassLoader cl) {
-        if (origProj == null || origProj instanceof java.lang.reflect.Proxy) {
-            return origProj;
-        }
-        try {
-            Class<?>[] interfaces = origProj.getClass().getInterfaces();
-            if (interfaces == null || interfaces.length == 0) {
-                interfaces = new Class<?>[]{
-                    Class.forName("com.google.android.gms.maps.internal.IProjectionDelegate", true, cl),
-                    android.os.IInterface.class
-                };
-            }
-            return java.lang.reflect.Proxy.newProxyInstance(cl, interfaces, (proxy, method, args) -> {
-                String methodName = method.getName();
-                if ("getVisibleRegion".equals(methodName)) {
-                    Object live = getLiveVisibleRegion(cl);
-                    if (live != null) {
-                        return live;
-                    }
-                }
-                return method.invoke(origProj, args);
-            });
-        } catch (Throwable t) {
-            android.util.Log.e("MorpheLocation", "Failed to wrap IProjectionDelegate", t);
-            return origProj;
-        }
-    }
-
-    private static Object extractMapboxMapFromGoogleMap(Object mapObj) {
-        if (mapObj == null) return null;
-        try {
-            for (Class<?> c = mapObj.getClass(); c != null && c != Object.class; c = c.getSuperclass()) {
-                for (java.lang.reflect.Field f : c.getDeclaredFields()) {
-                    f.setAccessible(true);
-                    Object val = f.get(mapObj);
-                    if (val == null) continue;
-                    if (val.getClass().getName().contains("MapboxMap")) {
-                        return val;
-                    }
-                    for (Class<?> c2 = val.getClass(); c2 != null && c2 != Object.class; c2 = c2.getSuperclass()) {
-                        for (java.lang.reflect.Field f2 : c2.getDeclaredFields()) {
-                            if (f2.getType().getName().contains("MapboxMap")) {
-                                f2.setAccessible(true);
-                                Object mb = f2.get(val);
-                                if (mb != null) return mb;
-                            }
-                        }
-                    }
-                }
-            }
-        } catch (Throwable ignored) {}
-        return null;
-    }
-
     private static Object extractGoogleMapDelegate(Object mapObj) {
         if (mapObj == null) return null;
         try {
@@ -752,18 +622,6 @@ public class GmsCoreSupportPatch {
             if (delegate != null) {
                 sGoogleMapDelegate = delegate;
                 android.util.Log.d("MorpheLocation", "Captured sGoogleMapDelegate: " + delegate.getClass().getName());
-            }
-
-            if (sMapboxMap == null) {
-                Object mb = extractMapboxMapFromGoogleMap(mapObj);
-                if (mb == null && delegate != null) {
-                    mb = extractMapboxMapFromGoogleMap(delegate);
-                }
-                if (mb != null) {
-                    sMapboxMap = mb;
-                    attachMapboxListeners(mb, sCurrentMixinRef != null ? sCurrentMixinRef.get() : null);
-                    android.util.Log.d("MorpheLocation", "Discovered and attached MapboxMap: " + mb.getClass().getName());
-                }
             }
         } catch (Throwable t) {
             android.util.Log.e("MorpheLocation", "Failed to wrap GoogleMap delegate", t);
@@ -907,6 +765,7 @@ public class GmsCoreSupportPatch {
         }
 
         String[] knownClasses = new String[]{
+            "bqll", "defpackage.bqll",
             "bqbb", "defpackage.bqbb",
             "bprq", "defpackage.bprq",
             "brwd", "defpackage.brwd",
@@ -1240,75 +1099,6 @@ public class GmsCoreSupportPatch {
     }
 
 
-    private static void attachMapboxListeners(Object mapboxMap, Object mixinObj) {
-        if (mapboxMap == null || sConfiguredMapboxMaps.contains(mapboxMap)) return;
-        sConfiguredMapboxMaps.add(mapboxMap);
-        try {
-            ClassLoader cl = mapboxMap.getClass().getClassLoader();
-            Class<?> onCameraIdleClass = Class.forName("com.mapbox.mapboxsdk.maps.MapboxMap$OnCameraIdleListener", true, cl);
-            Class<?> onCameraMoveStartedClass = Class.forName("com.mapbox.mapboxsdk.maps.MapboxMap$OnCameraMoveStartedListener", true, cl);
-
-            Object idleListener = java.lang.reflect.Proxy.newProxyInstance(cl, new Class<?>[]{onCameraIdleClass}, (proxy, method, args) -> {
-                if ("onCameraIdle".equals(method.getName())) {
-                    android.util.Log.d("MorpheLocation", "MapboxMap.onCameraIdle triggered");
-                    sIsLocatingAnimation.set(false);
-                    // Forward the GMS camera-idle event to the listener Photos registered.
-                    // Without this, Photos' viewport query (Lazbh.b -> Laxej.e) never fires
-                    // after our programmatic MapboxMap.animateCamera() calls, so the photo
-                    // count goes stale and the header header text disappears.
-                    new android.os.Handler(android.os.Looper.getMainLooper()).post(() -> triggerGmsCameraIdle());
-                }
-                return null;
-            });
-
-            Object moveStartedListener = java.lang.reflect.Proxy.newProxyInstance(cl, new Class<?>[]{onCameraMoveStartedClass}, (proxy, method, args) -> {
-                if ("onCameraMoveStarted".equals(method.getName())) {
-                    int reason = (args != null && args.length > 0 && args[0] instanceof Integer) ? (Integer) args[0] : 0;
-                    android.util.Log.d("MorpheLocation", "MapboxMap.onCameraMoveStarted triggered (reason=" + reason + ")");
-                    if (!sIsLocatingAnimation.get()) {
-                        new android.os.Handler(android.os.Looper.getMainLooper()).post(() -> {
-                            try {
-                                Object currentMixin = mixinObj;
-                                if (currentMixin == null && sCurrentMixinRef != null) {
-                                    currentMixin = sCurrentMixinRef.get();
-                                }
-                                if (currentMixin != null) {
-                                    Class<?> clazz = currentMixin.getClass();
-                                    for (java.lang.reflect.Field f : clazz.getDeclaredFields()) {
-                                        if (f.getType() == boolean.class && f.getName().equals("h")) {
-                                            f.setAccessible(true);
-                                            f.setBoolean(currentMixin, false);
-                                        }
-                                    }
-                                    for (java.lang.reflect.Method m : clazz.getDeclaredMethods()) {
-                                        if (m.getName().equals("b") && m.getParameterTypes().length == 1 && m.getParameterTypes()[0] == boolean.class) {
-                                            m.setAccessible(true);
-                                            m.invoke(currentMixin, false);
-                                            break;
-                                        }
-                                    }
-                                }
-                            } catch (Throwable t) {
-                                android.util.Log.e("MorpheLocation", "Error resetting current location state on move", t);
-                            }
-                        });
-                    }
-                }
-                return null;
-            });
-
-            java.lang.reflect.Method addIdle = mapboxMap.getClass().getMethod("addOnCameraIdleListener", onCameraIdleClass);
-            addIdle.invoke(mapboxMap, idleListener);
-
-            java.lang.reflect.Method addMove = mapboxMap.getClass().getMethod("addOnCameraMoveStartedListener", onCameraMoveStartedClass);
-            addMove.invoke(mapboxMap, moveStartedListener);
-
-            android.util.Log.d("MorpheLocation", "Successfully attached MapboxMap camera listeners for photo refresh and FAB state synchronization");
-        } catch (Throwable t) {
-            android.util.Log.e("MorpheLocation", "Failed to attach MapboxMap camera listeners", t);
-        }
-    }
-
     public static void onCurrentLocationMixinTintUpdated(Object mixinObj, boolean active) {
         if (!active) {
             StackTraceElement[] stack = Thread.currentThread().getStackTrace();
@@ -1321,7 +1111,6 @@ public class GmsCoreSupportPatch {
             }
         }
     }
-
 
     public static void initMapLocation(Object mixinObj) {
         if (mixinObj == null) return;
@@ -1354,13 +1143,8 @@ public class GmsCoreSupportPatch {
                                 }
                                 if (sAttachedMapObj != mapObj) {
                                     sAttachedMapObj = mapObj;
-                                    sLocationComponent = null;
                                     setLocationSource(mapBinder, sLocationSource);
                                 }
-                            }
-
-                            if (sMapboxMap != null) {
-                                attachMapboxListeners(sMapboxMap, finalMixin);
                             }
                         } else if (attempts < 6) {
                             attempts++;
@@ -1373,217 +1157,6 @@ public class GmsCoreSupportPatch {
             }, 500);
         } catch (Throwable t) {
             android.util.Log.e("MorpheLocation", "initMapLocation outer exception", t);
-        }
-    }
-
-    private static Object findLocationComponent(Object obj, int depth, Set<Object> visited) {
-        if (obj == null || depth > 5 || visited.contains(obj)) return null;
-        visited.add(obj);
-
-        String className = obj.getClass().getName();
-        if (className.contains("LocationComponent") && !className.contains("Options")
-                && !className.contains("Constants") && !className.contains("Exception")
-                && !className.contains("Activation")) {
-            return obj;
-        }
-
-        if (className.equals("com.mapbox.mapboxsdk.maps.MapboxMap")) {
-            sMapboxMap = obj;
-            attachMapboxListeners(obj, sCurrentMixinRef != null ? sCurrentMixinRef.get() : null);
-            try {
-                java.lang.reflect.Method m = obj.getClass().getMethod("getLocationComponent");
-                Object lc = m.invoke(obj);
-                if (lc != null) return lc;
-            } catch (Throwable ignored) {}
-        }
-
-        if (className.contains("GoogleMapImpl")) {
-            try {
-                for (java.lang.reflect.Field f : obj.getClass().getDeclaredFields()) {
-                    f.setAccessible(true);
-                    Object val = f.get(obj);
-                    if (val != null) {
-                        if (val.getClass().getName().equals("com.mapbox.mapboxsdk.maps.MapboxMap")) {
-                            sMapboxMap = val;
-                            attachMapboxListeners(val, sCurrentMixinRef != null ? sCurrentMixinRef.get() : null);
-                        }
-                        if (val.getClass().getName().contains("MapboxMap")) {
-                            Object lc = findLocationComponent(val, depth + 1, visited);
-                            if (lc != null) return lc;
-                        }
-                    }
-                }
-            } catch (Throwable ignored) {}
-        }
-
-        for (Class<?> c = obj.getClass(); c != null && c != Object.class; c = c.getSuperclass()) {
-            for (java.lang.reflect.Field f : c.getDeclaredFields()) {
-                if (java.lang.reflect.Modifier.isStatic(f.getModifiers())) continue;
-                if (f.getType().isPrimitive() || f.getType() == String.class) continue;
-                try {
-                    f.setAccessible(true);
-                    Object child = f.get(obj);
-                    if (child != null) {
-                        Object lc = findLocationComponent(child, depth + 1, visited);
-                        if (lc != null) return lc;
-                    }
-                } catch (Throwable ignored) {}
-            }
-        }
-        return null;
-    }
-
-    private static Object findLocationComponentFromView(View v, int depth, Set<Object> visited) {
-        if (v == null || depth > 8 || visited.contains(v)) return null;
-        visited.add(v);
-        String vName = v.getClass().getName();
-        if (vName.contains("MapView")) {
-            for (Class<?> c = v.getClass(); c != null && c != Object.class; c = c.getSuperclass()) {
-                for (java.lang.reflect.Field f : c.getDeclaredFields()) {
-                    if (f.getType().getName().contains("MapboxMap")) {
-                        try {
-                            f.setAccessible(true);
-                            Object mapboxMap = f.get(v);
-                            if (mapboxMap != null && mapboxMap.getClass().getName().equals("com.mapbox.mapboxsdk.maps.MapboxMap")) {
-                                sMapboxMap = mapboxMap;
-                                attachMapboxListeners(mapboxMap, sCurrentMixinRef != null ? sCurrentMixinRef.get() : null);
-                                java.lang.reflect.Method m = mapboxMap.getClass().getMethod("getLocationComponent");
-                                Object lc = m.invoke(mapboxMap);
-                                if (lc != null) return lc;
-                            }
-                        } catch (Throwable ignored) {}
-                    }
-                }
-            }
-        }
-        if (v instanceof ViewGroup) {
-            ViewGroup vg = (ViewGroup) v;
-            for (int i = 0; i < vg.getChildCount(); i++) {
-                Object lc = findLocationComponentFromView(vg.getChildAt(i), depth + 1, visited);
-                if (lc != null) return lc;
-            }
-        }
-        return null;
-    }
-
-    private static void configureLocationComponent(Object locationComponent, android.location.Location loc) {
-        if (locationComponent == null) return;
-        try {
-            android.util.Log.d("MorpheLocation", "configureLocationComponent: " + locationComponent.getClass().getName());
-
-            // 1. Ensure LocationComponent is enabled
-            try {
-                java.lang.reflect.Method mEnable = locationComponent.getClass().getMethod("setLocationComponentEnabled", boolean.class);
-                mEnable.invoke(locationComponent, true);
-                android.util.Log.d("MorpheLocation", "LocationComponent.setLocationComponentEnabled(true) succeeded");
-            } catch (Throwable t) {
-                android.util.Log.w("MorpheLocation", "Failed to setLocationComponentEnabled", t);
-            }
-
-            // 2. Set renderMode = 18 (RenderMode.NORMAL) to hide the compass chevron/arrow
-            try {
-                java.lang.reflect.Method mRender = locationComponent.getClass().getMethod("setRenderMode", int.class);
-                mRender.invoke(locationComponent, 18); // RenderMode.NORMAL = 18
-                android.util.Log.d("MorpheLocation", "LocationComponent: setRenderMode(NORMAL) succeeded");
-            } catch (Throwable t) {
-                android.util.Log.w("MorpheLocation", "Failed to set renderMode on LocationComponent", t);
-            }
-
-            // 3. Disable stale state so MapLibre renders the solid blue dot (#4A90E2) instead of grey (#A1B0C0)
-            for (Class<?> c = locationComponent.getClass(); c != null && c != Object.class; c = c.getSuperclass()) {
-                for (java.lang.reflect.Field f : c.getDeclaredFields()) {
-                    if (f.getType().getName().contains("StaleStateManager")) {
-                        try {
-                            f.setAccessible(true);
-                            Object ssm = f.get(locationComponent);
-                            if (ssm != null) {
-                                try {
-                                    java.lang.reflect.Method mSetEnabled = ssm.getClass().getDeclaredMethod("setEnabled", boolean.class);
-                                    mSetEnabled.setAccessible(true);
-                                    mSetEnabled.invoke(ssm, false);
-                                    android.util.Log.d("MorpheLocation", "StaleStateManager.setEnabled(false) succeeded");
-                                } catch (Throwable ignored) {}
-
-                                try {
-                                    java.lang.reflect.Field fStale = ssm.getClass().getDeclaredField("isStale");
-                                    fStale.setAccessible(true);
-                                    fStale.setBoolean(ssm, false);
-                                } catch (Throwable ignored) {}
-
-                                try {
-                                    for (java.lang.reflect.Field fListener : ssm.getClass().getDeclaredFields()) {
-                                        if (fListener.getType().getName().contains("OnLocationStaleListener")) {
-                                            fListener.setAccessible(true);
-                                            Object listener = fListener.get(ssm);
-                                            if (listener != null) {
-                                                java.lang.reflect.Method mStaleChange = listener.getClass().getMethod("onStaleStateChange", boolean.class);
-                                                mStaleChange.invoke(listener, false);
-                                                android.util.Log.d("MorpheLocation", "OnLocationStaleListener.onStaleStateChange(false) succeeded");
-                                            }
-                                        }
-                                    }
-                                } catch (Throwable ignored) {}
-                            }
-                        } catch (Throwable ignored) {}
-                    }
-                    if (f.getType().getName().contains("LocationComponentOptions")) {
-                        try {
-                            f.setAccessible(true);
-                            Object opts = f.get(locationComponent);
-                            if (opts != null) {
-                                for (java.lang.reflect.Field of : opts.getClass().getDeclaredFields()) {
-                                    if (of.getName().equals("enableStaleState") && of.getType() == boolean.class) {
-                                        of.setAccessible(true);
-                                        of.setBoolean(opts, false);
-                                        android.util.Log.d("MorpheLocation", "LocationComponentOptions.enableStaleState set to false");
-                                    }
-                                }
-                            }
-                        } catch (Throwable ignored) {}
-                    }
-                    // Ensure isLayerReady and isEnabled are true
-                    if ((f.getName().equals("isLayerReady") || f.getName().equals("isEnabled")) && f.getType() == boolean.class) {
-                        try {
-                            f.setAccessible(true);
-                            f.setBoolean(locationComponent, true);
-                        } catch (Throwable ignored) {}
-                    }
-                    // Show location layer if hidden
-                    if (f.getName().equals("locationLayerController")) {
-                        try {
-                            f.setAccessible(true);
-                            Object layerCtrl = f.get(locationComponent);
-                            if (layerCtrl != null) {
-                                java.lang.reflect.Method mShow = layerCtrl.getClass().getMethod("show");
-                                mShow.invoke(layerCtrl);
-                                android.util.Log.d("MorpheLocation", "locationLayerController.show() succeeded");
-                            }
-                        } catch (Throwable ignored) {}
-                    }
-                }
-            }
-
-            // 4. Force location update
-            if (loc != null) {
-                try {
-                    for (java.lang.reflect.Method m : locationComponent.getClass().getMethods()) {
-                        if (m.getName().equals("forceLocationUpdate") && m.getParameterTypes().length >= 1
-                                && m.getParameterTypes()[0] == android.location.Location.class) {
-                            if (m.getParameterTypes().length == 1) {
-                                m.invoke(locationComponent, loc);
-                            } else if (m.getParameterTypes().length == 2 && m.getParameterTypes()[1] == boolean.class) {
-                                m.invoke(locationComponent, loc, false);
-                            }
-                            android.util.Log.d("MorpheLocation", "LocationComponent.forceLocationUpdate invoked successfully");
-                            break;
-                        }
-                    }
-                } catch (Throwable t) {
-                    android.util.Log.w("MorpheLocation", "Failed to forceLocationUpdate", t);
-                }
-            }
-        } catch (Throwable t) {
-            android.util.Log.e("MorpheLocation", "configureLocationComponent error", t);
         }
     }
 
@@ -1740,7 +1313,6 @@ public class GmsCoreSupportPatch {
                             }
                             if (sAttachedMapObj != mapObj) {
                                 sAttachedMapObj = mapObj;
-                                sLocationComponent = null;
                                 setLocationSource(mapBinder, sLocationSource);
                             }
                             // Always ensure myLocation is enabled on the map binder
@@ -1756,142 +1328,60 @@ public class GmsCoreSupportPatch {
                             }
                         } catch (Throwable ignored) {}
 
-                        // Discover LocationComponent if not already cached
-                        if (sLocationComponent == null) {
-                            sLocationComponent = findLocationComponent(mapObj, 0, new HashSet<>());
-                            if (sLocationComponent == null && finalContext instanceof Activity) {
-                                View decor = ((Activity) finalContext).getWindow().getDecorView();
-                                sLocationComponent = findLocationComponentFromView(decor, 0, new HashSet<>());
-                            }
-                            if (sLocationComponent != null) {
-                                android.util.Log.d("MorpheLocation", "Discovered LocationComponent: " + sLocationComponent.getClass().getName());
-                            } else {
-                                android.util.Log.w("MorpheLocation", "LocationComponent not found via mapObj/view traversal");
-                            }
-                        }
-
-                        if (sLocationComponent != null) {
-                            configureLocationComponent(sLocationComponent, loc);
-                        }
-
                         if (sLocationSource != null) {
                             sLocationSource.pushLocation(loc);
                         }
 
                         // Animate camera once per FAB click
                         if (cameraAnimated.compareAndSet(false, true)) {
-                            boolean mapAnimated = false;
+                            try {
+                                Class<?> latLngClass = Class.forName("com.google.android.gms.maps.model.LatLng", true, clazz.getClassLoader());
+                                Object latLng = latLngClass.getConstructor(double.class, double.class)
+                                        .newInstance(loc.getLatitude(), loc.getLongitude());
 
-                            // 1. Prioritize direct MapboxMap camera animation for smooth GL camera transition
-                            Object mapboxMap = sMapboxMap;
-                            if (mapboxMap == null && sLocationComponent != null) {
-                                for (Class<?> c = sLocationComponent.getClass(); c != null && c != Object.class; c = c.getSuperclass()) {
-                                    for (java.lang.reflect.Field f : c.getDeclaredFields()) {
-                                        if (f.getType().getName().equals("com.mapbox.mapboxsdk.maps.MapboxMap")) {
+                                Object camUpdate = createCameraUpdate(clazz.getClassLoader(), latLng, 15.0f);
+                                if (camUpdate != null) {
+                                    boolean animated = false;
+                                    Class<?> cuClass = camUpdate.getClass();
+                                    for (java.lang.reflect.Method m : mapObj.getClass().getMethods()) {
+                                        Class<?>[] pts = m.getParameterTypes();
+                                        if (pts.length == 2 && (pts[0].isAssignableFrom(cuClass) || cuClass.isAssignableFrom(pts[0]))
+                                                && (pts[1] == int.class || pts[1] == Integer.class)) {
                                             try {
-                                                f.setAccessible(true);
-                                                Object candidate = f.get(sLocationComponent);
-                                                if (candidate != null && candidate.getClass().getName().equals("com.mapbox.mapboxsdk.maps.MapboxMap")) {
-                                                    mapboxMap = candidate;
-                                                    sMapboxMap = candidate;
-                                                    break;
-                                                }
-                                            } catch (Throwable ignored) {}
-                                        }
-                                    }
-                                    if (mapboxMap != null) break;
-                                }
-                            }
-
-                            if (mapboxMap != null) {
-                                attachMapboxListeners(mapboxMap, finalMixin);
-                                try {
-                                    double currentZoom = 15.0d;
-                                    try {
-                                        java.lang.reflect.Method mGetCam = mapboxMap.getClass().getMethod("getCameraPosition");
-                                        Object camPos = mGetCam.invoke(mapboxMap);
-                                        if (camPos != null) {
-                                            java.lang.reflect.Field fZoom = camPos.getClass().getField("zoom");
-                                            double z = fZoom.getDouble(camPos);
-                                            if (z > 0.0) {
-                                                currentZoom = Math.max(z, 15.0d);
+                                                m.setAccessible(true);
+                                                m.invoke(mapObj, camUpdate, 500);
+                                                android.util.Log.d("MorpheLocation", "Invoked map." + m.getName() + "(camUpdate, 500)");
+                                                animated = true;
+                                                break;
+                                            } catch (Throwable t) {
+                                                android.util.Log.w("MorpheLocation", "Failed invoking " + m.getName() + "(camUpdate, 500)", t);
                                             }
                                         }
-                                    } catch (Throwable ignored) {}
-
-                                    ClassLoader mbCl = mapboxMap.getClass().getClassLoader();
-                                    Class<?> mbLatLngClass = Class.forName("com.mapbox.mapboxsdk.geometry.LatLng", true, mbCl);
-                                    Object mbLatLng = mbLatLngClass.getConstructor(double.class, double.class)
-                                            .newInstance(loc.getLatitude(), loc.getLongitude());
-
-                                    Class<?> mbCamUpdateFactory = Class.forName("com.mapbox.mapboxsdk.camera.CameraUpdateFactory", true, mbCl);
-                                    java.lang.reflect.Method mNewLatLngZoom = mbCamUpdateFactory.getMethod("newLatLngZoom", mbLatLngClass, double.class);
-                                    Object mbCamUpdate = mNewLatLngZoom.invoke(null, mbLatLng, currentZoom);
-
-                                    try {
-                                        java.lang.reflect.Method mCancel = mapboxMap.getClass().getMethod("cancelTransitions");
-                                        mCancel.invoke(mapboxMap);
-                                    } catch (Throwable ignored) {}
-
-                                    Class<?> mbCamUpdateClass = Class.forName("com.mapbox.mapboxsdk.camera.CameraUpdate", true, mbCl);
-                                    Class<?> mbCancelCallbackClass = Class.forName("com.mapbox.mapboxsdk.maps.MapboxMap$CancelableCallback", true, mbCl);
-                                    java.lang.reflect.Method mAnimate = mapboxMap.getClass().getMethod("animateCamera", mbCamUpdateClass, int.class, mbCancelCallbackClass);
-                                    // Use a real CancelableCallback so we know exactly when animation ends.
-                                    // In onFinish(), trigger the GMS OnCameraIdleListener that Photos registered —
-                                    // this is what fires Lazbh.b() -> Laxej.e() (the viewport photo-count query).
-                                    Object cancelableCallback = java.lang.reflect.Proxy.newProxyInstance(
-                                            mbCl,
-                                            new Class<?>[]{mbCancelCallbackClass},
-                                            (proxy, method, args) -> {
-                                                String mn = method.getName();
-                                                if ("onFinish".equals(mn)) {
-                                                    android.util.Log.d("MorpheLocation",
-                                                            "CancelableCallback.onFinish: animation done, triggering GMS camera-idle");
-                                                    triggerGmsCameraIdle();
-                                                } else if ("onCancel".equals(mn)) {
-                                                    android.util.Log.d("MorpheLocation",
-                                                            "CancelableCallback.onCancel: animation cancelled");
-                                                }
-                                                return null;
-                                            });
-                                    mAnimate.invoke(mapboxMap, mbCamUpdate, 500, cancelableCallback);
-                                    android.util.Log.d("MorpheLocation", "Direct MapboxMap.animateCamera succeeded");
-                                    mapAnimated = true;
-                                } catch (Throwable t) {
-                                    android.util.Log.w("MorpheLocation", "Direct MapboxMap animation failed", t);
-                                }
-                            }
-
-                            // 2. Also attempt mapObj animation if direct MapboxMap animation did not run
-                            if (!mapAnimated) {
-                                try {
-                                    Class<?> latLngClass = Class.forName("com.google.android.gms.maps.model.LatLng");
-                                    Object latLng = latLngClass.getConstructor(double.class, double.class)
-                                            .newInstance(loc.getLatitude(), loc.getLongitude());
-
-                                    Object camUpdate = createCameraUpdate(clazz.getClassLoader(), latLng, 15.0f);
-                                    if (camUpdate != null) {
-                                        Class<?> cuClass = camUpdate.getClass();
+                                    }
+                                    if (!animated) {
                                         for (java.lang.reflect.Method m : mapObj.getClass().getMethods()) {
                                             Class<?>[] pts = m.getParameterTypes();
-                                            if (pts.length == 2 && (pts[0].isAssignableFrom(cuClass) || cuClass.isAssignableFrom(pts[0]))
-                                                    && (pts[1] == int.class || pts[1] == Integer.class)) {
+                                            if (pts.length == 1 && (pts[0].isAssignableFrom(cuClass) || cuClass.isAssignableFrom(pts[0]))) {
                                                 try {
                                                     m.setAccessible(true);
-                                                    m.invoke(mapObj, camUpdate, 500);
-                                                    android.util.Log.d("MorpheLocation", "Invoked map." + m.getName() + "(camUpdate, 500)");
-                                                    mapAnimated = true;
+                                                    m.invoke(mapObj, camUpdate);
+                                                    android.util.Log.d("MorpheLocation", "Invoked map." + m.getName() + "(camUpdate)");
+                                                    animated = true;
                                                     break;
                                                 } catch (Throwable t) {
-                                                    android.util.Log.w("MorpheLocation", "Failed invoking " + m.getName() + "(camUpdate, 500)", t);
+                                                    android.util.Log.w("MorpheLocation", "Failed invoking " + m.getName() + "(camUpdate)", t);
                                                 }
                                             }
                                         }
                                     }
-                                } catch (Throwable t) {
-                                    android.util.Log.w("MorpheLocation", "mapObj animation failed", t);
                                 }
+                            } catch (Throwable t) {
+                                android.util.Log.w("MorpheLocation", "Camera animation failed", t);
                             }
+
+                            // Trigger camera idle fallback after animation time in case camera was already near target
+                            sCameraIdleHandler.removeCallbacks(sCameraIdleRunnable);
+                            sCameraIdleHandler.postDelayed(sCameraIdleRunnable, 600);
 
                             // Synchronize FAB active state reliably
                             for (java.lang.reflect.Field f : clazz.getDeclaredFields()) {
@@ -1987,10 +1477,6 @@ public class GmsCoreSupportPatch {
                                 LocationSourceBinder src = sLocationSource;
                                 if (src != null) {
                                     src.pushLocation(location);
-                                }
-                                Object lc = sLocationComponent;
-                                if (lc != null) {
-                                    configureLocationComponent(lc, location);
                                 }
                                 if (!cameraAnimated.get()) {
                                     applyLocation.onLocation(location);
