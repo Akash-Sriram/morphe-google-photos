@@ -23,13 +23,6 @@
               "isExperimental": false,
               "minSdk": null,
               "description": null
-            },
-            {
-              "version": "7.94.0.984908898",
-              "versionCodes": null,
-              "isExperimental": false,
-              "minSdk": null,
-              "description": null
             }
           ]
         }
@@ -55,13 +48,6 @@
           "targets": [
             {
               "version": "7.95.0.989626323",
-              "versionCodes": null,
-              "isExperimental": false,
-              "minSdk": null,
-              "description": null
-            },
-            {
-              "version": "7.94.0.984908898",
               "versionCodes": null,
               "isExperimental": false,
               "minSdk": null,
@@ -93,13 +79,6 @@
               "isExperimental": false,
               "minSdk": null,
               "description": null
-            },
-            {
-              "version": "7.94.0.984908898",
-              "versionCodes": null,
-              "isExperimental": false,
-              "minSdk": null,
-              "description": null
             }
           ]
         }
@@ -123,13 +102,6 @@
           "targets": [
             {
               "version": "7.95.0.989626323",
-              "versionCodes": null,
-              "isExperimental": false,
-              "minSdk": null,
-              "description": null
-            },
-            {
-              "version": "7.94.0.984908898",
               "versionCodes": null,
               "isExperimental": false,
               "minSdk": null,
@@ -164,13 +136,6 @@
               "isExperimental": false,
               "minSdk": null,
               "description": null
-            },
-            {
-              "version": "7.94.0.984908898",
-              "versionCodes": null,
-              "isExperimental": false,
-              "minSdk": null,
-              "description": null
             }
           ]
         }
@@ -194,13 +159,6 @@
           "targets": [
             {
               "version": "7.95.0.989626323",
-              "versionCodes": null,
-              "isExperimental": false,
-              "minSdk": null,
-              "description": null
-            },
-            {
-              "version": "7.94.0.984908898",
               "versionCodes": null,
               "isExperimental": false,
               "minSdk": null,
@@ -232,13 +190,6 @@
               "isExperimental": false,
               "minSdk": null,
               "description": null
-            },
-            {
-              "version": "7.94.0.984908898",
-              "versionCodes": null,
-              "isExperimental": false,
-              "minSdk": null,
-              "description": null
             }
           ]
         }
@@ -264,13 +215,6 @@
           "targets": [
             {
               "version": "7.95.0.989626323",
-              "versionCodes": null,
-              "isExperimental": false,
-              "minSdk": null,
-              "description": null
-            },
-            {
-              "version": "7.94.0.984908898",
               "versionCodes": null,
               "isExperimental": false,
               "minSdk": null,
@@ -306,13 +250,6 @@
               "isExperimental": false,
               "minSdk": null,
               "description": null
-            },
-            {
-              "version": "7.94.0.984908898",
-              "versionCodes": null,
-              "isExperimental": false,
-              "minSdk": null,
-              "description": null
             }
           ]
         }
@@ -338,13 +275,6 @@
           "targets": [
             {
               "version": "7.95.0.989626323",
-              "versionCodes": null,
-              "isExperimental": false,
-              "minSdk": null,
-              "description": null
-            },
-            {
-              "version": "7.94.0.984908898",
               "versionCodes": null,
               "isExperimental": false,
               "minSdk": null,
@@ -378,13 +308,6 @@
               "isExperimental": false,
               "minSdk": null,
               "description": null
-            },
-            {
-              "version": "7.94.0.984908898",
-              "versionCodes": null,
-              "isExperimental": false,
-              "minSdk": null,
-              "description": null
             }
           ]
         }
@@ -412,13 +335,6 @@
           "targets": [
             {
               "version": "7.95.0.989626323",
-              "versionCodes": null,
-              "isExperimental": false,
-              "minSdk": null,
-              "description": null
-            },
-            {
-              "version": "7.94.0.984908898",
               "versionCodes": null,
               "isExperimental": false,
               "minSdk": null,
