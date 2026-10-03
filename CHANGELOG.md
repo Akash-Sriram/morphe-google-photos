@@ -1,3 +1,21 @@
+## [1.13.0](https://github.com/Akash-Sriram/morphe-google-photos/compare/v1.12.2...v1.13.0) (2026-10-03)
+
+### 🐛 Bug Fixes
+
+* **Google Photos - Diagnostics:** disable text selection in log viewer and upgrade logcat reader to zero-drop buffered pipeline ([01d36f8](https://github.com/Akash-Sriram/morphe-google-photos/commit/01d36f872558a66577431b78c07bd9204083c487))
+* **Google Photos - Flags:** respect theme, fix search filter expand/collapse, and disallow multiline in search bar ([06289d5](https://github.com/Akash-Sriram/morphe-google-photos/commit/06289d5b44f68312a309b6dfd35981b07193c898))
+* **Google Photos:** handle missing MicroG location permission and resolve avatar layout loop ([#25](https://github.com/Akash-Sriram/morphe-google-photos/issues/25)) ([205ba91](https://github.com/Akash-Sriram/morphe-google-photos/commit/205ba915719ca626d5236a07b51be428640c84b5))
+
+### ✨ New Features
+
+* **Google Photos - Flags:** scope enable/disable all to active list and tab, implement reset/load preset lifecycle, and scope category toggle ([083bf00](https://github.com/Akash-Sriram/morphe-google-photos/commit/083bf00dfbe98d405ee3054bed0fbdcaf67823ae))
+* **Google Photos - Map:** fix explore map photo count recalculation and grid clipping on location center ([3df096f](https://github.com/Akash-Sriram/morphe-google-photos/commit/3df096faeb063d6c64b563eb4409e1e2d9b2515a))
+* **Google Photos:** add custom flags tab with individual/bulk clear, fix category enable/disable logic, update restart icon, and unify diagnostics to single view ([60f4e32](https://github.com/Akash-Sriram/morphe-google-photos/commit/60f4e32a816dfec51eeb461328a215a2479584ae))
+* **Google Photos:** redesign diagnostics dialog to M3, fix flag manager dialog rounding, and remove duplicate logs menu item ([b8ea57b](https://github.com/Akash-Sriram/morphe-google-photos/commit/b8ea57bf7bbab4e098c0ba9aabc8653c03c50e97))
+* **Google Photos - Ui:** redesign session selector with M3 picker, add expand/collapse quick pills, and enable Google One Bento Badge ([cb130b6](https://github.com/Akash-Sriram/morphe-google-photos/commit/cb130b6b0e9c008ba106acd2fa7d48498b692ca6))
+* **Google Photos - Ui:** redesign settings dock and flag manager with native Material 3 styling and vector icons ([91eec8d](https://github.com/Akash-Sriram/morphe-google-photos/commit/91eec8dd42fa33589f17b91712d617b7d79c86cc))
+* **Google Photos - Ui:** tailor-made Material vector icons, meaningful category names, and 24dp curves ([ae0246a](https://github.com/Akash-Sriram/morphe-google-photos/commit/ae0246a856df9df9ba078d8a2ec9214aebb83844))
+
 ## [1.12.2](https://github.com/Akash-Sriram/morphe-google-photos/compare/v1.12.1...v1.12.2) (2026-09-26)
 
 ### 🐛 Bug Fixes
