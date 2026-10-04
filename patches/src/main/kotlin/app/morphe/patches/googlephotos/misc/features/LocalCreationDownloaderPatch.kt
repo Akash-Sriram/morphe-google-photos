@@ -59,6 +59,26 @@ val localCreationDownloaderPatch = bytecodePatch(
                         :cond_morphe_fallback
                         """.trimIndent(),
                     )
+
+                    // Find isSaved check method returning boolean (Z) with 1 parameter (Lakxr->e(Lbwel;)Z)
+                    val isSavedMethod = classDef.methods.find { method ->
+                        method.returnType == "Z" && method.parameterTypes.size == 1
+                    }
+                    if (isSavedMethod != null) {
+                        val mutableIsSavedMethod = mutableClass.findMutableMethodOf(isSavedMethod)
+                        mutableIsSavedMethod.addInstructions(
+                            0,
+                            """
+                            invoke-static { p1 }, Lapp/morphe/extension/shared/patches/LocalCreationDownloader;->isCreationSaved(Ljava/lang/Object;)Z
+                            move-result v0
+                            if-eqz v0, :cond_orig_is_saved
+                            const/4 v0, 0x1
+                            return v0
+                            :cond_orig_is_saved
+                            """.trimIndent(),
+                        )
+                    }
+
                     patched = true
                 }
             }

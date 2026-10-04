@@ -3,6 +3,7 @@ package app.morphe.extension.shared.patches;
 import android.content.ContentResolver;
 import android.content.ContentValues;
 import android.content.Context;
+import android.content.SharedPreferences;
 import android.media.MediaScannerConnection;
 import android.net.Uri;
 import android.os.Build;
@@ -19,9 +20,7 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
-import java.text.SimpleDateFormat;
 import java.util.Collection;
-import java.util.Date;
 import java.util.Locale;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -29,13 +28,19 @@ import java.util.concurrent.Executors;
 /**
  * Intercepts saving memory collages and creations in Google Photos.
  * Instead of committing the creation solely to Google's cloud server (which debits account storage quota),
- * this downloader exports the media stream directly to the device's DCIM/Camera folder.
+ * this downloader exports the media stream directly to the device's DCIM/Google Photos folder.
  * Google Photos then detects the local file and backs it up under the Pixel XL quota-free exemption.
+ *
+ * It also hooks into SaveCreationMixin->e(bwel) to check if the creation has already been saved
+ * locally. While the file exists in DCIM/Google Photos, the Save button is suppressed/hidden (matching
+ * official behavior). If the user deletes the local file, the Save button reappears.
  */
 public class LocalCreationDownloader {
     private static final String TAG = "LocalCreationDownloader";
+    private static final String PREFS_NAME = "morphe_saved_creations";
     private static final ExecutorService EXECUTOR = Executors.newSingleThreadExecutor();
     private static final Handler MAIN_HANDLER = new Handler(Looper.getMainLooper());
+    private static volatile Context sAppContext = null;
 
     /**
      * Interception entry point called directly from SaveCreationMixin (Lakxr->h).
@@ -52,8 +57,10 @@ public class LocalCreationDownloader {
         try {
             Context context = extractContext(saveCreationMixin);
             if (context == null) {
-                Log.w(TAG, "No Context found on SaveCreationMixin");
-                return false;
+                context = getApplicationContext();
+            }
+            if (context != null) {
+                sAppContext = context.getApplicationContext();
             }
 
             Collection<?> items = (mediaList instanceof Collection)
@@ -63,17 +70,57 @@ public class LocalCreationDownloader {
                 return false;
             }
 
-            // Save locally to DCIM/Camera
-            boolean saved = saveCreationToCamera(context, items);
-            if (!saved) {
-                return false;
+            // Check if all items in the request are already saved locally
+            boolean allAlreadySaved = true;
+            for (Object media : items) {
+                if (media != null && !isCreationSaved(media)) {
+                    allAlreadySaved = false;
+                    break;
+                }
             }
 
-            // Notify save listeners so UI updates button to "Saved"
-            notifySaveListeners(saveCreationMixin, mediaList);
+            if (allAlreadySaved) {
+                Log.i(TAG, "Creation is already saved locally on device. Suppressing duplicate download.");
+                final Context toastCtx = sAppContext != null ? sAppContext : context;
+                if (toastCtx != null) {
+                    MAIN_HANDLER.post(() ->
+                        Toast.makeText(toastCtx, "Already saved to Google Photos folder", Toast.LENGTH_SHORT).show()
+                    );
+                }
+                notifySaveListeners(saveCreationMixin, mediaList);
+                notifyStoryUi(saveCreationMixin);
+                return true;
+            }
 
-            // Advance / update story UI
-            notifyStoryUi(saveCreationMixin);
+            final Context appContext = sAppContext != null ? sAppContext : context.getApplicationContext();
+            Log.i(TAG, "Intercepted creation save request for " + items.size() + " item(s). Redirecting to DCIM/Google Photos.");
+
+            // Dispatch background save to avoid blocking the main UI thread
+            EXECUTOR.execute(() -> {
+                int successCount = 0;
+                for (Object media : items) {
+                    if (media == null) continue;
+                    if (saveSingleItem(appContext, media)) {
+                        successCount++;
+                    }
+                }
+
+                final int saved = successCount;
+                MAIN_HANDLER.post(() -> {
+                    if (saved > 0) {
+                        Toast.makeText(appContext, "Saved to Google Photos folder (quota-free)", Toast.LENGTH_SHORT).show();
+                        Log.i(TAG, "Successfully exported " + saved + " creation(s) to DCIM/Google Photos.");
+
+                        // Notify save listeners AFTER download finishes so the UI updates
+                        // button state to Saved and advances/dismisses story
+                        notifySaveListeners(saveCreationMixin, mediaList);
+                        notifyStoryUi(saveCreationMixin);
+                    } else {
+                        Log.w(TAG, "Failed to resolve local stream for creation item(s).");
+                        Toast.makeText(appContext, "Failed to save creation locally", Toast.LENGTH_SHORT).show();
+                    }
+                });
+            });
 
             return true;
         } catch (Throwable t) {
@@ -82,36 +129,132 @@ public class LocalCreationDownloader {
         }
     }
 
-    public static boolean saveCreationToCamera(Context context, Collection<?> mediaList) {
-        if (context == null || mediaList == null || mediaList.isEmpty()) {
-            return false;
-        }
+    /**
+     * Called directly from SaveCreationMixin->e(bwel) to check if an item is already saved.
+     * When this returns true, the story button provider (Lakxp->c) returns null, causing
+     * the Save button to vanish from the UI.
+     * If the user deletes the local file from DCIM/Google Photos, this returns false, causing
+     * the Save button to reappear.
+     */
+    public static boolean isCreationSaved(Object mediaItem) {
+        if (mediaItem == null) return false;
+        try {
+            String key = extractItemKey(mediaItem);
+            if (key == null) return false;
 
-        final Context appContext = context.getApplicationContext();
-        Log.i(TAG, "Intercepted creation save request for " + mediaList.size() + " item(s). Redirecting to DCIM/Google Photos.");
-
-        // Dispatch background save to avoid blocking the main UI thread
-        EXECUTOR.execute(() -> {
-            int successCount = 0;
-            for (Object media : mediaList) {
-                if (media == null) continue;
-                if (saveSingleItem(appContext, media)) {
-                    successCount++;
+            // 1. Check deterministic file path in DCIM/Google Photos
+            File dir = getGooglePhotosDir();
+            if (dir.exists()) {
+                File directFile = new File(dir, getFileNameForKey(key));
+                if (directFile.exists() && directFile.length() > 0) {
+                    return true;
                 }
             }
 
-            final int saved = successCount;
-            MAIN_HANDLER.post(() -> {
-                if (saved > 0) {
-                    Toast.makeText(appContext, "Creation saved to Google Photos folder (quota-free)", Toast.LENGTH_SHORT).show();
-                    Log.i(TAG, "Successfully exported " + saved + " creation(s) to DCIM/Google Photos.");
-                } else {
-                    Log.w(TAG, "Failed to resolve local stream for creation item(s).");
+            // 2. Check SharedPreferences for mapped file path
+            Context ctx = getApplicationContext();
+            if (ctx != null) {
+                SharedPreferences prefs = ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
+                String savedPath = prefs.getString(key, null);
+                if (savedPath != null) {
+                    File f = new File(savedPath);
+                    if (f.exists() && f.length() > 0) {
+                        return true;
+                    } else {
+                        // User deleted the local file! Remove from registry so button reappears
+                        prefs.edit().remove(key).apply();
+                    }
                 }
-            });
-        });
+            }
+        } catch (Throwable t) {
+            Log.w(TAG, "Error in isCreationSaved", t);
+        }
+        return false;
+    }
 
-        return true;
+    public static File getGooglePhotosDir() {
+        return new File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DCIM), "Google Photos");
+    }
+
+    public static String getFileNameForKey(String key) {
+        return "Collage_" + sanitizeFileName(key) + ".jpg";
+    }
+
+    private static String sanitizeFileName(String input) {
+        if (input == null || input.isEmpty()) return "item";
+        return input.replaceAll("[^a-zA-Z0-9._-]", "_");
+    }
+
+    /**
+     * Extracts a stable identifier for a media item (_1846 / bwel).
+     */
+    public static String extractItemKey(Object mediaItem) {
+        if (mediaItem == null) return null;
+
+        // 1. Try bwep.e() returning long ID
+        try {
+            Method eMethod = mediaItem.getClass().getMethod("e");
+            if (eMethod.getReturnType() == long.class || eMethod.getReturnType() == Long.class) {
+                long id = ((Number) eMethod.invoke(mediaItem)).longValue();
+                if (id != 0 && id != -1) {
+                    return "id_" + id;
+                }
+            }
+        } catch (Throwable ignored) {}
+
+        // 2. Check 0-arg methods returning String
+        for (Method m : mediaItem.getClass().getMethods()) {
+            if (m.getParameterTypes().length == 0 && m.getReturnType() == String.class) {
+                String name = m.getName().toLowerCase(Locale.US);
+                if (name.contains("key") || name.contains("dedup") || name.equals("i")) {
+                    try {
+                        String val = (String) m.invoke(mediaItem);
+                        if (val != null && val.length() > 5 && !val.contains("com.google") && !val.contains("@")) {
+                            return val;
+                        }
+                    } catch (Throwable ignored) {}
+                }
+            }
+        }
+
+        // 3. Check fields
+        for (Field f : mediaItem.getClass().getDeclaredFields()) {
+            if (f.getType() == String.class) {
+                String name = f.getName().toLowerCase(Locale.US);
+                if (name.contains("key") || name.contains("dedup")) {
+                    try {
+                        f.setAccessible(true);
+                        String val = (String) f.get(mediaItem);
+                        if (val != null && val.length() > 5 && !val.contains("com.google") && !val.contains("@")) {
+                            return val;
+                        }
+                    } catch (Throwable ignored) {}
+                }
+            } else if (f.getType() == long.class) {
+                try {
+                    f.setAccessible(true);
+                    long val = f.getLong(mediaItem);
+                    if (val > 0) return "id_" + val;
+                } catch (Throwable ignored) {}
+            }
+        }
+
+        // 4. Fallback to hash code
+        return "item_" + Math.abs(mediaItem.toString().hashCode());
+    }
+
+    private static String extractKeyFromUri(Uri uri) {
+        if (uri == null) return null;
+        String path = uri.getPath();
+        if (path == null) return null;
+        int lastSlash = path.lastIndexOf('/');
+        if (lastSlash >= 0 && lastSlash < path.length() - 1) {
+            String seg = path.substring(lastSlash + 1);
+            int eq = seg.indexOf('=');
+            if (eq > 0) seg = seg.substring(0, eq);
+            if (seg.length() > 10) return seg;
+        }
+        return null;
     }
 
     private static boolean saveSingleItem(Context context, Object mediaItem) {
@@ -130,8 +273,14 @@ public class LocalCreationDownloader {
 
         boolean isVideo = mimeType.startsWith("video/");
         String ext = isVideo ? ".mp4" : ".jpg";
-        String timeStamp = new SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(new Date());
-        String fileName = (isVideo ? "Highlight_" : "Collage_") + timeStamp + ext;
+
+        String itemKey = extractItemKey(mediaItem);
+        String uriKey = extractKeyFromUri(mediaUri);
+        String stableKey = (uriKey != null) ? uriKey : itemKey;
+
+        // Use deterministic filename: Collage_<key>.jpg or Highlight_<key>.mp4
+        String fileName = (isVideo ? "Highlight_" : "Collage_") + sanitizeFileName(stableKey) + ext;
+        File targetFile = new File(getGooglePhotosDir(), fileName);
 
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
@@ -166,17 +315,24 @@ public class LocalCreationDownloader {
                 values.clear();
                 values.put(MediaStore.MediaColumns.IS_PENDING, 0);
                 resolver.update(inserted, values, null, null);
+
+                // Index with MediaScanner so Google Photos sees it immediately
+                MediaScannerConnection.scanFile(context,
+                        new String[]{targetFile.getAbsolutePath()},
+                        new String[]{mimeType},
+                        null);
+
+                recordSavedItem(context, itemKey, uriKey, targetFile.getAbsolutePath());
                 return true;
             } else {
-                File dcimDir = new File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DCIM), "Google Photos");
+                File dcimDir = getGooglePhotosDir();
                 if (!dcimDir.exists() && !dcimDir.mkdirs()) {
                     Log.e(TAG, "Failed to create directory: " + dcimDir.getAbsolutePath());
                     return false;
                 }
 
-                File destFile = new File(dcimDir, fileName);
                 try (InputStream in = openMediaStream(resolver, mediaUri);
-                     OutputStream out = new FileOutputStream(destFile)) {
+                     OutputStream out = new FileOutputStream(targetFile)) {
                     if (in == null) return false;
                     byte[] buffer = new byte[16384];
                     int len;
@@ -186,9 +342,11 @@ public class LocalCreationDownloader {
                 }
 
                 MediaScannerConnection.scanFile(context,
-                        new String[]{destFile.getAbsolutePath()},
+                        new String[]{targetFile.getAbsolutePath()},
                         new String[]{mimeType},
                         null);
+
+                recordSavedItem(context, itemKey, uriKey, targetFile.getAbsolutePath());
                 return true;
             }
         } catch (Throwable t) {
@@ -197,29 +355,34 @@ public class LocalCreationDownloader {
         }
     }
 
+    private static void recordSavedItem(Context context, String itemKey, String uriKey, String filePath) {
+        if (context == null) return;
+        try {
+            SharedPreferences prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
+            SharedPreferences.Editor edit = prefs.edit();
+            if (itemKey != null) edit.putString(itemKey, filePath);
+            if (uriKey != null) edit.putString(uriKey, filePath);
+            edit.apply();
+        } catch (Throwable ignored) {}
+    }
+
     private static InputStream openMediaStream(ContentResolver resolver, Uri uri) throws Exception {
         String scheme = uri.getScheme();
         if ("http".equalsIgnoreCase(scheme) || "https".equalsIgnoreCase(scheme)) {
             String urlStr = uri.toString();
 
             // Force original quality for Fife (googleusercontent) URLs.
-            // Fife encodes size/quality params as a trailing "=<params>" suffix.
-            // Strip any existing suffix and append "=d" (download original bytes).
             if (urlStr.contains("googleusercontent.com") || urlStr.contains("lh3.google")) {
                 int eqPos = urlStr.lastIndexOf('=');
-                // Only strip if '=' appears after the path (not inside query/fragment)
                 int slashAfterHost = urlStr.indexOf('/', urlStr.indexOf("://") + 3);
                 if (eqPos > 0 && eqPos > slashAfterHost) {
-                    // Check it's actually a Fife param (not a query-string key=value)
                     String suffix = urlStr.substring(eqPos);
                     if (!suffix.contains("&") && !suffix.contains("?")) {
                         urlStr = urlStr.substring(0, eqPos) + "=d";
                     } else {
-                        // Append download flag as separate param won't work — try replacing known size tokens
                         urlStr = urlStr.replaceAll("=s\\d+", "=d").replaceAll("=w\\d+-h\\d+", "=d");
                     }
                 } else {
-                    // No Fife suffix yet — append download param
                     urlStr = urlStr + "=d";
                 }
                 Log.d(TAG, "Upgraded Fife URL to original quality: " + urlStr);
@@ -368,7 +531,36 @@ public class LocalCreationDownloader {
         return null;
     }
 
+    private static Context getApplicationContext() {
+        if (sAppContext != null) return sAppContext;
+        try {
+            Class<?> atCls = Class.forName("android.app.ActivityThread");
+            Method caMethod = atCls.getMethod("currentApplication");
+            Object app = caMethod.invoke(null);
+            if (app instanceof Context) {
+                sAppContext = ((Context) app).getApplicationContext();
+                return sAppContext;
+            }
+        } catch (Throwable ignored) {}
+        return null;
+    }
+
     private static void notifySaveListeners(Object mixin, Object mediaList) {
+        // Direct call to Lakxr->c(Lcchb) which notifies save listeners
+        try {
+            for (Method m : mixin.getClass().getDeclaredMethods()) {
+                if (m.getName().equals("c") && m.getParameterTypes().length == 1) {
+                    m.setAccessible(true);
+                    m.invoke(mixin, mediaList);
+                    Log.d(TAG, "Invoked mixin.c(mediaList) directly");
+                    return;
+                }
+            }
+        } catch (Throwable t) {
+            Log.w(TAG, "Failed invoking mixin.c", t);
+        }
+
+        // Generic fallback for any 1-arg void method matching mediaList
         for (Method m : mixin.getClass().getDeclaredMethods()) {
             if (m.getReturnType() == void.class && m.getParameterTypes().length == 1) {
                 if (m.getParameterTypes()[0].isInstance(mediaList) ||
