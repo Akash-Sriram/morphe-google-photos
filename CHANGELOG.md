@@ -1,3 +1,9 @@
+## [1.13.4](https://github.com/Akash-Sriram/morphe-google-photos/compare/v1.13.3...v1.13.4) (2026-10-04)
+
+### 🐛 Bug Fixes
+
+* **Google Photos - Patches:** match official collage naming, local wall-clock timestamp, and permanent save state ([d370f79](https://github.com/Akash-Sriram/morphe-google-photos/commit/d370f79222f71bd1c9649cbd4f3ea1eaf7633e37))
+
 ## [1.13.3](https://github.com/Akash-Sriram/morphe-google-photos/compare/v1.13.2...v1.13.3) (2026-10-04)
 
 ### 🐛 Bug Fixes
