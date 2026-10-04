@@ -29,7 +29,7 @@ Morphe patches for **Google Photos**, derived from [RookieEnough/De-Vanced](http
 | [Fix memory style font loading](#fix-memory-style-font-loading) | Redirects font loading across Stories and UI to authentic Google Fonts with local caching and CDN downloading, fixing fallback fonts and blank text in Memories. |
 | [GmsCore support](#gmscore-support) | Allows the app to work without root by using a different package name when patched using a GmsCore instead of Google Play Services. |
 | [Google One Bento Badge](#google-one-bento-badge) | Restores the genuine Google One subscription badge in the Google Photos Bento account menu. |
-| [Local creation downloader](#local-creation-downloader) | Intercepts saving memory collages and creations, exporting them to the device Camera folder (DCIM/Camera) for quota-free backup instead of direct cloud library commits. |
+| [Local creation downloader](#local-creation-downloader) | Intercepts saving memory collages and creations, exporting them to the device Google Photos folder (DCIM/Google Photos) for quota-free backup instead of direct cloud library commits. |
 | [Model Readiness Gates](#model-readiness-gates) | Bypasses the 0MB Mobile Data Download check for AI models and reports them as loaded. |
 | [Spoof features](#spoof-features) | Spoofs the device to enable Google Pixel exclusive features, including unlimited storage. |
 
@@ -41,9 +41,14 @@ Morphe patches for **Google Photos**, derived from [RookieEnough/De-Vanced](http
 
 ## 💡 Memory Creations & Unlimited Storage
 
-Google Photos normally commits Memory collages directly to your Google Account cloud library via a server-side RPC, debiting storage quota even on genuine Pixel hardware.
+Google Photos generates Memory creations (such as collages, animations, and stylized photos) within story and memory previews. When you tap **Save**, the stock app normally commits the creation directly to your Google Account cloud library via a server-side RPC — debiting account storage quota even on genuine Pixel hardware and devices with Pixel XL spoofing.
 
-With the **Local creation downloader** patch, saving a Memory creation automatically exports it to your device's **Camera (`DCIM/Camera`)** album (the same folder used for Highlight Videos). Google Photos then detects the local file and backs it up with **original quality and 0 quota consumed** under Pixel XL spoofing.
+With the **Local creation downloader** patch:
+- **Local Export to DCIM**: Tapping **Save** silently exports the creation directly to your device's **`DCIM/Google Photos`** folder (the exact same folder used when exporting Highlight Videos).
+- **Original Quality**: Downloads the full-resolution source bytes (`=d`), guaranteeing zero quality compression or loss compared to official cloud saves.
+- **Native UI Lifecycle**: The **Save** button seamlessly disappears once the creation is downloaded to device storage, guarding against duplicate downloads.
+- **Local State Awareness**: If you ever delete the saved creation from your device's `DCIM/Google Photos` folder, the patch automatically detects it and restores the **Save** button on the memory creation.
+- **100% Quota-Free Backup**: Because the creation is stored locally in a DCIM folder on device, Google Photos' background auto-backup indexes it and uploads it under the Pixel XL quota-free exemption — preserving your creations in your cloud library without consuming any Google account storage quota.
 
 ---
 

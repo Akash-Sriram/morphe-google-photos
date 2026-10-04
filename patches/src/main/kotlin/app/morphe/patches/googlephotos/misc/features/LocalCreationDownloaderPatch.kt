@@ -13,7 +13,7 @@ import com.android.tools.smali.dexlib2.iface.reference.StringReference
 @Suppress("unused")
 val localCreationDownloaderPatch = bytecodePatch(
     name = "Local creation downloader",
-    description = "Intercepts saving memory collages and creations, exporting them to the device Camera folder (DCIM/Camera) for quota-free backup instead of direct cloud library commits.",
+    description = "Intercepts saving memory collages and creations, exporting them to the device Google Photos folder (DCIM/Google Photos) for quota-free backup instead of direct cloud library commits.",
     default = true,
 ) {
     compatibleWith(AppCompatibilities.GOOGLE_PHOTOS)
