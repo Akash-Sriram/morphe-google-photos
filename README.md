@@ -41,7 +41,9 @@ Morphe patches for **Google Photos**, derived from [RookieEnough/De-Vanced](http
 
 ## ⚠️ Known Limitations
 
-- **Cloud Creations & Quota**: Server-generated memory creations (collages, animations) normally commit directly to Google servers, consuming account storage quota even with Pixel XL spoofing. The **Local creation downloader** patch works around this by saving collages locally to `DCIM/Google Photos` (same as highlight videos) for quota-free backup. Any server-only creations that cannot be exported locally will still consume storage quota.
+- **Local Creation Downloader**:
+  - **Cross-device state**: Bypasses cloud save to enable quota-free backup. The save button is permanently hidden on the patched device once downloaded, but may still appear in Stories on other devices or the web.
+  - **Web badge**: Saved collages back up as standard photos on their original capture date without the server-assigned collage badge on the web.
 
 ---
 

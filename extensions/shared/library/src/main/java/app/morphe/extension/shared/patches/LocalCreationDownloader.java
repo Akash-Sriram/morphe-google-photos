@@ -19,20 +19,28 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
+import java.text.SimpleDateFormat;
 import java.util.Collection;
+import java.util.Date;
 import java.util.Locale;
+import java.util.SimpleTimeZone;
+import java.util.TimeZone;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 /**
- * Intercepts saving memory collages and creations in Google Photos.
- * Instead of committing the creation solely to Google's cloud server (which debits account storage quota),
- * this downloader exports the media stream directly to the device's DCIM/Google Photos folder.
+ * Intercepts saving memory collages in Google Photos.
+ * Instead of committing the collage solely to Google's cloud server (which debits account storage quota),
+ * this downloader exports the image stream directly to the device's DCIM/Google Photos folder.
  * Google Photos then detects the local file and backs it up under the Pixel XL quota-free exemption.
  *
- * It also hooks into SaveCreationMixin->e(bwel) to check if the creation has already been saved
- * locally. While the file exists in DCIM/Google Photos, the Save button is suppressed/hidden (matching
- * official behavior). If the user deletes the local file, the Save button reappears.
+ * Highlight videos are intentionally NOT intercepted — Google Photos handles their export natively
+ * via its own pending-download pipeline (Lbgth;), naming them <Fife_hash>-ExportedMemoryVideo.mp4
+ * and later renaming to IMG_<yyyyMMdd_HHmmss>-VIDEO_HIGHLIGHT.mp4.
+ *
+ * It also hooks into SaveCreationMixin->e(bwel) to check if a collage has already been saved
+ * locally. While the permanent saved flag (SharedPreferences) is set, the Save button is
+ * suppressed/hidden (matching official behavior), even if the local file is deleted later.
  */
 public class LocalCreationDownloader {
     private static final String TAG = "LocalCreationDownloader";
@@ -120,41 +128,93 @@ public class LocalCreationDownloader {
         }
     }
 
+    public static class CreationTime {
+        public final long utcMs;
+        public final long tzOffsetMs;
+
+        public CreationTime(long utcMs, long tzOffsetMs) {
+            this.utcMs = utcMs;
+            this.tzOffsetMs = tzOffsetMs;
+        }
+
+        public String formatLocalFileName() {
+            SimpleDateFormat sdf = new SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US);
+            if (tzOffsetMs != 0) {
+                sdf.setTimeZone(new SimpleTimeZone((int) tzOffsetMs, "photo_tz"));
+            } else {
+                sdf.setTimeZone(TimeZone.getDefault());
+            }
+            return sdf.format(new Date(utcMs));
+        }
+
+        public String formatUtcFileName() {
+            SimpleDateFormat sdf = new SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US);
+            sdf.setTimeZone(TimeZone.getTimeZone("UTC"));
+            return sdf.format(new Date(utcMs));
+        }
+    }
+
     /**
      * Called directly from SaveCreationMixin->e(bwel) to check if an item is already saved.
      * When this returns true, the story button provider (Lakxp->c) returns null, causing
      * the Save button to vanish from the UI.
-     * If the user deletes the local file from DCIM/Google Photos, this returns false, causing
-     * the Save button to reappear.
+     * Once saved, this permanently remembers the item so deleting the local file after cloud
+     * backup does not resurrect the Save button.
      */
     public static boolean isCreationSaved(Object mediaItem) {
         if (mediaItem == null) return false;
         try {
             String key = extractItemKey(mediaItem);
-            if (key == null) return false;
+            CreationTime creationTime = extractCreationTime(mediaItem);
 
-            // 1. Check deterministic file path in DCIM/Google Photos
-            File dir = getGooglePhotosDir();
-            if (dir.exists()) {
-                File directFile = new File(dir, getFileNameForKey(key));
-                if (directFile.exists() && directFile.length() > 0) {
+            // 1. Check SharedPreferences for permanent saved flag
+            Context ctx = getApplicationContext();
+            if (ctx != null) {
+                SharedPreferences prefs = ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
+                if (key != null && (prefs.getBoolean(key + "_saved", false) || prefs.contains(key))) {
                     return true;
                 }
             }
 
-            // 2. Check SharedPreferences for mapped file path
-            Context ctx = getApplicationContext();
-            if (ctx != null) {
+            // 2. Check deterministic file paths in DCIM/Google Photos
+            // Note: highlight videos are handled natively by Google Photos — we only check collages.
+            File dir = getGooglePhotosDir();
+            if (dir.exists()) {
+                // Primary: local wall-clock filename (matches stock camera / GP naming)
+                File officialCollage = new File(dir, getOfficialCollageFileName(creationTime));
+                if (officialCollage.exists() && officialCollage.length() > 0) {
+                    return true;
+                }
+                // Backward-compat: check earlier UTC-formatted filename
+                File utcCollage = new File(dir, "IMG_" + creationTime.formatUtcFileName() + "-COLLAGE.jpg");
+                if (utcCollage.exists() && utcCollage.length() > 0) {
+                    return true;
+                }
+                // Backward-compat: old format had milliseconds (yyyyMMdd_HHmmssSSS)
+                String dateStr = creationTime.formatUtcFileName();
+                File msCollage = new File(dir, "IMG_" + dateStr + "000-COLLAGE.jpg");
+                if (msCollage.exists() && msCollage.length() > 0) {
+                    return true;
+                }
+                if (key != null) {
+                    File legacyFile = new File(dir, getFileNameForKey(key));
+                    if (legacyFile.exists() && legacyFile.length() > 0) {
+                        return true;
+                    }
+                }
+            }
+
+            // 3. Check SharedPreferences for mapped file path
+            if (ctx != null && key != null) {
                 SharedPreferences prefs = ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
                 String savedPath = prefs.getString(key, null);
                 if (savedPath != null) {
                     File f = new File(savedPath);
                     if (f.exists() && f.length() > 0) {
                         return true;
-                    } else {
-                        // User deleted the local file! Remove from registry so button reappears
-                        prefs.edit().remove(key).apply();
                     }
+                    // IMPORTANT: Do NOT remove key if local file is missing.
+                    // Google Photos "Free up space" or manual purge shouldn't reset the save state.
                 }
             }
         } catch (Throwable t) {
@@ -167,6 +227,16 @@ public class LocalCreationDownloader {
         return new File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DCIM), "Google Photos");
     }
 
+    public static String getOfficialCollageFileName(CreationTime time) {
+        return "IMG_" + time.formatLocalFileName() + "-COLLAGE.jpg";
+    }
+
+    public static String getOfficialCollageFileName(long timestamp) {
+        SimpleDateFormat sdf = new SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US);
+        sdf.setTimeZone(TimeZone.getDefault());
+        return "IMG_" + sdf.format(new Date(timestamp)) + "-COLLAGE.jpg";
+    }
+
     public static String getFileNameForKey(String key) {
         return "Collage_" + sanitizeFileName(key) + ".jpg";
     }
@@ -174,6 +244,106 @@ public class LocalCreationDownloader {
     private static String sanitizeFileName(String input) {
         if (input == null || input.isEmpty()) return "item";
         return input.replaceAll("[^a-zA-Z0-9._-]", "_");
+    }
+
+    /**
+     * Extracts the historical capture timestamp (epoch ms) and timezone offset of the creation source media.
+     * In Google Photos, media items implement bwep which provides h() -> bwol (Timestamp object).
+     * bwol contains field e (UTC timestamp in ms) and field f (timezone offset in ms).
+     */
+    public static CreationTime extractCreationTime(Object mediaItem) {
+        if (mediaItem == null) {
+            return new CreationTime(System.currentTimeMillis(), 0);
+        }
+
+        // 1. Try bwep.h() returning bwol (Timestamp object in Google Photos)
+        try {
+            Method hMethod = mediaItem.getClass().getMethod("h");
+            Object bwol = hMethod.invoke(mediaItem);
+            if (bwol != null) {
+                long utc = 0;
+                long tzOffset = 0;
+                try {
+                    Field eField = bwol.getClass().getDeclaredField("e");
+                    eField.setAccessible(true);
+                    utc = eField.getLong(bwol);
+                } catch (Throwable ignored) {}
+
+                try {
+                    Field fField = bwol.getClass().getDeclaredField("f");
+                    fField.setAccessible(true);
+                    tzOffset = fField.getLong(bwol);
+                } catch (Throwable ignored) {}
+
+                if (utc > 946684800000L && utc < System.currentTimeMillis() + 86400000L * 365) {
+                    return new CreationTime(utc, tzOffset);
+                }
+
+                // If e field was missing/zero, try bwol.a() (wall-clock timestamp)
+                try {
+                    Method aMethod = bwol.getClass().getMethod("a");
+                    Object res = aMethod.invoke(bwol);
+                    if (res instanceof Number) {
+                        long ts = ((Number) res).longValue();
+                        if (ts > 946684800000L && ts < System.currentTimeMillis() + 86400000L * 365) {
+                            return new CreationTime(ts, tzOffset);
+                        }
+                    }
+                } catch (Throwable ignored) {}
+            }
+        } catch (Throwable ignored) {}
+
+        // 2. Try reflection for TimestampFeature / DateHeaderFeature or any method returning bwol
+        for (Method m : mediaItem.getClass().getMethods()) {
+            if (m.getParameterTypes().length == 0) {
+                String retName = m.getReturnType().getSimpleName();
+                if (retName.equals("bwol") || retName.contains("Timestamp")) {
+                    try {
+                        Object obj = m.invoke(mediaItem);
+                        if (obj != null) {
+                            long utc = 0;
+                            long tzOffset = 0;
+                            try {
+                                Field eField = obj.getClass().getDeclaredField("e");
+                                eField.setAccessible(true);
+                                utc = eField.getLong(obj);
+                            } catch (Throwable ignored) {}
+                            try {
+                                Field fField = obj.getClass().getDeclaredField("f");
+                                fField.setAccessible(true);
+                                tzOffset = fField.getLong(obj);
+                            } catch (Throwable ignored) {}
+
+                            if (utc > 946684800000L && utc < System.currentTimeMillis() + 86400000L * 365) {
+                                return new CreationTime(utc, tzOffset);
+                            }
+
+                            Method aMethod = obj.getClass().getMethod("a");
+                            long ts = ((Number) aMethod.invoke(obj)).longValue();
+                            if (ts > 946684800000L && ts < System.currentTimeMillis() + 86400000L * 365) {
+                                return new CreationTime(ts, tzOffset);
+                            }
+                        }
+                    } catch (Throwable ignored) {}
+                } else if (m.getReturnType() == long.class || m.getReturnType() == Long.class) {
+                    String name = m.getName().toLowerCase(Locale.US);
+                    if (name.contains("time") || name.contains("date") || name.contains("timestamp")) {
+                        try {
+                            long ts = ((Number) m.invoke(mediaItem)).longValue();
+                            if (ts > 946684800000L && ts < System.currentTimeMillis() + 86400000L * 365) {
+                                return new CreationTime(ts, 0);
+                            }
+                        } catch (Throwable ignored) {}
+                    }
+                }
+            }
+        }
+
+        return new CreationTime(System.currentTimeMillis(), 0);
+    }
+
+    public static long extractCreationTimestamp(Object mediaItem) {
+        return extractCreationTime(mediaItem).utcMs;
     }
 
     /**
@@ -262,16 +432,18 @@ public class LocalCreationDownloader {
             mimeType = "image/jpeg";
         }
 
-        boolean isVideo = mimeType.startsWith("video/");
-        String ext = isVideo ? ".mp4" : ".jpg";
+        // Only intercept image collages — highlight videos are exported natively by Google Photos.
+        if (mimeType.startsWith("video/")) {
+            Log.i(TAG, "Skipping video item — handled natively by Google Photos.");
+            return false;
+        }
+
+        CreationTime creationTime = extractCreationTime(mediaItem);
+        String fileName = getOfficialCollageFileName(creationTime);
+        File targetFile = new File(getGooglePhotosDir(), fileName);
 
         String itemKey = extractItemKey(mediaItem);
         String uriKey = extractKeyFromUri(mediaUri);
-        String stableKey = (uriKey != null) ? uriKey : itemKey;
-
-        // Use deterministic filename: Collage_<key>.jpg or Highlight_<key>.mp4
-        String fileName = (isVideo ? "Highlight_" : "Collage_") + sanitizeFileName(stableKey) + ext;
-        File targetFile = new File(getGooglePhotosDir(), fileName);
 
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
@@ -279,13 +451,12 @@ public class LocalCreationDownloader {
                 values.put(MediaStore.MediaColumns.DISPLAY_NAME, fileName);
                 values.put(MediaStore.MediaColumns.MIME_TYPE, mimeType);
                 values.put(MediaStore.MediaColumns.RELATIVE_PATH, "DCIM/Google Photos");
+                values.put(MediaStore.MediaColumns.DATE_ADDED, creationTime.utcMs / 1000);
+                values.put(MediaStore.MediaColumns.DATE_MODIFIED, creationTime.utcMs / 1000);
+                values.put(MediaStore.Images.Media.DATE_TAKEN, creationTime.utcMs);
                 values.put(MediaStore.MediaColumns.IS_PENDING, 1);
 
-                Uri targetUri = isVideo
-                        ? MediaStore.Video.Media.EXTERNAL_CONTENT_URI
-                        : MediaStore.Images.Media.EXTERNAL_CONTENT_URI;
-
-                Uri inserted = resolver.insert(targetUri, values);
+                Uri inserted = resolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values);
                 if (inserted == null) {
                     Log.e(TAG, "Failed to create MediaStore entry for " + fileName);
                     return false;
@@ -307,13 +478,18 @@ public class LocalCreationDownloader {
                 values.put(MediaStore.MediaColumns.IS_PENDING, 0);
                 resolver.update(inserted, values, null, null);
 
+                // Set file modification timestamp if accessible directly
+                if (targetFile.exists()) {
+                    targetFile.setLastModified(creationTime.utcMs);
+                }
+
                 // Index with MediaScanner so Google Photos sees it immediately
                 MediaScannerConnection.scanFile(context,
                         new String[]{targetFile.getAbsolutePath()},
                         new String[]{mimeType},
                         null);
 
-                recordSavedItem(context, itemKey, uriKey, targetFile.getAbsolutePath());
+                recordSavedItem(context, itemKey, uriKey, fileName, targetFile.getAbsolutePath());
                 return true;
             } else {
                 File dcimDir = getGooglePhotosDir();
@@ -332,12 +508,14 @@ public class LocalCreationDownloader {
                     }
                 }
 
+                targetFile.setLastModified(creationTime.utcMs);
+
                 MediaScannerConnection.scanFile(context,
                         new String[]{targetFile.getAbsolutePath()},
                         new String[]{mimeType},
                         null);
 
-                recordSavedItem(context, itemKey, uriKey, targetFile.getAbsolutePath());
+                recordSavedItem(context, itemKey, uriKey, fileName, targetFile.getAbsolutePath());
                 return true;
             }
         } catch (Throwable t) {
@@ -346,13 +524,22 @@ public class LocalCreationDownloader {
         }
     }
 
-    private static void recordSavedItem(Context context, String itemKey, String uriKey, String filePath) {
+    private static void recordSavedItem(Context context, String itemKey, String uriKey, String fileName, String filePath) {
         if (context == null) return;
         try {
             SharedPreferences prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
             SharedPreferences.Editor edit = prefs.edit();
-            if (itemKey != null) edit.putString(itemKey, filePath);
-            if (uriKey != null) edit.putString(uriKey, filePath);
+            if (itemKey != null) {
+                edit.putBoolean(itemKey + "_saved", true);
+                edit.putString(itemKey, filePath);
+            }
+            if (uriKey != null) {
+                edit.putBoolean(uriKey + "_saved", true);
+                edit.putString(uriKey, filePath);
+            }
+            if (fileName != null) {
+                edit.putBoolean(fileName + "_saved", true);
+            }
             edit.apply();
         } catch (Throwable ignored) {}
     }
