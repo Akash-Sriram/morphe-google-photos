@@ -39,16 +39,9 @@ Morphe patches for **Google Photos**, derived from [RookieEnough/De-Vanced](http
 
 ---
 
-## 💡 Memory Creations & Unlimited Storage
+## ⚠️ Known Limitations
 
-Google Photos generates Memory creations (such as collages, animations, and stylized photos) within story and memory previews. When you tap **Save**, the stock app normally commits the creation directly to your Google Account cloud library via a server-side RPC — debiting account storage quota even on genuine Pixel hardware and devices with Pixel XL spoofing.
-
-With the **Local creation downloader** patch:
-- **Local Export to DCIM**: Tapping **Save** silently exports the creation directly to your device's **`DCIM/Google Photos`** folder (the exact same folder used when exporting Highlight Videos).
-- **Original Quality**: Downloads the full-resolution source bytes (`=d`), guaranteeing zero quality compression or loss compared to official cloud saves.
-- **Native UI Lifecycle**: The **Save** button seamlessly disappears once the creation is downloaded to device storage, guarding against duplicate downloads.
-- **Local State Awareness**: If you ever delete the saved creation from your device's `DCIM/Google Photos` folder, the patch automatically detects it and restores the **Save** button on the memory creation.
-- **100% Quota-Free Backup**: Because the creation is stored locally in a DCIM folder on device, Google Photos' background auto-backup indexes it and uploads it under the Pixel XL quota-free exemption — preserving your creations in your cloud library without consuming any Google account storage quota.
+- **Cloud Creations & Quota**: Server-generated memory creations (collages, animations) normally commit directly to Google servers, consuming account storage quota even with Pixel XL spoofing. The **Local creation downloader** patch works around this by saving collages locally to `DCIM/Google Photos` (same as highlight videos) for quota-free backup. Any server-only creations that cannot be exported locally will still consume storage quota.
 
 ---
 
