@@ -1,3 +1,11 @@
+## [1.13.2](https://github.com/Akash-Sriram/morphe-google-photos/compare/v1.13.1...v1.13.2) (2026-10-04)
+
+### 🐛 Bug Fixes
+
+* **Google Photos - Avatar:** restore active account from native preferences to prevent startup flicker ([585cdf0](https://github.com/Akash-Sriram/morphe-google-photos/commit/585cdf05b7096f4bc0fc4be0bba6a50cc6725701))
+* **Google Photos - Branding:** realign pinwheel logos and recolor collapse lottie animation ([4078c4b](https://github.com/Akash-Sriram/morphe-google-photos/commit/4078c4b5c55c72382003cfe93daedadf8ae6fdf3))
+* **Google Photos - Gms:** restrict scroll offset injection to static non-RecyclerView methods ([549f918](https://github.com/Akash-Sriram/morphe-google-photos/commit/549f9184900e64cf529ca1906f3f95e48ec042cc))
+
 ## [1.13.1](https://github.com/Akash-Sriram/morphe-google-photos/compare/v1.13.0...v1.13.1) (2026-10-03)
 
 ### 🚀 Updated App Support
