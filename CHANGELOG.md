@@ -1,3 +1,15 @@
+## [1.13.3](https://github.com/Akash-Sriram/morphe-google-photos/compare/v1.13.2...v1.13.3) (2026-10-04)
+
+### 🐛 Bug Fixes
+
+* **Google Photos:** remove toast popups from local creation downloader ([11b28bc](https://github.com/Akash-Sriram/morphe-google-photos/commit/11b28bc29143e30d69e9295e5f759b3f6ec450a0))
+* **Google Photos:** save collages to DCIM/Google Photos and upgrade Fife URL quality ([2fa4468](https://github.com/Akash-Sriram/morphe-google-photos/commit/2fa4468732b202794070a6cbc51f2298088c8d4f))
+
+### ✨ New Features
+
+* **Google Photos:** add local creation downloader for quota-free memory collages ([b3db13b](https://github.com/Akash-Sriram/morphe-google-photos/commit/b3db13b6fa0c4c9bb15707e5e48e036df7c06586))
+* **Google Photos:** hide save button when saved locally and prevent duplicate downloads ([6f81101](https://github.com/Akash-Sriram/morphe-google-photos/commit/6f8110154ae3f664ca110a433d8db55396039a5a))
+
 ## [1.13.2](https://github.com/Akash-Sriram/morphe-google-photos/compare/v1.13.1...v1.13.2) (2026-10-04)
 
 ### 🐛 Bug Fixes
