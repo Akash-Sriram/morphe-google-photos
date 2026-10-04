@@ -7,9 +7,9 @@ Morphe patches for **Google Photos**, derived from [RookieEnough/De-Vanced](http
 ## 🩹 Patches list
 
 <!-- PATCHES_START EXPANDED -->
-> **[v1.13.2](https://github.com/Akash-Sriram/morphe-google-photos/releases/tag/v1.13.2)**&nbsp;&nbsp;•&nbsp;&nbsp;`main`&nbsp;&nbsp;•&nbsp;&nbsp;12 patches total
+> **[v1.13.2](https://github.com/Akash-Sriram/morphe-google-photos/releases/tag/v1.13.2)**&nbsp;&nbsp;•&nbsp;&nbsp;`main`&nbsp;&nbsp;•&nbsp;&nbsp;13 patches total
 <details open>
-<summary>📦 Google Photos&nbsp;&nbsp;•&nbsp;&nbsp;12 patches</summary>
+<summary>📦 Google Photos&nbsp;&nbsp;•&nbsp;&nbsp;13 patches</summary>
 <br>
 
 **🎯 Supported versions:**
@@ -29,11 +29,22 @@ Morphe patches for **Google Photos**, derived from [RookieEnough/De-Vanced](http
 | [Fix memory style font loading](#fix-memory-style-font-loading) | Redirects font loading across Stories and UI to authentic Google Fonts with local caching and CDN downloading, fixing fallback fonts and blank text in Memories. |
 | [GmsCore support](#gmscore-support) | Allows the app to work without root by using a different package name when patched using a GmsCore instead of Google Play Services. |
 | [Google One Bento Badge](#google-one-bento-badge) | Restores the genuine Google One subscription badge in the Google Photos Bento account menu. |
+| [Local creation downloader](#local-creation-downloader) | Intercepts saving memory collages and creations, exporting them to the device Camera folder (DCIM/Camera) for quota-free backup instead of direct cloud library commits. |
 | [Model Readiness Gates](#model-readiness-gates) | Bypasses the 0MB Mobile Data Download check for AI models and reports them as loaded. |
 | [Spoof features](#spoof-features) | Spoofs the device to enable Google Pixel exclusive features, including unlimited storage. |
 
 </details>
 
 <!-- PATCHES_END -->
+
+---
+
+## 💡 Memory Creations & Unlimited Storage
+
+Google Photos normally commits Memory collages directly to your Google Account cloud library via a server-side RPC, debiting storage quota even on genuine Pixel hardware.
+
+With the **Local creation downloader** patch, saving a Memory creation automatically exports it to your device's **Camera (`DCIM/Camera`)** album (the same folder used for Highlight Videos). Google Photos then detects the local file and backs it up with **original quality and 0 quota consumed** under Pixel XL spoofing.
+
+---
 
 Ready-to-install builds patched with this bundle are available at **[Akash-Sriram/GooglePhotos-Patched](https://github.com/Akash-Sriram/GooglePhotos-Patched/releases)**.
