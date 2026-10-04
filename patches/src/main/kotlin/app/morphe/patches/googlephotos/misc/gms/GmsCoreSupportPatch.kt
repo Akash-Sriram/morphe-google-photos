@@ -23,6 +23,7 @@ import app.morphe.util.getReference
 import app.morphe.util.indexOfFirstInstruction
 import app.morphe.util.indexOfFirstInstructionOrThrow
 import app.morphe.util.returnEarly
+import com.android.tools.smali.dexlib2.AccessFlags
 import com.android.tools.smali.dexlib2.iface.instruction.FiveRegisterInstruction
 import com.android.tools.smali.dexlib2.iface.instruction.OneRegisterInstruction
 import com.android.tools.smali.dexlib2.iface.instruction.ReferenceInstruction
@@ -203,8 +204,10 @@ val gmsCoreSupportPatch = gmsCoreSupportPatch(
         classDefForEach { classDef ->
             val mutableClass by lazy { mutableClassDefBy(classDef) }
             classDef.methods.forEach { method ->
-                if (method.returnType == "V" && method.parameterTypes.size == 3 &&
-                    method.parameterTypes[1] == "I" && method.parameterTypes[2] == "I") {
+                if (AccessFlags.STATIC.isSet(method.accessFlags) &&
+                    method.returnType == "V" && method.parameterTypes.size == 3 &&
+                    method.parameterTypes[1] == "I" && method.parameterTypes[2] == "I" &&
+                    !method.parameterTypes[0].contains("RecyclerView;")) {
                     val impl = method.implementation ?: return@forEach
                     val isLahufH = impl.instructions.any { instr ->
                         val ref = (instr as? ReferenceInstruction)?.reference?.toString()

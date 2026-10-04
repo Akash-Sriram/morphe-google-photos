@@ -9,7 +9,9 @@ PROJECT_DIR="/mnt/WindowsDrive/Users/akash/Downloads/Project/Morphe"
 FAST_CACHE_DIR="$HOME/.cache/morphe-fast-build"
 CLI_JAR="$PROJECT_DIR/morphe-desktop-1.15.1-dev.7-all.jar"
 STOCK_APK="$PROJECT_DIR/com.google.android.apps.photos_7.95.0.989626323-52483863_minAPI24(arm64-v8a,armeabi-v7a,x86,x86_64)(nodpi)_apkmirror.com.apk"
-if [ ! -f "$STOCK_APK" ] && [ -f "$PROJECT_DIR/com.google.android.apps.photos_7.94.0.apk" ]; then
+if [ ! -f "$STOCK_APK" ] && [ -f "$PROJECT_DIR/com.google.android.apps.photos_7.95.0.apk" ]; then
+    STOCK_APK="$PROJECT_DIR/com.google.android.apps.photos_7.95.0.apk"
+elif [ ! -f "$STOCK_APK" ] && [ -f "$PROJECT_DIR/com.google.android.apps.photos_7.94.0.apk" ]; then
     STOCK_APK="$PROJECT_DIR/com.google.android.apps.photos_7.94.0.apk"
 fi
 OUTPUT_APK="$PROJECT_DIR/photos_patched.apk"
@@ -210,7 +212,6 @@ if [ "$DO_INSTALL" = true ]; then
     adb install -r -d "$OUTPUT_APK"
     echo "🚀 Launching $APP_PKG..."
     adb shell am force-stop "$APP_PKG" || true
-    adb shell am start -n "$APP_PKG/com.google.android.apps.photos.home.HomeActivity" || \
-        adb shell monkey -p "$APP_PKG" -c android.intent.category.LAUNCHER 1 || true
+    adb shell am start -n "$APP_PKG/com.google.android.apps.photos.home.HomeActivity" || true
     echo "✅ App launched on device."
 fi
