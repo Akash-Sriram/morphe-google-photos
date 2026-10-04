@@ -12,7 +12,6 @@ import android.os.Handler;
 import android.os.Looper;
 import android.provider.MediaStore;
 import android.util.Log;
-import android.widget.Toast;
 
 import java.io.File;
 import java.io.FileOutputStream;
@@ -81,12 +80,6 @@ public class LocalCreationDownloader {
 
             if (allAlreadySaved) {
                 Log.i(TAG, "Creation is already saved locally on device. Suppressing duplicate download.");
-                final Context toastCtx = sAppContext != null ? sAppContext : context;
-                if (toastCtx != null) {
-                    MAIN_HANDLER.post(() ->
-                        Toast.makeText(toastCtx, "Already saved to Google Photos folder", Toast.LENGTH_SHORT).show()
-                    );
-                }
                 notifySaveListeners(saveCreationMixin, mediaList);
                 notifyStoryUi(saveCreationMixin);
                 return true;
@@ -108,7 +101,6 @@ public class LocalCreationDownloader {
                 final int saved = successCount;
                 MAIN_HANDLER.post(() -> {
                     if (saved > 0) {
-                        Toast.makeText(appContext, "Saved to Google Photos folder (quota-free)", Toast.LENGTH_SHORT).show();
                         Log.i(TAG, "Successfully exported " + saved + " creation(s) to DCIM/Google Photos.");
 
                         // Notify save listeners AFTER download finishes so the UI updates
@@ -117,7 +109,6 @@ public class LocalCreationDownloader {
                         notifyStoryUi(saveCreationMixin);
                     } else {
                         Log.w(TAG, "Failed to resolve local stream for creation item(s).");
-                        Toast.makeText(appContext, "Failed to save creation locally", Toast.LENGTH_SHORT).show();
                     }
                 });
             });
