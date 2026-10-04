@@ -88,7 +88,7 @@ public class LocalCreationDownloader {
         }
 
         final Context appContext = context.getApplicationContext();
-        Log.i(TAG, "Intercepted creation save request for " + mediaList.size() + " item(s). Redirecting to DCIM/Camera.");
+        Log.i(TAG, "Intercepted creation save request for " + mediaList.size() + " item(s). Redirecting to DCIM/Google Photos.");
 
         // Dispatch background save to avoid blocking the main UI thread
         EXECUTOR.execute(() -> {
@@ -103,8 +103,8 @@ public class LocalCreationDownloader {
             final int saved = successCount;
             MAIN_HANDLER.post(() -> {
                 if (saved > 0) {
-                    Toast.makeText(appContext, "Creation saved to Camera folder (quota-free)", Toast.LENGTH_SHORT).show();
-                    Log.i(TAG, "Successfully exported " + saved + " creation(s) to DCIM/Camera.");
+                    Toast.makeText(appContext, "Creation saved to Google Photos folder (quota-free)", Toast.LENGTH_SHORT).show();
+                    Log.i(TAG, "Successfully exported " + saved + " creation(s) to DCIM/Google Photos.");
                 } else {
                     Log.w(TAG, "Failed to resolve local stream for creation item(s).");
                 }
@@ -138,7 +138,7 @@ public class LocalCreationDownloader {
                 ContentValues values = new ContentValues();
                 values.put(MediaStore.MediaColumns.DISPLAY_NAME, fileName);
                 values.put(MediaStore.MediaColumns.MIME_TYPE, mimeType);
-                values.put(MediaStore.MediaColumns.RELATIVE_PATH, "DCIM/Camera");
+                values.put(MediaStore.MediaColumns.RELATIVE_PATH, "DCIM/Google Photos");
                 values.put(MediaStore.MediaColumns.IS_PENDING, 1);
 
                 Uri targetUri = isVideo
@@ -168,7 +168,7 @@ public class LocalCreationDownloader {
                 resolver.update(inserted, values, null, null);
                 return true;
             } else {
-                File dcimDir = new File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DCIM), "Camera");
+                File dcimDir = new File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DCIM), "Google Photos");
                 if (!dcimDir.exists() && !dcimDir.mkdirs()) {
                     Log.e(TAG, "Failed to create directory: " + dcimDir.getAbsolutePath());
                     return false;
@@ -200,10 +200,45 @@ public class LocalCreationDownloader {
     private static InputStream openMediaStream(ContentResolver resolver, Uri uri) throws Exception {
         String scheme = uri.getScheme();
         if ("http".equalsIgnoreCase(scheme) || "https".equalsIgnoreCase(scheme)) {
-            java.net.HttpURLConnection conn = (java.net.HttpURLConnection) new java.net.URL(uri.toString()).openConnection();
+            String urlStr = uri.toString();
+
+            // Force original quality for Fife (googleusercontent) URLs.
+            // Fife encodes size/quality params as a trailing "=<params>" suffix.
+            // Strip any existing suffix and append "=d" (download original bytes).
+            if (urlStr.contains("googleusercontent.com") || urlStr.contains("lh3.google")) {
+                int eqPos = urlStr.lastIndexOf('=');
+                // Only strip if '=' appears after the path (not inside query/fragment)
+                int slashAfterHost = urlStr.indexOf('/', urlStr.indexOf("://") + 3);
+                if (eqPos > 0 && eqPos > slashAfterHost) {
+                    // Check it's actually a Fife param (not a query-string key=value)
+                    String suffix = urlStr.substring(eqPos);
+                    if (!suffix.contains("&") && !suffix.contains("?")) {
+                        urlStr = urlStr.substring(0, eqPos) + "=d";
+                    } else {
+                        // Append download flag as separate param won't work — try replacing known size tokens
+                        urlStr = urlStr.replaceAll("=s\\d+", "=d").replaceAll("=w\\d+-h\\d+", "=d");
+                    }
+                } else {
+                    // No Fife suffix yet — append download param
+                    urlStr = urlStr + "=d";
+                }
+                Log.d(TAG, "Upgraded Fife URL to original quality: " + urlStr);
+            }
+
+            java.net.HttpURLConnection conn = (java.net.HttpURLConnection) new java.net.URL(urlStr).openConnection();
             conn.setConnectTimeout(15000);
-            conn.setReadTimeout(30000);
+            conn.setReadTimeout(60000);
             conn.setInstanceFollowRedirects(true);
+            conn.setRequestProperty("User-Agent", "Mozilla/5.0");
+            int responseCode = conn.getResponseCode();
+            if (responseCode >= 400) {
+                Log.w(TAG, "HTTP " + responseCode + " for URL: " + urlStr + " — falling back to original URI");
+                conn.disconnect();
+                conn = (java.net.HttpURLConnection) new java.net.URL(uri.toString()).openConnection();
+                conn.setConnectTimeout(15000);
+                conn.setReadTimeout(60000);
+                conn.setInstanceFollowRedirects(true);
+            }
             return conn.getInputStream();
         } else {
             return resolver.openInputStream(uri);
