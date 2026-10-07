@@ -18,7 +18,7 @@
           "signatures": null,
           "targets": [
             {
-              "version": "7.95.0.989626323",
+              "version": "7.96.0.993165104",
               "versionCodes": null,
               "isExperimental": false,
               "minSdk": null,
@@ -47,7 +47,7 @@
           "signatures": null,
           "targets": [
             {
-              "version": "7.95.0.989626323",
+              "version": "7.96.0.993165104",
               "versionCodes": null,
               "isExperimental": false,
               "minSdk": null,
@@ -60,9 +60,9 @@
     },
     {
       "name": "Change to official package name",
-      "description": "Keeps the official package name (com.google.android.apps.photos) instead of renaming to app.morphe.android.apps.photos. Enable this only if Google Photos is uninstalled via ADB or installed as a system app with root. When selecting this, also select 'Disable Play Store updates'.",
+      "description": "Retains the official package name (com.google.android.apps.photos) instead of renaming to app.morphe.android.apps.photos. This is an exceptional option strictly for non-root users whose devices do not have Google Photos preinstalled by the OEM (such as custom ROMs or de-Googled devices). Root users do not need this (simply deselect GmsCore support instead). When selecting this, also enable 'Disable Play Store updates'.",
       "default": false,
-      "category": "Experimental",
+      "category": "Official package name",
       "dependencies": [],
       "compatiblePackages": [
         {
@@ -74,7 +74,7 @@
           "signatures": null,
           "targets": [
             {
-              "version": "7.95.0.989626323",
+              "version": "7.96.0.993165104",
               "versionCodes": null,
               "isExperimental": false,
               "minSdk": null,
@@ -101,7 +101,7 @@
           "signatures": null,
           "targets": [
             {
-              "version": "7.95.0.989626323",
+              "version": "7.96.0.993165104",
               "versionCodes": null,
               "isExperimental": false,
               "minSdk": null,
@@ -114,9 +114,9 @@
     },
     {
       "name": "Disable Play Store updates",
-      "description": "[Experimental] Disables Play Store updates by setting the version code to the maximum allowed. This patch may cause unexpected issues with some apps and does not work if the app is installed by root mounting",
+      "description": "Disables Play Store updates by setting the version code to the maximum allowed (Int.MAX_VALUE). Prevents Google Play from automatically overwriting the patched app when using the official package name on devices without preinstalled Photos.",
       "default": false,
-      "category": "Experimental",
+      "category": "Official package name",
       "dependencies": [
         "ResourcePatch",
         "BytecodePatch"
@@ -131,7 +131,7 @@
           "signatures": null,
           "targets": [
             {
-              "version": "7.95.0.989626323",
+              "version": "7.96.0.993165104",
               "versionCodes": null,
               "isExperimental": false,
               "minSdk": null,
@@ -158,7 +158,7 @@
           "signatures": null,
           "targets": [
             {
-              "version": "7.95.0.989626323",
+              "version": "7.96.0.993165104",
               "versionCodes": null,
               "isExperimental": false,
               "minSdk": null,
@@ -185,7 +185,7 @@
           "signatures": null,
           "targets": [
             {
-              "version": "7.95.0.989626323",
+              "version": "7.96.0.993165104",
               "versionCodes": null,
               "isExperimental": false,
               "minSdk": null,
@@ -214,7 +214,7 @@
           "signatures": null,
           "targets": [
             {
-              "version": "7.95.0.989626323",
+              "version": "7.96.0.993165104",
               "versionCodes": null,
               "isExperimental": false,
               "minSdk": null,
@@ -227,7 +227,7 @@
     },
     {
       "name": "GmsCore support",
-      "description": "Allows the app to work without root by using a different package name when patched using a GmsCore instead of Google Play Services.",
+      "description": "Enables GmsCore / MicroG support and renames package for non-root installs. Leave enabled for standard non-root installs; disable only for rooted system installs using genuine Google Play Services.",
       "default": true,
       "category": null,
       "dependencies": [
@@ -245,7 +245,7 @@
           "signatures": null,
           "targets": [
             {
-              "version": "7.95.0.989626323",
+              "version": "7.96.0.993165104",
               "versionCodes": null,
               "isExperimental": false,
               "minSdk": null,
@@ -274,7 +274,7 @@
           "signatures": null,
           "targets": [
             {
-              "version": "7.95.0.989626323",
+              "version": "7.96.0.993165104",
               "versionCodes": null,
               "isExperimental": false,
               "minSdk": null,
@@ -303,7 +303,7 @@
           "signatures": null,
           "targets": [
             {
-              "version": "7.95.0.989626323",
+              "version": "7.96.0.993165104",
               "versionCodes": null,
               "isExperimental": false,
               "minSdk": null,
@@ -332,7 +332,7 @@
           "signatures": null,
           "targets": [
             {
-              "version": "7.95.0.989626323",
+              "version": "7.96.0.993165104",
               "versionCodes": null,
               "isExperimental": false,
               "minSdk": null,
@@ -363,7 +363,7 @@
           "signatures": null,
           "targets": [
             {
-              "version": "7.95.0.989626323",
+              "version": "7.96.0.993165104",
               "versionCodes": null,
               "isExperimental": false,
               "minSdk": null,
