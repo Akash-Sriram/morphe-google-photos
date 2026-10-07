@@ -13,13 +13,16 @@
           "packageName": "com.google.android.apps.photos",
           "name": "Google Photos",
           "description": null,
-          "apkFileType": null,
+          "apkFileType": "APK",
           "appIconColor": "#FC3F3C",
           "signatures": null,
           "targets": [
             {
               "version": "7.96.0.993165104",
-              "versionCodes": null,
+              "versionCodes": {
+                "ARM64_V8A": 52511205,
+                "ARMEABI_V7A": 52511175
+              },
               "isExperimental": false,
               "minSdk": null,
               "description": null
@@ -42,13 +45,16 @@
           "packageName": "com.google.android.apps.photos",
           "name": "Google Photos",
           "description": null,
-          "apkFileType": null,
+          "apkFileType": "APK",
           "appIconColor": "#FC3F3C",
           "signatures": null,
           "targets": [
             {
               "version": "7.96.0.993165104",
-              "versionCodes": null,
+              "versionCodes": {
+                "ARM64_V8A": 52511205,
+                "ARMEABI_V7A": 52511175
+              },
               "isExperimental": false,
               "minSdk": null,
               "description": null
@@ -69,13 +75,16 @@
           "packageName": "com.google.android.apps.photos",
           "name": "Google Photos",
           "description": null,
-          "apkFileType": null,
+          "apkFileType": "APK",
           "appIconColor": "#FC3F3C",
           "signatures": null,
           "targets": [
             {
               "version": "7.96.0.993165104",
-              "versionCodes": null,
+              "versionCodes": {
+                "ARM64_V8A": 52511205,
+                "ARMEABI_V7A": 52511175
+              },
               "isExperimental": false,
               "minSdk": null,
               "description": null
@@ -96,13 +105,16 @@
           "packageName": "com.google.android.apps.photos",
           "name": "Google Photos",
           "description": null,
-          "apkFileType": null,
+          "apkFileType": "APK",
           "appIconColor": "#FC3F3C",
           "signatures": null,
           "targets": [
             {
               "version": "7.96.0.993165104",
-              "versionCodes": null,
+              "versionCodes": {
+                "ARM64_V8A": 52511205,
+                "ARMEABI_V7A": 52511175
+              },
               "isExperimental": false,
               "minSdk": null,
               "description": null
@@ -126,13 +138,16 @@
           "packageName": "com.google.android.apps.photos",
           "name": "Google Photos",
           "description": null,
-          "apkFileType": null,
+          "apkFileType": "APK",
           "appIconColor": "#FC3F3C",
           "signatures": null,
           "targets": [
             {
               "version": "7.96.0.993165104",
-              "versionCodes": null,
+              "versionCodes": {
+                "ARM64_V8A": 52511205,
+                "ARMEABI_V7A": 52511175
+              },
               "isExperimental": false,
               "minSdk": null,
               "description": null
@@ -153,13 +168,16 @@
           "packageName": "com.google.android.apps.photos",
           "name": "Google Photos",
           "description": null,
-          "apkFileType": null,
+          "apkFileType": "APK",
           "appIconColor": "#FC3F3C",
           "signatures": null,
           "targets": [
             {
               "version": "7.96.0.993165104",
-              "versionCodes": null,
+              "versionCodes": {
+                "ARM64_V8A": 52511205,
+                "ARMEABI_V7A": 52511175
+              },
               "isExperimental": false,
               "minSdk": null,
               "description": null
@@ -180,13 +198,16 @@
           "packageName": "com.google.android.apps.photos",
           "name": "Google Photos",
           "description": null,
-          "apkFileType": null,
+          "apkFileType": "APK",
           "appIconColor": "#FC3F3C",
           "signatures": null,
           "targets": [
             {
               "version": "7.96.0.993165104",
-              "versionCodes": null,
+              "versionCodes": {
+                "ARM64_V8A": 52511205,
+                "ARMEABI_V7A": 52511175
+              },
               "isExperimental": false,
               "minSdk": null,
               "description": null
@@ -209,13 +230,16 @@
           "packageName": "com.google.android.apps.photos",
           "name": "Google Photos",
           "description": null,
-          "apkFileType": null,
+          "apkFileType": "APK",
           "appIconColor": "#FC3F3C",
           "signatures": null,
           "targets": [
             {
               "version": "7.96.0.993165104",
-              "versionCodes": null,
+              "versionCodes": {
+                "ARM64_V8A": 52511205,
+                "ARMEABI_V7A": 52511175
+              },
               "isExperimental": false,
               "minSdk": null,
               "description": null
@@ -240,13 +264,16 @@
           "packageName": "com.google.android.apps.photos",
           "name": "Google Photos",
           "description": null,
-          "apkFileType": null,
+          "apkFileType": "APK",
           "appIconColor": "#FC3F3C",
           "signatures": null,
           "targets": [
             {
               "version": "7.96.0.993165104",
-              "versionCodes": null,
+              "versionCodes": {
+                "ARM64_V8A": 52511205,
+                "ARMEABI_V7A": 52511175
+              },
               "isExperimental": false,
               "minSdk": null,
               "description": null
@@ -269,13 +296,16 @@
           "packageName": "com.google.android.apps.photos",
           "name": "Google Photos",
           "description": null,
-          "apkFileType": null,
+          "apkFileType": "APK",
           "appIconColor": "#FC3F3C",
           "signatures": null,
           "targets": [
             {
               "version": "7.96.0.993165104",
-              "versionCodes": null,
+              "versionCodes": {
+                "ARM64_V8A": 52511205,
+                "ARMEABI_V7A": 52511175
+              },
               "isExperimental": false,
               "minSdk": null,
               "description": null
@@ -298,13 +328,16 @@
           "packageName": "com.google.android.apps.photos",
           "name": "Google Photos",
           "description": null,
-          "apkFileType": null,
+          "apkFileType": "APK",
           "appIconColor": "#FC3F3C",
           "signatures": null,
           "targets": [
             {
               "version": "7.96.0.993165104",
-              "versionCodes": null,
+              "versionCodes": {
+                "ARM64_V8A": 52511205,
+                "ARMEABI_V7A": 52511175
+              },
               "isExperimental": false,
               "minSdk": null,
               "description": null
@@ -327,13 +360,16 @@
           "packageName": "com.google.android.apps.photos",
           "name": "Google Photos",
           "description": null,
-          "apkFileType": null,
+          "apkFileType": "APK",
           "appIconColor": "#FC3F3C",
           "signatures": null,
           "targets": [
             {
               "version": "7.96.0.993165104",
-              "versionCodes": null,
+              "versionCodes": {
+                "ARM64_V8A": 52511205,
+                "ARMEABI_V7A": 52511175
+              },
               "isExperimental": false,
               "minSdk": null,
               "description": null
@@ -358,13 +394,16 @@
           "packageName": "com.google.android.apps.photos",
           "name": "Google Photos",
           "description": null,
-          "apkFileType": null,
+          "apkFileType": "APK",
           "appIconColor": "#FC3F3C",
           "signatures": null,
           "targets": [
             {
               "version": "7.96.0.993165104",
-              "versionCodes": null,
+              "versionCodes": {
+                "ARM64_V8A": 52511205,
+                "ARMEABI_V7A": 52511175
+              },
               "isExperimental": false,
               "minSdk": null,
               "description": null
