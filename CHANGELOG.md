@@ -1,3 +1,9 @@
+## [1.14.2](https://github.com/Akash-Sriram/morphe-google-photos/compare/v1.14.1...v1.14.2) (2026-10-08)
+
+### 🐛 Bug Fixes
+
+* **Google Photos - Localcreationdownloader:** transition hero creation button from saving to saved state ([f2c08c8](https://github.com/Akash-Sriram/morphe-google-photos/commit/f2c08c8e9d61e96d20737a209e73b546f454b07c))
+
 ## [1.14.1](https://github.com/Akash-Sriram/morphe-google-photos/compare/v1.14.0...v1.14.1) (2026-10-08)
 
 ### 🐛 Bug Fixes
