@@ -273,9 +273,6 @@ public class LocalCreationDownloader {
                     MAIN_HANDLER.post(() -> {
                         updateMfySaveStatus(mfyMixin, id, true);
                         if (success) {
-                            try {
-                                Toast.makeText(appContext, "Saved to device (DCIM/Google Photos)", Toast.LENGTH_SHORT).show();
-                            } catch (Throwable ignored) {}
                             Log.i(TAG, "Successfully exported MFY creation " + id + " to DCIM/Google Photos.");
                         } else {
                             Log.w(TAG, "Failed exporting MFY creation " + id);
