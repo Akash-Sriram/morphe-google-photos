@@ -25,7 +25,9 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
+import java.lang.reflect.Modifier;
 import java.text.SimpleDateFormat;
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.Date;
@@ -37,6 +39,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.SimpleTimeZone;
 import java.util.TimeZone;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
@@ -61,11 +64,17 @@ public class LocalCreationDownloader {
     private static final ExecutorService EXECUTOR = Executors.newSingleThreadExecutor();
     private static final Handler MAIN_HANDLER = new Handler(Looper.getMainLooper());
     private static final Set<String> sSavedKeys = Collections.synchronizedSet(new HashSet<>());
+    private static final Map<String, Object> sCardMediaMap = new ConcurrentHashMap<>();
+    private static final Map<Object, Object> sWsfMediaMap = new ConcurrentHashMap<>();
     private static volatile boolean sReceiverRegistered = false;
     private static volatile Context sAppContext = null;
+    private static volatile java.lang.ref.WeakReference<Object> sCurrentMfyMixin = null;
+    private static volatile java.lang.ref.WeakReference<Object> sCurrentPresenter = null;
 
     public static synchronized void clearSavedRegistry(Context context) {
         sSavedKeys.clear();
+        sCardMediaMap.clear();
+        sWsfMediaMap.clear();
         Context ctx = context != null ? context.getApplicationContext() : getApplicationContext();
         if (ctx != null) {
             SharedPreferences prefs = ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
@@ -232,6 +241,7 @@ public class LocalCreationDownloader {
     public static boolean onMfySaveRequested(Object mfyMixin, Object mediaItem, String id) {
         if (mfyMixin == null || mediaItem == null) return false;
         try {
+            sCurrentMfyMixin = new java.lang.ref.WeakReference<>(mfyMixin);
             Context context = extractContext(mfyMixin);
             if (context == null) context = getApplicationContext();
             if (context != null) {
@@ -261,18 +271,18 @@ public class LocalCreationDownloader {
             if (appContext != null) {
                 recordSavedItem(appContext, itemKey, id, collageFileName, null, utcMs);
             }
-            recordCardSaved(id);
 
-            // Set saving status in MFY UI state flow immediately
-            updateMfySaveStatus(mfyMixin, id, true);
+            // Set saving status (saved = false) in MFY UI state flow immediately
+            updateMfySaveStatus(mfyMixin, id, false);
             Log.i(TAG, "Intercepted MFY creation save for ID " + id + ". Redirecting to DCIM/Google Photos.");
 
             EXECUTOR.execute(() -> {
                 if (appContext != null) {
                     boolean success = saveSingleItem(appContext, mediaItem);
                     MAIN_HANDLER.post(() -> {
-                        updateMfySaveStatus(mfyMixin, id, true);
                         if (success) {
+                            recordCardSaved(id);
+                            updateMfySaveStatus(mfyMixin, id, true);
                             Log.i(TAG, "Successfully exported MFY creation " + id + " to DCIM/Google Photos.");
                         } else {
                             Log.w(TAG, "Failed exporting MFY creation " + id);
@@ -287,9 +297,28 @@ public class LocalCreationDownloader {
         }
     }
 
+    private static Object resolveStatusObject(boolean saved) {
+        String[] classCandidates = saved
+                ? new String[]{"qlq", "qoe", "qod"}
+                : new String[]{"qlp", "qoc"};
+        for (String cls : classCandidates) {
+            try {
+                Class<?> c = Class.forName(cls);
+                Field aField = c.getDeclaredField("a");
+                if (Modifier.isStatic(aField.getModifiers())) {
+                    aField.setAccessible(true);
+                    Object val = aField.get(null);
+                    if (val != null) return val;
+                }
+            } catch (Throwable ignored) {}
+        }
+        return null;
+    }
+
     public static void onMfyMixinBound(Object mfyMixin) {
         if (mfyMixin == null) return;
         try {
+            sCurrentMfyMixin = new java.lang.ref.WeakReference<>(mfyMixin);
             Context ctx = getApplicationContext();
             if (ctx == null) return;
             SharedPreferences prefs = ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
@@ -302,58 +331,8 @@ public class LocalCreationDownloader {
             } catch (Throwable ignored) {}
             if (bField == null) {
                 for (Field f : mfyMixin.getClass().getDeclaredFields()) {
-                    if (f.getType().getName().contains("crny") || f.getType().getName().contains("StateFlow")) {
-                        bField = f;
-                        break;
-                    }
-                }
-            }
-
-            if (bField != null) {
-                bField.setAccessible(true);
-                Object flow = bField.get(mfyMixin);
-                if (flow != null) {
-                    Method getVal = flow.getClass().getMethod("e");
-                    Object cur = getVal.invoke(flow);
-                    Map<Object, Object> newMap = (cur instanceof Map) ? new HashMap<>((Map<?, ?>) cur) : new HashMap<>();
-                    Class<?> qlqClass = Class.forName("qlq");
-                    Field aField = qlqClass.getDeclaredField("a");
-                    aField.setAccessible(true);
-                    Object savedObj = aField.get(null);
-
-                    boolean changed = false;
-                    for (String k : all.keySet()) {
-                        if (k.startsWith("card_")) {
-                            newMap.put(k.substring(5), savedObj);
-                            changed = true;
-                        } else if (k.startsWith("itm:")) {
-                            newMap.put(k, savedObj);
-                            changed = true;
-                        }
-                    }
-
-                    if (changed) {
-                        Method setVal = flow.getClass().getMethod("f", Object.class);
-                        setVal.invoke(flow, newMap);
-                        Log.d(TAG, "Pre-populated MFY state flow with saved creations in onMfyMixinBound");
-                    }
-                }
-            }
-        } catch (Throwable t) {
-            Log.w(TAG, "Error in onMfyMixinBound", t);
-        }
-    }
-
-    private static void updateMfySaveStatus(Object mfyMixin, String id, boolean saved) {
-        if (mfyMixin == null || id == null) return;
-        try {
-            Field bField = null;
-            try {
-                bField = mfyMixin.getClass().getDeclaredField("b");
-            } catch (Throwable ignored) {}
-            if (bField == null) {
-                for (Field f : mfyMixin.getClass().getDeclaredFields()) {
-                    if (f.getType().getName().contains("crny") || f.getType().getName().contains("StateFlow")) {
+                    String typeName = f.getType().getName();
+                    if (typeName.contains("crny") || typeName.contains("StateFlow") || typeName.contains("ctcj")) {
                         bField = f;
                         break;
                     }
@@ -375,10 +354,76 @@ public class LocalCreationDownloader {
                     if (getVal != null) {
                         Object cur = getVal.invoke(flow);
                         Map<Object, Object> newMap = (cur instanceof Map) ? new HashMap<>((Map<?, ?>) cur) : new HashMap<>();
-                        Class<?> statusClass = Class.forName(saved ? "qlq" : "qlp");
-                        Field aF = statusClass.getDeclaredField("a");
-                        aF.setAccessible(true);
-                        Object statusObj = aF.get(null);
+                        Object savedObj = resolveStatusObject(true);
+
+                        if (savedObj != null) {
+                            boolean changed = false;
+                            for (String k : all.keySet()) {
+                                if (k.startsWith("card_")) {
+                                    newMap.put(k.substring(5), savedObj);
+                                    changed = true;
+                                } else if (k.startsWith("itm:")) {
+                                    newMap.put(k, savedObj);
+                                    changed = true;
+                                }
+                            }
+
+                            if (changed) {
+                                Method setVal = null;
+                                try {
+                                    setVal = flow.getClass().getMethod("f", Object.class);
+                                } catch (NoSuchMethodException e) {
+                                    try {
+                                        setVal = flow.getClass().getMethod("setValue", Object.class);
+                                    } catch (NoSuchMethodException ignored) {}
+                                }
+                                if (setVal != null) {
+                                    setVal.invoke(flow, newMap);
+                                    Log.d(TAG, "Pre-populated MFY state flow with saved creations in onMfyMixinBound");
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        } catch (Throwable t) {
+            Log.w(TAG, "Error in onMfyMixinBound", t);
+        }
+    }
+
+    private static void updateMfySaveStatus(Object mfyMixin, String id, boolean saved) {
+        if (mfyMixin == null || id == null) return;
+        try {
+            Field bField = null;
+            try {
+                bField = mfyMixin.getClass().getDeclaredField("b");
+            } catch (Throwable ignored) {}
+            if (bField == null) {
+                for (Field f : mfyMixin.getClass().getDeclaredFields()) {
+                    String typeName = f.getType().getName();
+                    if (typeName.contains("crny") || typeName.contains("StateFlow") || typeName.contains("ctcj")) {
+                        bField = f;
+                        break;
+                    }
+                }
+            }
+
+            if (bField != null) {
+                bField.setAccessible(true);
+                Object flow = bField.get(mfyMixin);
+                if (flow != null) {
+                    Method getVal = null;
+                    try {
+                        getVal = flow.getClass().getMethod("e");
+                    } catch (NoSuchMethodException e) {
+                        try {
+                            getVal = flow.getClass().getMethod("getValue");
+                        } catch (NoSuchMethodException ignored) {}
+                    }
+                    if (getVal != null) {
+                        Object cur = getVal.invoke(flow);
+                        Map<Object, Object> newMap = (cur instanceof Map) ? new HashMap<>((Map<?, ?>) cur) : new HashMap<>();
+                        Object statusObj = resolveStatusObject(saved);
                         if (statusObj != null) {
                             newMap.put(id, statusObj);
                             Method setVal = null;
@@ -442,107 +487,168 @@ public class LocalCreationDownloader {
     }
 
     /**
-     * Intercepts hero card creation in Create Tab (Lqlb->q).
-     * If the creation was previously saved locally, marks the card ID in presenter.j
-     * so the "Save" button starts in the "Saved" state (sget Lqlq->a).
+     * Intercepts hero card creation in Create Tab (Lqlb->q / Lqno->q).
+     * Caches the media item and if already saved locally with a physical file,
+     * marks the card ID in presenter.j so the "Save" button starts in the "Saved" state.
      */
     public static void onCheckHeroCardSaved(Object presenter, String cardId, Object mediaItem) {
         if (presenter == null || cardId == null || mediaItem == null) return;
         try {
-            boolean saved = isCreationSaved(mediaItem) || isCardSaved(cardId);
+            sCurrentPresenter = new java.lang.ref.WeakReference<>(presenter);
+            sCardMediaMap.put(cardId, mediaItem);
+            Object wsf = null;
+            try {
+                for (String cls : new String[]{"wsg", "wss", "wuw"}) {
+                    try {
+                        Class<?> wsgClass = Class.forName(cls);
+                        for (Method m : wsgClass.getMethods()) {
+                            if (m.getParameterTypes().length == 1 &&
+                                m.getParameterTypes()[0].isInstance(mediaItem) &&
+                                m.getReturnType() != void.class &&
+                                Modifier.isStatic(m.getModifiers())) {
+                                wsf = m.invoke(null, mediaItem);
+                                if (wsf != null) break;
+                            }
+                        }
+                    } catch (Throwable ignored) {}
+                    if (wsf != null) break;
+                }
+            } catch (Throwable ignored) {}
+
+            if (wsf != null) {
+                sWsfMediaMap.put(wsf, mediaItem);
+            }
+
+            CreationTime time = extractCreationTime(mediaItem);
+            String collageFileName = (time != null && time.utcMs > 0) ? getOfficialCollageFileName(time) : null;
+            String animFileName = (time != null && time.utcMs > 0) ? ("IMG_" + time.formatLocalFileName() + "-ANIMATION.mp4") : null;
+            File targetCollage = (collageFileName != null) ? new File(getGooglePhotosDir(), collageFileName) : null;
+            File targetAnim = (animFileName != null) ? new File(getGooglePhotosDir(), animFileName) : null;
+            boolean fileOnDisk = (targetCollage != null && targetCollage.exists()) || (targetAnim != null && targetAnim.exists());
+
+            boolean saved = fileOnDisk && (isCreationSaved(mediaItem) || isCardSaved(cardId));
             if (saved) {
                 recordCardSaved(cardId);
-                Object wsf = null;
-                try {
-                    Class<?> wsgClass = Class.forName("wsg");
-                    Method bMethod = wsgClass.getMethod("b", Class.forName("bwpf"));
-                    wsf = bMethod.invoke(null, mediaItem);
-                } catch (Throwable ignored) {}
-
-                int count = 0;
-                for (Field f : presenter.getClass().getDeclaredFields()) {
-                    if (Set.class.isAssignableFrom(f.getType())) {
-                        try {
-                            f.setAccessible(true);
-                            Set set = (Set) f.get(presenter);
-                            if (set != null) {
-                                set.add(cardId);
-                                if (wsf != null) {
-                                    set.add(wsf);
-                                }
-                                count++;
-                                Log.d(TAG, "Added hero card " + cardId + " to presenter field " + f.getName());
-                            }
-                        } catch (Throwable ignored) {}
-                    }
-                }
-                Log.i(TAG, "Marked hero card " + cardId + " as saved in Create Tab presenter across " + count + " sets");
+                updatePresenterSets(presenter, cardId, wsf, true);
+                Log.i(TAG, "Marked hero card " + cardId + " as saved in Create Tab presenter");
             }
         } catch (Throwable t) {
             Log.w(TAG, "Error in onCheckHeroCardSaved", t);
         }
     }
 
-    /**
-     * Called when the user taps "Save" on a Create Tab hero card (Lqlb->n).
-     * Marks the card ID as saved immediately so that future card builds
-     * and in-memory caches reflect the saved status.
-     */
-    public static void onCreateHeroSaveRequested(Object presenter, Object wsf) {
-        if (presenter == null || wsf == null) return;
+    private static void updatePresenterSets(Object presenter, Object cardId, Object wsf, boolean saved) {
+        if (presenter == null) return;
         try {
-            Log.d(TAG, "onCreateHeroSaveRequested called with wsf: " + wsf);
             for (Field f : presenter.getClass().getDeclaredFields()) {
                 if (Set.class.isAssignableFrom(f.getType())) {
-                    try {
-                        f.setAccessible(true);
-                        Set set = (Set) f.get(presenter);
-                        if (set != null) {
-                            set.add(wsf);
+                    f.setAccessible(true);
+                    Set set = (Set) f.get(presenter);
+                    if (set != null) {
+                        String name = f.getName();
+                        if ("E".equals(name)) {
+                            // E is the Saving (in-progress) set
+                            if (saved) {
+                                if (cardId != null) set.remove(cardId);
+                                if (wsf != null) set.remove(wsf);
+                            } else {
+                                if (cardId != null) set.add(cardId);
+                                if (wsf != null) set.add(wsf);
+                            }
+                        } else if ("j".equals(name)) {
+                            // j is the Saved set
+                            if (saved) {
+                                if (cardId != null) set.add(cardId);
+                                if (wsf != null) set.add(wsf);
+                            } else {
+                                if (cardId != null) set.remove(cardId);
+                                if (wsf != null) set.remove(wsf);
+                            }
+                        } else {
+                            if (saved) {
+                                if (cardId != null) set.add(cardId);
+                                if (wsf != null) set.add(wsf);
+                            }
                         }
-                    } catch (Throwable ignored) {}
+                    }
                 }
             }
+        } catch (Throwable t) {
+            Log.w(TAG, "Error updating presenter sets", t);
+        }
+    }
 
-            // Inspect StateFlow (presenter.m) to resolve cardId matching wsf
+    private static void updatePresenterStateFlow(Object presenter, Object cardId, Object wsf, boolean saved) {
+        if (presenter == null) return;
+        try {
+            Object statusObj = resolveStatusObject(saved);
             for (Field f : presenter.getClass().getDeclaredFields()) {
                 try {
                     f.setAccessible(true);
                     Object val = f.get(presenter);
-                    if (val != null && val.getClass().getName().contains("StateFlow")) {
-                        Method eMethod = val.getClass().getMethod("e");
-                        Object qln = eMethod.invoke(val);
-                        if (qln != null) {
-                            for (Field qf : qln.getClass().getDeclaredFields()) {
-                                if (List.class.isAssignableFrom(qf.getType())) {
-                                    qf.setAccessible(true);
-                                    List<?> list = (List<?>) qf.get(qln);
-                                    if (list != null) {
-                                        for (Object card : list) {
-                                            if (card != null) {
-                                                boolean matches = false;
-                                                String cardId = null;
-                                                for (Field cf : card.getClass().getDeclaredFields()) {
-                                                    cf.setAccessible(true);
-                                                    Object cv = cf.get(card);
-                                                    if (wsf.equals(cv)) {
-                                                        matches = true;
-                                                    } else if (cv instanceof String && ((String) cv).startsWith("itm:")) {
-                                                        cardId = (String) cv;
+                    if (val != null) {
+                        String typeName = val.getClass().getName();
+                        if (typeName.contains("StateFlow") || typeName.contains("ctcj") || typeName.contains("crny")) {
+                            Method eMethod = null;
+                            try {
+                                eMethod = val.getClass().getMethod("e");
+                            } catch (NoSuchMethodException e) {
+                                try {
+                                    eMethod = val.getClass().getMethod("getValue");
+                                } catch (NoSuchMethodException ignored) {}
+                            }
+                            if (eMethod != null) {
+                                Object qln = eMethod.invoke(val);
+                                if (qln != null) {
+                                    Field aField = null;
+                                    for (Field qf : qln.getClass().getDeclaredFields()) {
+                                        if (List.class.isAssignableFrom(qf.getType())) {
+                                            aField = qf;
+                                            break;
+                                        }
+                                    }
+                                    if (aField != null) {
+                                        aField.setAccessible(true);
+                                        List<?> list = (List<?>) aField.get(qln);
+                                        if (list != null) {
+                                            boolean changed = false;
+                                            List<Object> newList = new ArrayList<>();
+                                            for (Object card : list) {
+                                                if (card != null) {
+                                                    boolean match = false;
+                                                    for (Field cf : card.getClass().getDeclaredFields()) {
+                                                        cf.setAccessible(true);
+                                                        Object cv = cf.get(card);
+                                                        if (wsf != null && wsf.equals(cv)) match = true;
+                                                        if (cardId != null && cardId.equals(cv)) match = true;
                                                     }
-                                                }
-                                                if (matches && cardId != null) {
-                                                    recordCardSaved(cardId);
-                                                    for (Field pf : presenter.getClass().getDeclaredFields()) {
-                                                        if (Set.class.isAssignableFrom(pf.getType())) {
-                                                            pf.setAccessible(true);
-                                                            Set s = (Set) pf.get(presenter);
-                                                            if (s != null) {
-                                                                s.add(cardId);
+                                                    if (match) {
+                                                        for (Field cf : card.getClass().getDeclaredFields()) {
+                                                            String cft = cf.getType().getName();
+                                                            if (cft.startsWith("Lqlr") || cft.equals("qlr") ||
+                                                                (statusObj != null && cf.getType().isInstance(statusObj))) {
+                                                                cf.setAccessible(true);
+                                                                cf.set(card, statusObj);
+                                                                changed = true;
                                                             }
                                                         }
                                                     }
-                                                    Log.i(TAG, "Hero card " + cardId + " marked as saved on tap");
+                                                    newList.add(card);
+                                                }
+                                            }
+                                            if (changed) {
+                                                Method fMethod = null;
+                                                try {
+                                                    fMethod = val.getClass().getMethod("f", Object.class);
+                                                } catch (NoSuchMethodException e) {
+                                                    try {
+                                                        fMethod = val.getClass().getMethod("setValue", Object.class);
+                                                    } catch (NoSuchMethodException ignored) {}
+                                                }
+                                                if (fMethod != null) {
+                                                    aField.set(qln, newList);
+                                                    fMethod.invoke(val, qln);
+                                                    Log.i(TAG, "Updated hero card in StateFlow to " + (saved ? "SAVED" : "SAVING"));
                                                 }
                                             }
                                         }
@@ -552,6 +658,125 @@ public class LocalCreationDownloader {
                         }
                     }
                 } catch (Throwable ignored) {}
+            }
+        } catch (Throwable t) {
+            Log.w(TAG, "Error updating presenter StateFlow", t);
+        }
+    }
+
+    /**
+     * Called when the user taps "Save" on a Create Tab hero card (Lqlb->n / Lqno->n).
+     * Marks the card ID as saved immediately and dispatches background export to DCIM/Google Photos.
+     */
+    public static void onCreateHeroSaveRequested(Object presenter, Object wsf) {
+        if (presenter == null || wsf == null) return;
+        try {
+            sCurrentPresenter = new java.lang.ref.WeakReference<>(presenter);
+            Log.d(TAG, "onCreateHeroSaveRequested called with wsf: " + wsf);
+
+            Object mediaItem = sWsfMediaMap.get(wsf);
+            String targetCardId = null;
+
+            // Inspect StateFlow to resolve cardId matching wsf
+            for (Field f : presenter.getClass().getDeclaredFields()) {
+                try {
+                    f.setAccessible(true);
+                    Object val = f.get(presenter);
+                    if (val != null) {
+                        String typeName = val.getClass().getName();
+                        if (typeName.contains("StateFlow") || typeName.contains("ctcj") || typeName.contains("crny")) {
+                            Method eMethod = null;
+                            try {
+                                eMethod = val.getClass().getMethod("e");
+                            } catch (NoSuchMethodException e) {
+                                try {
+                                    eMethod = val.getClass().getMethod("getValue");
+                                } catch (NoSuchMethodException ignored) {}
+                            }
+                            if (eMethod != null) {
+                                Object qln = eMethod.invoke(val);
+                                if (qln != null) {
+                                    for (Field qf : qln.getClass().getDeclaredFields()) {
+                                        if (List.class.isAssignableFrom(qf.getType())) {
+                                            qf.setAccessible(true);
+                                            List<?> list = (List<?>) qf.get(qln);
+                                            if (list != null) {
+                                                for (Object card : list) {
+                                                    if (card != null) {
+                                                        boolean matches = false;
+                                                        String cardId = null;
+                                                        for (Field cf : card.getClass().getDeclaredFields()) {
+                                                            cf.setAccessible(true);
+                                                            Object cv = cf.get(card);
+                                                            if (wsf.equals(cv)) {
+                                                                matches = true;
+                                                            } else if (cv instanceof String && ((String) cv).startsWith("itm:")) {
+                                                                cardId = (String) cv;
+                                                            }
+                                                        }
+                                                        if (matches && cardId != null) {
+                                                            targetCardId = cardId;
+                                                            if (mediaItem == null) {
+                                                                mediaItem = sCardMediaMap.get(cardId);
+                                                            }
+                                                            Log.i(TAG, "Hero card " + cardId + " resolved from presenter StateFlow");
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                } catch (Throwable ignored) {}
+            }
+
+            if (mediaItem == null && targetCardId != null) {
+                mediaItem = sCardMediaMap.get(targetCardId);
+            }
+
+            // Immediately mark as saving in presenter and MFY state flow
+            updatePresenterSets(presenter, targetCardId, wsf, false);
+            updatePresenterStateFlow(presenter, targetCardId, wsf, false);
+            if (sCurrentMfyMixin != null && sCurrentMfyMixin.get() != null && targetCardId != null) {
+                updateMfySaveStatus(sCurrentMfyMixin.get(), targetCardId, false);
+            }
+
+            Context context = extractContext(presenter);
+            if (context == null) context = getApplicationContext();
+            if (context != null) {
+                sAppContext = context.getApplicationContext();
+                ensureReceiverRegistered(sAppContext);
+            }
+            final Context appContext = sAppContext != null ? sAppContext : (context != null ? context.getApplicationContext() : null);
+            final Object finalMediaItem = mediaItem;
+            final String finalCardId = targetCardId;
+            final Object finalWsf = wsf;
+
+            if (appContext != null && finalMediaItem != null) {
+                Log.i(TAG, "Dispatching local download for hero card: " + (finalCardId != null ? finalCardId : wsf));
+                EXECUTOR.execute(() -> {
+                    boolean success = saveSingleItem(appContext, finalMediaItem);
+                    MAIN_HANDLER.post(() -> {
+                        if (success) {
+                            if (finalCardId != null) {
+                                recordCardSaved(finalCardId);
+                            }
+                            updatePresenterSets(presenter, finalCardId, finalWsf, true);
+                            updatePresenterStateFlow(presenter, finalCardId, finalWsf, true);
+                            if (sCurrentMfyMixin != null && sCurrentMfyMixin.get() != null && finalCardId != null) {
+                                updateMfySaveStatus(sCurrentMfyMixin.get(), finalCardId, true);
+                            }
+                            Log.i(TAG, "Successfully exported hero card creation to DCIM/Google Photos and updated UI to Saved.");
+                        } else {
+                            Log.w(TAG, "Failed to download hero card creation locally.");
+                        }
+                    });
+                });
+            } else {
+                Log.w(TAG, "Cannot trigger hero card download: appContext=" + appContext + ", mediaItem=" + finalMediaItem);
             }
         } catch (Throwable t) {
             Log.w(TAG, "Error in onCreateHeroSaveRequested", t);
@@ -602,10 +827,17 @@ public class LocalCreationDownloader {
             String key = extractItemKey(mediaItem);
             CreationTime time = extractCreationTime(mediaItem);
             String fileName = (time != null && time.utcMs > 0) ? getOfficialCollageFileName(time) : null;
+            String animFileName = (time != null && time.utcMs > 0) ? ("IMG_" + time.formatLocalFileName() + "-ANIMATION.mp4") : null;
+            File targetCollage = (fileName != null) ? new File(getGooglePhotosDir(), fileName) : null;
+            File targetAnim = (animFileName != null) ? new File(getGooglePhotosDir(), animFileName) : null;
+            if ((targetCollage != null && targetCollage.exists()) || (targetAnim != null && targetAnim.exists())) {
+                return true;
+            }
             long utcMs = time != null ? time.utcMs : 0;
 
             if (key != null && sSavedKeys.contains(key)) return true;
             if (fileName != null && sSavedKeys.contains("file_" + fileName)) return true;
+            if (animFileName != null && sSavedKeys.contains("file_" + animFileName)) return true;
             if (utcMs > 0 && sSavedKeys.contains("ts_" + utcMs)) return true;
 
             if (ctx != null) {
