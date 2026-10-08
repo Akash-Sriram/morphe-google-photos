@@ -39,17 +39,17 @@ Morphe patches for **Google Photos**, derived from [RookieEnough/De-Vanced](http
 
 ---
 
-## ⚠️ Known Limitations & Workarounds
+## ⚠️ Limitations & Workarounds
 
-| Area | Limitation | Workaround / Details |
-| :--- | :--- | :--- |
-| **Creations & Memories** | "Saved" status for collages & animations is tracked on-device; may still show "Save" button on web or other unpatched devices. | Handled automatically. Creations export to `DCIM/Google Photos` with original capture timestamps for quota-free backup. |
-| **Unlimited Storage Scope** | Pixel XL quota-free exemption applies **strictly to media uploaded from local device storage**. | Files uploaded via web browser (`photos.google.com`), Google Drive, or cloud-to-cloud album copies still debit cloud quota. Always sync media from your device. |
-| **AI Editing Tools** | On-device Pixel tools (Magic Eraser, Portrait Blur/Light, Sky) work locally. Cloud-computed Generative AI (Reimagine, complex Magic Editor synthesis) requires Google backend authorization. | Standard on-device Pixel tools work offline once models load. Server-side generative AI requires an active Google One AI subscription on Google's backend. |
-| **Neural Model Downloads** | Magic Eraser and Portrait tools require downloading on-device neural model weights on fresh installs. | Connect to Wi-Fi, open any photo in the editor, and select Magic Eraser once to trigger background asset fetching. |
-| **DCIM Backup Controls** | With folder controls enabled, DCIM subfolders (Camera, Screenshots, etc.) default to backup **disabled** on fresh setup. | Navigate to **Photos Settings** $\rightarrow$ **Backup** $\rightarrow$ **Back up device folders** and toggle on your preferred folders. |
-| **App Updates** | Google Play Store cannot auto-update the modded package due to package renaming (`app.morphe.*`) and custom signing. | Install updated builds from [Akash-Sriram/GooglePhotos-Patched](https://github.com/Akash-Sriram/GooglePhotos-Patched/releases) or recompile using Morphe. |
-| **MicroG / Non-Root Setup** | Map view and location headers in the photo info panel require MicroG location providers. | Grant Location permissions to GmsCore / MicroG and set its battery optimization to **Unrestricted**. |
+Saving auto-generated creations directly from **Memories / Stories** and the **Create tab (Made-For-You)** normally triggers a cloud-side commit on Google's servers, bypassing on-device Pixel XL spoofing and debiting account storage quota.
+
+### Local Creation Downloader Workaround
+- **Quota-Free Routing**: The patch intercepts the "Save" button and streams the high-resolution collage (`.jpg`) or animation (`.mp4`) directly to device storage (`DCIM/Google Photos`). The app then uploads the local file through the unlimited Pixel XL backup pipeline at **0 bytes quota**.
+
+### Side-Effects & Notes
+- **Device-Local "Saved" State**: Because the cloud commit is suppressed, the "Saved" status is tracked on-device. Opening the same creation on unpatched devices or the web (`photos.google.com`) will still show the "Save" button.
+- **Timeline Placement**: Embedded EXIF metadata reflects the original capture timestamp, sorting saved creations in your timeline next to the original photos rather than the day you saved them.
+- **Web Interface**: On the web, saved creations display as standard high-quality photos/videos without the server-assigned collage badge.
 
 ---
 
