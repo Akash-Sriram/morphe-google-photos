@@ -39,11 +39,17 @@ Morphe patches for **Google Photos**, derived from [RookieEnough/De-Vanced](http
 
 ---
 
-## ⚠️ Known Limitations
+## ⚠️ Known Limitations & Workarounds
 
-- **Local Creation Downloader**:
-  - **Cross-device state**: Bypasses cloud save to enable quota-free backup. The save button is permanently hidden on the patched device once downloaded, but may still appear in Stories on other devices or the web.
-  - **Web badge**: Saved collages back up as standard photos on their original capture date without the server-assigned collage badge on the web.
+| Area | Limitation | Workaround / Details |
+| :--- | :--- | :--- |
+| **Creations & Memories** | "Saved" status for collages & animations is tracked on-device; may still show "Save" button on web or other unpatched devices. | Handled automatically. Creations export to `DCIM/Google Photos` with original capture timestamps for quota-free backup. |
+| **Unlimited Storage Scope** | Pixel XL quota-free exemption applies **strictly to media uploaded from local device storage**. | Files uploaded via web browser (`photos.google.com`), Google Drive, or cloud-to-cloud album copies still debit cloud quota. Always sync media from your device. |
+| **AI Editing Tools** | On-device Pixel tools (Magic Eraser, Portrait Blur/Light, Sky) work locally. Cloud-computed Generative AI (Reimagine, complex Magic Editor synthesis) requires Google backend authorization. | Standard on-device Pixel tools work offline once models load. Server-side generative AI requires an active Google One AI subscription on Google's backend. |
+| **Neural Model Downloads** | Magic Eraser and Portrait tools require downloading on-device neural model weights on fresh installs. | Connect to Wi-Fi, open any photo in the editor, and select Magic Eraser once to trigger background asset fetching. |
+| **DCIM Backup Controls** | With folder controls enabled, DCIM subfolders (Camera, Screenshots, etc.) default to backup **disabled** on fresh setup. | Navigate to **Photos Settings** $\rightarrow$ **Backup** $\rightarrow$ **Back up device folders** and toggle on your preferred folders. |
+| **App Updates** | Google Play Store cannot auto-update the modded package due to package renaming (`app.morphe.*`) and custom signing. | Install updated builds from [Akash-Sriram/GooglePhotos-Patched](https://github.com/Akash-Sriram/GooglePhotos-Patched/releases) or recompile using Morphe. |
+| **MicroG / Non-Root Setup** | Map view and location headers in the photo info panel require MicroG location providers. | Grant Location permissions to GmsCore / MicroG and set its battery optimization to **Unrestricted**. |
 
 ---
 
