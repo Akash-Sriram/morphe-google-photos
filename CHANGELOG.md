@@ -1,3 +1,9 @@
+## [1.14.1](https://github.com/Akash-Sriram/morphe-google-photos/compare/v1.14.0...v1.14.1) (2026-10-08)
+
+### 🐛 Bug Fixes
+
+* **Google Photos - Seeder:** prevent PhotosModelSeeder from overwriting phenotype flags ([4307a0f](https://github.com/Akash-Sriram/morphe-google-photos/commit/4307a0f1fe8b904822cb11e0b7054f92bbf8df08))
+
 ## [1.14.0](https://github.com/Akash-Sriram/morphe-google-photos/compare/v1.13.4...v1.14.0) (2026-10-08)
 
 ### 🐛 Bug Fixes
