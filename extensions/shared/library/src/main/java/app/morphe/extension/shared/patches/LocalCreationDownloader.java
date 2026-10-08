@@ -1,9 +1,13 @@
 package app.morphe.extension.shared.patches;
 
+import android.content.BroadcastReceiver;
 import android.content.ContentResolver;
 import android.content.ContentValues;
 import android.content.Context;
+import android.content.Intent;
+import android.content.IntentFilter;
 import android.content.SharedPreferences;
+import android.media.ExifInterface;
 import android.media.MediaScannerConnection;
 import android.net.Uri;
 import android.os.Build;
@@ -12,8 +16,10 @@ import android.os.Handler;
 import android.os.Looper;
 import android.provider.MediaStore;
 import android.util.Log;
+import android.widget.Toast;
 
 import java.io.File;
+import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -21,8 +27,11 @@ import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.text.SimpleDateFormat;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.Date;
+import java.util.HashSet;
 import java.util.Locale;
+import java.util.Set;
 import java.util.SimpleTimeZone;
 import java.util.TimeZone;
 import java.util.concurrent.ExecutorService;
@@ -43,11 +52,67 @@ import java.util.concurrent.Executors;
  * suppressed/hidden (matching official behavior), even if the local file is deleted later.
  */
 public class LocalCreationDownloader {
+    public static final String ACTION_CLEAR_SAVED_MEMORIES = "app.morphe.action.CLEAR_SAVED_MEMORIES";
     private static final String TAG = "LocalCreationDownloader";
     private static final String PREFS_NAME = "morphe_saved_creations";
     private static final ExecutorService EXECUTOR = Executors.newSingleThreadExecutor();
     private static final Handler MAIN_HANDLER = new Handler(Looper.getMainLooper());
+    private static final Set<String> sSavedKeys = Collections.synchronizedSet(new HashSet<>());
+    private static volatile boolean sReceiverRegistered = false;
     private static volatile Context sAppContext = null;
+
+    public static synchronized void clearSavedRegistry(Context context) {
+        sSavedKeys.clear();
+        Context ctx = context != null ? context.getApplicationContext() : getApplicationContext();
+        if (ctx != null) {
+            SharedPreferences prefs = ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
+            prefs.edit().clear().commit();
+        }
+        // Clean up test collages in DCIM/Google Photos so testing from scratch is 100% clean
+        try {
+            File dir = getGooglePhotosDir();
+            if (dir.exists()) {
+                File[] files = dir.listFiles((d, name) -> name.contains("-COLLAGE"));
+                if (files != null) {
+                    for (File f : files) {
+                        f.delete();
+                    }
+                }
+            }
+        } catch (Throwable ignored) {}
+        Log.i(TAG, "Cleared saved memories registry and cleaned local test collages.");
+    }
+
+    private static void ensureReceiverRegistered(Context context) {
+        if (sReceiverRegistered || context == null) return;
+        synchronized (LocalCreationDownloader.class) {
+            if (sReceiverRegistered) return;
+            try {
+                Context appCtx = context.getApplicationContext();
+                BroadcastReceiver receiver = new BroadcastReceiver() {
+                    @Override
+                    public void onReceive(Context ctx, Intent intent) {
+                        if (intent != null && ACTION_CLEAR_SAVED_MEMORIES.equals(intent.getAction())) {
+                            clearSavedRegistry(ctx);
+                            MAIN_HANDLER.post(() -> {
+                                Toast.makeText(ctx, "Morphe: Saved memories registry reset", Toast.LENGTH_SHORT).show();
+                            });
+                        }
+                    }
+                };
+                IntentFilter filter = new IntentFilter(ACTION_CLEAR_SAVED_MEMORIES);
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                    appCtx.registerReceiver(receiver, filter, Context.RECEIVER_EXPORTED);
+                } else {
+                    appCtx.registerReceiver(receiver, filter);
+                }
+                sReceiverRegistered = true;
+                Log.i(TAG, "Registered broadcast receiver for " + ACTION_CLEAR_SAVED_MEMORIES);
+            } catch (Throwable t) {
+                Log.w(TAG, "Failed registering clear receiver", t);
+            }
+        }
+    }
 
     /**
      * Interception entry point called directly from SaveCreationMixin (Lakxr->h).
@@ -68,6 +133,7 @@ public class LocalCreationDownloader {
             }
             if (context != null) {
                 sAppContext = context.getApplicationContext();
+                ensureReceiverRegistered(sAppContext);
             }
 
             Collection<?> items = (mediaList instanceof Collection)
@@ -93,7 +159,39 @@ public class LocalCreationDownloader {
                 return true;
             }
 
+
             final Context appContext = sAppContext != null ? sAppContext : context.getApplicationContext();
+
+            // Pre-validate that at least one item can be resolved to a downloadable URI.
+            // If URI resolution fails (e.g. unknown obfuscation drift), gracefully fallback
+            // to Google Photos standard cloud save so the user's save is never dropped.
+            boolean canResolveLocally = false;
+            for (Object media : items) {
+                if (media != null && resolveMediaUri(appContext, media) != null) {
+                    canResolveLocally = true;
+                    break;
+                }
+            }
+
+            if (!canResolveLocally) {
+                Log.w(TAG, "Cannot resolve local URI for creation item(s). Falling back to Google Photos standard cloud save.");
+                return false;
+            }
+
+            // Immediately mark items as saved synchronously to suppress consecutive clicks
+            for (Object media : items) {
+                if (media == null) continue;
+                String itemKey = extractItemKey(media);
+                CreationTime time = extractCreationTime(media);
+                String fileName = (time != null && time.utcMs > 0) ? getOfficialCollageFileName(time) : null;
+                long utcMs = time != null ? time.utcMs : 0;
+                recordSavedItem(appContext, itemKey, null, fileName, null, utcMs);
+            }
+
+            // Immediately notify story UI and listeners so the button changes to Saved / hides
+            notifySaveListeners(saveCreationMixin, mediaList);
+            notifyStoryUi(saveCreationMixin);
+
             Log.i(TAG, "Intercepted creation save request for " + items.size() + " item(s). Redirecting to DCIM/Google Photos.");
 
             // Dispatch background save to avoid blocking the main UI thread
@@ -110,9 +208,6 @@ public class LocalCreationDownloader {
                 MAIN_HANDLER.post(() -> {
                     if (saved > 0) {
                         Log.i(TAG, "Successfully exported " + saved + " creation(s) to DCIM/Google Photos.");
-
-                        // Notify save listeners AFTER download finishes so the UI updates
-                        // button state to Saved and advances/dismisses story
                         notifySaveListeners(saveCreationMixin, mediaList);
                         notifyStoryUi(saveCreationMixin);
                     } else {
@@ -164,57 +259,33 @@ public class LocalCreationDownloader {
     public static boolean isCreationSaved(Object mediaItem) {
         if (mediaItem == null) return false;
         try {
-            String key = extractItemKey(mediaItem);
-            CreationTime creationTime = extractCreationTime(mediaItem);
-
-            // 1. Check SharedPreferences for permanent saved flag
             Context ctx = getApplicationContext();
             if (ctx != null) {
-                SharedPreferences prefs = ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
-                if (key != null && (prefs.getBoolean(key + "_saved", false) || prefs.contains(key))) {
-                    return true;
-                }
+                ensureReceiverRegistered(ctx);
             }
 
-            // 2. Check deterministic file paths in DCIM/Google Photos
-            // Note: highlight videos are handled natively by Google Photos — we only check collages.
-            File dir = getGooglePhotosDir();
-            if (dir.exists()) {
-                // Primary: local wall-clock filename (matches stock camera / GP naming)
-                File officialCollage = new File(dir, getOfficialCollageFileName(creationTime));
-                if (officialCollage.exists() && officialCollage.length() > 0) {
-                    return true;
-                }
-                // Backward-compat: check earlier UTC-formatted filename
-                File utcCollage = new File(dir, "IMG_" + creationTime.formatUtcFileName() + "-COLLAGE.jpg");
-                if (utcCollage.exists() && utcCollage.length() > 0) {
-                    return true;
-                }
-                // Backward-compat: old format had milliseconds (yyyyMMdd_HHmmssSSS)
-                String dateStr = creationTime.formatUtcFileName();
-                File msCollage = new File(dir, "IMG_" + dateStr + "000-COLLAGE.jpg");
-                if (msCollage.exists() && msCollage.length() > 0) {
-                    return true;
-                }
-                if (key != null) {
-                    File legacyFile = new File(dir, getFileNameForKey(key));
-                    if (legacyFile.exists() && legacyFile.length() > 0) {
-                        return true;
-                    }
-                }
-            }
+            String key = extractItemKey(mediaItem);
+            CreationTime time = extractCreationTime(mediaItem);
+            String fileName = (time != null && time.utcMs > 0) ? getOfficialCollageFileName(time) : null;
+            long utcMs = time != null ? time.utcMs : 0;
 
-            // 3. Check SharedPreferences for mapped file path
-            if (ctx != null && key != null) {
+            if (key != null && sSavedKeys.contains(key)) return true;
+            if (fileName != null && sSavedKeys.contains("file_" + fileName)) return true;
+            if (utcMs > 0 && sSavedKeys.contains("ts_" + utcMs)) return true;
+
+            if (ctx != null) {
                 SharedPreferences prefs = ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
-                String savedPath = prefs.getString(key, null);
-                if (savedPath != null) {
-                    File f = new File(savedPath);
-                    if (f.exists() && f.length() > 0) {
-                        return true;
-                    }
-                    // IMPORTANT: Do NOT remove key if local file is missing.
-                    // Google Photos "Free up space" or manual purge shouldn't reset the save state.
+                if (key != null && (prefs.getBoolean(key, false) || prefs.getBoolean(key + "_saved", false))) {
+                    sSavedKeys.add(key);
+                    return true;
+                }
+                if (fileName != null && prefs.getBoolean("file_" + fileName, false)) {
+                    sSavedKeys.add("file_" + fileName);
+                    return true;
+                }
+                if (utcMs > 0 && prefs.getBoolean("ts_" + utcMs, false)) {
+                    sSavedKeys.add("ts_" + utcMs);
+                    return true;
                 }
             }
         } catch (Throwable t) {
@@ -297,7 +368,7 @@ public class LocalCreationDownloader {
         for (Method m : mediaItem.getClass().getMethods()) {
             if (m.getParameterTypes().length == 0) {
                 String retName = m.getReturnType().getSimpleName();
-                if (retName.equals("bwol") || retName.contains("Timestamp")) {
+                if (retName.equals("bwol") || retName.equals("bwze") || retName.contains("Timestamp")) {
                     try {
                         Object obj = m.invoke(mediaItem);
                         if (obj != null) {
@@ -445,7 +516,84 @@ public class LocalCreationDownloader {
         String itemKey = extractItemKey(mediaItem);
         String uriKey = extractKeyFromUri(mediaUri);
 
+        // Download stream to a temporary cache file first so we can inject EXIF DateTimeOriginal
+        // before exporting to MediaStore / DCIM.
+        File tempFile = null;
         try {
+            tempFile = File.createTempFile("morphe_collage_", ".jpg", context.getCacheDir());
+            try (InputStream in = openMediaStream(resolver, mediaUri);
+                 OutputStream out = new FileOutputStream(tempFile)) {
+                if (in == null) {
+                    Log.e(TAG, "Failed to open input stream for " + mediaUri);
+                    return false;
+                }
+                byte[] buffer = new byte[16384];
+                int len;
+                while ((len = in.read(buffer)) > 0) {
+                    out.write(buffer, 0, len);
+                }
+                out.flush();
+            }
+
+            // Inject EXIF capture timestamp into the temporary file
+            try {
+                ExifInterface exif = new ExifInterface(tempFile.getAbsolutePath());
+                SimpleDateFormat exifSdf = new SimpleDateFormat("yyyy:MM:dd HH:mm:ss", Locale.US);
+                if (creationTime.tzOffsetMs != 0) {
+                    exifSdf.setTimeZone(new SimpleTimeZone((int) creationTime.tzOffsetMs, "photo_tz"));
+                } else {
+                    exifSdf.setTimeZone(TimeZone.getDefault());
+                }
+                String dateStr = exifSdf.format(new Date(creationTime.utcMs));
+                exif.setAttribute(ExifInterface.TAG_DATETIME_ORIGINAL, dateStr);
+                exif.setAttribute(ExifInterface.TAG_DATETIME, dateStr);
+                exif.setAttribute(ExifInterface.TAG_DATETIME_DIGITIZED, dateStr);
+
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && creationTime.tzOffsetMs != 0) {
+                    int totalMinutes = (int) (creationTime.tzOffsetMs / 60000);
+                    int hours = totalMinutes / 60;
+                    int minutes = Math.abs(totalMinutes % 60);
+                    String offsetStr = String.format(Locale.US, "%+03d:%02d", hours, minutes);
+                    try {
+                        exif.setAttribute("OffsetTimeOriginal", offsetStr);
+                        exif.setAttribute("OffsetTime", offsetStr);
+                        exif.setAttribute("OffsetTimeDigitized", offsetStr);
+                    } catch (Throwable ignored) {}
+                }
+                exif.saveAttributes();
+                Log.d(TAG, "Embedded EXIF DateTimeOriginal: " + dateStr + " into " + fileName);
+            } catch (Throwable t) {
+                Log.w(TAG, "Failed embedding EXIF attributes", t);
+            }
+
+            // Clean up any existing file or MediaStore entry with this exact name or duplicate suffixes
+            // to prevent MediaStore from generating "IMG_... (1).jpg"
+            try {
+                String basePrefix = fileName.endsWith(".jpg") ? fileName.substring(0, fileName.length() - 4) : fileName;
+                Uri queryUri = MediaStore.Images.Media.EXTERNAL_CONTENT_URI;
+                String selection = "(" + MediaStore.MediaColumns.DISPLAY_NAME + "=? OR " +
+                        MediaStore.MediaColumns.DISPLAY_NAME + " LIKE ?) AND " +
+                        MediaStore.MediaColumns.RELATIVE_PATH + " LIKE ?";
+                String[] selectionArgs = new String[]{fileName, basePrefix + " (%)%", "DCIM/Google Photos%"};
+                resolver.delete(queryUri, selection, selectionArgs);
+            } catch (Throwable ignored) {}
+
+            try {
+                if (targetFile.exists()) {
+                    targetFile.delete();
+                }
+                File dir = getGooglePhotosDir();
+                if (dir.exists()) {
+                    String basePrefix = fileName.endsWith(".jpg") ? fileName.substring(0, fileName.length() - 4) : fileName;
+                    File[] dups = dir.listFiles((d, name) -> name.startsWith(basePrefix + " (") && name.endsWith(".jpg"));
+                    if (dups != null) {
+                        for (File df : dups) {
+                            df.delete();
+                        }
+                    }
+                }
+            } catch (Throwable ignored) {}
+
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                 ContentValues values = new ContentValues();
                 values.put(MediaStore.MediaColumns.DISPLAY_NAME, fileName);
@@ -462,20 +610,24 @@ public class LocalCreationDownloader {
                     return false;
                 }
 
-                try (InputStream in = openMediaStream(resolver, mediaUri);
+                try (InputStream fin = new FileInputStream(tempFile);
                      OutputStream out = resolver.openOutputStream(inserted)) {
-                    if (in == null || out == null) {
+                    if (out == null) {
                         return false;
                     }
                     byte[] buffer = new byte[16384];
                     int len;
-                    while ((len = in.read(buffer)) > 0) {
+                    while ((len = fin.read(buffer)) > 0) {
                         out.write(buffer, 0, len);
                     }
+                    out.flush();
                 }
 
                 values.clear();
                 values.put(MediaStore.MediaColumns.IS_PENDING, 0);
+                values.put(MediaStore.Images.Media.DATE_TAKEN, creationTime.utcMs);
+                values.put(MediaStore.MediaColumns.DATE_ADDED, creationTime.utcMs / 1000);
+                values.put(MediaStore.MediaColumns.DATE_MODIFIED, creationTime.utcMs / 1000);
                 resolver.update(inserted, values, null, null);
 
                 // Set file modification timestamp if accessible directly
@@ -489,7 +641,7 @@ public class LocalCreationDownloader {
                         new String[]{mimeType},
                         null);
 
-                recordSavedItem(context, itemKey, uriKey, fileName, targetFile.getAbsolutePath());
+                recordSavedItem(context, itemKey, uriKey, fileName, targetFile.getAbsolutePath(), creationTime.utcMs);
                 return true;
             } else {
                 File dcimDir = getGooglePhotosDir();
@@ -498,14 +650,14 @@ public class LocalCreationDownloader {
                     return false;
                 }
 
-                try (InputStream in = openMediaStream(resolver, mediaUri);
+                try (InputStream fin = new FileInputStream(tempFile);
                      OutputStream out = new FileOutputStream(targetFile)) {
-                    if (in == null) return false;
                     byte[] buffer = new byte[16384];
                     int len;
-                    while ((len = in.read(buffer)) > 0) {
+                    while ((len = fin.read(buffer)) > 0) {
                         out.write(buffer, 0, len);
                     }
+                    out.flush();
                 }
 
                 targetFile.setLastModified(creationTime.utcMs);
@@ -515,32 +667,52 @@ public class LocalCreationDownloader {
                         new String[]{mimeType},
                         null);
 
-                recordSavedItem(context, itemKey, uriKey, fileName, targetFile.getAbsolutePath());
+                recordSavedItem(context, itemKey, uriKey, fileName, targetFile.getAbsolutePath(), creationTime.utcMs);
                 return true;
             }
         } catch (Throwable t) {
             Log.e(TAG, "Error streaming creation to local storage", t);
             return false;
+        } finally {
+            if (tempFile != null && tempFile.exists()) {
+                tempFile.delete();
+            }
         }
     }
 
-    private static void recordSavedItem(Context context, String itemKey, String uriKey, String fileName, String filePath) {
-        if (context == null) return;
+    private static void recordSavedItem(Context context, String itemKey, String uriKey, String fileName, String filePath, long utcMs) {
+        if (itemKey != null) {
+            sSavedKeys.add(itemKey);
+        }
+        if (uriKey != null) {
+            sSavedKeys.add(uriKey);
+        }
+        if (fileName != null) {
+            sSavedKeys.add("file_" + fileName);
+        }
+        if (utcMs > 0) {
+            sSavedKeys.add("ts_" + utcMs);
+        }
+        Context ctx = context != null ? context.getApplicationContext() : getApplicationContext();
+        if (ctx == null) return;
         try {
-            SharedPreferences prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
+            SharedPreferences prefs = ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
             SharedPreferences.Editor edit = prefs.edit();
             if (itemKey != null) {
+                edit.putBoolean(itemKey, true);
                 edit.putBoolean(itemKey + "_saved", true);
-                edit.putString(itemKey, filePath);
             }
             if (uriKey != null) {
+                edit.putBoolean(uriKey, true);
                 edit.putBoolean(uriKey + "_saved", true);
-                edit.putString(uriKey, filePath);
             }
             if (fileName != null) {
-                edit.putBoolean(fileName + "_saved", true);
+                edit.putBoolean("file_" + fileName, true);
             }
-            edit.apply();
+            if (utcMs > 0) {
+                edit.putBoolean("ts_" + utcMs, true);
+            }
+            edit.commit(); // synchronous write
         } catch (Throwable ignored) {}
     }
 
@@ -587,9 +759,9 @@ public class LocalCreationDownloader {
     }
 
     private static Uri resolveMediaUri(Context context, Object mediaItem) {
-        // Attempt 1: Photos DI Binder (bzeq / ahug) with MediaUriProvider (wiy)
-        String[] binderClasses = {"bzeq", "ahug"};
-        String[] providerClasses = {"wiy"};
+        // Attempt 1: Photos DI Binder (bzoq / bzeq / ahug) with MediaUriProvider (wma / wiy)
+        String[] binderClasses = {"bzoq", "bzeq", "ahug"};
+        String[] providerClasses = {"wma", "wiy"};
 
         for (String binderName : binderClasses) {
             try {
@@ -643,21 +815,33 @@ public class LocalCreationDownloader {
                                 }
                             } catch (Throwable ignored) {}
 
-                            // Try wiw.d (ORIGINAL) or wiw.c (LARGE)
-                            try {
-                                Class<?> wiwClass = Class.forName("wiw");
-                                for (Method pm : provider.getClass().getMethods()) {
-                                    if (pm.getParameterTypes().length == 3 &&
-                                        pm.getParameterTypes()[0].isInstance(mediaItem) &&
-                                        Uri.class.isAssignableFrom(pm.getReturnType())) {
+                            // Try quality enum: wlz.d or wiw.d (ORIGINAL), wlz.c or wiw.c (LARGE)
+                            String[] qualityClasses = {"wlz", "wiw"};
+                            for (String qClassName : qualityClasses) {
+                                try {
+                                    Class<?> qClass = Class.forName(qClassName);
+                                    Object origVal = null;
+                                    try {
+                                        origVal = qClass.getField("d").get(null);
+                                    } catch (Throwable ignored) {
                                         try {
-                                            Object origVal = wiwClass.getField("d").get(null);
-                                            Uri uri = (Uri) pm.invoke(provider, mediaItem, origVal, 0);
-                                            if (uri != null) return uri;
-                                        } catch (Throwable ignored) {}
+                                            origVal = qClass.getField("c").get(null);
+                                        } catch (Throwable ignored2) {}
                                     }
-                                }
-                            } catch (Throwable ignored) {}
+                                    if (origVal != null) {
+                                        for (Method pm : provider.getClass().getMethods()) {
+                                            if (pm.getParameterTypes().length == 3 &&
+                                                pm.getParameterTypes()[0].isInstance(mediaItem) &&
+                                                Uri.class.isAssignableFrom(pm.getReturnType())) {
+                                                try {
+                                                    Uri uri = (Uri) pm.invoke(provider, mediaItem, origVal, 0);
+                                                    if (uri != null) return uri;
+                                                } catch (Throwable ignored) {}
+                                            }
+                                        }
+                                    }
+                                } catch (ClassNotFoundException ignored) {}
+                            }
                         }
                     } catch (ClassNotFoundException ignored) {}
                 }
