@@ -49,7 +49,6 @@ Saving auto-generated creations directly from **Memories / Stories** and the **C
 ### Side-Effects & Notes
 - **Device-Local "Saved" State**: Because the cloud commit is suppressed, the "Saved" status is tracked on-device. Opening the same creation on unpatched devices or the web (`photos.google.com`) will still show the "Save" button.
 - **Timeline Placement**: Embedded EXIF metadata reflects the original capture timestamp, sorting saved creations in your timeline next to the original photos rather than the day you saved them.
-- **Web Interface**: On the web, saved creations display as standard high-quality photos/videos without the server-assigned collage badge.
 
 ---
 
