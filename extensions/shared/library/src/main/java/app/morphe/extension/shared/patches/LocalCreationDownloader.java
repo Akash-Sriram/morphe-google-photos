@@ -75,7 +75,7 @@ public class LocalCreationDownloader {
         try {
             File dir = getGooglePhotosDir();
             if (dir.exists()) {
-                File[] files = dir.listFiles((d, name) -> name.contains("-COLLAGE"));
+                File[] files = dir.listFiles((d, name) -> name.contains("-COLLAGE") || name.contains("-ANIMATION"));
                 if (files != null) {
                     for (File f : files) {
                         f.delete();
@@ -83,7 +83,7 @@ public class LocalCreationDownloader {
                 }
             }
         } catch (Throwable ignored) {}
-        Log.i(TAG, "Cleared saved memories registry and cleaned local test collages.");
+        Log.i(TAG, "Cleared saved memories registry and cleaned local test creations.");
     }
 
     private static void ensureReceiverRegistered(Context context) {
@@ -240,23 +240,30 @@ public class LocalCreationDownloader {
             }
             final Context appContext = sAppContext != null ? sAppContext : (context != null ? context.getApplicationContext() : null);
 
-            // If already saved, immediately mark as saved in MFY state flow
-            if (isCreationSaved(mediaItem)) {
-                Log.i(TAG, "MFY creation " + id + " is already saved locally. Suppressing duplicate download.");
+            CreationTime time = extractCreationTime(mediaItem);
+            String collageFileName = (time != null && time.utcMs > 0) ? getOfficialCollageFileName(time) : null;
+            String animFileName = (time != null && time.utcMs > 0) ? ("IMG_" + time.formatLocalFileName() + "-ANIMATION.mp4") : null;
+            File targetCollage = (collageFileName != null) ? new File(getGooglePhotosDir(), collageFileName) : null;
+            File targetAnim = (animFileName != null) ? new File(getGooglePhotosDir(), animFileName) : null;
+            boolean fileOnDisk = (targetCollage != null && targetCollage.exists()) || (targetAnim != null && targetAnim.exists());
+
+            // If already saved AND the file is physically present on disk, suppress duplicate download
+            if (fileOnDisk && (isCreationSaved(mediaItem) || isCardSaved(id))) {
+                Log.i(TAG, "MFY creation " + id + " file exists and is already saved locally. Suppressing duplicate download.");
+                recordCardSaved(id);
                 updateMfySaveStatus(mfyMixin, id, true);
                 return true;
             }
 
             // Immediately mark as saved in memory/prefs to prevent double clicks
             String itemKey = extractItemKey(mediaItem);
-            CreationTime time = extractCreationTime(mediaItem);
-            String fileName = (time != null && time.utcMs > 0) ? getOfficialCollageFileName(time) : null;
             long utcMs = time != null ? time.utcMs : 0;
             if (appContext != null) {
-                recordSavedItem(appContext, itemKey, id, fileName, null, utcMs);
+                recordSavedItem(appContext, itemKey, id, collageFileName, null, utcMs);
             }
+            recordCardSaved(id);
 
-            // Set saving status in MFY UI state flow
+            // Set saving status in MFY UI state flow immediately
             updateMfySaveStatus(mfyMixin, id, true);
             Log.i(TAG, "Intercepted MFY creation save for ID " + id + ". Redirecting to DCIM/Google Photos.");
 
@@ -266,6 +273,9 @@ public class LocalCreationDownloader {
                     MAIN_HANDLER.post(() -> {
                         updateMfySaveStatus(mfyMixin, id, true);
                         if (success) {
+                            try {
+                                Toast.makeText(appContext, "Saved to device (DCIM/Google Photos)", Toast.LENGTH_SHORT).show();
+                            } catch (Throwable ignored) {}
                             Log.i(TAG, "Successfully exported MFY creation " + id + " to DCIM/Google Photos.");
                         } else {
                             Log.w(TAG, "Failed exporting MFY creation " + id);
@@ -280,13 +290,83 @@ public class LocalCreationDownloader {
         }
     }
 
+    public static void onMfyMixinBound(Object mfyMixin) {
+        if (mfyMixin == null) return;
+        try {
+            Context ctx = getApplicationContext();
+            if (ctx == null) return;
+            SharedPreferences prefs = ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
+            Map<String, ?> all = prefs.getAll();
+            if (all == null || all.isEmpty()) return;
+
+            Field bField = null;
+            try {
+                bField = mfyMixin.getClass().getDeclaredField("b");
+            } catch (Throwable ignored) {}
+            if (bField == null) {
+                for (Field f : mfyMixin.getClass().getDeclaredFields()) {
+                    if (f.getType().getName().contains("crny") || f.getType().getName().contains("StateFlow")) {
+                        bField = f;
+                        break;
+                    }
+                }
+            }
+
+            if (bField != null) {
+                bField.setAccessible(true);
+                Object flow = bField.get(mfyMixin);
+                if (flow != null) {
+                    Method getVal = flow.getClass().getMethod("e");
+                    Object cur = getVal.invoke(flow);
+                    Map<Object, Object> newMap = (cur instanceof Map) ? new HashMap<>((Map<?, ?>) cur) : new HashMap<>();
+                    Class<?> qlqClass = Class.forName("qlq");
+                    Field aField = qlqClass.getDeclaredField("a");
+                    aField.setAccessible(true);
+                    Object savedObj = aField.get(null);
+
+                    boolean changed = false;
+                    for (String k : all.keySet()) {
+                        if (k.startsWith("card_")) {
+                            newMap.put(k.substring(5), savedObj);
+                            changed = true;
+                        } else if (k.startsWith("itm:")) {
+                            newMap.put(k, savedObj);
+                            changed = true;
+                        }
+                    }
+
+                    if (changed) {
+                        Method setVal = flow.getClass().getMethod("f", Object.class);
+                        setVal.invoke(flow, newMap);
+                        Log.d(TAG, "Pre-populated MFY state flow with saved creations in onMfyMixinBound");
+                    }
+                }
+            }
+        } catch (Throwable t) {
+            Log.w(TAG, "Error in onMfyMixinBound", t);
+        }
+    }
+
     private static void updateMfySaveStatus(Object mfyMixin, String id, boolean saved) {
         if (mfyMixin == null || id == null) return;
         try {
-            for (Field f : mfyMixin.getClass().getDeclaredFields()) {
-                f.setAccessible(true);
-                Object flow = f.get(mfyMixin);
-                if (flow != null && (flow.getClass().getName().contains("crny") || flow.getClass().getName().contains("StateFlow"))) {
+            Field bField = null;
+            try {
+                bField = mfyMixin.getClass().getDeclaredField("b");
+            } catch (Throwable ignored) {}
+            if (bField == null) {
+                for (Field f : mfyMixin.getClass().getDeclaredFields()) {
+                    if (f.getType().getName().contains("crny") || f.getType().getName().contains("StateFlow")) {
+                        bField = f;
+                        break;
+                    }
+                }
+            }
+
+            if (bField != null) {
+                bField.setAccessible(true);
+                Object flow = bField.get(mfyMixin);
+                if (flow != null) {
                     Method getVal = null;
                     try {
                         getVal = flow.getClass().getMethod("e");
@@ -297,35 +377,39 @@ public class LocalCreationDownloader {
                     }
                     if (getVal != null) {
                         Object cur = getVal.invoke(flow);
-                        if (cur instanceof Map) {
-                            Map<Object, Object> newMap = new HashMap<>((Map<?, ?>) cur);
-                            Object statusObj = null;
+                        Map<Object, Object> newMap = (cur instanceof Map) ? new HashMap<>((Map<?, ?>) cur) : new HashMap<>();
+                        Class<?> statusClass = Class.forName(saved ? "qlq" : "qlp");
+                        Field aF = statusClass.getDeclaredField("a");
+                        aF.setAccessible(true);
+                        Object statusObj = aF.get(null);
+                        if (statusObj != null) {
+                            newMap.put(id, statusObj);
+                            Method setVal = null;
                             try {
-                                Class<?> statusClass = Class.forName(saved ? "qlq" : "qlp");
-                                Field aF = statusClass.getDeclaredField("a");
-                                aF.setAccessible(true);
-                                statusObj = aF.get(null);
-                            } catch (Throwable ignored) {}
-                            if (statusObj != null) {
-                                newMap.put(id, statusObj);
-                                Method setVal = null;
+                                setVal = flow.getClass().getMethod("f", Object.class);
+                            } catch (NoSuchMethodException e) {
                                 try {
-                                    setVal = flow.getClass().getMethod("f", Object.class);
-                                } catch (NoSuchMethodException e) {
-                                    try {
-                                        setVal = flow.getClass().getMethod("setValue", Object.class);
-                                    } catch (NoSuchMethodException ignored) {}
-                                }
-                                if (setVal != null) {
-                                    setVal.invoke(flow, newMap);
-                                    Log.d(TAG, "Updated MFY state flow for ID " + id + " to " + (saved ? "SAVED" : "SAVING"));
-                                    return;
-                                }
+                                    setVal = flow.getClass().getMethod("setValue", Object.class);
+                                } catch (NoSuchMethodException ignored) {}
+                            }
+                            if (setVal != null) {
+                                setVal.invoke(flow, newMap);
+                                Log.i(TAG, "Updated MFY state flow for ID " + id + " to " + (saved ? "SAVED" : "SAVING"));
                             }
                         }
                     }
                 }
             }
+
+            // Remove from pending creations map d
+            try {
+                Field dField = mfyMixin.getClass().getDeclaredField("d");
+                dField.setAccessible(true);
+                Map<?, ?> dMap = (Map<?, ?>) dField.get(mfyMixin);
+                if (dMap != null) {
+                    dMap.remove(id);
+                }
+            } catch (Throwable ignored) {}
         } catch (Throwable t) {
             Log.w(TAG, "Could not update MFY status for " + id, t);
         }
@@ -867,24 +951,25 @@ public class LocalCreationDownloader {
             mimeType = "image/jpeg";
         }
 
-        // Only intercept image collages — highlight videos are exported natively by Google Photos.
-        if (mimeType.startsWith("video/")) {
-            Log.i(TAG, "Skipping video item — handled natively by Google Photos.");
-            return false;
+        boolean isVideo = mimeType.startsWith("video/");
+        String extension = isVideo ? ".mp4" : ".jpg";
+        if (isVideo && (mimeType.equals("video/mpeg") || mimeType.equals("video/mp4"))) {
+            mimeType = "video/mp4";
         }
 
         CreationTime creationTime = extractCreationTime(mediaItem);
-        String fileName = getOfficialCollageFileName(creationTime);
+        String fileName = isVideo
+                ? ("IMG_" + creationTime.formatLocalFileName() + "-ANIMATION.mp4")
+                : ("IMG_" + creationTime.formatLocalFileName() + "-COLLAGE.jpg");
         File targetFile = new File(getGooglePhotosDir(), fileName);
 
         String itemKey = extractItemKey(mediaItem);
         String uriKey = extractKeyFromUri(mediaUri);
 
-        // Download stream to a temporary cache file first so we can inject EXIF DateTimeOriginal
-        // before exporting to MediaStore / DCIM.
+        // Download stream to a temporary cache file first
         File tempFile = null;
         try {
-            tempFile = File.createTempFile("morphe_collage_", ".jpg", context.getCacheDir());
+            tempFile = File.createTempFile("morphe_creation_", extension, context.getCacheDir());
             try (InputStream in = openMediaStream(resolver, mediaUri);
                  OutputStream out = new FileOutputStream(tempFile)) {
                 if (in == null) {
@@ -899,47 +984,48 @@ public class LocalCreationDownloader {
                 out.flush();
             }
 
-            // Inject EXIF capture timestamp into the temporary file
-            try {
-                ExifInterface exif = new ExifInterface(tempFile.getAbsolutePath());
-                SimpleDateFormat exifSdf = new SimpleDateFormat("yyyy:MM:dd HH:mm:ss", Locale.US);
-                if (creationTime.tzOffsetMs != 0) {
-                    exifSdf.setTimeZone(new SimpleTimeZone((int) creationTime.tzOffsetMs, "photo_tz"));
-                } else {
-                    exifSdf.setTimeZone(TimeZone.getDefault());
-                }
-                String dateStr = exifSdf.format(new Date(creationTime.utcMs));
-                exif.setAttribute(ExifInterface.TAG_DATETIME_ORIGINAL, dateStr);
-                exif.setAttribute(ExifInterface.TAG_DATETIME, dateStr);
-                exif.setAttribute(ExifInterface.TAG_DATETIME_DIGITIZED, dateStr);
+            // For JPEG images, inject EXIF capture timestamp into the temporary file
+            if (!isVideo) {
+                try {
+                    ExifInterface exif = new ExifInterface(tempFile.getAbsolutePath());
+                    SimpleDateFormat exifSdf = new SimpleDateFormat("yyyy:MM:dd HH:mm:ss", Locale.US);
+                    if (creationTime.tzOffsetMs != 0) {
+                        exifSdf.setTimeZone(new SimpleTimeZone((int) creationTime.tzOffsetMs, "photo_tz"));
+                    } else {
+                        exifSdf.setTimeZone(TimeZone.getDefault());
+                    }
+                    String dateStr = exifSdf.format(new Date(creationTime.utcMs));
+                    exif.setAttribute(ExifInterface.TAG_DATETIME_ORIGINAL, dateStr);
+                    exif.setAttribute(ExifInterface.TAG_DATETIME, dateStr);
+                    exif.setAttribute(ExifInterface.TAG_DATETIME_DIGITIZED, dateStr);
 
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && creationTime.tzOffsetMs != 0) {
-                    int totalMinutes = (int) (creationTime.tzOffsetMs / 60000);
-                    int hours = totalMinutes / 60;
-                    int minutes = Math.abs(totalMinutes % 60);
-                    String offsetStr = String.format(Locale.US, "%+03d:%02d", hours, minutes);
-                    try {
-                        exif.setAttribute("OffsetTimeOriginal", offsetStr);
-                        exif.setAttribute("OffsetTime", offsetStr);
-                        exif.setAttribute("OffsetTimeDigitized", offsetStr);
-                    } catch (Throwable ignored) {}
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && creationTime.tzOffsetMs != 0) {
+                        int totalMinutes = (int) (creationTime.tzOffsetMs / 60000);
+                        int hours = totalMinutes / 60;
+                        int minutes = Math.abs(totalMinutes % 60);
+                        String offsetStr = String.format(Locale.US, "%+03d:%02d", hours, minutes);
+                        try {
+                            exif.setAttribute("OffsetTimeOriginal", offsetStr);
+                            exif.setAttribute("OffsetTime", offsetStr);
+                            exif.setAttribute("OffsetTimeDigitized", offsetStr);
+                        } catch (Throwable ignored) {}
+                    }
+                    exif.saveAttributes();
+                    Log.d(TAG, "Embedded EXIF DateTimeOriginal: " + dateStr + " into " + fileName);
+                } catch (Throwable t) {
+                    Log.w(TAG, "Failed embedding EXIF attributes", t);
                 }
-                exif.saveAttributes();
-                Log.d(TAG, "Embedded EXIF DateTimeOriginal: " + dateStr + " into " + fileName);
-            } catch (Throwable t) {
-                Log.w(TAG, "Failed embedding EXIF attributes", t);
             }
 
             // Clean up any existing file or MediaStore entry with this exact name or duplicate suffixes
-            // to prevent MediaStore from generating "IMG_... (1).jpg"
+            Uri tableUri = isVideo ? MediaStore.Video.Media.EXTERNAL_CONTENT_URI : MediaStore.Images.Media.EXTERNAL_CONTENT_URI;
             try {
-                String basePrefix = fileName.endsWith(".jpg") ? fileName.substring(0, fileName.length() - 4) : fileName;
-                Uri queryUri = MediaStore.Images.Media.EXTERNAL_CONTENT_URI;
+                String basePrefix = fileName.substring(0, fileName.lastIndexOf('.'));
                 String selection = "(" + MediaStore.MediaColumns.DISPLAY_NAME + "=? OR " +
                         MediaStore.MediaColumns.DISPLAY_NAME + " LIKE ?) AND " +
                         MediaStore.MediaColumns.RELATIVE_PATH + " LIKE ?";
                 String[] selectionArgs = new String[]{fileName, basePrefix + " (%)%", "DCIM/Google Photos%"};
-                resolver.delete(queryUri, selection, selectionArgs);
+                resolver.delete(tableUri, selection, selectionArgs);
             } catch (Throwable ignored) {}
 
             try {
@@ -948,8 +1034,8 @@ public class LocalCreationDownloader {
                 }
                 File dir = getGooglePhotosDir();
                 if (dir.exists()) {
-                    String basePrefix = fileName.endsWith(".jpg") ? fileName.substring(0, fileName.length() - 4) : fileName;
-                    File[] dups = dir.listFiles((d, name) -> name.startsWith(basePrefix + " (") && name.endsWith(".jpg"));
+                    String basePrefix = fileName.substring(0, fileName.lastIndexOf('.'));
+                    File[] dups = dir.listFiles((d, name) -> name.startsWith(basePrefix + " (") && name.endsWith(extension));
                     if (dups != null) {
                         for (File df : dups) {
                             df.delete();
@@ -965,10 +1051,14 @@ public class LocalCreationDownloader {
                 values.put(MediaStore.MediaColumns.RELATIVE_PATH, "DCIM/Google Photos");
                 values.put(MediaStore.MediaColumns.DATE_ADDED, creationTime.utcMs / 1000);
                 values.put(MediaStore.MediaColumns.DATE_MODIFIED, creationTime.utcMs / 1000);
-                values.put(MediaStore.Images.Media.DATE_TAKEN, creationTime.utcMs);
+                if (isVideo) {
+                    values.put(MediaStore.Video.Media.DATE_TAKEN, creationTime.utcMs);
+                } else {
+                    values.put(MediaStore.Images.Media.DATE_TAKEN, creationTime.utcMs);
+                }
                 values.put(MediaStore.MediaColumns.IS_PENDING, 1);
 
-                Uri inserted = resolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values);
+                Uri inserted = resolver.insert(tableUri, values);
                 if (inserted == null) {
                     Log.e(TAG, "Failed to create MediaStore entry for " + fileName);
                     return false;
@@ -989,7 +1079,11 @@ public class LocalCreationDownloader {
 
                 values.clear();
                 values.put(MediaStore.MediaColumns.IS_PENDING, 0);
-                values.put(MediaStore.Images.Media.DATE_TAKEN, creationTime.utcMs);
+                if (isVideo) {
+                    values.put(MediaStore.Video.Media.DATE_TAKEN, creationTime.utcMs);
+                } else {
+                    values.put(MediaStore.Images.Media.DATE_TAKEN, creationTime.utcMs);
+                }
                 values.put(MediaStore.MediaColumns.DATE_ADDED, creationTime.utcMs / 1000);
                 values.put(MediaStore.MediaColumns.DATE_MODIFIED, creationTime.utcMs / 1000);
                 resolver.update(inserted, values, null, null);

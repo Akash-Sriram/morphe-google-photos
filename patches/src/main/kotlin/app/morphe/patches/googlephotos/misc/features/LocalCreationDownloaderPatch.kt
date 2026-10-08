@@ -109,6 +109,20 @@ val localCreationDownloaderPatch = bytecodePatch(
                     )
                     patchedMfyMixin = true
                 }
+
+                val bindMethod = classDef.methods.find { method ->
+                    method.name == "gc" || (method.parameterTypes.size == 3 && method.parameterTypes[0] == "Landroid/content/Context;" && method.parameterTypes[2] == "Landroid/os/Bundle;")
+                }
+                if (bindMethod != null) {
+                    val mutableClass = mutableClassDefBy(classDef)
+                    val mutableBindMethod = mutableClass.findMutableMethodOf(bindMethod)
+                    mutableBindMethod.addInstructions(
+                        0,
+                        """
+                        invoke-static { p0 }, Lapp/morphe/extension/shared/patches/LocalCreationDownloader;->onMfyMixinBound(Ljava/lang/Object;)V
+                        """.trimIndent(),
+                    )
+                }
             }
 
             // 3. Identify Memories Controller (Lamfd): Create tab hero "Save" button and memory collections
