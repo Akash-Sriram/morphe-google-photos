@@ -176,7 +176,8 @@ public final class PhotoFlagsRegistry {
                 edit.putString(f.key, (String) f.defaultValue);
             }
         }
-        edit.apply();
+        edit.putBoolean("_presets_loaded", true);
+        edit.commit();
     }
 
     public static void applyAll26Defaults(SharedPreferences prefs) {
