@@ -29,8 +29,11 @@ import java.text.SimpleDateFormat;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.Date;
+import java.util.HashMap;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
 import java.util.SimpleTimeZone;
 import java.util.TimeZone;
@@ -220,6 +223,248 @@ public class LocalCreationDownloader {
         } catch (Throwable t) {
             Log.e(TAG, "Error during onSaveRequested interception", t);
             return false;
+        }
+    }
+
+    /**
+     * Intercepts saving Made-For-You creations from MFYCreationMixin (Lqkq->d).
+     */
+    public static boolean onMfySaveRequested(Object mfyMixin, Object mediaItem, String id) {
+        if (mfyMixin == null || mediaItem == null) return false;
+        try {
+            Context context = extractContext(mfyMixin);
+            if (context == null) context = getApplicationContext();
+            if (context != null) {
+                sAppContext = context.getApplicationContext();
+                ensureReceiverRegistered(sAppContext);
+            }
+            final Context appContext = sAppContext != null ? sAppContext : (context != null ? context.getApplicationContext() : null);
+
+            // If already saved, immediately mark as saved in MFY state flow
+            if (isCreationSaved(mediaItem)) {
+                Log.i(TAG, "MFY creation " + id + " is already saved locally. Suppressing duplicate download.");
+                updateMfySaveStatus(mfyMixin, id, true);
+                return true;
+            }
+
+            // Immediately mark as saved in memory/prefs to prevent double clicks
+            String itemKey = extractItemKey(mediaItem);
+            CreationTime time = extractCreationTime(mediaItem);
+            String fileName = (time != null && time.utcMs > 0) ? getOfficialCollageFileName(time) : null;
+            long utcMs = time != null ? time.utcMs : 0;
+            if (appContext != null) {
+                recordSavedItem(appContext, itemKey, id, fileName, null, utcMs);
+            }
+
+            // Set saving status in MFY UI state flow
+            updateMfySaveStatus(mfyMixin, id, true);
+            Log.i(TAG, "Intercepted MFY creation save for ID " + id + ". Redirecting to DCIM/Google Photos.");
+
+            EXECUTOR.execute(() -> {
+                if (appContext != null) {
+                    boolean success = saveSingleItem(appContext, mediaItem);
+                    MAIN_HANDLER.post(() -> {
+                        updateMfySaveStatus(mfyMixin, id, true);
+                        if (success) {
+                            Log.i(TAG, "Successfully exported MFY creation " + id + " to DCIM/Google Photos.");
+                        } else {
+                            Log.w(TAG, "Failed exporting MFY creation " + id);
+                        }
+                    });
+                }
+            });
+            return true;
+        } catch (Throwable t) {
+            Log.e(TAG, "Error during onMfySaveRequested interception", t);
+            return false;
+        }
+    }
+
+    private static void updateMfySaveStatus(Object mfyMixin, String id, boolean saved) {
+        if (mfyMixin == null || id == null) return;
+        try {
+            for (Field f : mfyMixin.getClass().getDeclaredFields()) {
+                f.setAccessible(true);
+                Object flow = f.get(mfyMixin);
+                if (flow != null && (flow.getClass().getName().contains("crny") || flow.getClass().getName().contains("StateFlow"))) {
+                    Method getVal = null;
+                    try {
+                        getVal = flow.getClass().getMethod("e");
+                    } catch (NoSuchMethodException e) {
+                        try {
+                            getVal = flow.getClass().getMethod("getValue");
+                        } catch (NoSuchMethodException ignored) {}
+                    }
+                    if (getVal != null) {
+                        Object cur = getVal.invoke(flow);
+                        if (cur instanceof Map) {
+                            Map<Object, Object> newMap = new HashMap<>((Map<?, ?>) cur);
+                            Object statusObj = null;
+                            try {
+                                Class<?> statusClass = Class.forName(saved ? "qlq" : "qlp");
+                                Field aF = statusClass.getDeclaredField("a");
+                                aF.setAccessible(true);
+                                statusObj = aF.get(null);
+                            } catch (Throwable ignored) {}
+                            if (statusObj != null) {
+                                newMap.put(id, statusObj);
+                                Method setVal = null;
+                                try {
+                                    setVal = flow.getClass().getMethod("f", Object.class);
+                                } catch (NoSuchMethodException e) {
+                                    try {
+                                        setVal = flow.getClass().getMethod("setValue", Object.class);
+                                    } catch (NoSuchMethodException ignored) {}
+                                }
+                                if (setVal != null) {
+                                    setVal.invoke(flow, newMap);
+                                    Log.d(TAG, "Updated MFY state flow for ID " + id + " to " + (saved ? "SAVED" : "SAVING"));
+                                    return;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        } catch (Throwable t) {
+            Log.w(TAG, "Could not update MFY status for " + id, t);
+        }
+    }
+
+    /**
+     * Intercepts memory collection save (Lamfd->f), e.g. when user clicks "Save" on Create Tab hero card.
+     */
+    public static boolean onMemoriesCollectionSaveRequested(Object controller, int accountId, Object account, Object collection) {
+        if (controller == null || collection == null) return false;
+        try {
+            Context context = extractContext(controller);
+            if (context == null) context = getApplicationContext();
+            if (context != null) {
+                sAppContext = context.getApplicationContext();
+                ensureReceiverRegistered(sAppContext);
+            }
+            final Context appContext = sAppContext != null ? sAppContext : (context != null ? context.getApplicationContext() : null);
+
+            Log.i(TAG, "Intercepted memory collection save request. Redirecting to DCIM/Google Photos.");
+
+            EXECUTOR.execute(() -> {
+                try {
+                    List<?> items = loadMediaItemsFromCollection(appContext, collection);
+                    if (items != null && !items.isEmpty()) {
+                        int saved = 0;
+                        for (Object item : items) {
+                            if (item != null && saveSingleItem(appContext, item)) {
+                                saved++;
+                            }
+                        }
+                        Log.i(TAG, "Exported " + saved + " memory creation item(s) from collection to DCIM/Google Photos.");
+                    } else {
+                        Log.w(TAG, "No media items resolved from memory collection: " + collection);
+                    }
+                } catch (Throwable t) {
+                    Log.e(TAG, "Failed processing memory collection save", t);
+                }
+            });
+            return true;
+        } catch (Throwable t) {
+            Log.e(TAG, "Error during onMemoriesCollectionSaveRequested interception", t);
+            return false;
+        }
+    }
+
+    /**
+     * Intercepts individual memory item save (Lamfd->e).
+     */
+    public static boolean onMemoriesItemSaveRequested(Object controller, int accountId, Object account, Object mediaItem, Object collection) {
+        if (controller == null || mediaItem == null) return false;
+        try {
+            Context context = extractContext(controller);
+            if (context == null) context = getApplicationContext();
+            if (context != null) {
+                sAppContext = context.getApplicationContext();
+                ensureReceiverRegistered(sAppContext);
+            }
+            final Context appContext = sAppContext != null ? sAppContext : (context != null ? context.getApplicationContext() : null);
+
+            if (isCreationSaved(mediaItem)) {
+                Log.i(TAG, "Memory item is already saved locally. Suppressing duplicate download.");
+                return true;
+            }
+
+            Log.i(TAG, "Intercepted memory item save request. Redirecting to DCIM/Google Photos.");
+            EXECUTOR.execute(() -> {
+                if (appContext != null) {
+                    saveSingleItem(appContext, mediaItem);
+                }
+            });
+            return true;
+        } catch (Throwable t) {
+            Log.e(TAG, "Error during onMemoriesItemSaveRequested interception", t);
+            return false;
+        }
+    }
+
+    private static List<?> loadMediaItemsFromCollection(Context context, Object collection) {
+        if (context == null || collection == null) return null;
+        try {
+            Class<?> wsgClass = Class.forName("wsg");
+            Method aMethod = wsgClass.getMethod("a", Class.forName("bwpg"));
+            Object wry = aMethod.invoke(null, collection);
+
+            Object features = null;
+            try {
+                Class<?> lamfcClass = Class.forName("Lamfc");
+                Field cField = lamfcClass.getDeclaredField("c");
+                cField.setAccessible(true);
+                features = cField.get(null);
+            } catch (Throwable ignored) {}
+
+            if (features == null) {
+                try {
+                    Class<?> wqaClass = Class.forName("wqa");
+                    Object builder = wqaClass.getConstructor(boolean.class).newInstance(true);
+                    Method a = wqaClass.getMethod("a");
+                    features = a.invoke(builder);
+                } catch (Throwable ignored) {}
+            }
+
+            Class<?> wrlClass = Class.forName("wrl");
+            for (Method m : wrlClass.getMethods()) {
+                if (m.getName().equals("E") && m.getParameterTypes().length == 3 &&
+                    Context.class.isAssignableFrom(m.getParameterTypes()[0]) &&
+                    List.class.isAssignableFrom(m.getReturnType())) {
+                    return (List<?>) m.invoke(null, context, wry, features);
+                }
+            }
+        } catch (Throwable t) {
+            Log.w(TAG, "Could not load media items from collection via wrl.E", t);
+        }
+        return null;
+    }
+
+    /**
+     * Intercepts hero card creation in Create Tab (Lqlb->q).
+     * If the creation was previously saved locally, marks the card ID in presenter.j
+     * so the "Save" button starts in the "Saved" state (sget Lqlq->a).
+     */
+    public static void onCheckHeroCardSaved(Object presenter, String cardId, Object mediaItem) {
+        if (presenter == null || cardId == null || mediaItem == null) return;
+        try {
+            if (isCreationSaved(mediaItem)) {
+                for (Field f : presenter.getClass().getDeclaredFields()) {
+                    if (Set.class.isAssignableFrom(f.getType())) {
+                        f.setAccessible(true);
+                        Set set = (Set) f.get(presenter);
+                        if (set != null) {
+                            set.add(cardId);
+                            Log.d(TAG, "Marked hero card " + cardId + " as saved in Create Tab presenter");
+                            return;
+                        }
+                    }
+                }
+            }
+        } catch (Throwable t) {
+            Log.w(TAG, "Error in onCheckHeroCardSaved", t);
         }
     }
 
