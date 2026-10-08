@@ -179,6 +179,25 @@ val localCreationDownloaderPatch = bytecodePatch(
                         """.trimIndent(),
                     )
                 }
+
+                val heroSaveMethod = classDef.methods.find { method ->
+                    method.parameterTypes.size == 1 &&
+                    method.parameterTypes[0] != "Z" &&
+                    method.parameterTypes[0] != "I" &&
+                    method.parameterTypes[0] != "Ljava/lang/String;" &&
+                    cardMethod != null && method.parameterTypes[0] != cardMethod.returnType &&
+                    method.returnType == "V"
+                }
+                if (heroSaveMethod != null) {
+                    val mutableClass = mutableClassDefBy(classDef)
+                    val mutableHeroSaveMethod = mutableClass.findMutableMethodOf(heroSaveMethod)
+                    mutableHeroSaveMethod.addInstructions(
+                        0,
+                        """
+                        invoke-static/range { p0 .. p1 }, Lapp/morphe/extension/shared/patches/LocalCreationDownloader;->onCreateHeroSaveRequested(Ljava/lang/Object;Ljava/lang/Object;)V
+                        """.trimIndent(),
+                    )
+                }
             }
         }
 

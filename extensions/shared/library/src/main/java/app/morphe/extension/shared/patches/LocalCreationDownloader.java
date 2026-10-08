@@ -442,6 +442,34 @@ public class LocalCreationDownloader {
         return null;
     }
 
+    public static boolean isCardSaved(String cardId) {
+        if (cardId == null) return false;
+        if (sSavedKeys.contains("card_" + cardId) || sSavedKeys.contains(cardId)) return true;
+        Context ctx = getApplicationContext();
+        if (ctx != null) {
+            SharedPreferences prefs = ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
+            if (prefs.getBoolean("card_" + cardId, false) || prefs.getBoolean(cardId, false)) {
+                sSavedKeys.add("card_" + cardId);
+                sSavedKeys.add(cardId);
+                return true;
+            }
+        }
+        return false;
+    }
+
+    public static void recordCardSaved(String cardId) {
+        if (cardId == null) return;
+        sSavedKeys.add("card_" + cardId);
+        sSavedKeys.add(cardId);
+        Context ctx = getApplicationContext();
+        if (ctx != null) {
+            try {
+                SharedPreferences prefs = ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
+                prefs.edit().putBoolean("card_" + cardId, true).putBoolean(cardId, true).commit();
+            } catch (Throwable ignored) {}
+        }
+    }
+
     /**
      * Intercepts hero card creation in Create Tab (Lqlb->q).
      * If the creation was previously saved locally, marks the card ID in presenter.j
@@ -450,21 +478,112 @@ public class LocalCreationDownloader {
     public static void onCheckHeroCardSaved(Object presenter, String cardId, Object mediaItem) {
         if (presenter == null || cardId == null || mediaItem == null) return;
         try {
-            if (isCreationSaved(mediaItem)) {
+            boolean saved = isCreationSaved(mediaItem) || isCardSaved(cardId);
+            if (saved) {
+                recordCardSaved(cardId);
+                Object wsf = null;
+                try {
+                    Class<?> wsgClass = Class.forName("wsg");
+                    Method bMethod = wsgClass.getMethod("b", Class.forName("bwpf"));
+                    wsf = bMethod.invoke(null, mediaItem);
+                } catch (Throwable ignored) {}
+
+                int count = 0;
                 for (Field f : presenter.getClass().getDeclaredFields()) {
                     if (Set.class.isAssignableFrom(f.getType())) {
-                        f.setAccessible(true);
-                        Set set = (Set) f.get(presenter);
-                        if (set != null) {
-                            set.add(cardId);
-                            Log.d(TAG, "Marked hero card " + cardId + " as saved in Create Tab presenter");
-                            return;
-                        }
+                        try {
+                            f.setAccessible(true);
+                            Set set = (Set) f.get(presenter);
+                            if (set != null) {
+                                set.add(cardId);
+                                if (wsf != null) {
+                                    set.add(wsf);
+                                }
+                                count++;
+                                Log.d(TAG, "Added hero card " + cardId + " to presenter field " + f.getName());
+                            }
+                        } catch (Throwable ignored) {}
                     }
                 }
+                Log.i(TAG, "Marked hero card " + cardId + " as saved in Create Tab presenter across " + count + " sets");
             }
         } catch (Throwable t) {
             Log.w(TAG, "Error in onCheckHeroCardSaved", t);
+        }
+    }
+
+    /**
+     * Called when the user taps "Save" on a Create Tab hero card (Lqlb->n).
+     * Marks the card ID as saved immediately so that future card builds
+     * and in-memory caches reflect the saved status.
+     */
+    public static void onCreateHeroSaveRequested(Object presenter, Object wsf) {
+        if (presenter == null || wsf == null) return;
+        try {
+            Log.d(TAG, "onCreateHeroSaveRequested called with wsf: " + wsf);
+            for (Field f : presenter.getClass().getDeclaredFields()) {
+                if (Set.class.isAssignableFrom(f.getType())) {
+                    try {
+                        f.setAccessible(true);
+                        Set set = (Set) f.get(presenter);
+                        if (set != null) {
+                            set.add(wsf);
+                        }
+                    } catch (Throwable ignored) {}
+                }
+            }
+
+            // Inspect StateFlow (presenter.m) to resolve cardId matching wsf
+            for (Field f : presenter.getClass().getDeclaredFields()) {
+                try {
+                    f.setAccessible(true);
+                    Object val = f.get(presenter);
+                    if (val != null && val.getClass().getName().contains("StateFlow")) {
+                        Method eMethod = val.getClass().getMethod("e");
+                        Object qln = eMethod.invoke(val);
+                        if (qln != null) {
+                            for (Field qf : qln.getClass().getDeclaredFields()) {
+                                if (List.class.isAssignableFrom(qf.getType())) {
+                                    qf.setAccessible(true);
+                                    List<?> list = (List<?>) qf.get(qln);
+                                    if (list != null) {
+                                        for (Object card : list) {
+                                            if (card != null) {
+                                                boolean matches = false;
+                                                String cardId = null;
+                                                for (Field cf : card.getClass().getDeclaredFields()) {
+                                                    cf.setAccessible(true);
+                                                    Object cv = cf.get(card);
+                                                    if (wsf.equals(cv)) {
+                                                        matches = true;
+                                                    } else if (cv instanceof String && ((String) cv).startsWith("itm:")) {
+                                                        cardId = (String) cv;
+                                                    }
+                                                }
+                                                if (matches && cardId != null) {
+                                                    recordCardSaved(cardId);
+                                                    for (Field pf : presenter.getClass().getDeclaredFields()) {
+                                                        if (Set.class.isAssignableFrom(pf.getType())) {
+                                                            pf.setAccessible(true);
+                                                            Set s = (Set) pf.get(presenter);
+                                                            if (s != null) {
+                                                                s.add(cardId);
+                                                            }
+                                                        }
+                                                    }
+                                                    Log.i(TAG, "Hero card " + cardId + " marked as saved on tap");
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                } catch (Throwable ignored) {}
+            }
+        } catch (Throwable t) {
+            Log.w(TAG, "Error in onCreateHeroSaveRequested", t);
         }
     }
 
