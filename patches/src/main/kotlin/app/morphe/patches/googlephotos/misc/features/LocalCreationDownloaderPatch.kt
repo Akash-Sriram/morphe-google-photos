@@ -22,7 +22,6 @@ val localCreationDownloaderPatch = bytecodePatch(
     execute {
         var patchedSaveMixin = false
         var patchedMfyMixin = false
-        var patchedMemoriesController = false
 
         classDefForEach { classDef ->
             if (classDef.type.startsWith("Lapp/morphe/")) return@classDefForEach
@@ -125,57 +124,7 @@ val localCreationDownloaderPatch = bytecodePatch(
                 }
             }
 
-            // 3. Identify Memories Controller (Lamfd): Create tab hero "Save" button and memory collections
-            if ("Failed to load the MemoriesKeyFeature to the collection." in stringConstants) {
-                val mutableClass = mutableClassDefBy(classDef)
-
-                // Collection save method: f(int, account, collection)
-                val collSaveMethod = classDef.methods.find { method ->
-                    method.returnType == "V" &&
-                    method.parameterTypes.size == 3 &&
-                    method.parameterTypes[0] == "I"
-                }
-                if (collSaveMethod != null) {
-                    val mutableCollMethod = mutableClass.findMutableMethodOf(collSaveMethod)
-                    mutableCollMethod.addInstructions(
-                        0,
-                        """
-                        invoke-static/range { p0 .. p3 }, Lapp/morphe/extension/shared/patches/LocalCreationDownloader;->onMemoriesCollectionSaveRequested(Ljava/lang/Object;ILjava/lang/Object;Ljava/lang/Object;)Z
-                        move-result v0
-                        if-eqz v0, :cond_orig_mem_coll
-                        return-void
-                        :cond_orig_mem_coll
-                        """.trimIndent(),
-                    )
-                }
-
-                // Item save method: e(int, account, mediaItem, collection, boolean)
-                val itemSaveMethod = classDef.methods.find { method ->
-                    method.returnType == "V" &&
-                    method.parameterTypes.size == 5 &&
-                    method.parameterTypes[0] == "I" &&
-                    method.parameterTypes[4] == "Z"
-                }
-                if (itemSaveMethod != null) {
-                    val mutableItemMethod = mutableClass.findMutableMethodOf(itemSaveMethod)
-                    mutableItemMethod.addInstructions(
-                        0,
-                        """
-                        invoke-static/range { p0 .. p4 }, Lapp/morphe/extension/shared/patches/LocalCreationDownloader;->onMemoriesItemSaveRequested(Ljava/lang/Object;ILjava/lang/Object;Ljava/lang/Object;Ljava/lang/Object;)Z
-                        move-result v0
-                        if-eqz v0, :cond_orig_mem_item
-                        return-void
-                        :cond_orig_mem_item
-                        """.trimIndent(),
-                    )
-                }
-
-                if (collSaveMethod != null || itemSaveMethod != null) {
-                    patchedMemoriesController = true
-                }
-            }
-
-            // 4. Identify MFYSectionDelegate: Create tab hero card presenter
+            // 3. Identify MFYSectionDelegate: Create tab hero card presenter
             if ("MFYSectionDelegate" in stringConstants) {
                 val cardMethod = classDef.methods.find { method ->
                     method.parameterTypes.size == 2 &&
@@ -220,9 +169,6 @@ val localCreationDownloaderPatch = bytecodePatch(
         }
         if (!patchedMfyMixin) {
             throw PatchException("Could not find MFYCreationMixin or its save method.")
-        }
-        if (!patchedMemoriesController) {
-            throw PatchException("Could not find MemoriesSaveController or its save methods.")
         }
     }
 }
