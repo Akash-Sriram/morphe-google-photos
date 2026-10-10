@@ -314,7 +314,7 @@ public class NativeToolkitDialog {
         filtersAccordionContainer.setOrientation(LinearLayout.VERTICAL);
         workflowLayout.addView(filtersAccordionContainer);
 
-        filterCardsRef[0] = build21FiltersAccordion(activity, filtersAccordionContainer, density, theme);
+        filterCardsRef[0] = build21FiltersAccordion(activity, filtersAccordionContainer, density, theme, runScanRef);
         updateFilterVisibility(currentCriteria.source, filterCardsRef[0]);
 
         // Scan / Filter Trigger Buttons
@@ -334,7 +334,7 @@ public class NativeToolkitDialog {
             StorageScanner.SourceType savedSource = currentCriteria.source;
             currentCriteria = new StorageScanner.FilterCriteria();
             currentCriteria.source = savedSource;
-            filterCardsRef[0] = build21FiltersAccordion(activity, filtersAccordionContainer, density, theme);
+            filterCardsRef[0] = build21FiltersAccordion(activity, filtersAccordionContainer, density, theme, runScanRef);
             updateFilterVisibility(currentCriteria.source, filterCardsRef[0]);
             updateActionStates(currentCriteria.source, currentCriteria, actionButtonsMap);
             if (runScanRef[0] != null) runScanRef[0].run();
@@ -529,7 +529,7 @@ public class NativeToolkitDialog {
     // ─────────────────────────────────────────────────────────────────────────
     // STEP 2: All 21 Filters Accordion Builder (Direct from user.js)
     // ─────────────────────────────────────────────────────────────────────────
-    private static Map<String, View> build21FiltersAccordion(Activity activity, LinearLayout container, float density, Theme theme) {
+    private static Map<String, View> build21FiltersAccordion(Activity activity, LinearLayout container, float density, Theme theme, Runnable[] runScanRef) {
         container.removeAllViews();
         Set<String> expandedSet = new HashSet<>();
         Map<String, View> cards = new HashMap<>();
@@ -554,6 +554,9 @@ public class NativeToolkitDialog {
                                 if (c) currentCriteria.albumsInclude.add(alb.mediaKey);
                                 else currentCriteria.albumsInclude.remove(alb.mediaKey);
                                 updateBadge.run();
+                                if (runScanRef != null && runScanRef[0] != null) {
+                                    runScanRef[0].run();
+                                }
                             });
                             content.addView(cb);
                         }
@@ -588,6 +591,9 @@ public class NativeToolkitDialog {
                             if (c) currentCriteria.albumsExclude.add(alb.mediaKey);
                             else currentCriteria.albumsExclude.remove(alb.mediaKey);
                             updateBadge.run();
+                            if (runScanRef != null && runScanRef[0] != null) {
+                                runScanRef[0].run();
+                            }
                         });
                         content.addView(cb);
                     }
@@ -869,7 +875,7 @@ public class NativeToolkitDialog {
                     int sel = Boolean.TRUE.equals(currentCriteria.archived) ? 1 : Boolean.FALSE.equals(currentCriteria.archived) ? 2 : 0;
                     RadioGroup rg = createRadioGroup(activity, new String[]{"Any", "Yes", "No"},
                             sel, theme, idx -> {
-                                currentCriteria.archived = idx == 1 ? true : idx == 2 ? false : null;
+                                currentCriteria.archived = idx == 1 ? Boolean.TRUE : idx == 2 ? Boolean.FALSE : null;
                                 updateBadge.run();
                             });
                     content.addView(rg);
@@ -884,7 +890,7 @@ public class NativeToolkitDialog {
                     int sel = Boolean.TRUE.equals(currentCriteria.owned) ? 1 : Boolean.FALSE.equals(currentCriteria.owned) ? 2 : 0;
                     RadioGroup rg = createRadioGroup(activity, new String[]{"Any", "Owned", "Not Owned"},
                             sel, theme, idx -> {
-                                currentCriteria.owned = idx == 1 ? true : idx == 2 ? false : null;
+                                currentCriteria.owned = idx == 1 ? Boolean.TRUE : idx == 2 ? Boolean.FALSE : null;
                                 updateBadge.run();
                             });
                     content.addView(rg);
@@ -900,7 +906,7 @@ public class NativeToolkitDialog {
                     int sel = Boolean.TRUE.equals(currentCriteria.hasLocation) ? 1 : Boolean.FALSE.equals(currentCriteria.hasLocation) ? 2 : 0;
                     RadioGroup rg = createRadioGroup(activity, new String[]{"Any", "Has Location", "No Location"},
                             sel, theme, idx -> {
-                                currentCriteria.hasLocation = idx == 1 ? true : idx == 2 ? false : null;
+                                currentCriteria.hasLocation = idx == 1 ? Boolean.TRUE : idx == 2 ? Boolean.FALSE : null;
                                 updateBadge.run();
                             });
                     content.addView(rg);
@@ -929,7 +935,7 @@ public class NativeToolkitDialog {
                     int sel = Boolean.TRUE.equals(currentCriteria.favorite) ? 1 : Boolean.FALSE.equals(currentCriteria.favorite) ? 2 : 0;
                     RadioGroup rg = createRadioGroup(activity, new String[]{"Any", "Yes", "No"},
                             sel, theme, idx -> {
-                                currentCriteria.favorite = idx == 1 ? true : idx == 2 ? false : null;
+                                currentCriteria.favorite = idx == 1 ? Boolean.TRUE : idx == 2 ? Boolean.FALSE : null;
                                 updateBadge.run();
                             });
                     content.addView(rg);
@@ -1055,6 +1061,13 @@ public class NativeToolkitDialog {
 
                 List<StorageScanner.MediaItem> items = itemsProvider.get();
                 if (items.isEmpty()) {
+                    if ("toTrash".equals(actionId) && currentCriteria.source == StorageScanner.SourceType.ALBUMS && !currentCriteria.albumsInclude.isEmpty()) {
+                        String param = TextUtils.join(",", currentCriteria.albumsInclude);
+                        showActionConfirmDialog(activity, "Delete " + currentCriteria.albumsInclude.size() + " empty album(s)?", () -> {
+                            executeDbActionAsync(activity, actionId, items, param, refreshRunner);
+                        }, density, theme);
+                        return;
+                    }
                     Toast.makeText(activity, "No matching items to perform " + actionLabel, Toast.LENGTH_SHORT).show();
                     return;
                 }
@@ -1065,9 +1078,24 @@ public class NativeToolkitDialog {
                     showNewAlbumDialog(activity, items, refreshRunner, density, theme);
                 } else if ("toExistingAlbum".equals(actionId)) {
                     showAlbumPickerDialog(activity, items, refreshRunner, density, theme);
+                } else if ("removeFromAlbum".equals(actionId)) {
+                    String param = !currentCriteria.albumsInclude.isEmpty() ? TextUtils.join(",", currentCriteria.albumsInclude) : null;
+                    final String targetAlbumKeys = param;
+                    showActionConfirmDialog(activity, "Remove " + items.size() + " items from album?", () -> {
+                        executeDbActionAsync(activity, actionId, items, targetAlbumKeys, refreshRunner);
+                    }, density, theme);
                 } else if ("toTrash".equals(actionId)) {
-                    showActionConfirmDialog(activity, "Move " + items.size() + " items to Trash?", () -> {
-                        executeDbActionAsync(activity, actionId, items, null, refreshRunner);
+                    String param = null;
+                    String confirmMsg;
+                    if (currentCriteria.source == StorageScanner.SourceType.ALBUMS && !currentCriteria.albumsInclude.isEmpty()) {
+                        param = TextUtils.join(",", currentCriteria.albumsInclude);
+                        confirmMsg = "Move " + items.size() + " items to Trash and delete " + currentCriteria.albumsInclude.size() + " album(s)?";
+                    } else {
+                        confirmMsg = "Move " + items.size() + " items to Trash?";
+                    }
+                    final String targetAlbumKeys = param;
+                    showActionConfirmDialog(activity, confirmMsg, () -> {
+                        executeDbActionAsync(activity, actionId, items, targetAlbumKeys, refreshRunner);
                     }, density, theme);
                 } else if ("lock".equals(actionId)) {
                     showActionConfirmDialog(activity, "Lock " + items.size() + " items into Locked Folder?", () -> {
@@ -1117,11 +1145,11 @@ public class NativeToolkitDialog {
         setActionState(actionButtons.get("lock"), src != StorageScanner.SourceType.LOCKED);
         setActionState(actionButtons.get("unLock"), src == StorageScanner.SourceType.LOCKED);
 
-        setActionState(actionButtons.get("toArchive"), !archivedOnly && src != StorageScanner.SourceType.TRASH);
-        setActionState(actionButtons.get("unArchive"), !archivedExcluded && src != StorageScanner.SourceType.TRASH);
+        setActionState(actionButtons.get("toArchive"), !archivedOnly);
+        setActionState(actionButtons.get("unArchive"), !archivedExcluded);
 
-        setActionState(actionButtons.get("toFavorite"), !favoritesOnly && src != StorageScanner.SourceType.TRASH);
-        setActionState(actionButtons.get("unFavorite"), !favoritesExcluded && src != StorageScanner.SourceType.TRASH);
+        setActionState(actionButtons.get("toFavorite"), !favoritesOnly && src != StorageScanner.SourceType.FAVORITES);
+        setActionState(actionButtons.get("unFavorite"), !favoritesExcluded);
 
         setActionState(actionButtons.get("copyDescFromOther"), src != StorageScanner.SourceType.TRASH);
     }
@@ -1314,8 +1342,16 @@ public class NativeToolkitDialog {
             StorageScanner.ActionResult res = StorageScanner.executeDatabaseAction(activity, currentAccount, actionId, items, param);
             MAIN_HANDLER.post(() -> {
                 Toast.makeText(activity, res.message, Toast.LENGTH_SHORT).show();
-                if (res.success && refreshRunner != null && refreshRunner[0] != null) {
-                    refreshRunner[0].run();
+                if (res.success) {
+                    if ("toTrash".equals(actionId) && currentCriteria.source == StorageScanner.SourceType.ALBUMS) {
+                        currentCriteria.albumsInclude.clear();
+                    }
+                    if (currentAccount != null) {
+                        availableAlbums = StorageScanner.getAvailableAlbums(currentAccount);
+                    }
+                    if (refreshRunner != null && refreshRunner[0] != null) {
+                        refreshRunner[0].run();
+                    }
                 }
             });
         });
@@ -1585,48 +1621,47 @@ public class NativeToolkitDialog {
             if (v != null) v.setVisibility(View.GONE);
         }
 
-        // Albums-only filter
+        View v;
+
+        // 1. Permanent Filters (Always visible on ALL sources including TRASH, matching user.js)
+        if ((v = filterCards.get("dateInterval")) != null) v.setVisibility(View.VISIBLE);
+        if ((v = filterCards.get("similarity")) != null) v.setVisibility(View.VISIBLE);
+        if ((v = filterCards.get("duration")) != null) v.setVisibility(View.VISIBLE);
+        if ((v = filterCards.get("type")) != null) v.setVisibility(View.VISIBLE);
+        if ((v = filterCards.get("sortBySize")) != null) v.setVisibility(View.VISIBLE);
+
+        // 2. Albums-only filter
         if (src == StorageScanner.SourceType.ALBUMS) {
-            View v = filterCards.get("includeAlbums");
-            if (v != null) v.setVisibility(View.VISIBLE);
+            if ((v = filterCards.get("includeAlbums")) != null) v.setVisibility(View.VISIBLE);
         }
 
-        // Search-only filter
+        // 3. Search-only filter
         if (src == StorageScanner.SourceType.SEARCH) {
-            View v = filterCards.get("search");
-            if (v != null) v.setVisibility(View.VISIBLE);
-            View vf = filterCards.get("favorite");
-            if (vf != null) vf.setVisibility(View.VISIBLE);
+            if ((v = filterCards.get("search")) != null) v.setVisibility(View.VISIBLE);
+            if ((v = filterCards.get("favorite")) != null) v.setVisibility(View.VISIBLE);
         }
 
-        // Filters visible in Library, Search, and Favorites
+        // 4. Filters visible in Library, Search, and Favorites
         if (src == StorageScanner.SourceType.LIBRARY || src == StorageScanner.SourceType.SEARCH || src == StorageScanner.SourceType.FAVORITES) {
-            View v;
             if ((v = filterCards.get("owned")) != null) v.setVisibility(View.VISIBLE);
             if ((v = filterCards.get("uploadStatus")) != null) v.setVisibility(View.VISIBLE);
             if ((v = filterCards.get("archive")) != null) v.setVisibility(View.VISIBLE);
         }
 
-        // Library-only filter
+        // 5. Library-only filter
         if (src == StorageScanner.SourceType.LIBRARY) {
-            View v = filterCards.get("excludeFavorites");
-            if (v != null) v.setVisibility(View.VISIBLE);
+            if ((v = filterCards.get("excludeFavorites")) != null) v.setVisibility(View.VISIBLE);
         }
 
-        // General media metadata filters visible everywhere EXCEPT Trash
+        // 6. Metadata filters visible everywhere EXCEPT Trash
         if (src != StorageScanner.SourceType.TRASH) {
-            View v;
             if ((v = filterCards.get("quality")) != null) v.setVisibility(View.VISIBLE);
             if ((v = filterCards.get("size")) != null) v.setVisibility(View.VISIBLE);
             if ((v = filterCards.get("resolution")) != null) v.setVisibility(View.VISIBLE);
-            if ((v = filterCards.get("duration")) != null) v.setVisibility(View.VISIBLE);
-            if ((v = filterCards.get("type")) != null) v.setVisibility(View.VISIBLE);
-            if ((v = filterCards.get("similarity")) != null) v.setVisibility(View.VISIBLE);
             if ((v = filterCards.get("location")) != null) v.setVisibility(View.VISIBLE);
             if ((v = filterCards.get("filename")) != null) v.setVisibility(View.VISIBLE);
             if ((v = filterCards.get("description")) != null) v.setVisibility(View.VISIBLE);
             if ((v = filterCards.get("space")) != null) v.setVisibility(View.VISIBLE);
-            if ((v = filterCards.get("sortBySize")) != null) v.setVisibility(View.VISIBLE);
 
             if (src != StorageScanner.SourceType.LOCKED) {
                 if ((v = filterCards.get("excludeAlbums")) != null) v.setVisibility(View.VISIBLE);
@@ -1635,10 +1670,6 @@ public class NativeToolkitDialog {
                 if ((v = filterCards.get("excludeShared")) != null) v.setVisibility(View.VISIBLE);
             }
         }
-
-        // Date interval is visible for ALL sources (including Trash)
-        View vDate = filterCards.get("dateInterval");
-        if (vDate != null) vDate.setVisibility(View.VISIBLE);
     }
 
     public interface OnDateTimeSelectedListener {

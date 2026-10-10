@@ -1,5 +1,6 @@
 package app.morphe.extension.shared.patches.toolkit;
 
+import android.content.ContentResolver;
 import android.content.ContentValues;
 import android.content.Context;
 import android.content.SharedPreferences;
@@ -7,6 +8,7 @@ import android.database.Cursor;
 import android.database.sqlite.SQLiteDatabase;
 import android.graphics.Bitmap;
 import android.graphics.Color;
+import android.net.Uri;
 import android.os.Bundle;
 import android.os.Parcelable;
 
@@ -20,11 +22,14 @@ import java.lang.reflect.Method;
 import java.nio.charset.StandardCharsets;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.Date;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -386,7 +391,7 @@ public class StorageScanner {
         try {
             db = SQLiteDatabase.openDatabase(dbFile.getAbsolutePath(), null, SQLiteDatabase.OPEN_READONLY);
             String targetTable = "remote_media";
-            if (crit.source == SourceType.SHARED) {
+            if (crit.source == SourceType.SHARED || crit.source == SourceType.ALBUMS) {
                 targetTable = "shared_media";
             } else if (crit.source == SourceType.LOCKED) {
                 targetTable = "remote_locked_media";
@@ -415,7 +420,9 @@ public class StorageScanner {
                     }
                     break;
                 case ALBUMS:
-                    where.append(" AND (trash_timestamp IS NULL OR trash_timestamp = 0)");
+                    if (hasColumn(db, targetTable, "trash_timestamp")) {
+                        where.append(" AND (trash_timestamp IS NULL OR trash_timestamp = 0)");
+                    }
                     if (!crit.albumsInclude.isEmpty()) {
                         where.append(" AND collection_id IN (");
                         for (int i = 0; i < crit.albumsInclude.size(); i++) {
@@ -424,6 +431,9 @@ public class StorageScanner {
                             args.add(crit.albumsInclude.get(i));
                         }
                         where.append(")");
+                    } else {
+                        // In Google Photos Toolkit, selecting Albums source requires picking album(s)
+                        return items;
                     }
                     break;
                 case SHARED:
@@ -440,13 +450,22 @@ public class StorageScanner {
 
             // Exclude albums
             if (!crit.albumsExclude.isEmpty()) {
-                where.append(" AND collection_id NOT IN (");
+                where.append(" AND (collection_id IS NULL OR collection_id NOT IN (");
                 for (int i = 0; i < crit.albumsExclude.size(); i++) {
                     if (i > 0) where.append(",");
                     where.append("?");
                     args.add(crit.albumsExclude.get(i));
                 }
-                where.append(")");
+                where.append("))");
+                if ("remote_media".equals(targetTable) && hasTable(db, "shared_media")) {
+                    where.append(" AND dedup_key NOT IN (SELECT dedup_key FROM shared_media WHERE collection_id IN (");
+                    for (int i = 0; i < crit.albumsExclude.size(); i++) {
+                        if (i > 0) where.append(",");
+                        where.append("?");
+                        args.add(crit.albumsExclude.get(i));
+                    }
+                    where.append("))");
+                }
             }
 
             // Space filter
@@ -650,6 +669,53 @@ public class StorageScanner {
                             caption
                     ));
                 }
+            }
+
+            // If Source is ALBUMS, also query remote_media in case items were synced there
+            if (crit.source == SourceType.ALBUMS && hasTable(db, "remote_media") && !crit.albumsInclude.isEmpty()) {
+                try {
+                    StringBuilder remWhere = new StringBuilder("collection_id IN (");
+                    List<String> remArgs = new ArrayList<>();
+                    for (int i = 0; i < crit.albumsInclude.size(); i++) {
+                        if (i > 0) remWhere.append(",");
+                        remWhere.append("?");
+                        remArgs.add(crit.albumsInclude.get(i));
+                    }
+                    remWhere.append(") AND (trash_timestamp IS NULL OR trash_timestamp = 0)");
+
+                    String remSql = "SELECT dedup_key, " + mediaKeyExpr + ", filename, size_bytes, quota_charged_bytes, capture_timestamp, remote_url, " +
+                            "trash_timestamp, width, height, duration, is_archived, is_favorite, is_micro_video, mime_type, " + latExpr + ", " + lonExpr + ", " + captionExpr + " " +
+                            "FROM remote_media WHERE " + remWhere;
+                    try (Cursor rc = db.rawQuery(remSql, remArgs.toArray(new String[0]))) {
+                        HashSet<String> seen = new HashSet<>();
+                        for (MediaItem it : items) seen.add(it.dedupKey);
+                        while (rc != null && rc.moveToNext()) {
+                            String dKey = rc.getString(0);
+                            if (seen.contains(dKey)) continue;
+                            items.add(new MediaItem(
+                                    dKey,
+                                    rc.getString(1),
+                                    rc.getString(2),
+                                    rc.getLong(3),
+                                    rc.getLong(4),
+                                    rc.getLong(5),
+                                    rc.getString(6),
+                                    rc.getLong(7),
+                                    rc.getInt(8),
+                                    rc.getInt(9),
+                                    rc.getLong(10),
+                                    rc.getInt(11) == 1,
+                                    rc.getInt(12) == 1,
+                                    rc.getInt(13) == 1,
+                                    rc.getString(14),
+                                    rc.getDouble(15),
+                                    rc.getDouble(16),
+                                    rc.getString(17)
+                            ));
+                            seen.add(dKey);
+                        }
+                    }
+                } catch (Throwable ignored) {}
             }
 
         } catch (Throwable t) {
@@ -976,6 +1042,54 @@ public class StorageScanner {
         return totalAdded;
     }
 
+    public static boolean deleteCloudAlbum(Context context, int accountId, String albumMediaKey) {
+        if (context == null || albumMediaKey == null || albumMediaKey.isEmpty()) return false;
+        try {
+            Logger.printInfo(() -> "Deleting cloud album: " + albumMediaKey + " for account " + accountId);
+
+            Class<?> ahnrClass = Class.forName("ahnr");
+            Object optionalKey = null;
+            try {
+                Method aMethod = ahnrClass.getMethod("a", String.class);
+                optionalKey = aMethod.invoke(null, albumMediaKey);
+            } catch (Throwable t) {
+                Constructor<?> ahnrCtor = ahnrClass.getConstructor(String.class);
+                optionalKey = ahnrCtor.newInstance(albumMediaKey);
+            }
+
+            Class<?> bxtyClass = Class.forName("bxty");
+            Class<?> bxueClass = Class.forName("bxue");
+            Method vMethod = bxueClass.getMethod("v", Context.class, bxtyClass);
+
+            // 1. Online Google Server envelope deletion (DeleteSharedCollectionTask)
+            try {
+                Class<?> delTaskClass = Class.forName("com.google.android.apps.photos.album.removealbum.DeleteSharedCollectionTask");
+                Constructor<?> delCtor = delTaskClass.getConstructor(int.class, ahnrClass, boolean.class, boolean.class);
+                Object delTask = delCtor.newInstance(accountId, optionalKey, true, false);
+                vMethod.invoke(null, context, delTask);
+                Logger.printInfo(() -> "Successfully scheduled DeleteSharedCollectionTask for online deletion of " + albumMediaKey);
+            } catch (Throwable tOnline) {
+                Logger.printException(() -> "Error calling DeleteSharedCollectionTask", tOnline);
+            }
+
+            // 2. Local optimistic database deletion (RemoteOptimisticallyDeleteCollectionTask)
+            try {
+                Class<?> optTaskClass = Class.forName("com.google.android.apps.photos.album.removealbum.RemoteOptimisticallyDeleteCollectionTask");
+                Constructor<?> optCtor = optTaskClass.getConstructor(int.class, String.class);
+                Object optTask = optCtor.newInstance(accountId, albumMediaKey);
+                vMethod.invoke(null, context, optTask);
+                Logger.printInfo(() -> "Successfully scheduled RemoteOptimisticallyDeleteCollectionTask for local deletion of " + albumMediaKey);
+            } catch (Throwable tOpt) {
+                Logger.printException(() -> "Error calling RemoteOptimisticallyDeleteCollectionTask", tOpt);
+            }
+
+            return true;
+        } catch (Throwable t) {
+            Logger.printException(() -> "Error in deleteCloudAlbum", t);
+        }
+        return false;
+    }
+
     private static List<String> resolveRemoteMediaKeys(AccountInfo account, List<MediaItem> items) {
         List<String> mediaKeys = new ArrayList<>();
         if (items == null || items.isEmpty()) return mediaKeys;
@@ -1015,9 +1129,248 @@ public class StorageScanner {
         return mediaKeys;
     }
 
+    private static Object createMediaCollectionForKeys(int accountId, List<String> mediaKeys) {
+        try {
+            Class<?> nulClass = Class.forName("nul");
+            Object builder = nulClass.getConstructor().newInstance();
+            nulClass.getField("a").setInt(builder, accountId);
+            nulClass.getField("b").set(builder, mediaKeys);
+            nulClass.getField("d").setBoolean(builder, true);
+            nulClass.getField("e").setBoolean(builder, true);
+            Method buildMethod = nulClass.getMethod("a");
+            return buildMethod.invoke(builder);
+        } catch (Throwable t) {
+            Logger.printException(() -> "Error building media collection for keys", t);
+            return null;
+        }
+    }
+
+    private static Object buildCoreFeaturesRequest(Context context) {
+        try {
+            Class<?> wqaClass = Class.forName("wqa");
+            Constructor<?> wqaCtor = wqaClass.getConstructor(boolean.class);
+            Object builder = wqaCtor.newInstance(true);
+            Method dMethod = wqaClass.getMethod("d", Class.forName("wqb"));
+
+            // 1. Core Trash Features: neb.a (contains zon, bams, Axdq, Laflw)
+            try {
+                Class<?> nebClass = Class.forName("neb");
+                Field f = nebClass.getField("a");
+                Object fVal = f.get(null);
+                if (fVal != null) dMethod.invoke(builder, fVal);
+            } catch (Throwable t) {
+                Logger.printInfo(() -> "neb.a not resolved: " + t.getMessage());
+            }
+
+            // 2. Favorites Features: FavoritesTask.c (contains bfwt, bfwu, Axdq, bams)
+            try {
+                Class<?> favClass = Class.forName("com.google.android.apps.photos.favorites.FavoritesTask");
+                Field f = favClass.getDeclaredField("c");
+                f.setAccessible(true);
+                Object fVal = f.get(null);
+                if (fVal != null) dMethod.invoke(builder, fVal);
+            } catch (Throwable t) {
+                Logger.printInfo(() -> "FavoritesTask.c not resolved: " + t.getMessage());
+            }
+
+            // 3. Restore Features: bjiq.a (contains bams, zon)
+            try {
+                Class<?> bjiqClass = Class.forName("bjiq");
+                Field f = bjiqClass.getField("a");
+                Object fVal = f.get(null);
+                if (fVal != null) dMethod.invoke(builder, fVal);
+            } catch (Throwable t) {
+                Logger.printInfo(() -> "bjiq.a not resolved: " + t.getMessage());
+            }
+
+            // 4. Delete Label features: out.a(context)
+            if (context != null) {
+                try {
+                    Class<?> outClass = Class.forName("out");
+                    Method aMethod = outClass.getMethod("a", Context.class);
+                    Object outVal = aMethod.invoke(null, context);
+                    if (outVal != null) dMethod.invoke(builder, outVal);
+                } catch (Throwable t) {
+                    Logger.printInfo(() -> "out.a not resolved: " + t.getMessage());
+                }
+            }
+
+            Method aMethod = wqaClass.getMethod("a");
+            return aMethod.invoke(builder);
+        } catch (Throwable t) {
+            Logger.printException(() -> "Error constructing composite FeaturesRequest", t);
+            try {
+                Class<?> wqbClass = Class.forName("wqb");
+                return wqbClass.getField("a").get(null);
+            } catch (Throwable ignored) {
+                return null;
+            }
+        }
+    }
+
+    private static List<?> loadCoreMediaItems(Context context, int accountId, List<MediaItem> items) {
+        List<Object> result = new ArrayList<>();
+        if (context == null || items == null || items.isEmpty()) return result;
+        List<String> keys = resolveRemoteMediaKeys(new AccountInfo(accountId, null, null), items);
+        if (keys.isEmpty()) return result;
+
+        try {
+            Object mediaCollection = createMediaCollectionForKeys(accountId, keys);
+            if (mediaCollection == null) return result;
+
+            Class<?> bwpgClass = Class.forName("bwpg");
+            Class<?> wsgClass = Class.forName("wsg");
+            Method aRefMethod = wsgClass.getMethod("a", bwpgClass);
+            Object collectionRef = aRefMethod.invoke(null, mediaCollection);
+
+            Class<?> wrlClass = Class.forName("wrl");
+            Class<?> wryClass = Class.forName("wry");
+            Class<?> wqsClass = Class.forName("wqs");
+            Class<?> wqbClass = Class.forName("wqb");
+
+            Object wqsVal = wqsClass.getField("a").get(null);
+            Object wqbVal = buildCoreFeaturesRequest(context);
+            if (wqbVal == null) {
+                wqbVal = wqbClass.getField("a").get(null);
+            }
+
+            Method hMethod = wrlClass.getMethod("H", Context.class, wryClass, wqsClass, wqbClass);
+            List<?> loaded = (List<?>) hMethod.invoke(null, context, collectionRef, wqsVal, wqbVal);
+            if (loaded != null) {
+                result.addAll(loaded);
+            }
+        } catch (Throwable t) {
+            Logger.printException(() -> "Error loading core media items (bwpf)", t);
+        }
+        return result;
+    }
+
+    private static boolean executeOnlineTrashTask(Context context, int accountId, List<MediaItem> items) {
+        if (context == null || items == null || items.isEmpty()) return false;
+        try {
+            List<?> coreItems = loadCoreMediaItems(context, accountId, items);
+            if (coreItems.isEmpty()) return false;
+
+            Class<?> bdkqClass = Class.forName("bdkq");
+            Constructor<?> bdkqCtor = bdkqClass.getConstructor(Collection.class);
+            Object mediaGroup = bdkqCtor.newInstance(coreItems);
+
+            Class<?> lakjzClass = Class.forName("akjz");
+            Object targetMode = lakjzClass.getField("b").get(null);
+
+            Class<?> romClass = Class.forName("rom");
+            Method romMethod = romClass.getMethod("b", Context.class);
+            Object cjizSource = romMethod.invoke(null, context);
+
+            Class<?> wrapperClass = Class.forName("com.google.android.apps.photos.trash.MoveToTrashActionWrapper");
+            Class<?> cjizClass = Class.forName("cjiz");
+            Constructor<?> wrapperCtor = wrapperClass.getConstructor(int.class, bdkqClass, lakjzClass, cjizClass);
+            Object task = wrapperCtor.newInstance(accountId, mediaGroup, targetMode, cjizSource);
+
+            Class<?> bxtyClass = Class.forName("bxty");
+            Class<?> bxueClass = Class.forName("bxue");
+            Method runMethod = bxueClass.getMethod("v", Context.class, bxtyClass);
+            runMethod.invoke(null, context, task);
+            return true;
+        } catch (Throwable t) {
+            Logger.printException(() -> "Error invoking MoveToTrashActionWrapper", t);
+            return false;
+        }
+    }
+
+    private static boolean executeOnlineRestoreTask(Context context, int accountId, List<MediaItem> items) {
+        if (context == null || items == null || items.isEmpty()) return false;
+        try {
+            List<?> coreItems = loadCoreMediaItems(context, accountId, items);
+            if (coreItems.isEmpty()) return false;
+
+            Class<?> bdkqClass = Class.forName("bdkq");
+            Constructor<?> bdkqCtor = bdkqClass.getConstructor(Collection.class);
+            Object mediaGroup = bdkqCtor.newInstance(coreItems);
+
+            Class<?> restoreClass = Class.forName("com.google.android.apps.photos.trash.restore.RestoreActionTask");
+            Constructor<?> restoreCtor = restoreClass.getConstructor(int.class, bdkqClass, boolean.class);
+            Object task = restoreCtor.newInstance(accountId, mediaGroup, false);
+
+            Class<?> bxtyClass = Class.forName("bxty");
+            Class<?> bxueClass = Class.forName("bxue");
+            Method runMethod = bxueClass.getMethod("v", Context.class, bxtyClass);
+            runMethod.invoke(null, context, task);
+            return true;
+        } catch (Throwable t) {
+            Logger.printException(() -> "Error invoking RestoreActionTask", t);
+            return false;
+        }
+    }
+
+    private static boolean executeOnlineArchiveTask(Context context, int accountId, List<MediaItem> items, boolean archive) {
+        if (context == null || items == null || items.isEmpty()) return false;
+        try {
+            List<?> coreItems = loadCoreMediaItems(context, accountId, items);
+            if (coreItems.isEmpty()) return false;
+
+            Set<?> set = new HashSet<>(coreItems);
+            Class<?> archiveClass = Class.forName("com.google.android.apps.photos.archive.ArchiveTask");
+            Constructor<?> archiveCtor = archiveClass.getConstructor(int.class, Set.class, int.class);
+            Object task = archiveCtor.newInstance(accountId, set, archive ? 1 : 2);
+
+            Class<?> bxtyClass = Class.forName("bxty");
+            Class<?> bxueClass = Class.forName("bxue");
+            Method runMethod = bxueClass.getMethod("v", Context.class, bxtyClass);
+            runMethod.invoke(null, context, task);
+            return true;
+        } catch (Throwable t) {
+            Logger.printException(() -> "Error invoking ArchiveTask", t);
+            return false;
+        }
+    }
+
+    private static boolean executeOnlineFavoriteTask(Context context, int accountId, List<MediaItem> items, boolean favorite) {
+        if (context == null || items == null || items.isEmpty()) return false;
+        try {
+            List<?> coreItems = loadCoreMediaItems(context, accountId, items);
+            if (coreItems.isEmpty()) return false;
+
+            Class<?> swhClass = Class.forName("swh");
+            Object reason = swhClass.getField("a").get(null);
+
+            Class<?> favClass = Class.forName("com.google.android.apps.photos.favorites.FavoritesTask");
+            Constructor<?> favCtor = favClass.getConstructor(int.class, Collection.class, boolean.class, swhClass);
+            Object task = favCtor.newInstance(accountId, coreItems, favorite, reason);
+
+            Class<?> bxtyClass = Class.forName("bxty");
+            Class<?> bxueClass = Class.forName("bxue");
+            Method runMethod = bxueClass.getMethod("v", Context.class, bxtyClass);
+            runMethod.invoke(null, context, task);
+            return true;
+        } catch (Throwable t) {
+            Logger.printException(() -> "Error invoking FavoritesTask", t);
+            return false;
+        }
+    }
+
+    private static void triggerOnlineSync(Context context, int accountId) {
+        if (context == null) return;
+        try {
+            Class<?> syncTaskClass = Class.forName("com.google.android.apps.photos.metasync.actionqueue.block.SyncActionQueueBlock$SyncBackgroundTask");
+            Constructor<?> syncCtor = syncTaskClass.getConstructor(int.class);
+            Object syncTask = syncCtor.newInstance(accountId);
+
+            Class<?> bxtyClass = Class.forName("bxty");
+            Class<?> bxueClass = Class.forName("bxue");
+            Method runMethod = bxueClass.getMethod("n", Context.class, bxtyClass);
+            runMethod.invoke(null, context, syncTask);
+            Logger.printInfo(() -> "Successfully scheduled SyncActionQueueBlock for account " + accountId);
+        } catch (Throwable t) {
+            Logger.printException(() -> "Could not schedule SyncActionQueueBlock", t);
+        }
+    }
+
     public static ActionResult executeDatabaseAction(Context context, AccountInfo account, String actionId, List<MediaItem> items, String param) {
         if (account == null) return new ActionResult(false, 0, "No account selected");
-        if (items == null || items.isEmpty()) return new ActionResult(false, 0, "No items selected");
+        if ((items == null || items.isEmpty()) && !("toTrash".equals(actionId) && param != null && !param.trim().isEmpty())) {
+            return new ActionResult(false, 0, "No items selected");
+        }
 
         // Native Cloud Album handling (runs via Google Photos TaskRunner and syncs to cloud)
         if ("toNewAlbum".equals(actionId)) {
@@ -1054,32 +1407,99 @@ public class StorageScanner {
 
         SQLiteDatabase db = null;
         try {
-            db = SQLiteDatabase.openDatabase(dbFile.getAbsolutePath(), null, SQLiteDatabase.OPEN_READWRITE);
+            db = SQLiteDatabase.openDatabase(dbFile.getAbsolutePath(), null, SQLiteDatabase.OPEN_READWRITE | SQLiteDatabase.ENABLE_WRITE_AHEAD_LOGGING);
             db.beginTransaction();
-            int count = 0;
+            int count = (items != null) ? items.size() : 0;
 
             long now = System.currentTimeMillis();
             switch (actionId) {
                 case "toTrash":
-                    for (MediaItem it : items) {
-                        ContentValues cv = new ContentValues();
-                        cv.put("trash_timestamp", now);
-                        count += db.update("remote_media", cv, "dedup_key = ?", new String[]{it.dedupKey});
-                        if (hasTable(db, "media")) {
-                            ContentValues mCv = new ContentValues();
-                            mCv.put("trash_timestamp", now);
-                            mCv.put("is_deleted", 1);
-                            db.update("media", mCv, "dedup_key = ?", new String[]{it.dedupKey});
+                    // 1. Invoke official Google Photos MoveToTrashActionWrapper / DeleteActionTask via TaskRunner
+                    boolean dispatchedOnlineTrash = executeOnlineTrashTask(context, account.accountId, items);
+                    Logger.printInfo(() -> "Dispatched official online trash task: " + dispatchedOnlineTrash);
+
+                    // 2. Perform optimistic local tombstone update
+                    if (items != null) {
+                        for (MediaItem it : items) {
+                            ContentValues cv = new ContentValues();
+                            cv.put("trash_timestamp", now);
+                            db.update("remote_media", cv, "dedup_key = ?", new String[]{it.dedupKey});
+                            if (hasTable(db, "media")) {
+                                ContentValues mCv = new ContentValues();
+                                mCv.put("trash_timestamp", now);
+                                mCv.put("is_deleted", 0);
+                                db.update("media", mCv, "dedup_key = ?", new String[]{it.dedupKey});
+                            }
+                            if (hasTable(db, "local_media")) db.update("local_media", cv, "dedup_key = ?", new String[]{it.dedupKey});
+                            if (hasTable(db, "shared_media")) {
+                                db.delete("shared_media", "dedup_key = ?", new String[]{it.dedupKey});
+                            }
+                            if (hasTable(db, "MediaTombstone")) {
+                                ContentValues mtCv = new ContentValues();
+                                mtCv.put("remoteMediaKey", it.mediaKey != null ? it.mediaKey : "");
+                                mtCv.put("timestamp", now);
+                                mtCv.put("dedupKey", it.dedupKey);
+                                db.insertWithOnConflict("MediaTombstone", null, mtCv, SQLiteDatabase.CONFLICT_IGNORE);
+                            }
                         }
-                        if (hasTable(db, "local_media")) db.update("local_media", cv, "dedup_key = ?", new String[]{it.dedupKey});
                     }
-                    break;
+                    int deletedAlbums = 0;
+                    List<String> albumsToDelete = new ArrayList<>();
+                    if (param != null && !param.trim().isEmpty()) {
+                        String[] albumKeys = param.split(",");
+                        for (String albKey : albumKeys) {
+                            String key = albKey.trim();
+                            if (key.isEmpty()) continue;
+                            albumsToDelete.add(key);
+                            if (hasTable(db, "envelopes")) db.delete("envelopes", "media_key = ?", new String[]{key});
+                            if (hasTable(db, "collections")) db.delete("collections", "collection_media_key = ? OR associated_envelope_media_key = ?", new String[]{key, key});
+                            if (hasTable(db, "envelope_members")) db.delete("envelope_members", "envelope_media_key = ?", new String[]{key});
+                            if (hasTable(db, "shared_media")) db.delete("shared_media", "collection_id = ?", new String[]{key});
+                            if (hasTable(db, "item_collection_data")) db.delete("item_collection_data", "collection_id = ?", new String[]{key});
+                            if (hasTable(db, "envelopes_sync")) db.delete("envelopes_sync", "media_key = ?", new String[]{key});
+                            if (hasTable(db, "media_collection_tombstone_log")) {
+                                ContentValues tbCv = new ContentValues();
+                                tbCv.put("local_id", key);
+                                tbCv.put("reason", "DELETED");
+                                db.insertWithOnConflict("media_collection_tombstone_log", null, tbCv, SQLiteDatabase.CONFLICT_REPLACE);
+                            }
+                            deletedAlbums++;
+                        }
+                    }
+                    db.setTransactionSuccessful();
+                    db.endTransaction();
+                    try { db.close(); db = null; } catch (Throwable ignored) {}
+
+                    // Online cloud album deletion runs via official DeleteSharedCollectionTask
+                    for (String key : albumsToDelete) {
+                        deleteCloudAlbum(context, account.accountId, key);
+                    }
+
+                    // Trigger MetaSync & ActionQueue sync
+                    triggerOnlineSync(context, account.accountId);
+
+                    try {
+                        if (context != null) {
+                            ContentResolver cr = context.getContentResolver();
+                            cr.notifyChange(Uri.parse("content://GPhotos/trash"), null);
+                            cr.notifyChange(Uri.parse("content://GPhotos/all_photos"), null);
+                            cr.notifyChange(Uri.parse("content://GPhotos/collections"), null);
+                        }
+                    } catch (Throwable ignored) {}
+
+                    if (deletedAlbums > 0) {
+                        return new ActionResult(true, count, "Moved " + count + " items to Trash & deleted " + deletedAlbums + " album(s)");
+                    }
+                    return new ActionResult(true, count, "Successfully moved " + count + " items to Trash");
 
                 case "restoreTrash":
+                    boolean dispatchedOnlineRestore = executeOnlineRestoreTask(context, account.accountId, items);
+                    Logger.printInfo(() -> "Dispatched official online restore task: " + dispatchedOnlineRestore);
+
                     for (MediaItem it : items) {
                         ContentValues cv = new ContentValues();
                         cv.put("trash_timestamp", 0);
-                        count += db.update("remote_media", cv, "dedup_key = ?", new String[]{it.dedupKey});
+                        db.update("remote_media", cv, "dedup_key = ?", new String[]{it.dedupKey});
                         if (hasTable(db, "media")) {
                             ContentValues mCv = new ContentValues();
                             mCv.put("trash_timestamp", 0);
@@ -1088,57 +1508,163 @@ public class StorageScanner {
                         }
                         if (hasTable(db, "local_media")) db.update("local_media", cv, "dedup_key = ?", new String[]{it.dedupKey});
                     }
-                    break;
+
+                    db.setTransactionSuccessful();
+                    db.endTransaction();
+                    try { db.close(); db = null; } catch (Throwable ignored) {}
+
+                    triggerOnlineSync(context, account.accountId);
+
+                    try {
+                        if (context != null) {
+                            ContentResolver cr = context.getContentResolver();
+                            cr.notifyChange(Uri.parse("content://GPhotos/trash"), null);
+                            cr.notifyChange(Uri.parse("content://GPhotos/all_photos"), null);
+                        }
+                    } catch (Throwable ignored) {}
+
+                    return new ActionResult(true, count, "Successfully restored " + count + " items from Trash");
 
                 case "toArchive":
+                    boolean dispatchedOnlineArchive = executeOnlineArchiveTask(context, account.accountId, items, true);
+                    Logger.printInfo(() -> "Dispatched official online archive task: " + dispatchedOnlineArchive);
+
                     for (MediaItem it : items) {
                         ContentValues cv = new ContentValues();
                         cv.put("is_archived", 1);
-                        count += db.update("remote_media", cv, "dedup_key = ?", new String[]{it.dedupKey});
+                        db.update("remote_media", cv, "dedup_key = ?", new String[]{it.dedupKey});
                         if (hasTable(db, "media")) db.update("media", cv, "dedup_key = ?", new String[]{it.dedupKey});
                         if (hasTable(db, "local_media")) db.update("local_media", cv, "dedup_key = ?", new String[]{it.dedupKey});
                     }
-                    break;
+
+                    db.setTransactionSuccessful();
+                    db.endTransaction();
+                    try { db.close(); db = null; } catch (Throwable ignored) {}
+
+                    triggerOnlineSync(context, account.accountId);
+
+                    try {
+                        if (context != null) {
+                            ContentResolver cr = context.getContentResolver();
+                            cr.notifyChange(Uri.parse("content://GPhotos/all_photos"), null);
+                        }
+                    } catch (Throwable ignored) {}
+
+                    return new ActionResult(true, count, "Successfully archived " + count + " items");
 
                 case "unArchive":
+                    boolean dispatchedOnlineUnarchive = executeOnlineArchiveTask(context, account.accountId, items, false);
+                    Logger.printInfo(() -> "Dispatched official online unarchive task: " + dispatchedOnlineUnarchive);
+
                     for (MediaItem it : items) {
                         ContentValues cv = new ContentValues();
                         cv.put("is_archived", 0);
-                        count += db.update("remote_media", cv, "dedup_key = ?", new String[]{it.dedupKey});
+                        db.update("remote_media", cv, "dedup_key = ?", new String[]{it.dedupKey});
                         if (hasTable(db, "media")) db.update("media", cv, "dedup_key = ?", new String[]{it.dedupKey});
                         if (hasTable(db, "local_media")) db.update("local_media", cv, "dedup_key = ?", new String[]{it.dedupKey});
                     }
-                    break;
+
+                    db.setTransactionSuccessful();
+                    db.endTransaction();
+                    try { db.close(); db = null; } catch (Throwable ignored) {}
+
+                    triggerOnlineSync(context, account.accountId);
+
+                    try {
+                        if (context != null) {
+                            ContentResolver cr = context.getContentResolver();
+                            cr.notifyChange(Uri.parse("content://GPhotos/all_photos"), null);
+                        }
+                    } catch (Throwable ignored) {}
+
+                    return new ActionResult(true, count, "Successfully un-archived " + count + " items");
 
                 case "toFavorite":
+                    boolean dispatchedOnlineFav = executeOnlineFavoriteTask(context, account.accountId, items, true);
+                    Logger.printInfo(() -> "Dispatched official online favorite task: " + dispatchedOnlineFav);
+
                     for (MediaItem it : items) {
                         ContentValues cv = new ContentValues();
                         cv.put("is_favorite", 1);
-                        count += db.update("remote_media", cv, "dedup_key = ?", new String[]{it.dedupKey});
+                        db.update("remote_media", cv, "dedup_key = ?", new String[]{it.dedupKey});
                         if (hasTable(db, "media")) db.update("media", cv, "dedup_key = ?", new String[]{it.dedupKey});
                         if (hasTable(db, "local_media")) db.update("local_media", cv, "dedup_key = ?", new String[]{it.dedupKey});
                     }
-                    break;
+
+                    db.setTransactionSuccessful();
+                    db.endTransaction();
+                    try { db.close(); db = null; } catch (Throwable ignored) {}
+
+                    triggerOnlineSync(context, account.accountId);
+
+                    try {
+                        if (context != null) {
+                            ContentResolver cr = context.getContentResolver();
+                            cr.notifyChange(Uri.parse("content://GPhotos/all_photos"), null);
+                        }
+                    } catch (Throwable ignored) {}
+
+                    return new ActionResult(true, count, "Successfully added " + count + " items to favorites");
 
                 case "unFavorite":
+                    boolean dispatchedOnlineUnfav = executeOnlineFavoriteTask(context, account.accountId, items, false);
+                    Logger.printInfo(() -> "Dispatched official online unfavorite task: " + dispatchedOnlineUnfav);
+
                     for (MediaItem it : items) {
                         ContentValues cv = new ContentValues();
                         cv.put("is_favorite", 0);
-                        count += db.update("remote_media", cv, "dedup_key = ?", new String[]{it.dedupKey});
+                        db.update("remote_media", cv, "dedup_key = ?", new String[]{it.dedupKey});
                         if (hasTable(db, "media")) db.update("media", cv, "dedup_key = ?", new String[]{it.dedupKey});
                         if (hasTable(db, "local_media")) db.update("local_media", cv, "dedup_key = ?", new String[]{it.dedupKey});
                     }
-                    break;
 
+                    db.setTransactionSuccessful();
+                    db.endTransaction();
+                    try { db.close(); db = null; } catch (Throwable ignored) {}
 
+                    triggerOnlineSync(context, account.accountId);
+
+                    try {
+                        if (context != null) {
+                            ContentResolver cr = context.getContentResolver();
+                            cr.notifyChange(Uri.parse("content://GPhotos/all_photos"), null);
+                        }
+                    } catch (Throwable ignored) {}
+
+                    return new ActionResult(true, count, "Successfully removed " + count + " items from favorites");
 
                 case "removeFromAlbum":
-                    for (MediaItem it : items) {
-                        ContentValues cv = new ContentValues();
-                        cv.putNull("collection_id");
-                        count += db.update("remote_media", cv, "dedup_key = ?", new String[]{it.dedupKey});
+                    if (items != null) {
+                        for (MediaItem it : items) {
+                            ContentValues cv = new ContentValues();
+                            cv.putNull("collection_id");
+                            db.update("remote_media", cv, "dedup_key = ?", new String[]{it.dedupKey});
+                            if (hasTable(db, "shared_media")) {
+                                if (param != null && !param.trim().isEmpty()) {
+                                    String[] albumKeys = param.split(",");
+                                    for (String k : albumKeys) {
+                                        db.delete("shared_media", "dedup_key = ? AND collection_id = ?", new String[]{it.dedupKey, k.trim()});
+                                    }
+                                } else {
+                                    db.delete("shared_media", "dedup_key = ?", new String[]{it.dedupKey});
+                                }
+                            }
+                        }
                     }
-                    break;
+                    db.setTransactionSuccessful();
+                    db.endTransaction();
+                    try { db.close(); db = null; } catch (Throwable ignored) {}
+
+                    triggerOnlineSync(context, account.accountId);
+
+                    try {
+                        if (context != null) {
+                            ContentResolver cr = context.getContentResolver();
+                            cr.notifyChange(Uri.parse("content://GPhotos/collections"), null);
+                        }
+                    } catch (Throwable ignored) {}
+
+                    return new ActionResult(true, count, "Removed " + count + " items from album");
 
                 case "lock":
                     for (MediaItem it : items) {
@@ -1153,22 +1679,48 @@ public class StorageScanner {
                         }
                         ContentValues cv = new ContentValues();
                         cv.put("is_hidden", 1);
-                        count += db.update("remote_media", cv, "dedup_key = ?", new String[]{it.dedupKey});
+                        db.update("remote_media", cv, "dedup_key = ?", new String[]{it.dedupKey});
                         if (hasTable(db, "media")) db.update("media", cv, "dedup_key = ?", new String[]{it.dedupKey});
                     }
-                    break;
+                    db.setTransactionSuccessful();
+                    db.endTransaction();
+                    try { db.close(); db = null; } catch (Throwable ignored) {}
+
+                    triggerOnlineSync(context, account.accountId);
+
+                    try {
+                        if (context != null) {
+                            ContentResolver cr = context.getContentResolver();
+                            cr.notifyChange(Uri.parse("content://GPhotos/all_photos"), null);
+                        }
+                    } catch (Throwable ignored) {}
+
+                    return new ActionResult(true, count, "Locked " + count + " items");
 
                 case "unLock":
                     for (MediaItem it : items) {
                         ContentValues cv = new ContentValues();
                         cv.put("is_hidden", 0);
-                        count += db.update("remote_media", cv, "dedup_key = ?", new String[]{it.dedupKey});
+                        db.update("remote_media", cv, "dedup_key = ?", new String[]{it.dedupKey});
                         if (hasTable(db, "media")) db.update("media", cv, "dedup_key = ?", new String[]{it.dedupKey});
                         if (hasTable(db, "remote_locked_media")) {
                             db.delete("remote_locked_media", "dedup_key = ?", new String[]{it.dedupKey});
                         }
                     }
-                    break;
+                    db.setTransactionSuccessful();
+                    db.endTransaction();
+                    try { db.close(); db = null; } catch (Throwable ignored) {}
+
+                    triggerOnlineSync(context, account.accountId);
+
+                    try {
+                        if (context != null) {
+                            ContentResolver cr = context.getContentResolver();
+                            cr.notifyChange(Uri.parse("content://GPhotos/all_photos"), null);
+                        }
+                    } catch (Throwable ignored) {}
+
+                    return new ActionResult(true, count, "Unlocked " + count + " items");
 
                 case "copyDescFromOther":
                     for (MediaItem it : items) {
@@ -1179,16 +1731,28 @@ public class StorageScanner {
                         if (desc != null && !desc.trim().isEmpty()) {
                             ContentValues cv = new ContentValues();
                             cv.put("user_specified_caption", desc);
-                            count += db.update("remote_media", cv, "dedup_key = ?", new String[]{it.dedupKey});
+                            db.update("remote_media", cv, "dedup_key = ?", new String[]{it.dedupKey});
                             if (hasTable(db, "local_media")) {
                                 db.update("local_media", cv, "dedup_key = ?", new String[]{it.dedupKey});
                             }
                         }
                     }
-                    break;
+                    db.setTransactionSuccessful();
+                    db.endTransaction();
+                    try { db.close(); db = null; } catch (Throwable ignored) {}
+
+                    triggerOnlineSync(context, account.accountId);
+
+                    try {
+                        if (context != null) {
+                            ContentResolver cr = context.getContentResolver();
+                            cr.notifyChange(Uri.parse("content://GPhotos/all_photos"), null);
+                        }
+                    } catch (Throwable ignored) {}
+
+                    return new ActionResult(true, count, "Copied description for " + count + " items");
 
                 case "setDateFromFilename":
-                    // Parse date patterns like 20261002_143022 or 2026-10-02
                     Pattern p1 = Pattern.compile("(\\d{4})[_-]?(\\d{2})[_-]?(\\d{2})[_-]?(\\d{2})?(\\d{2})?(\\d{2})?");
                     SimpleDateFormat sdf = new SimpleDateFormat("yyyyMMddHHmmss", Locale.US);
                     for (MediaItem it : items) {
@@ -1205,26 +1769,32 @@ public class StorageScanner {
                                 if (parsed != null) {
                                     ContentValues cv = new ContentValues();
                                     cv.put("capture_timestamp", parsed.getTime());
-                                    count += db.update("remote_media", cv, "dedup_key = ?", new String[]{it.dedupKey});
+                                    db.update("remote_media", cv, "dedup_key = ?", new String[]{it.dedupKey});
                                     if (hasTable(db, "media")) db.update("media", cv, "dedup_key = ?", new String[]{it.dedupKey});
                                     if (hasTable(db, "local_media")) db.update("local_media", cv, "dedup_key = ?", new String[]{it.dedupKey});
                                 }
                             } catch (Exception ignored) {}
                         }
                     }
-                    break;
+                    db.setTransactionSuccessful();
+                    db.endTransaction();
+                    try { db.close(); db = null; } catch (Throwable ignored) {}
+
+                    triggerOnlineSync(context, account.accountId);
+
+                    try {
+                        if (context != null) {
+                            ContentResolver cr = context.getContentResolver();
+                            cr.notifyChange(Uri.parse("content://GPhotos/all_photos"), null);
+                        }
+                    } catch (Throwable ignored) {}
+
+                    return new ActionResult(true, count, "Updated date from filename for " + count + " items");
 
                 default:
                     db.endTransaction();
                     return new ActionResult(false, 0, "Action " + actionId + " not supported directly");
             }
-
-            db.setTransactionSuccessful();
-            db.endTransaction();
-
-
-
-            return new ActionResult(true, count, "Successfully processed " + count + " items for " + actionId);
         } catch (Throwable t) {
             Logger.printException(() -> "Error executing database action " + actionId, t);
             if (db != null && db.inTransaction()) {
