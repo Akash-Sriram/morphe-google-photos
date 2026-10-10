@@ -8,6 +8,7 @@ set -e
 PROJECT_DIR="/mnt/WindowsDrive/Users/akash/Downloads/Project/Morphe"
 FAST_CACHE_DIR="$HOME/.cache/morphe-fast-build"
 CLI_JAR="$PROJECT_DIR/morphe-desktop-1.15.1-dev.7-all.jar"
+KEYSTORE_FILE="$PROJECT_DIR/Morphe.keystore"
 STOCK_APK="$PROJECT_DIR/google.photos_7.96.0.apk"
 if [ ! -f "$STOCK_APK" ] && [ -f "$PROJECT_DIR/com.google.android.apps.photos_7.95.0.apk" ]; then
     STOCK_APK="$PROJECT_DIR/com.google.android.apps.photos_7.95.0.apk"
@@ -151,13 +152,18 @@ fi
 echo "🧩 [3/4] Patching Google Photos APK on native ext4..."
 PATCH_START=$(date +%s)
 
-# Sync stock APK and CLI Jar if needed (only copies if updated)
+# Sync stock APK, CLI Jar and Keystore if needed (only copies if updated)
 rsync -u "$STOCK_APK" "$FAST_CACHE_DIR/stock.apk"
 rsync -u "$CLI_JAR" "$FAST_CACHE_DIR/morphe-desktop.jar"
+rsync -u "$KEYSTORE_FILE" "$FAST_CACHE_DIR/Morphe.keystore"
 
     PATCH_ARGS=(
         --patches="$MPP_FILE"
         --exclusive
+        --keystore="$FAST_CACHE_DIR/Morphe.keystore"
+        --keystore-password=""
+        --keystore-entry-alias="Morphe"
+        --keystore-entry-password="Morphe"
         -e "Account avatar"
         -e "Enable DCIM folders backup control"
         -e "Enable Phenotype flag manager"
@@ -213,6 +219,7 @@ if [ "$DO_INSTALL" = true ]; then
     adb install -r -d "$OUTPUT_APK"
     echo "🚀 Launching $APP_PKG..."
     adb shell am force-stop "$APP_PKG" || true
-    adb shell am start -n "$APP_PKG/com.google.android.apps.photos.home.HomeActivity" || true
+    adb shell am start -n "$APP_PKG/com.google.android.apps.photos.home.HomeActivity" || \
+        adb shell am start -a android.intent.action.MAIN -c android.intent.category.LAUNCHER -p "$APP_PKG" || true
     echo "✅ App launched on device."
 fi

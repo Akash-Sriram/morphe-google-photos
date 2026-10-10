@@ -128,6 +128,7 @@ public final class PhenotypeFlagManager {
         public static final int TYPE_DELETE = 18;
         public static final int TYPE_RESTART = 19;
         public static final int TYPE_CHECK = 20;
+        public static final int TYPE_TOOLKIT = 21;
 
         private final int type;
         private final Paint strokePaint;
@@ -356,6 +357,21 @@ public final class PhenotypeFlagManager {
                     canvas.drawPath(p, strokePaint);
                     break;
                 }
+                case TYPE_TOOLKIT: {
+                    // Wrench / Toolkit icon
+                    Path wrench = new Path();
+                    wrench.moveTo(w * 0.68f, h * 0.22f);
+                    wrench.lineTo(w * 0.78f, h * 0.32f);
+                    wrench.lineTo(w * 0.68f, h * 0.42f);
+                    wrench.lineTo(w * 0.38f, h * 0.72f);
+                    wrench.lineTo(w * 0.28f, h * 0.62f);
+                    wrench.lineTo(w * 0.58f, h * 0.32f);
+                    wrench.close();
+                    canvas.drawPath(wrench, strokePaint);
+                    canvas.drawLine(w * 0.28f, h * 0.62f, w * 0.22f, h * 0.68f, strokePaint);
+                    canvas.drawCircle(w * 0.74f, h * 0.26f, Math.min(w, h) * 0.08f, fillPaint);
+                    break;
+                }
             }
             canvas.restore();
         }
@@ -563,7 +579,7 @@ public final class PhenotypeFlagManager {
                             if (content != null && content.findViewWithTag(SETTINGS_PILL_TAG) == null) {
                                 LinearLayout pill = createFloatingPill(activity);
                                 content.addView(pill);
-                                Logger.printInfo(() -> "Photos Flags floating pill attached to SettingsActivity");
+                                Logger.printInfo(() -> "Photos Flags floating pill dock attached to SettingsActivity");
                             }
                         } catch (Throwable t) {
                             Logger.printException(() -> "Error attaching Photos Flags pill", t);
@@ -603,13 +619,15 @@ public final class PhenotypeFlagManager {
         bgDock.setStroke((int) (1 * density), theme.outline);
         dock.setBackground(bgDock);
 
+        int itemPadH = (int) (14 * density);
+        int iconSize = (int) (20 * density);
+
         // Segment 1: Flags
         LinearLayout itemFlags = new LinearLayout(activity);
         itemFlags.setOrientation(LinearLayout.HORIZONTAL);
         itemFlags.setGravity(Gravity.CENTER);
         itemFlags.setClickable(true);
         itemFlags.setFocusable(true);
-        int itemPadH = (int) (18 * density);
         itemFlags.setPadding(itemPadH, 0, itemPadH, 0);
         LinearLayout.LayoutParams lpFlags = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT,
@@ -624,30 +642,73 @@ public final class PhenotypeFlagManager {
 
         ImageView iconFlags = new ImageView(activity);
         iconFlags.setImageDrawable(new MaterialVectorDrawable(MaterialVectorDrawable.TYPE_TUNE, theme.onPrimaryContainer));
-        int iconSize = (int) (20 * density);
         LinearLayout.LayoutParams icLp1 = new LinearLayout.LayoutParams(iconSize, iconSize);
-        icLp1.setMargins(0, 0, (int) (8 * density), 0);
+        icLp1.setMargins(0, 0, (int) (6 * density), 0);
         iconFlags.setLayoutParams(icLp1);
         itemFlags.addView(iconFlags);
 
         TextView labelFlags = new TextView(activity);
         labelFlags.setText("Flags");
-        labelFlags.setTextSize(14f);
+        labelFlags.setTextSize(13.5f);
         labelFlags.setTextColor(theme.onPrimaryContainer);
         labelFlags.setTypeface(null, Typeface.BOLD);
         itemFlags.addView(labelFlags);
         itemFlags.setOnClickListener(v -> showFlagManagerDialog(activity));
         dock.addView(itemFlags);
 
-        // Divider line
-        View divider = new View(activity);
-        divider.setBackgroundColor(theme.outline);
-        LinearLayout.LayoutParams divLp = new LinearLayout.LayoutParams((int) (1 * density), (int) (22 * density));
-        divLp.setMargins((int) (4 * density), 0, (int) (4 * density), 0);
-        divider.setLayoutParams(divLp);
-        dock.addView(divider);
+        // Divider 1
+        View divider1 = new View(activity);
+        divider1.setBackgroundColor(theme.outline);
+        LinearLayout.LayoutParams divLp1 = new LinearLayout.LayoutParams((int) (1 * density), (int) (20 * density));
+        divLp1.setMargins((int) (2 * density), 0, (int) (2 * density), 0);
+        divider1.setLayoutParams(divLp1);
+        dock.addView(divider1);
 
-        // Segment 2: Logs
+        // Segment 2: Toolkit (in between Flags and Logs)
+        LinearLayout itemToolkit = new LinearLayout(activity);
+        itemToolkit.setOrientation(LinearLayout.HORIZONTAL);
+        itemToolkit.setGravity(Gravity.CENTER);
+        itemToolkit.setClickable(true);
+        itemToolkit.setFocusable(true);
+        itemToolkit.setPadding(itemPadH, 0, itemPadH, 0);
+        LinearLayout.LayoutParams lpToolkit = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.MATCH_PARENT
+        );
+        itemToolkit.setLayoutParams(lpToolkit);
+
+        GradientDrawable bgToolkit = new GradientDrawable();
+        bgToolkit.setCornerRadius(22 * density);
+        bgToolkit.setColor(Color.TRANSPARENT);
+        itemToolkit.setBackground(bgToolkit);
+
+        ImageView iconToolkit = new ImageView(activity);
+        iconToolkit.setImageDrawable(new MaterialVectorDrawable(MaterialVectorDrawable.TYPE_TOOLKIT, theme.textPrimary));
+        LinearLayout.LayoutParams icLpToolkit = new LinearLayout.LayoutParams(iconSize, iconSize);
+        icLpToolkit.setMargins(0, 0, (int) (6 * density), 0);
+        iconToolkit.setLayoutParams(icLpToolkit);
+        itemToolkit.addView(iconToolkit);
+
+        TextView labelToolkit = new TextView(activity);
+        labelToolkit.setText("Toolkit");
+        labelToolkit.setTextSize(13.5f);
+        labelToolkit.setTextColor(theme.textPrimary);
+        labelToolkit.setTypeface(null, Typeface.BOLD);
+        itemToolkit.addView(labelToolkit);
+        itemToolkit.setOnClickListener(v -> {
+            app.morphe.extension.shared.patches.toolkit.NativeToolkitDialog.show(activity);
+        });
+        dock.addView(itemToolkit);
+
+        // Divider 2
+        View divider2 = new View(activity);
+        divider2.setBackgroundColor(theme.outline);
+        LinearLayout.LayoutParams divLp2 = new LinearLayout.LayoutParams((int) (1 * density), (int) (20 * density));
+        divLp2.setMargins((int) (2 * density), 0, (int) (2 * density), 0);
+        divider2.setLayoutParams(divLp2);
+        dock.addView(divider2);
+
+        // Segment 3: Logs
         LinearLayout itemLogs = new LinearLayout(activity);
         itemLogs.setOrientation(LinearLayout.HORIZONTAL);
         itemLogs.setGravity(Gravity.CENTER);
@@ -668,13 +729,13 @@ public final class PhenotypeFlagManager {
         ImageView iconLogs = new ImageView(activity);
         iconLogs.setImageDrawable(new MaterialVectorDrawable(MaterialVectorDrawable.TYPE_LOGS, theme.textPrimary));
         LinearLayout.LayoutParams icLp2 = new LinearLayout.LayoutParams(iconSize, iconSize);
-        icLp2.setMargins(0, 0, (int) (8 * density), 0);
+        icLp2.setMargins(0, 0, (int) (6 * density), 0);
         iconLogs.setLayoutParams(icLp2);
         itemLogs.addView(iconLogs);
 
         TextView labelLogs = new TextView(activity);
         labelLogs.setText("Logs");
-        labelLogs.setTextSize(14f);
+        labelLogs.setTextSize(13.5f);
         labelLogs.setTextColor(theme.textPrimary);
         labelLogs.setTypeface(null, Typeface.BOLD);
         itemLogs.addView(labelLogs);
