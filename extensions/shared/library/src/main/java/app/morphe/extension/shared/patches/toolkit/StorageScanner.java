@@ -1061,18 +1061,43 @@ public class StorageScanner {
             Class<?> bxueClass = Class.forName("bxue");
             Method vMethod = bxueClass.getMethod("v", Context.class, bxtyClass);
 
-            // 1. Online Google Server envelope deletion (DeleteSharedCollectionTask)
+            // 1. Official Google Photos album removal: RemoveCollectionProvider$RemoveCollectionTask
+            // using MediaCollection Lnys(accountId, optionalKey, wrr.a)
+            boolean dispatchedOfficialRemove = false;
             try {
-                Class<?> delTaskClass = Class.forName("com.google.android.apps.photos.album.removealbum.DeleteSharedCollectionTask");
-                Constructor<?> delCtor = delTaskClass.getConstructor(int.class, ahnrClass, boolean.class, boolean.class);
-                Object delTask = delCtor.newInstance(accountId, optionalKey, true, false);
-                vMethod.invoke(null, context, delTask);
-                Logger.printInfo(() -> "Successfully scheduled DeleteSharedCollectionTask for online deletion of " + albumMediaKey);
-            } catch (Throwable tOnline) {
-                Logger.printException(() -> "Error calling DeleteSharedCollectionTask", tOnline);
+                Class<?> wrrClass = Class.forName("wrr");
+                Object emptyFeatures = wrrClass.getField("a").get(null);
+
+                Class<?> nysClass = Class.forName("nys");
+                Constructor<?> nysCtor = nysClass.getConstructor(int.class, ahnrClass, wrrClass);
+                Object collection = nysCtor.newInstance(accountId, optionalKey, emptyFeatures);
+
+                Class<?> bwpgClass = Class.forName("bwpg");
+                Class<?> removeTaskClass = Class.forName("com.google.android.apps.photos.album.removealbum.RemoveCollectionProvider$RemoveCollectionTask");
+                Constructor<?> removeCtor = removeTaskClass.getConstructor(int.class, bwpgClass);
+                Object removeTask = removeCtor.newInstance(accountId, collection);
+
+                vMethod.invoke(null, context, removeTask);
+                Logger.printInfo(() -> "Successfully scheduled RemoveCollectionProvider$RemoveCollectionTask for online deletion of " + albumMediaKey);
+                dispatchedOfficialRemove = true;
+            } catch (Throwable tRemove) {
+                Logger.printException(() -> "Error calling RemoveCollectionProvider$RemoveCollectionTask", tRemove);
             }
 
-            // 2. Local optimistic database deletion (RemoteOptimisticallyDeleteCollectionTask)
+            // 2. If it is a shared envelope, DeleteSharedCollectionTask
+            if (!dispatchedOfficialRemove) {
+                try {
+                    Class<?> delTaskClass = Class.forName("com.google.android.apps.photos.album.removealbum.DeleteSharedCollectionTask");
+                    Constructor<?> delCtor = delTaskClass.getConstructor(int.class, ahnrClass, boolean.class, boolean.class);
+                    Object delTask = delCtor.newInstance(accountId, optionalKey, true, false);
+                    vMethod.invoke(null, context, delTask);
+                    Logger.printInfo(() -> "Successfully scheduled DeleteSharedCollectionTask for online deletion of " + albumMediaKey);
+                } catch (Throwable tOnline) {
+                    Logger.printException(() -> "Error calling DeleteSharedCollectionTask", tOnline);
+                }
+            }
+
+            // 3. Local optimistic database deletion (RemoteOptimisticallyDeleteCollectionTask)
             try {
                 Class<?> optTaskClass = Class.forName("com.google.android.apps.photos.album.removealbum.RemoteOptimisticallyDeleteCollectionTask");
                 Constructor<?> optCtor = optTaskClass.getConstructor(int.class, String.class);
@@ -1090,33 +1115,47 @@ public class StorageScanner {
         return false;
     }
 
-    private static List<String> resolveRemoteMediaKeys(AccountInfo account, List<MediaItem> items) {
+    private static List<String> resolveRemoteMediaKeys(Context context, int accountId, List<MediaItem> items) {
         List<String> mediaKeys = new ArrayList<>();
         if (items == null || items.isEmpty()) return mediaKeys;
 
         SQLiteDatabase db = null;
         try {
-            if (account != null && account.dbPath != null) {
-                File f = new File(account.dbPath);
-                if (f.exists()) {
-                    db = SQLiteDatabase.openDatabase(f.getAbsolutePath(), null, SQLiteDatabase.OPEN_READONLY);
-                }
+            File f = context != null ? context.getDatabasePath("gphotos" + accountId + ".db") : null;
+            if (f != null && f.exists()) {
+                db = SQLiteDatabase.openDatabase(f.getAbsolutePath(), null, SQLiteDatabase.OPEN_READONLY);
             }
         } catch (Throwable ignored) {}
 
         for (MediaItem it : items) {
-            String key = it.mediaKey;
-            if (key == null || key.trim().isEmpty() || key.startsWith("local:")) {
-                if (db != null && it.dedupKey != null) {
-                    try (Cursor c = db.rawQuery("SELECT COALESCE(NULLIF(remote_media_key, ''), media_key) FROM remote_media WHERE dedup_key = ? LIMIT 1", new String[]{it.dedupKey})) {
-                        if (c != null && c.moveToFirst()) {
-                            String rk = c.getString(0);
-                            if (rk != null && !rk.trim().isEmpty() && !rk.startsWith("local:")) {
-                                key = rk;
-                            }
+            String key = null;
+            // 1. Look up remote_media table first by dedupKey to get authentic library remote_media_key
+            if (db != null && it.dedupKey != null && !it.dedupKey.trim().isEmpty()) {
+                try (Cursor c = db.rawQuery("SELECT COALESCE(NULLIF(remote_media_key, ''), media_key) FROM remote_media WHERE dedup_key = ? LIMIT 1", new String[]{it.dedupKey})) {
+                    if (c != null && c.moveToFirst()) {
+                        String rk = c.getString(0);
+                        if (rk != null && !rk.trim().isEmpty() && !rk.startsWith("local:")) {
+                            key = rk;
                         }
-                    } catch (Throwable ignored) {}
+                    }
+                } catch (Throwable ignored) {}
+            }
+            // 2. If not found in remote_media, check item's own mediaKey
+            if (key == null || key.startsWith("local:")) {
+                if (it.mediaKey != null && !it.mediaKey.trim().isEmpty() && !it.mediaKey.startsWith("local:")) {
+                    key = it.mediaKey;
                 }
+            }
+            // 3. If still local or null, check shared_media
+            if ((key == null || key.startsWith("local:")) && db != null && it.dedupKey != null) {
+                try (Cursor c = db.rawQuery("SELECT remote_media_key FROM shared_media WHERE dedup_key = ? AND remote_media_key IS NOT NULL AND remote_media_key != '' AND remote_media_key NOT LIKE 'local:%' LIMIT 1", new String[]{it.dedupKey})) {
+                    if (c != null && c.moveToFirst()) {
+                        String rk = c.getString(0);
+                        if (rk != null && !rk.trim().isEmpty()) {
+                            key = rk;
+                        }
+                    }
+                } catch (Throwable ignored) {}
             }
             if (key != null && !key.trim().isEmpty() && !key.startsWith("local:")) {
                 mediaKeys.add(key);
@@ -1127,6 +1166,13 @@ public class StorageScanner {
             try { db.close(); } catch (Throwable ignored) {}
         }
         return mediaKeys;
+    }
+
+    private static List<String> resolveRemoteMediaKeys(AccountInfo account, List<MediaItem> items) {
+        if (items == null || items.isEmpty()) return new ArrayList<>();
+        Context ctx = app.morphe.extension.shared.Utils.getContext();
+        int accId = account != null ? account.accountId : 0;
+        return resolveRemoteMediaKeys(ctx, accId, items);
     }
 
     private static Object createMediaCollectionForKeys(int accountId, List<String> mediaKeys) {
@@ -1211,8 +1257,11 @@ public class StorageScanner {
     private static List<?> loadCoreMediaItems(Context context, int accountId, List<MediaItem> items) {
         List<Object> result = new ArrayList<>();
         if (context == null || items == null || items.isEmpty()) return result;
-        List<String> keys = resolveRemoteMediaKeys(new AccountInfo(accountId, null, null), items);
-        if (keys.isEmpty()) return result;
+        List<String> keys = resolveRemoteMediaKeys(context, accountId, items);
+        if (keys.isEmpty()) {
+            Logger.printInfo(() -> "resolveRemoteMediaKeys found 0 remote keys for account " + accountId);
+            return result;
+        }
 
         try {
             Object mediaCollection = createMediaCollectionForKeys(accountId, keys);
@@ -1239,6 +1288,7 @@ public class StorageScanner {
             if (loaded != null) {
                 result.addAll(loaded);
             }
+            Logger.printInfo(() -> "Loaded " + result.size() + " core media items for " + keys.size() + " keys");
         } catch (Throwable t) {
             Logger.printException(() -> "Error loading core media items (bwpf)", t);
         }
@@ -1249,7 +1299,10 @@ public class StorageScanner {
         if (context == null || items == null || items.isEmpty()) return false;
         try {
             List<?> coreItems = loadCoreMediaItems(context, accountId, items);
-            if (coreItems.isEmpty()) return false;
+            if (coreItems.isEmpty()) {
+                Logger.printInfo(() -> "executeOnlineTrashTask: 0 core media items loaded, cannot dispatch MoveToTrashActionWrapper");
+                return false;
+            }
 
             Class<?> bdkqClass = Class.forName("bdkq");
             Constructor<?> bdkqCtor = bdkqClass.getConstructor(Collection.class);
@@ -1267,10 +1320,18 @@ public class StorageScanner {
             Constructor<?> wrapperCtor = wrapperClass.getConstructor(int.class, bdkqClass, lakjzClass, cjizClass);
             Object task = wrapperCtor.newInstance(accountId, mediaGroup, targetMode, cjizSource);
 
+            try {
+                Bundle taskBundle = new Bundle();
+                taskBundle.putParcelable("mediagroup", (Parcelable) mediaGroup);
+                Field sField = Class.forName("bxty").getField("s");
+                sField.set(task, taskBundle);
+            } catch (Throwable ignored) {}
+
             Class<?> bxtyClass = Class.forName("bxty");
             Class<?> bxueClass = Class.forName("bxue");
             Method runMethod = bxueClass.getMethod("v", Context.class, bxtyClass);
             runMethod.invoke(null, context, task);
+            Logger.printInfo(() -> "Successfully dispatched MoveToTrashActionWrapper with " + coreItems.size() + " core media items");
             return true;
         } catch (Throwable t) {
             Logger.printException(() -> "Error invoking MoveToTrashActionWrapper", t);
