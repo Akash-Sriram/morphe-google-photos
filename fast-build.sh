@@ -160,11 +160,11 @@ rsync -u "$KEYSTORE_FILE" "$FAST_CACHE_DIR/Morphe.keystore"
     PATCH_ARGS=(
         --patches="$MPP_FILE"
         --exclusive
+        --continue-on-error
         --keystore="$FAST_CACHE_DIR/Morphe.keystore"
         --keystore-password=""
         --keystore-entry-alias="Morphe"
         --keystore-entry-password="Morphe"
-        -e "Account avatar"
         -e "Enable DCIM folders backup control"
         -e "Enable Phenotype flag manager"
         -e "Fix memory style font loading"

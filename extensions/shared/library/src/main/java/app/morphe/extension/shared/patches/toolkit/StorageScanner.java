@@ -843,32 +843,41 @@ public class StorageScanner {
     }
 
     // ─────────────────────────────────────────────────────────────────────────
-    // Perceptual Hashing & Similarity Clustering (1:1 with user.js)
+    // Perceptual Hashing & Similarity Clustering
+    // Uses dHash (difference hash) — robust to brightness/contrast/filter edits.
     // ─────────────────────────────────────────────────────────────────────────
+
+    /**
+     * Difference Hash (dHash) — 9×8 grid → 64 horizontal gradient bits.
+     * Much more robust than aHash for filter-edited duplicates:
+     * - Brightness/contrast changes → same gradient direction → same hash
+     * - Color filters → grayscale conversion removes color → same hash
+     * - Slight crops → most bits survive → high similarity
+     * - Heavy crops or rotations → lower similarity (expected)
+     */
     public static long calculateAverageHash(Bitmap bitmap, int hashSize) {
         if (bitmap == null || bitmap.isRecycled()) return 0;
         try {
-            int size = Math.min(8, Math.max(4, hashSize)); // 8x8 fits cleanly in a 64-bit long
-            Bitmap scaled = Bitmap.createScaledBitmap(bitmap, size, size, true);
-            int total = size * size;
-            int[] pixels = new int[total];
-            scaled.getPixels(pixels, 0, size, 0, 0, size, size);
+            // dHash: 9 wide x 8 tall = 64 bits (compare adjacent pixels per row)
+            int cols = 9;
+            int rows = 8;
+            Bitmap scaled = Bitmap.createScaledBitmap(bitmap, cols, rows, true);
+            int[] pixels = new int[cols * rows];
+            scaled.getPixels(pixels, 0, cols, 0, 0, cols, rows);
             if (scaled != bitmap) scaled.recycle();
 
-            long sum = 0;
-            int[] grays = new int[total];
-            for (int i = 0; i < total; i++) {
-                int c = pixels[i];
-                int gray = (Color.red(c) * 299 + Color.green(c) * 587 + Color.blue(c) * 114) / 1000;
-                grays[i] = gray;
-                sum += gray;
-            }
-            int avg = (int) (sum / total);
-
             long hash = 0;
-            for (int i = 0; i < total; i++) {
-                if (grays[i] >= avg) {
-                    hash |= (1L << i);
+            int bit = 0;
+            for (int r = 0; r < rows; r++) {
+                for (int c = 0; c < cols - 1; c++) {
+                    int left  = pixels[r * cols + c];
+                    int right = pixels[r * cols + c + 1];
+                    int gL = (Color.red(left)  * 299 + Color.green(left)  * 587 + Color.blue(left)  * 114) / 1000;
+                    int gR = (Color.red(right) * 299 + Color.green(right) * 587 + Color.blue(right) * 114) / 1000;
+                    if (gL < gR) {
+                        hash |= (1L << bit);
+                    }
+                    bit++;
                 }
             }
             return hash;
@@ -878,7 +887,8 @@ public class StorageScanner {
     }
 
     public static float calculateSimilarity(long hashA, long hashB, int hashSize) {
-        int totalBits = Math.min(64, hashSize * hashSize);
+        // dHash always produces 64 bits
+        int totalBits = 64;
         int distance = Long.bitCount(hashA ^ hashB);
         return 1.0f - ((float) distance / totalBits);
     }
@@ -889,24 +899,33 @@ public class StorageScanner {
 
         for (MediaItem item : items) {
             if (item.perceptualHash == 0) continue;
-            boolean added = false;
-            for (List<MediaItem> cluster : clusters) {
-                long clusterHash = cluster.get(0).perceptualHash;
-                float sim = calculateSimilarity(item.perceptualHash, clusterHash, hashSize);
-                if (sim >= threshold) {
-                    cluster.add(item);
-                    added = true;
-                    break;
+            float bestSim = 0f;
+            int bestClusterIdx = -1;
+
+            // Compare against ALL members in each cluster — pick best matching cluster
+            for (int ci = 0; ci < clusters.size(); ci++) {
+                List<MediaItem> cluster = clusters.get(ci);
+                float maxSim = 0f;
+                for (MediaItem member : cluster) {
+                    float sim = calculateSimilarity(item.perceptualHash, member.perceptualHash, hashSize);
+                    if (sim > maxSim) maxSim = sim;
+                }
+                if (maxSim >= threshold && maxSim > bestSim) {
+                    bestSim = maxSim;
+                    bestClusterIdx = ci;
                 }
             }
-            if (!added) {
+
+            if (bestClusterIdx >= 0) {
+                clusters.get(bestClusterIdx).add(item);
+            } else {
                 List<MediaItem> newCluster = new ArrayList<>();
                 newCluster.add(item);
                 clusters.add(newCluster);
             }
         }
 
-        // Only return clusters that have 2 or more similar items
+        // Only return clusters with 2+ similar items
         List<List<MediaItem>> result = new ArrayList<>();
         int clusterIndex = 1;
         for (List<MediaItem> c : clusters) {
