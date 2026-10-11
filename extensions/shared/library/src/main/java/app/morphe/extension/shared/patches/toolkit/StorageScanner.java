@@ -1059,56 +1059,95 @@ public class StorageScanner {
 
             Class<?> bxtyClass = Class.forName("bxty");
             Class<?> bxueClass = Class.forName("bxue");
-            Method vMethod = bxueClass.getMethod("v", Context.class, bxtyClass);
+            Method fMethod = bxueClass.getMethod("f", Context.class, bxtyClass);
 
-            // 1. Official Google Photos album removal: RemoveCollectionProvider$RemoveCollectionTask
-            // using MediaCollection Lnys(accountId, optionalKey, wrr.a)
-            boolean dispatchedOfficialRemove = false;
+            // Determine whether album is a shared envelope (envelopes table) or private album (collections table)
+            boolean isSharedEnvelope = false;
+            boolean isOwner = true;
             try {
-                Class<?> wrrClass = Class.forName("wrr");
-                Object emptyFeatures = wrrClass.getField("a").get(null);
+                File f = context.getDatabasePath("gphotos" + accountId + ".db");
+                if (f != null && f.exists()) {
+                    SQLiteDatabase checkDb = SQLiteDatabase.openDatabase(f.getAbsolutePath(), null, SQLiteDatabase.OPEN_READONLY);
+                    try (Cursor c = checkDb.rawQuery("SELECT owner_actor_id, viewer_actor_id FROM envelopes WHERE media_key = ? LIMIT 1", new String[]{albumMediaKey})) {
+                        if (c != null && c.moveToFirst()) {
+                            isSharedEnvelope = true;
+                            String owner = c.getString(0);
+                            String viewer = c.getString(1);
+                            if (owner != null && viewer != null) {
+                                isOwner = owner.equals(viewer);
+                            }
+                        }
+                    } catch (Throwable ignored) {}
+                    try { checkDb.close(); } catch (Throwable ignored) {}
+                }
+            } catch (Throwable ignored) {}
 
-                Class<?> nysClass = Class.forName("nys");
-                Constructor<?> nysCtor = nysClass.getConstructor(int.class, ahnrClass, wrrClass);
-                Object collection = nysCtor.newInstance(accountId, optionalKey, emptyFeatures);
-
-                Class<?> bwpgClass = Class.forName("bwpg");
-                Class<?> removeTaskClass = Class.forName("com.google.android.apps.photos.album.removealbum.RemoveCollectionProvider$RemoveCollectionTask");
-                Constructor<?> removeCtor = removeTaskClass.getConstructor(int.class, bwpgClass);
-                Object removeTask = removeCtor.newInstance(accountId, collection);
-
-                vMethod.invoke(null, context, removeTask);
-                Logger.printInfo(() -> "Successfully scheduled RemoveCollectionProvider$RemoveCollectionTask for online deletion of " + albumMediaKey);
-                dispatchedOfficialRemove = true;
-            } catch (Throwable tRemove) {
-                Logger.printException(() -> "Error calling RemoveCollectionProvider$RemoveCollectionTask", tRemove);
-            }
-
-            // 2. If it is a shared envelope, DeleteSharedCollectionTask
-            if (!dispatchedOfficialRemove) {
+            boolean success = false;
+            if (isSharedEnvelope) {
+                // 1. Shared Envelope: invoke official DeleteSharedCollectionTask synchronously
+                // Constructor: DeleteSharedCollectionTask(int accountId, ahnr collectionMediaKey, boolean isLeave, boolean isDelete)
                 try {
+                    boolean isLeave = !isOwner;
+                    boolean isDelete = isOwner;
                     Class<?> delTaskClass = Class.forName("com.google.android.apps.photos.album.removealbum.DeleteSharedCollectionTask");
                     Constructor<?> delCtor = delTaskClass.getConstructor(int.class, ahnrClass, boolean.class, boolean.class);
-                    Object delTask = delCtor.newInstance(accountId, optionalKey, true, false);
-                    vMethod.invoke(null, context, delTask);
-                    Logger.printInfo(() -> "Successfully scheduled DeleteSharedCollectionTask for online deletion of " + albumMediaKey);
-                } catch (Throwable tOnline) {
-                    Logger.printException(() -> "Error calling DeleteSharedCollectionTask", tOnline);
+                    Object delTask = delCtor.newInstance(accountId, optionalKey, isLeave, isDelete);
+                    Object res = fMethod.invoke(null, context, delTask);
+                    if (res != null) {
+                        try {
+                            int statusCode = res.getClass().getField("d").getInt(res);
+                            Logger.printInfo(() -> "DeleteSharedCollectionTask synchronous result status: " + statusCode);
+                            if (statusCode == 200) success = true;
+                        } catch (Throwable ignored) {}
+                    }
+                    final boolean fSuccess = success;
+                    Logger.printInfo(() -> "Dispatched DeleteSharedCollectionTask for " + albumMediaKey + " (isLeave=" + isLeave + ", isDelete=" + isDelete + "), success=" + fSuccess);
+                } catch (Throwable tDel) {
+                    Logger.printException(() -> "Error calling DeleteSharedCollectionTask", tDel);
+                }
+            } else {
+                // 2. Private Album: invoke official mne.a (RemoveCollectionProvider)
+                try {
+                    Class<?> bzoqClass = Class.forName("bzoq");
+                    Method eMethod = bzoqClass.getMethod("e", Context.class, Class.class);
+                    Class<?> mneClass = Class.forName("mne");
+                    Object mneInstance = eMethod.invoke(null, context, mneClass);
+                    Method aMethod = mneClass.getMethod("a", int.class, ahnrClass);
+                    aMethod.invoke(mneInstance, accountId, optionalKey);
+                    Logger.printInfo(() -> "Successfully invoked mne.a for private album " + albumMediaKey);
+                    success = true;
+                } catch (Throwable tMne) {
+                    Logger.printException(() -> "Error calling mne.a", tMne);
+                }
+
+                // Fallback to RemoveCollectionProvider$RemoveCollectionTask directly if mne.a failed
+                if (!success) {
+                    try {
+                        Class<?> wrrClass = Class.forName("wrr");
+                        Object emptyFeatures = wrrClass.getField("a").get(null);
+                        Class<?> nysClass = Class.forName("nys");
+                        Constructor<?> nysCtor = nysClass.getConstructor(int.class, ahnrClass, wrrClass);
+                        Object collection = nysCtor.newInstance(accountId, optionalKey, emptyFeatures);
+
+                        Class<?> bwpgClass = Class.forName("bwpg");
+                        Class<?> removeTaskClass = Class.forName("com.google.android.apps.photos.album.removealbum.RemoveCollectionProvider$RemoveCollectionTask");
+                        Constructor<?> removeCtor = removeTaskClass.getConstructor(int.class, bwpgClass);
+                        Object removeTask = removeCtor.newInstance(accountId, collection);
+
+                        Object res = fMethod.invoke(null, context, removeTask);
+                        if (res != null) {
+                            try {
+                                int statusCode = res.getClass().getField("d").getInt(res);
+                                if (statusCode == 200) success = true;
+                            } catch (Throwable ignored) {}
+                        }
+                    } catch (Throwable tRemove) {
+                        Logger.printException(() -> "Error calling RemoveCollectionProvider$RemoveCollectionTask", tRemove);
+                    }
                 }
             }
 
-            // 3. Local optimistic database deletion (RemoteOptimisticallyDeleteCollectionTask)
-            try {
-                Class<?> optTaskClass = Class.forName("com.google.android.apps.photos.album.removealbum.RemoteOptimisticallyDeleteCollectionTask");
-                Constructor<?> optCtor = optTaskClass.getConstructor(int.class, String.class);
-                Object optTask = optCtor.newInstance(accountId, albumMediaKey);
-                vMethod.invoke(null, context, optTask);
-                Logger.printInfo(() -> "Successfully scheduled RemoteOptimisticallyDeleteCollectionTask for local deletion of " + albumMediaKey);
-            } catch (Throwable tOpt) {
-                Logger.printException(() -> "Error calling RemoteOptimisticallyDeleteCollectionTask", tOpt);
-            }
-
-            return true;
+            return success;
         } catch (Throwable t) {
             Logger.printException(() -> "Error in deleteCloudAlbum", t);
         }
@@ -1329,10 +1368,19 @@ public class StorageScanner {
 
             Class<?> bxtyClass = Class.forName("bxty");
             Class<?> bxueClass = Class.forName("bxue");
-            Method runMethod = bxueClass.getMethod("v", Context.class, bxtyClass);
-            runMethod.invoke(null, context, task);
-            Logger.printInfo(() -> "Successfully dispatched MoveToTrashActionWrapper with " + coreItems.size() + " core media items");
-            return true;
+            Method runMethod = bxueClass.getMethod("f", Context.class, bxtyClass);
+            Object res = runMethod.invoke(null, context, task);
+            boolean success = false;
+            if (res != null) {
+                try {
+                    int statusCode = res.getClass().getField("d").getInt(res);
+                    Logger.printInfo(() -> "MoveToTrashActionWrapper synchronous result status: " + statusCode);
+                    if (statusCode == 200) success = true;
+                } catch (Throwable ignored) {}
+            }
+            final boolean fSuccess = success;
+            Logger.printInfo(() -> "Executed MoveToTrashActionWrapper with " + coreItems.size() + " core media items, success=" + fSuccess);
+            return success;
         } catch (Throwable t) {
             Logger.printException(() -> "Error invoking MoveToTrashActionWrapper", t);
             return false;
@@ -1355,9 +1403,16 @@ public class StorageScanner {
 
             Class<?> bxtyClass = Class.forName("bxty");
             Class<?> bxueClass = Class.forName("bxue");
-            Method runMethod = bxueClass.getMethod("v", Context.class, bxtyClass);
-            runMethod.invoke(null, context, task);
-            return true;
+            Method runMethod = bxueClass.getMethod("f", Context.class, bxtyClass);
+            Object res = runMethod.invoke(null, context, task);
+            boolean success = false;
+            if (res != null) {
+                try {
+                    int statusCode = res.getClass().getField("d").getInt(res);
+                    if (statusCode == 200) success = true;
+                } catch (Throwable ignored) {}
+            }
+            return success;
         } catch (Throwable t) {
             Logger.printException(() -> "Error invoking RestoreActionTask", t);
             return false;
@@ -1377,9 +1432,16 @@ public class StorageScanner {
 
             Class<?> bxtyClass = Class.forName("bxty");
             Class<?> bxueClass = Class.forName("bxue");
-            Method runMethod = bxueClass.getMethod("v", Context.class, bxtyClass);
-            runMethod.invoke(null, context, task);
-            return true;
+            Method runMethod = bxueClass.getMethod("f", Context.class, bxtyClass);
+            Object res = runMethod.invoke(null, context, task);
+            boolean success = false;
+            if (res != null) {
+                try {
+                    int statusCode = res.getClass().getField("d").getInt(res);
+                    if (statusCode == 200) success = true;
+                } catch (Throwable ignored) {}
+            }
+            return success;
         } catch (Throwable t) {
             Logger.printException(() -> "Error invoking ArchiveTask", t);
             return false;
@@ -1401,9 +1463,16 @@ public class StorageScanner {
 
             Class<?> bxtyClass = Class.forName("bxty");
             Class<?> bxueClass = Class.forName("bxue");
-            Method runMethod = bxueClass.getMethod("v", Context.class, bxtyClass);
-            runMethod.invoke(null, context, task);
-            return true;
+            Method runMethod = bxueClass.getMethod("f", Context.class, bxtyClass);
+            Object res = runMethod.invoke(null, context, task);
+            boolean success = false;
+            if (res != null) {
+                try {
+                    int statusCode = res.getClass().getField("d").getInt(res);
+                    if (statusCode == 200) success = true;
+                } catch (Throwable ignored) {}
+            }
+            return success;
         } catch (Throwable t) {
             Logger.printException(() -> "Error invoking FavoritesTask", t);
             return false;
@@ -1419,11 +1488,17 @@ public class StorageScanner {
 
             Class<?> bxtyClass = Class.forName("bxty");
             Class<?> bxueClass = Class.forName("bxue");
-            Method runMethod = bxueClass.getMethod("n", Context.class, bxtyClass);
-            runMethod.invoke(null, context, syncTask);
-            Logger.printInfo(() -> "Successfully scheduled SyncActionQueueBlock for account " + accountId);
+            try {
+                Method fMethod = bxueClass.getMethod("f", Context.class, bxtyClass);
+                fMethod.invoke(null, context, syncTask);
+                Logger.printInfo(() -> "Successfully executed SyncActionQueueBlock synchronously for account " + accountId);
+            } catch (Throwable tSync) {
+                Method runMethod = bxueClass.getMethod("n", Context.class, bxtyClass);
+                runMethod.invoke(null, context, syncTask);
+                Logger.printInfo(() -> "Scheduled SyncActionQueueBlock asynchronously for account " + accountId);
+            }
         } catch (Throwable t) {
-            Logger.printException(() -> "Could not schedule SyncActionQueueBlock", t);
+            Logger.printException(() -> "Could not run SyncActionQueueBlock", t);
         }
     }
 
@@ -1463,6 +1538,76 @@ public class StorageScanner {
             return new ActionResult(true, added, "Successfully added " + added + " items to album");
         }
 
+        if ("toTrash".equals(actionId)) {
+            // 1. Invoke official Google Photos MoveToTrashActionWrapper synchronously FIRST
+            boolean dispatchedOnlineTrash = executeOnlineTrashTask(context, account.accountId, items);
+            Logger.printInfo(() -> "Executed official online trash task: " + dispatchedOnlineTrash);
+
+            // 2. Invoke official Google Photos DeleteSharedCollectionTask / mne synchronously SECOND while envelopes/collections are intact
+            int deletedAlbums = 0;
+            if (param != null && !param.trim().isEmpty()) {
+                String[] albumKeys = param.split(",");
+                for (String albKey : albumKeys) {
+                    String key = albKey.trim();
+                    if (key.isEmpty()) continue;
+                    boolean albSuccess = deleteCloudAlbum(context, account.accountId, key);
+                    Logger.printInfo(() -> "deleteCloudAlbum(" + key + ") result: " + albSuccess);
+                    deletedAlbums++;
+                }
+            }
+
+            // 3. Fallback for purely local items if online trash could not be dispatched
+            if (!dispatchedOnlineTrash && items != null && !items.isEmpty()) {
+                File dbFile = new File(account.dbPath);
+                if (dbFile.exists()) {
+                    SQLiteDatabase localDb = null;
+                    try {
+                        localDb = SQLiteDatabase.openDatabase(dbFile.getAbsolutePath(), null, SQLiteDatabase.OPEN_READWRITE | SQLiteDatabase.ENABLE_WRITE_AHEAD_LOGGING);
+                        localDb.beginTransaction();
+                        long now = System.currentTimeMillis();
+                        for (MediaItem it : items) {
+                            ContentValues cv = new ContentValues();
+                            cv.put("trash_timestamp", now);
+                            localDb.update("remote_media", cv, "dedup_key = ?", new String[]{it.dedupKey});
+                            if (hasTable(localDb, "media")) {
+                                ContentValues mCv = new ContentValues();
+                                mCv.put("trash_timestamp", now);
+                                mCv.put("is_deleted", 0);
+                                localDb.update("media", mCv, "dedup_key = ?", new String[]{it.dedupKey});
+                            }
+                            if (hasTable(localDb, "local_media")) localDb.update("local_media", cv, "dedup_key = ?", new String[]{it.dedupKey});
+                        }
+                        localDb.setTransactionSuccessful();
+                        localDb.endTransaction();
+                    } catch (Throwable tFallback) {
+                        Logger.printException(() -> "Error in local trash fallback", tFallback);
+                    } finally {
+                        if (localDb != null) {
+                            try { localDb.close(); } catch (Throwable ignored) {}
+                        }
+                    }
+                }
+            }
+
+            // 4. Trigger MetaSync & ActionQueue sync to flush to Google Photos servers
+            triggerOnlineSync(context, account.accountId);
+
+            try {
+                if (context != null) {
+                    ContentResolver cr = context.getContentResolver();
+                    cr.notifyChange(Uri.parse("content://GPhotos/trash"), null);
+                    cr.notifyChange(Uri.parse("content://GPhotos/all_photos"), null);
+                    cr.notifyChange(Uri.parse("content://GPhotos/collections"), null);
+                }
+            } catch (Throwable ignored) {}
+
+            int count = (items != null) ? items.size() : 0;
+            if (deletedAlbums > 0) {
+                return new ActionResult(true, count, "Moved " + count + " items to Trash & deleted " + deletedAlbums + " album(s)");
+            }
+            return new ActionResult(true, count, "Successfully moved " + count + " items to Trash");
+        }
+
         File dbFile = new File(account.dbPath);
         if (!dbFile.exists()) return new ActionResult(false, 0, "Database file not found");
 
@@ -1474,85 +1619,6 @@ public class StorageScanner {
 
             long now = System.currentTimeMillis();
             switch (actionId) {
-                case "toTrash":
-                    // 1. Invoke official Google Photos MoveToTrashActionWrapper / DeleteActionTask via TaskRunner
-                    boolean dispatchedOnlineTrash = executeOnlineTrashTask(context, account.accountId, items);
-                    Logger.printInfo(() -> "Dispatched official online trash task: " + dispatchedOnlineTrash);
-
-                    // 2. Perform optimistic local tombstone update
-                    if (items != null) {
-                        for (MediaItem it : items) {
-                            ContentValues cv = new ContentValues();
-                            cv.put("trash_timestamp", now);
-                            db.update("remote_media", cv, "dedup_key = ?", new String[]{it.dedupKey});
-                            if (hasTable(db, "media")) {
-                                ContentValues mCv = new ContentValues();
-                                mCv.put("trash_timestamp", now);
-                                mCv.put("is_deleted", 0);
-                                db.update("media", mCv, "dedup_key = ?", new String[]{it.dedupKey});
-                            }
-                            if (hasTable(db, "local_media")) db.update("local_media", cv, "dedup_key = ?", new String[]{it.dedupKey});
-                            if (hasTable(db, "shared_media")) {
-                                db.delete("shared_media", "dedup_key = ?", new String[]{it.dedupKey});
-                            }
-                            if (hasTable(db, "MediaTombstone")) {
-                                ContentValues mtCv = new ContentValues();
-                                mtCv.put("remoteMediaKey", it.mediaKey != null ? it.mediaKey : "");
-                                mtCv.put("timestamp", now);
-                                mtCv.put("dedupKey", it.dedupKey);
-                                db.insertWithOnConflict("MediaTombstone", null, mtCv, SQLiteDatabase.CONFLICT_IGNORE);
-                            }
-                        }
-                    }
-                    int deletedAlbums = 0;
-                    List<String> albumsToDelete = new ArrayList<>();
-                    if (param != null && !param.trim().isEmpty()) {
-                        String[] albumKeys = param.split(",");
-                        for (String albKey : albumKeys) {
-                            String key = albKey.trim();
-                            if (key.isEmpty()) continue;
-                            albumsToDelete.add(key);
-                            if (hasTable(db, "envelopes")) db.delete("envelopes", "media_key = ?", new String[]{key});
-                            if (hasTable(db, "collections")) db.delete("collections", "collection_media_key = ? OR associated_envelope_media_key = ?", new String[]{key, key});
-                            if (hasTable(db, "envelope_members")) db.delete("envelope_members", "envelope_media_key = ?", new String[]{key});
-                            if (hasTable(db, "shared_media")) db.delete("shared_media", "collection_id = ?", new String[]{key});
-                            if (hasTable(db, "item_collection_data")) db.delete("item_collection_data", "collection_id = ?", new String[]{key});
-                            if (hasTable(db, "envelopes_sync")) db.delete("envelopes_sync", "media_key = ?", new String[]{key});
-                            if (hasTable(db, "media_collection_tombstone_log")) {
-                                ContentValues tbCv = new ContentValues();
-                                tbCv.put("local_id", key);
-                                tbCv.put("reason", "DELETED");
-                                db.insertWithOnConflict("media_collection_tombstone_log", null, tbCv, SQLiteDatabase.CONFLICT_REPLACE);
-                            }
-                            deletedAlbums++;
-                        }
-                    }
-                    db.setTransactionSuccessful();
-                    db.endTransaction();
-                    try { db.close(); db = null; } catch (Throwable ignored) {}
-
-                    // Online cloud album deletion runs via official DeleteSharedCollectionTask
-                    for (String key : albumsToDelete) {
-                        deleteCloudAlbum(context, account.accountId, key);
-                    }
-
-                    // Trigger MetaSync & ActionQueue sync
-                    triggerOnlineSync(context, account.accountId);
-
-                    try {
-                        if (context != null) {
-                            ContentResolver cr = context.getContentResolver();
-                            cr.notifyChange(Uri.parse("content://GPhotos/trash"), null);
-                            cr.notifyChange(Uri.parse("content://GPhotos/all_photos"), null);
-                            cr.notifyChange(Uri.parse("content://GPhotos/collections"), null);
-                        }
-                    } catch (Throwable ignored) {}
-
-                    if (deletedAlbums > 0) {
-                        return new ActionResult(true, count, "Moved " + count + " items to Trash & deleted " + deletedAlbums + " album(s)");
-                    }
-                    return new ActionResult(true, count, "Successfully moved " + count + " items to Trash");
-
                 case "restoreTrash":
                     boolean dispatchedOnlineRestore = executeOnlineRestoreTask(context, account.accountId, items);
                     Logger.printInfo(() -> "Dispatched official online restore task: " + dispatchedOnlineRestore);
