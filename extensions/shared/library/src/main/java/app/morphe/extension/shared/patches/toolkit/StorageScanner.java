@@ -1333,6 +1333,16 @@ public class StorageScanner {
                 }
             }
 
+            // 5. Archive Features: psu.a (contains zon, Lakka)
+            try {
+                Class<?> psuClass = Class.forName("psu");
+                Field f = psuClass.getField("a");
+                Object fVal = f.get(null);
+                if (fVal != null) dMethod.invoke(builder, fVal);
+            } catch (Throwable t) {
+                Logger.printInfo(() -> "psu.a not resolved: " + t.getMessage());
+            }
+
             Method aMethod = wqaClass.getMethod("a");
             return aMethod.invoke(builder);
         } catch (Throwable t) {
@@ -1404,14 +1414,29 @@ public class StorageScanner {
                 }
                 if (dbf == null || !dbf.exists()) return;
 
+                // Self-healing: clear trash_timestamp on items marked as archived
+                try {
+                    SQLiteDatabase healDb = SQLiteDatabase.openDatabase(dbf.getAbsolutePath(), null, SQLiteDatabase.OPEN_READWRITE);
+                    try {
+                        healDb.execSQL("UPDATE remote_media SET trash_timestamp = 0 WHERE is_archived = 1 AND trash_timestamp > 0;");
+                        if (hasTable(healDb, "media")) {
+                            healDb.execSQL("UPDATE media SET trash_timestamp = 0, is_deleted = 0 WHERE is_archived = 1 AND trash_timestamp > 0;");
+                        }
+                    } finally {
+                        healDb.close();
+                    }
+                } catch (Throwable tHeal) {
+                    Logger.printInfo(() -> "Heal query skipped: " + tHeal.getMessage());
+                }
+
                 db = SQLiteDatabase.openDatabase(dbf.getAbsolutePath(), null, SQLiteDatabase.OPEN_READONLY);
                 if (!hasTable(db, "remote_media")) return;
 
                 List<MediaItem> pendingItems = new ArrayList<>();
                 String mediaKeyCol = hasColumn(db, "remote_media", "remote_media_key") ? "COALESCE(NULLIF(remote_media_key, ''), media_key)" : "media_key";
                 String sql = "SELECT DISTINCT r.dedup_key, r." + mediaKeyCol + ", r.filename, r.size_bytes FROM (" +
-                        "SELECT dedup_key, " + mediaKeyCol + ", filename, size_bytes FROM remote_media WHERE trash_timestamp > 0 " +
-                        (hasTable(db, "media") ? "UNION SELECT dedup_key, '' as " + mediaKeyCol + ", '' as filename, 0 as size_bytes FROM media WHERE trash_timestamp > 0" : "") +
+                        "SELECT dedup_key, " + mediaKeyCol + ", filename, size_bytes FROM remote_media WHERE trash_timestamp > 0 AND (is_archived IS NULL OR is_archived = 0) " +
+                        (hasTable(db, "media") ? "UNION SELECT dedup_key, '' as " + mediaKeyCol + ", '' as filename, 0 as size_bytes FROM media WHERE trash_timestamp > 0 AND (is_archived IS NULL OR is_archived = 0)" : "") +
                         ") r LIMIT 500";
                 try (Cursor c = db.rawQuery(sql, null)) {
                     while (c != null && c.moveToNext()) {
@@ -1665,27 +1690,43 @@ public class StorageScanner {
         if (context == null || items == null || items.isEmpty()) return false;
         try {
             List<?> coreItems = loadCoreMediaItems(context, accountId, items);
-            if (coreItems.isEmpty()) return false;
+            if (coreItems.isEmpty()) {
+                Logger.printInfo(() -> "executeOnlineArchiveTask: loadCoreMediaItems returned 0 items");
+                return false;
+            }
 
-            Set<?> set = new HashSet<>(coreItems);
-            Class<?> archiveClass = Class.forName("com.google.android.apps.photos.archive.ArchiveTask");
-            Constructor<?> archiveCtor = archiveClass.getConstructor(int.class, Set.class, int.class);
-            Object task = archiveCtor.newInstance(accountId, set, archive ? 1 : 2);
+            Class<?> psuClass = Class.forName("psu");
+            Class<?> bzoqClass = Class.forName("bzoq");
+            Method eMethod = bzoqClass.getMethod("e", Context.class, Class.class);
+            Object psuInst = eMethod.invoke(null, context, psuClass);
+            if (psuInst == null) {
+                Logger.printInfo(() -> "executeOnlineArchiveTask: bzoq.e returned null for psu");
+                return false;
+            }
 
-            Class<?> bxtyClass = Class.forName("bxty");
-            Class<?> bxueClass = Class.forName("bxue");
-            Method runMethod = bxueClass.getMethod("f", Context.class, bxtyClass);
-            Object res = runMethod.invoke(null, context, task);
+            Method aMethod = psuClass.getMethod("a", int.class, List.class, boolean.class, int.class);
+            Object res = aMethod.invoke(psuInst, accountId, coreItems, archive, 1);
             boolean success = false;
             if (res != null) {
                 try {
-                    int statusCode = res.getClass().getField("d").getInt(res);
-                    if (statusCode == 200) success = true;
-                } catch (Throwable ignored) {}
+                    Method aResMethod = res.getClass().getMethod("a");
+                    Object val = aResMethod.invoke(res);
+                    if (val != null) {
+                        if (val instanceof Collection) {
+                            success = !((Collection<?>) val).isEmpty();
+                        } else {
+                            success = true;
+                        }
+                    }
+                } catch (Throwable tRes) {
+                    Logger.printException(() -> "Error evaluating archive/unarchive result wqx", tRes);
+                }
             }
+            final boolean finalSuccess = success;
+            Logger.printInfo(() -> "executeOnlineArchiveTask(archive=" + archive + ") result success=" + finalSuccess);
             return success;
         } catch (Throwable t) {
-            Logger.printException(() -> "Error invoking ArchiveTask", t);
+            Logger.printException(() -> "Error invoking psu.a for archive=" + archive, t);
             return false;
         }
     }
@@ -1813,11 +1854,13 @@ public class StorageScanner {
                         for (MediaItem it : items) {
                             ContentValues cv = new ContentValues();
                             cv.put("trash_timestamp", now);
+                            cv.put("is_archived", 0);
                             localDb.update("remote_media", cv, "dedup_key = ?", new String[]{it.dedupKey});
                             if (hasTable(localDb, "media")) {
                                 ContentValues mCv = new ContentValues();
                                 mCv.put("trash_timestamp", now);
                                 mCv.put("is_deleted", 0);
+                                mCv.put("is_archived", 0);
                                 localDb.update("media", mCv, "dedup_key = ?", new String[]{it.dedupKey});
                             }
                             // Do not modify local_media.trash_timestamp directly: local disk files must only be
@@ -1857,18 +1900,35 @@ public class StorageScanner {
         File dbFile = new File(account.dbPath);
         if (!dbFile.exists()) return new ActionResult(false, 0, "Database file not found");
 
+        int count = (items != null) ? items.size() : 0;
+        long now = System.currentTimeMillis();
+
+        // Dispatch online RPC tasks first, before opening a local database transaction,
+        // so background/worker tasks and psu.a do not experience SQLite lock contention.
+        if ("restoreTrash".equals(actionId)) {
+            boolean dispatchedOnlineRestore = executeOnlineRestoreTask(context, account.accountId, items);
+            Logger.printInfo(() -> "Dispatched official online restore task: " + dispatchedOnlineRestore);
+        } else if ("toArchive".equals(actionId)) {
+            boolean dispatchedOnlineArchive = executeOnlineArchiveTask(context, account.accountId, items, true);
+            Logger.printInfo(() -> "Dispatched official online archive task: " + dispatchedOnlineArchive);
+        } else if ("unArchive".equals(actionId)) {
+            boolean dispatchedOnlineUnarchive = executeOnlineArchiveTask(context, account.accountId, items, false);
+            Logger.printInfo(() -> "Dispatched official online unarchive task: " + dispatchedOnlineUnarchive);
+        } else if ("toFavorite".equals(actionId)) {
+            boolean dispatchedOnlineFav = executeOnlineFavoriteTask(context, account.accountId, items, true);
+            Logger.printInfo(() -> "Dispatched official online favorite task: " + dispatchedOnlineFav);
+        } else if ("unFavorite".equals(actionId)) {
+            boolean dispatchedOnlineUnfav = executeOnlineFavoriteTask(context, account.accountId, items, false);
+            Logger.printInfo(() -> "Dispatched official online unfavorite task: " + dispatchedOnlineUnfav);
+        }
+
         SQLiteDatabase db = null;
         try {
             db = SQLiteDatabase.openDatabase(dbFile.getAbsolutePath(), null, SQLiteDatabase.OPEN_READWRITE | SQLiteDatabase.ENABLE_WRITE_AHEAD_LOGGING);
             db.beginTransaction();
-            int count = (items != null) ? items.size() : 0;
 
-            long now = System.currentTimeMillis();
             switch (actionId) {
                 case "restoreTrash":
-                    boolean dispatchedOnlineRestore = executeOnlineRestoreTask(context, account.accountId, items);
-                    Logger.printInfo(() -> "Dispatched official online restore task: " + dispatchedOnlineRestore);
-
                     for (MediaItem it : items) {
                         ContentValues cv = new ContentValues();
                         cv.put("trash_timestamp", 0);
@@ -1899,15 +1959,24 @@ public class StorageScanner {
                     return new ActionResult(true, count, "Successfully restored " + count + " items from Trash");
 
                 case "toArchive":
-                    boolean dispatchedOnlineArchive = executeOnlineArchiveTask(context, account.accountId, items, true);
-                    Logger.printInfo(() -> "Dispatched official online archive task: " + dispatchedOnlineArchive);
-
                     for (MediaItem it : items) {
                         ContentValues cv = new ContentValues();
                         cv.put("is_archived", 1);
+                        cv.put("trash_timestamp", 0);
                         db.update("remote_media", cv, "dedup_key = ?", new String[]{it.dedupKey});
-                        if (hasTable(db, "media")) db.update("media", cv, "dedup_key = ?", new String[]{it.dedupKey});
-                        if (hasTable(db, "local_media")) db.update("local_media", cv, "dedup_key = ?", new String[]{it.dedupKey});
+                        if (hasTable(db, "media")) {
+                            ContentValues mCv = new ContentValues();
+                            mCv.put("is_archived", 1);
+                            mCv.put("trash_timestamp", 0);
+                            mCv.put("is_deleted", 0);
+                            db.update("media", mCv, "dedup_key = ?", new String[]{it.dedupKey});
+                        }
+                        if (hasTable(db, "local_media")) {
+                            ContentValues lCv = new ContentValues();
+                            lCv.put("is_archived", 1);
+                            lCv.put("trash_timestamp", 0);
+                            db.update("local_media", lCv, "dedup_key = ?", new String[]{it.dedupKey});
+                        }
                     }
 
                     db.setTransactionSuccessful();
@@ -1926,15 +1995,24 @@ public class StorageScanner {
                     return new ActionResult(true, count, "Successfully archived " + count + " items");
 
                 case "unArchive":
-                    boolean dispatchedOnlineUnarchive = executeOnlineArchiveTask(context, account.accountId, items, false);
-                    Logger.printInfo(() -> "Dispatched official online unarchive task: " + dispatchedOnlineUnarchive);
-
                     for (MediaItem it : items) {
                         ContentValues cv = new ContentValues();
                         cv.put("is_archived", 0);
+                        cv.put("trash_timestamp", 0);
                         db.update("remote_media", cv, "dedup_key = ?", new String[]{it.dedupKey});
-                        if (hasTable(db, "media")) db.update("media", cv, "dedup_key = ?", new String[]{it.dedupKey});
-                        if (hasTable(db, "local_media")) db.update("local_media", cv, "dedup_key = ?", new String[]{it.dedupKey});
+                        if (hasTable(db, "media")) {
+                            ContentValues mCv = new ContentValues();
+                            mCv.put("is_archived", 0);
+                            mCv.put("trash_timestamp", 0);
+                            mCv.put("is_deleted", 0);
+                            db.update("media", mCv, "dedup_key = ?", new String[]{it.dedupKey});
+                        }
+                        if (hasTable(db, "local_media")) {
+                            ContentValues lCv = new ContentValues();
+                            lCv.put("is_archived", 0);
+                            lCv.put("trash_timestamp", 0);
+                            db.update("local_media", lCv, "dedup_key = ?", new String[]{it.dedupKey});
+                        }
                     }
 
                     db.setTransactionSuccessful();
@@ -1953,9 +2031,6 @@ public class StorageScanner {
                     return new ActionResult(true, count, "Successfully un-archived " + count + " items");
 
                 case "toFavorite":
-                    boolean dispatchedOnlineFav = executeOnlineFavoriteTask(context, account.accountId, items, true);
-                    Logger.printInfo(() -> "Dispatched official online favorite task: " + dispatchedOnlineFav);
-
                     for (MediaItem it : items) {
                         ContentValues cv = new ContentValues();
                         cv.put("is_favorite", 1);
@@ -1980,9 +2055,6 @@ public class StorageScanner {
                     return new ActionResult(true, count, "Successfully added " + count + " items to favorites");
 
                 case "unFavorite":
-                    boolean dispatchedOnlineUnfav = executeOnlineFavoriteTask(context, account.accountId, items, false);
-                    Logger.printInfo(() -> "Dispatched official online unfavorite task: " + dispatchedOnlineUnfav);
-
                     for (MediaItem it : items) {
                         ContentValues cv = new ContentValues();
                         cv.put("is_favorite", 0);
