@@ -12,6 +12,7 @@ import android.content.Intent;
 import android.content.res.ColorStateList;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
+import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Outline;
 import android.graphics.Typeface;
@@ -1470,9 +1471,6 @@ public class NativeToolkitDialog {
             Object requestManager = withMethod.invoke(null, context);
 
             Class<?> kiiClass = Class.forName("kii");
-            Method asBitmapMethod = kiiClass.getMethod("b");
-            Object requestBuilder = asBitmapMethod.invoke(requestManager);
-
             Object model = null;
             if (urlStr.startsWith("http://") || urlStr.startsWith("https://")) {
                 try {
@@ -1486,27 +1484,40 @@ public class NativeToolkitDialog {
                 }
             }
 
-            Class<?> kifClass = Class.forName("kif");
+            Object requestBuilder = null;
             if (model != null) {
-                Method loadMethod = kifClass.getMethod("l", Object.class);
-                requestBuilder = loadMethod.invoke(requestBuilder, model);
+                Method loadMethod = kiiClass.getMethod("l", Object.class);
+                requestBuilder = loadMethod.invoke(requestManager, model);
             } else if (urlStr.startsWith("content://") || urlStr.startsWith("file://")) {
-                Method loadUriMethod = kifClass.getMethod("j", Uri.class);
-                requestBuilder = loadUriMethod.invoke(requestBuilder, Uri.parse(urlStr));
+                Method loadUriMethod = kiiClass.getMethod("j", Uri.class);
+                requestBuilder = loadUriMethod.invoke(requestManager, Uri.parse(urlStr));
             } else {
-                Method loadStrMethod = kifClass.getMethod("m", String.class);
-                requestBuilder = loadStrMethod.invoke(requestBuilder, urlStr);
+                Method loadStrMethod = kiiClass.getMethod("m", String.class);
+                requestBuilder = loadStrMethod.invoke(requestManager, urlStr);
             }
 
             if (requestBuilder != null) {
+                Class<?> kifClass = Class.forName("kif");
                 Method submitMethod = kifClass.getMethod("u", int.class, int.class);
                 java.util.concurrent.Future<?> future = (java.util.concurrent.Future<?>) submitMethod.invoke(requestBuilder, 128, 128);
                 if (future != null) {
                     Object result = future.get(8, java.util.concurrent.TimeUnit.SECONDS);
                     if (result instanceof Bitmap) {
+                        Logger.printInfo(() -> "fetchThumbSync: Got Bitmap directly for " + urlStr);
                         return (Bitmap) result;
                     } else if (result instanceof android.graphics.drawable.BitmapDrawable) {
+                        Logger.printInfo(() -> "fetchThumbSync: Got BitmapDrawable for " + urlStr);
                         return ((android.graphics.drawable.BitmapDrawable) result).getBitmap();
+                    } else if (result instanceof android.graphics.drawable.Drawable) {
+                        android.graphics.drawable.Drawable d = (android.graphics.drawable.Drawable) result;
+                        int w = d.getIntrinsicWidth() > 0 ? d.getIntrinsicWidth() : 128;
+                        int h = d.getIntrinsicHeight() > 0 ? d.getIntrinsicHeight() : 128;
+                        Bitmap b = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888);
+                        Canvas c = new Canvas(b);
+                        d.setBounds(0, 0, w, h);
+                        d.draw(c);
+                        Logger.printInfo(() -> "fetchThumbSync: Converted Drawable to Bitmap for " + urlStr);
+                        return b;
                     }
                 }
             }

@@ -897,8 +897,13 @@ public class StorageScanner {
         List<List<MediaItem>> clusters = new ArrayList<>();
         if (items == null || items.isEmpty() || threshold <= 0) return clusters;
 
+        Log.i("morphe: StorageScanner", "clusterSimilarItems: running with " + items.size() + " items, threshold=" + threshold);
+
         for (MediaItem item : items) {
-            if (item.perceptualHash == 0) continue;
+            if (item.perceptualHash == 0) {
+                Log.w("morphe: StorageScanner", "clusterSimilarItems: skip item with hash 0: " + item.filename);
+                continue;
+            }
             float bestSim = 0f;
             int bestClusterIdx = -1;
 
@@ -908,6 +913,7 @@ public class StorageScanner {
                 float maxSim = 0f;
                 for (MediaItem member : cluster) {
                     float sim = calculateSimilarity(item.perceptualHash, member.perceptualHash, hashSize);
+                    Log.i("morphe: StorageScanner", "Comparing [" + item.filename + "] with [" + member.filename + "] -> similarity=" + sim + " (threshold=" + threshold + ")");
                     if (sim > maxSim) maxSim = sim;
                 }
                 if (maxSim >= threshold && maxSim > bestSim) {
@@ -918,6 +924,7 @@ public class StorageScanner {
 
             if (bestClusterIdx >= 0) {
                 clusters.get(bestClusterIdx).add(item);
+                Log.i("morphe: StorageScanner", "Added [" + item.filename + "] to cluster " + bestClusterIdx + " with sim=" + bestSim);
             } else {
                 List<MediaItem> newCluster = new ArrayList<>();
                 newCluster.add(item);
@@ -932,6 +939,7 @@ public class StorageScanner {
             if (c.size() > 1) {
                 for (MediaItem item : c) item.clusterId = clusterIndex;
                 result.add(c);
+                Log.i("morphe: StorageScanner", "Cluster #" + clusterIndex + " formed with " + c.size() + " items");
                 clusterIndex++;
             }
         }
