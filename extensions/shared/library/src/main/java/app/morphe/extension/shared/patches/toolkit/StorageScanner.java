@@ -1228,7 +1228,7 @@ public class StorageScanner {
             }
             // 2. Look up remote_media table - query ALL matching rows (including duplicate copies)
             if (db != null && it.dedupKey != null && !it.dedupKey.trim().isEmpty() && hasTable(db, "remote_media")) {
-                try (Cursor c = db.rawQuery("SELECT DISTINCT COALESCE(NULLIF(remote_media_key, ''), media_key) FROM remote_media WHERE dedup_key = ? AND (trash_timestamp IS NULL OR trash_timestamp = 0)", new String[]{it.dedupKey})) {
+                try (Cursor c = db.rawQuery("SELECT DISTINCT COALESCE(NULLIF(remote_media_key, ''), media_key) FROM remote_media WHERE dedup_key = ?", new String[]{it.dedupKey})) {
                     while (c != null && c.moveToNext()) {
                         String rk = c.getString(0);
                         if (rk != null && !rk.trim().isEmpty() && !rk.startsWith("local:")) {
@@ -1473,224 +1473,170 @@ public class StorageScanner {
 
     private static boolean executeOnlineTrashTask(Context context, int accountId, List<MediaItem> items) {
         if (context == null || items == null || items.isEmpty()) return false;
+        Log.i("morphe: StorageScanner", "executeOnlineTrashTask: starting for " + items.size() + " items");
 
-        List<String> mediaKeys = resolveRemoteMediaKeys(context, accountId, items);
-        LinkedHashSet<String> uniqueDedupKeys = new LinkedHashSet<>();
-        for (MediaItem it : items) {
-            if (it.dedupKey != null && !it.dedupKey.trim().isEmpty()) {
-                uniqueDedupKeys.add(it.dedupKey.trim());
-            }
-        }
-        List<String> dedupKeys = new ArrayList<>(uniqueDedupKeys);
+        int chunkSize = 100;
+        int totalChunks = (items.size() + chunkSize - 1) / chunkSize;
+        int successCount = 0;
 
-        if (dedupKeys.isEmpty() && mediaKeys.isEmpty()) {
-            Logger.printInfo(() -> "executeOnlineTrashTask: No dedupKeys or mediaKeys found");
-            return false;
-        }
+        for (int i = 0; i < items.size(); i += chunkSize) {
+            int chunkIndex = (i / chunkSize) + 1;
+            List<MediaItem> chunk = items.subList(i, Math.min(i + chunkSize, items.size()));
+            boolean chunkSuccess = false;
 
-        // Strategy 1: Dispatch official Google Photos Online Trash Action (bjir).
-        // Directly invokes bjir.a(context) to mark local media and bjir.d(context, 0) -> bjhp.b -> Protobuf RPC to Google Photos servers.
-        try {
-            Class<?> bjirClass = Class.forName("bjir");
-            Class<?> cjizClass = Class.forName("cjiz");
-            Class<?> romClass = Class.forName("rom");
-            Method romMethod = romClass.getMethod("b", Context.class);
-            Object cjizSource = romMethod.invoke(null, context);
-
-            // Construct Collection<ahnr> for col1 and col4
-            Collection<?> ahnrCol = null;
-            Collection<String> keyStrings = !mediaKeys.isEmpty() ? mediaKeys : dedupKeys;
+            // Strategy 1: MoveToTrashActionWrapper (Official TaskRunner task with akjz.b REMOTE_ONLY)
             try {
-                Class<?> ahnsClass = Class.forName("ahns");
-                Method aColMethod = ahnsClass.getMethod("a", Collection.class);
-                ahnrCol = (Collection<?>) aColMethod.invoke(null, keyStrings);
-            } catch (Throwable t) {
-                try {
-                    Class<?> ahnrClass = Class.forName("ahnr");
-                    Method aStrMethod = ahnrClass.getMethod("a", String.class);
-                    List<Object> list = new ArrayList<>();
-                    for (String s : keyStrings) {
-                        list.add(aStrMethod.invoke(null, s));
-                    }
-                    ahnrCol = list;
-                } catch (Throwable t2) {
-                    Logger.printException(() -> "Error constructing ahnr list", t2);
-                }
-            }
+                List<?> coreItems = loadCoreMediaItems(context, accountId, chunk);
+                if (!coreItems.isEmpty()) {
+                    Class<?> bdkqClass = Class.forName("bdkq");
+                    Constructor<?> bdkqCtor = bdkqClass.getConstructor(Collection.class);
+                    Object mediaGroup = bdkqCtor.newInstance(coreItems);
 
-            Collection<?> col1 = ahnrCol != null ? ahnrCol : Collections.emptyList();
-            Collection<String> col2 = !dedupKeys.isEmpty() ? dedupKeys : mediaKeys;
-            Collection<String> col3 = !mediaKeys.isEmpty() ? mediaKeys : dedupKeys;
-            Collection<?> col4 = ahnrCol != null ? ahnrCol : Collections.emptyList();
+                    Class<?> lakjzClass = Class.forName("akjz");
+                    Object targetMode = lakjzClass.getField("b").get(null);
 
-            Method rMethod = bjirClass.getMethod("r", int.class, Collection.class, Collection.class, Collection.class, Collection.class, cjizClass);
-            // r(int accountId, Collection col1, Collection col2, Collection col3, Collection col4, cjiz source)
-            Object bjirAction = rMethod.invoke(null, accountId, col1, col2, col3, col4, cjizSource);
+                    Class<?> romClass = Class.forName("rom");
+                    Method romMethod = romClass.getMethod("b", Context.class);
+                    Object cjizSource = romMethod.invoke(null, context);
 
-            boolean success = false;
+                    Class<?> wrapperClass = Class.forName("com.google.android.apps.photos.trash.MoveToTrashActionWrapper");
+                    Class<?> cjizClass = Class.forName("cjiz");
+                    Constructor<?> wrapperCtor = wrapperClass.getConstructor(int.class, bdkqClass, lakjzClass, cjizClass);
+                    Object task = wrapperCtor.newInstance(accountId, mediaGroup, targetMode, cjizSource);
 
-            // 1. Mark local database items as trashed
-            try {
-                Method aMethod = bjirClass.getMethod("a", Context.class);
-                aMethod.invoke(bjirAction, context);
-                Logger.printInfo(() -> "Executed bjir.a(context) successfully");
-            } catch (Throwable t) {
-                Logger.printException(() -> "Error in bjir.a(context)", t);
-            }
-
-            // 2. Direct synchronous execution of online mutation RPC to Google Photos backend servers
-            try {
-                Method dMethod = bjirClass.getMethod("d", Context.class, int.class);
-                Object ltvRes = dMethod.invoke(bjirAction, context, 0);
-                Logger.printInfo(() -> "Executed bjir.d(context, 0) directly, ltv: " + ltvRes);
-                if (ltvRes != null) {
                     try {
-                        int resultType = ltvRes.getClass().getField("e").getInt(ltvRes);
-                        Logger.printInfo(() -> "bjir.d resultType=" + resultType);
-                        if (resultType == 1) success = true;
+                        Bundle taskBundle = new Bundle();
+                        taskBundle.putParcelable("mediagroup", (Parcelable) mediaGroup);
+                        Field sField = Class.forName("bxty").getField("s");
+                        sField.set(task, taskBundle);
                     } catch (Throwable ignored) {}
-                    try {
-                        boolean isSuccess = ltvRes.getClass().getField("b").getBoolean(ltvRes);
-                        Logger.printInfo(() -> "bjir.d isSuccess=" + isSuccess);
-                        if (isSuccess) success = true;
-                    } catch (Throwable ignored) {}
-                    if (ltvRes.toString().contains("SUCCESS")) {
-                        success = true;
-                    }
-                }
-            } catch (Throwable t) {
-                Logger.printException(() -> "Error in bjir.d(context, 0) direct call", t);
-            }
 
-            // 3. Enqueue and execute via ActionWrapper & aokq to update internal system action queue
-            try {
-                Class<?> wrapperClass = Class.forName("com.google.android.apps.photos.actionqueue.ActionWrapper");
-                Class<?> ltyClass = Class.forName("lty");
-                Constructor<?> wrapperCtor = wrapperClass.getConstructor(int.class, ltyClass);
-                Object actionWrapper = wrapperCtor.newInstance(accountId, bjirAction);
-
-                try {
-                    wrapperClass.getMethod("c").invoke(actionWrapper);
-                } catch (Throwable ignored) {}
-
-                Class<?> bxtyClass = Class.forName("bxty");
-                Class<?> bxueClass = Class.forName("bxue");
-                Method runMethod = bxueClass.getMethod("f", Context.class, bxtyClass);
-                Object res = runMethod.invoke(null, context, actionWrapper);
-
-                if (res != null) {
-                    Bundle bundle = (Bundle) res.getClass().getMethod("b").invoke(res);
-                    long actionId = bundle != null ? bundle.getLong("LocalResult__action_id", -1L) : -1L;
-                    Logger.printInfo(() -> "bjir ActionWrapper actionId: " + actionId);
-                    if (actionId != -1L) {
+                    Class<?> bxtyClass = Class.forName("bxty");
+                    Class<?> bxueClass = Class.forName("bxue");
+                    Method runMethod = bxueClass.getMethod("f", Context.class, bxtyClass);
+                    Object res = runMethod.invoke(null, context, task);
+                    if (res != null) {
                         try {
-                            Class<?> aokqClass = Class.forName("aokq");
-                            Constructor<?> aokqCtor = aokqClass.getConstructor(int.class, long.class);
-                            Object aokqInst = aokqCtor.newInstance(accountId, actionId);
-                            Method aMethod = aokqClass.getMethod("a", Context.class);
-                            boolean dispatched = (Boolean) aMethod.invoke(aokqInst, context);
-                            Logger.printInfo(() -> "Dispatched aokq for actionId=" + actionId + ", result=" + dispatched);
-                            success = true;
-                        } catch (Throwable t) {
-                            Logger.printException(() -> "Error running aokq for actionId=" + actionId, t);
-                        }
-                    } else {
-                        success = true;
+                            int statusCode = res.getClass().getField("d").getInt(res);
+                            if (statusCode == 200) chunkSuccess = true;
+                        } catch (Throwable ignored) {}
+                    }
+                    if (chunkSuccess) {
+                        Log.i("morphe: StorageScanner", "MoveToTrashActionWrapper succeeded for chunk " + chunkIndex + "/" + totalChunks);
                     }
                 }
             } catch (Throwable t) {
-                Logger.printException(() -> "Error in ActionWrapper/aokq queue execution", t);
+                Log.w("morphe: StorageScanner", "MoveToTrashActionWrapper failed for chunk " + chunkIndex, t);
             }
 
-            final boolean fSuccess = success;
-            Logger.printInfo(() -> "Executed bjir online trash with " + dedupKeys.size() + " items, success=" + fSuccess);
-            if (success) return true;
-        } catch (Throwable t) {
-            Logger.printException(() -> "Error invoking bjir, trying MoveToTrashActionWrapper fallback", t);
-        }
-
-        // Strategy 2: Fallback to MoveToTrashActionWrapper
-        try {
-            List<?> coreItems = loadCoreMediaItems(context, accountId, items);
-            if (coreItems.isEmpty()) {
-                Logger.printInfo(() -> "executeOnlineTrashTask fallback: 0 core media items loaded, cannot dispatch MoveToTrashActionWrapper");
-                return false;
-            }
-
-            Class<?> bdkqClass = Class.forName("bdkq");
-            Constructor<?> bdkqCtor = bdkqClass.getConstructor(Collection.class);
-            Object mediaGroup = bdkqCtor.newInstance(coreItems);
-
-            Class<?> lakjzClass = Class.forName("akjz");
-            Object targetMode = lakjzClass.getField("b").get(null);
-
-            Class<?> romClass = Class.forName("rom");
-            Method romMethod = romClass.getMethod("b", Context.class);
-            Object cjizSource = romMethod.invoke(null, context);
-
-            Class<?> wrapperClass = Class.forName("com.google.android.apps.photos.trash.MoveToTrashActionWrapper");
-            Class<?> cjizClass = Class.forName("cjiz");
-            Constructor<?> wrapperCtor = wrapperClass.getConstructor(int.class, bdkqClass, lakjzClass, cjizClass);
-            Object task = wrapperCtor.newInstance(accountId, mediaGroup, targetMode, cjizSource);
-
-            try {
-                Bundle taskBundle = new Bundle();
-                taskBundle.putParcelable("mediagroup", (Parcelable) mediaGroup);
-                Field sField = Class.forName("bxty").getField("s");
-                sField.set(task, taskBundle);
-            } catch (Throwable ignored) {}
-
-            Class<?> bxtyClass = Class.forName("bxty");
-            Class<?> bxueClass = Class.forName("bxue");
-            Method runMethod = bxueClass.getMethod("f", Context.class, bxtyClass);
-            Object res = runMethod.invoke(null, context, task);
-            boolean success = false;
-            if (res != null) {
+            // Strategy 2: bjir with CORRECT keys (col2 = remote mediaKeys, col3 = dedupKeys)
+            if (!chunkSuccess) {
                 try {
-                    int statusCode = res.getClass().getField("d").getInt(res);
-                    Logger.printInfo(() -> "MoveToTrashActionWrapper synchronous result status: " + statusCode);
-                    if (statusCode == 200) success = true;
-                } catch (Throwable ignored) {}
+                    List<String> chunkMediaKeys = resolveRemoteMediaKeys(context, accountId, chunk);
+                    LinkedHashSet<String> uniqueChunkDedupKeys = new LinkedHashSet<>();
+                    for (MediaItem it : chunk) {
+                        if (it.dedupKey != null && !it.dedupKey.trim().isEmpty()) {
+                            uniqueChunkDedupKeys.add(it.dedupKey.trim());
+                        }
+                    }
+                    List<String> chunkDedupKeys = new ArrayList<>(uniqueChunkDedupKeys);
+
+                    if (!chunkMediaKeys.isEmpty() || !chunkDedupKeys.isEmpty()) {
+                        Class<?> bjirClass = Class.forName("bjir");
+                        Class<?> cjizClass = Class.forName("cjiz");
+                        Class<?> romClass = Class.forName("rom");
+                        Method romMethod = romClass.getMethod("b", Context.class);
+                        Object cjizSource = romMethod.invoke(null, context);
+
+                        Collection<?> ahnrCol = null;
+                        Collection<String> keyStrings = !chunkMediaKeys.isEmpty() ? chunkMediaKeys : chunkDedupKeys;
+                        try {
+                            Class<?> ahnsClass = Class.forName("ahns");
+                            Method aColMethod = ahnsClass.getMethod("a", Collection.class);
+                            ahnrCol = (Collection<?>) aColMethod.invoke(null, keyStrings);
+                        } catch (Throwable ignored) {}
+
+                        Collection<?> col1 = ahnrCol != null ? ahnrCol : Collections.emptyList();
+                        Collection<String> col2 = chunkMediaKeys; // Remote media keys for PhotosDeleteItemsRequest!
+                        Collection<String> col3 = chunkDedupKeys; // Dedup keys for local tombstone!
+                        Collection<?> col4 = ahnrCol != null ? ahnrCol : Collections.emptyList();
+
+                        Method rMethod = bjirClass.getMethod("r", int.class, Collection.class, Collection.class, Collection.class, Collection.class, cjizClass);
+                        Object bjirAction = rMethod.invoke(null, accountId, col1, col2, col3, col4, cjizSource);
+
+                        try {
+                            Method aMethod = bjirClass.getMethod("a", Context.class);
+                            aMethod.invoke(bjirAction, context);
+                        } catch (Throwable ignored) {}
+
+                        Method dMethod = bjirClass.getMethod("d", Context.class, int.class);
+                        Object ltvRes = dMethod.invoke(bjirAction, context, 0);
+                        if (ltvRes != null && ltvRes.toString().contains("SUCCESS")) {
+                            chunkSuccess = true;
+                            Log.i("morphe: StorageScanner", "bjir.d direct RPC succeeded for chunk " + chunkIndex);
+                        }
+                    }
+                } catch (Throwable tBjir) {
+                    Log.w("morphe: StorageScanner", "bjir fallback failed for chunk " + chunkIndex, tBjir);
+                }
             }
-            final boolean fSuccess = success;
-            Logger.printInfo(() -> "Executed MoveToTrashActionWrapper with " + coreItems.size() + " core media items, success=" + fSuccess);
-            return success;
-        } catch (Throwable t) {
-            Logger.printException(() -> "Error invoking MoveToTrashActionWrapper", t);
-            return false;
+
+            if (chunkSuccess) successCount++;
         }
+
+        Log.i("morphe: StorageScanner", "executeOnlineTrashTask finished: " + successCount + "/" + totalChunks + " chunks successful");
+        return successCount > 0;
     }
 
     private static boolean executeOnlineRestoreTask(Context context, int accountId, List<MediaItem> items) {
         if (context == null || items == null || items.isEmpty()) return false;
-        try {
-            List<?> coreItems = loadCoreMediaItems(context, accountId, items);
-            if (coreItems.isEmpty()) return false;
+        Log.i("morphe: StorageScanner", "executeOnlineRestoreTask: starting for " + items.size() + " items");
 
-            Class<?> bdkqClass = Class.forName("bdkq");
-            Constructor<?> bdkqCtor = bdkqClass.getConstructor(Collection.class);
-            Object mediaGroup = bdkqCtor.newInstance(coreItems);
+        int chunkSize = 100;
+        int totalChunks = (items.size() + chunkSize - 1) / chunkSize;
+        int successCount = 0;
 
-            Class<?> restoreClass = Class.forName("com.google.android.apps.photos.trash.restore.RestoreActionTask");
-            Constructor<?> restoreCtor = restoreClass.getConstructor(int.class, bdkqClass, boolean.class);
-            Object task = restoreCtor.newInstance(accountId, mediaGroup, false);
+        for (int i = 0; i < items.size(); i += chunkSize) {
+            int chunkIndex = (i / chunkSize) + 1;
+            List<MediaItem> chunk = items.subList(i, Math.min(i + chunkSize, items.size()));
+            boolean chunkSuccess = false;
 
-            Class<?> bxtyClass = Class.forName("bxty");
-            Class<?> bxueClass = Class.forName("bxue");
-            Method runMethod = bxueClass.getMethod("f", Context.class, bxtyClass);
-            Object res = runMethod.invoke(null, context, task);
-            boolean success = false;
-            if (res != null) {
-                try {
-                    int statusCode = res.getClass().getField("d").getInt(res);
-                    if (statusCode == 200) success = true;
-                } catch (Throwable ignored) {}
+            try {
+                List<?> coreItems = loadCoreMediaItems(context, accountId, chunk);
+                if (!coreItems.isEmpty()) {
+                    Class<?> bdkqClass = Class.forName("bdkq");
+                    Constructor<?> bdkqCtor = bdkqClass.getConstructor(Collection.class);
+                    Object mediaGroup = bdkqCtor.newInstance(coreItems);
+
+                    Class<?> restoreClass = Class.forName("com.google.android.apps.photos.trash.restore.RestoreActionTask");
+                    Constructor<?> restoreCtor = restoreClass.getConstructor(int.class, bdkqClass, boolean.class);
+                    Object task = restoreCtor.newInstance(accountId, mediaGroup, true);
+
+                    Class<?> bxtyClass = Class.forName("bxty");
+                    Class<?> bxueClass = Class.forName("bxue");
+                    Method runMethod = bxueClass.getMethod("f", Context.class, bxtyClass);
+                    Object res = runMethod.invoke(null, context, task);
+                    if (res != null) {
+                        try {
+                            int statusCode = res.getClass().getField("d").getInt(res);
+                            if (statusCode == 200) chunkSuccess = true;
+                        } catch (Throwable ignored) {}
+                    }
+                    if (chunkSuccess) {
+                        Log.i("morphe: StorageScanner", "RestoreActionTask succeeded for chunk " + chunkIndex + "/" + totalChunks);
+                    }
+                } else {
+                    Log.w("morphe: StorageScanner", "RestoreActionTask chunk " + chunkIndex + ": 0 core items loaded");
+                }
+            } catch (Throwable t) {
+                Log.w("morphe: StorageScanner", "RestoreActionTask chunk " + chunkIndex + " failed", t);
             }
-            return success;
-        } catch (Throwable t) {
-            Logger.printException(() -> "Error invoking RestoreActionTask", t);
-            return false;
+
+            if (chunkSuccess) successCount++;
         }
+
+        Log.i("morphe: StorageScanner", "executeOnlineRestoreTask finished: " + successCount + "/" + totalChunks + " chunks successful");
+        return successCount > 0;
     }
 
     private static boolean executeOnlineArchiveTask(Context context, int accountId, List<MediaItem> items, boolean archive) {
@@ -1827,33 +1773,52 @@ public class StorageScanner {
 
     private static boolean executeOnlineFavoriteTask(Context context, int accountId, List<MediaItem> items, boolean favorite) {
         if (context == null || items == null || items.isEmpty()) return false;
-        try {
-            List<?> coreItems = loadCoreMediaItems(context, accountId, items);
-            if (coreItems.isEmpty()) return false;
+        Log.i("morphe: StorageScanner", "executeOnlineFavoriteTask: starting for " + items.size() + " items, favorite=" + favorite);
 
-            Class<?> swhClass = Class.forName("swh");
-            Object reason = swhClass.getField("a").get(null);
+        int chunkSize = 100;
+        int totalChunks = (items.size() + chunkSize - 1) / chunkSize;
+        int successCount = 0;
 
-            Class<?> favClass = Class.forName("com.google.android.apps.photos.favorites.FavoritesTask");
-            Constructor<?> favCtor = favClass.getConstructor(int.class, Collection.class, boolean.class, swhClass);
-            Object task = favCtor.newInstance(accountId, coreItems, favorite, reason);
+        for (int i = 0; i < items.size(); i += chunkSize) {
+            int chunkIndex = (i / chunkSize) + 1;
+            List<MediaItem> chunk = items.subList(i, Math.min(i + chunkSize, items.size()));
+            boolean chunkSuccess = false;
 
-            Class<?> bxtyClass = Class.forName("bxty");
-            Class<?> bxueClass = Class.forName("bxue");
-            Method runMethod = bxueClass.getMethod("f", Context.class, bxtyClass);
-            Object res = runMethod.invoke(null, context, task);
-            boolean success = false;
-            if (res != null) {
-                try {
-                    int statusCode = res.getClass().getField("d").getInt(res);
-                    if (statusCode == 200) success = true;
-                } catch (Throwable ignored) {}
+            try {
+                List<?> coreItems = loadCoreMediaItems(context, accountId, chunk);
+                if (!coreItems.isEmpty()) {
+                    Class<?> swhClass = Class.forName("swh");
+                    Object reason = swhClass.getField("a").get(null);
+
+                    Class<?> favClass = Class.forName("com.google.android.apps.photos.favorites.FavoritesTask");
+                    Constructor<?> favCtor = favClass.getConstructor(int.class, Collection.class, boolean.class, swhClass);
+                    Object task = favCtor.newInstance(accountId, coreItems, favorite, reason);
+
+                    Class<?> bxtyClass = Class.forName("bxty");
+                    Class<?> bxueClass = Class.forName("bxue");
+                    Method runMethod = bxueClass.getMethod("f", Context.class, bxtyClass);
+                    Object res = runMethod.invoke(null, context, task);
+                    if (res != null) {
+                        try {
+                            int statusCode = res.getClass().getField("d").getInt(res);
+                            if (statusCode == 200) chunkSuccess = true;
+                        } catch (Throwable ignored) {}
+                    }
+                    if (chunkSuccess) {
+                        Log.i("morphe: StorageScanner", "FavoritesTask chunk " + chunkIndex + "/" + totalChunks + " succeeded");
+                    }
+                } else {
+                    Log.w("morphe: StorageScanner", "FavoritesTask chunk " + chunkIndex + ": 0 core items loaded");
+                }
+            } catch (Throwable t) {
+                Log.w("morphe: StorageScanner", "Error invoking FavoritesTask chunk " + chunkIndex, t);
             }
-            return success;
-        } catch (Throwable t) {
-            Logger.printException(() -> "Error invoking FavoritesTask", t);
-            return false;
+
+            if (chunkSuccess) successCount++;
         }
+
+        Log.i("morphe: StorageScanner", "executeOnlineFavoriteTask finished: " + successCount + "/" + totalChunks + " chunks successful");
+        return successCount > 0;
     }
 
     private static void triggerOnlineSync(Context context, int accountId) {
@@ -1944,8 +1909,6 @@ public class StorageScanner {
             boolean dispatchedOnlineTrash = executeOnlineTrashTask(context, account.accountId, items);
             Logger.printInfo(() -> "Executed official online trash task: " + dispatchedOnlineTrash);
 
-            // Reconcile any prior pending local trashed items as well
-            syncPendingLocalTrash(context, account.accountId);
 
             // 2. Invoke official Google Photos DeleteSharedCollectionTask / mne synchronously SECOND while envelopes/collections are intact
             int deletedAlbums = 0;
