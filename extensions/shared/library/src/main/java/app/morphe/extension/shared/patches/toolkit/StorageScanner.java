@@ -560,7 +560,13 @@ public class StorageScanner {
 
             // Archived
             if (crit.archived != null) {
-                where.append(" AND is_archived = ").append(crit.archived ? "1" : "0");
+                if (hasColumn(db, targetTable, "is_archived")) {
+                    where.append(" AND is_archived = ").append(crit.archived ? "1" : "0");
+                } else if (hasTable(db, "media")) {
+                    // shared_media has no is_archived column; resolve archive state via the media table
+                    where.append(" AND dedup_key ").append(crit.archived ? "IN" : "NOT IN")
+                         .append(" (SELECT dedup_key FROM media WHERE is_archived = 1)");
+                }
             }
 
             // Favorite
