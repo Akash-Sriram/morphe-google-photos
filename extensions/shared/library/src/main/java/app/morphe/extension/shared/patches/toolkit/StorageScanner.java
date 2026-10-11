@@ -410,7 +410,12 @@ public class StorageScanner {
             // 1. Source constraint
             switch (crit.source) {
                 case LIBRARY:
-                    where.append(" AND (trash_timestamp IS NULL OR trash_timestamp = 0)");
+                    if (hasColumn(db, targetTable, "state")) {
+                        where.append(" AND (state IS NULL OR state != 2)");
+                    }
+                    if (hasColumn(db, targetTable, "trash_timestamp")) {
+                        where.append(" AND (trash_timestamp IS NULL OR trash_timestamp = 0)");
+                    }
                     if (hasColumn(db, targetTable, "is_canonical")) {
                         where.append(" AND (is_canonical = 1 OR is_canonical IS NULL)");
                     }
@@ -419,7 +424,12 @@ public class StorageScanner {
                     }
                     break;
                 case SEARCH:
-                    where.append(" AND (trash_timestamp IS NULL OR trash_timestamp = 0)");
+                    if (hasColumn(db, targetTable, "state")) {
+                        where.append(" AND (state IS NULL OR state != 2)");
+                    }
+                    if (hasColumn(db, targetTable, "trash_timestamp")) {
+                        where.append(" AND (trash_timestamp IS NULL OR trash_timestamp = 0)");
+                    }
                     if (hasColumn(db, targetTable, "is_canonical")) {
                         where.append(" AND (is_canonical = 1 OR is_canonical IS NULL)");
                     }
@@ -431,6 +441,9 @@ public class StorageScanner {
                     }
                     break;
                 case ALBUMS:
+                    if (hasColumn(db, targetTable, "state")) {
+                        where.append(" AND (state IS NULL OR state != 2)");
+                    }
                     if (hasColumn(db, targetTable, "trash_timestamp")) {
                         where.append(" AND (trash_timestamp IS NULL OR trash_timestamp = 0)");
                     }
@@ -450,10 +463,20 @@ public class StorageScanner {
                 case SHARED:
                     break;
                 case FAVORITES:
-                    where.append(" AND is_favorite = 1 AND (trash_timestamp IS NULL OR trash_timestamp = 0)");
+                    if (hasColumn(db, targetTable, "state")) {
+                        where.append(" AND (state IS NULL OR state != 2)");
+                    }
+                    where.append(" AND is_favorite = 1");
+                    if (hasColumn(db, targetTable, "trash_timestamp")) {
+                        where.append(" AND (trash_timestamp IS NULL OR trash_timestamp = 0)");
+                    }
                     break;
                 case TRASH:
-                    where.append(" AND trash_timestamp > 0");
+                    if (hasColumn(db, targetTable, "state")) {
+                        where.append(" AND (state = 2 OR (trash_timestamp IS NOT NULL AND trash_timestamp > 0))");
+                    } else {
+                        where.append(" AND trash_timestamp > 0");
+                    }
                     break;
                 case LOCKED:
                     break;
@@ -627,10 +650,17 @@ public class StorageScanner {
             String lonExpr = hasLon ? "longitude" : "0.0";
             String captionExpr = hasColumn(db, targetTable, "caption") ? "caption" : "''";
             String mediaKeyExpr = hasColumn(db, targetTable, "remote_media_key") ? "COALESCE(NULLIF(remote_media_key, ''), media_key)" : "media_key";
+            String trashExpr = hasColumn(db, targetTable, "trash_timestamp")
+                    ? (hasColumn(db, targetTable, "state")
+                            ? "CASE WHEN state = 2 AND (trash_timestamp IS NULL OR trash_timestamp = 0) THEN 1 ELSE COALESCE(trash_timestamp, 0) END"
+                            : "COALESCE(trash_timestamp, 0)")
+                    : (hasColumn(db, targetTable, "state")
+                            ? "CASE WHEN state = 2 THEN 1 ELSE 0 END"
+                            : "0");
 
             String groupByClause = "remote_media".equals(targetTable) ? " GROUP BY dedup_key" : "";
             String sql = "SELECT dedup_key, " + mediaKeyExpr + ", filename, size_bytes, quota_charged_bytes, capture_timestamp, remote_url, " +
-                    (hasColumn(db, targetTable, "trash_timestamp") ? "trash_timestamp" : "0") + ", " +
+                    trashExpr + ", " +
                     "width, height, duration, " +
                     (hasColumn(db, targetTable, "is_archived") ? "is_archived" : "0") + ", " +
                     (hasColumn(db, targetTable, "is_favorite") ? "is_favorite" : "0") + ", " +
@@ -1442,8 +1472,8 @@ public class StorageScanner {
                 List<MediaItem> pendingItems = new ArrayList<>();
                 String remoteKeyExpr = hasColumn(db, "remote_media", "remote_media_key") ? "COALESCE(NULLIF(remote_media_key, ''), media_key) AS media_key" : "media_key";
                 String sql = "SELECT DISTINCT r.dedup_key, r.media_key, r.filename, r.size_bytes FROM (" +
-                        "SELECT dedup_key, " + remoteKeyExpr + ", filename, size_bytes FROM remote_media WHERE trash_timestamp > 0 AND (is_archived IS NULL OR is_archived = 0) " +
-                        (hasTable(db, "media") ? "UNION SELECT dedup_key, '' AS media_key, '' as filename, 0 as size_bytes FROM media WHERE trash_timestamp > 0 AND (is_archived IS NULL OR is_archived = 0)" : "") +
+                        "SELECT dedup_key, " + remoteKeyExpr + ", filename, size_bytes FROM remote_media WHERE (state = 2 OR (trash_timestamp IS NOT NULL AND trash_timestamp > 0)) AND (is_archived IS NULL OR is_archived = 0) " +
+                        (hasTable(db, "media") ? "UNION SELECT dedup_key, '' AS media_key, '' as filename, 0 as size_bytes FROM media WHERE (is_deleted = 1 OR (trash_timestamp IS NOT NULL AND trash_timestamp > 0)) AND (is_archived IS NULL OR is_archived = 0)" : "") +
                         ") r LIMIT 500";
                 try (Cursor c = db.rawQuery(sql, null)) {
                     while (c != null && c.moveToNext()) {
@@ -1935,12 +1965,13 @@ public class StorageScanner {
                         for (MediaItem it : items) {
                             ContentValues cv = new ContentValues();
                             cv.put("trash_timestamp", now);
+                            if (hasColumn(localDb, "remote_media", "state")) cv.put("state", 2);
                             cv.put("is_archived", 0);
                             localDb.update("remote_media", cv, "dedup_key = ?", new String[]{it.dedupKey});
                             if (hasTable(localDb, "media")) {
                                 ContentValues mCv = new ContentValues();
                                 mCv.put("trash_timestamp", now);
-                                mCv.put("is_deleted", 0);
+                                mCv.put("is_deleted", 1);
                                 mCv.put("is_archived", 0);
                                 localDb.update("media", mCv, "dedup_key = ?", new String[]{it.dedupKey});
                             }
@@ -2005,6 +2036,7 @@ public class StorageScanner {
                     for (MediaItem it : items) {
                         ContentValues cv = new ContentValues();
                         cv.put("trash_timestamp", 0);
+                        if (hasColumn(db, "remote_media", "state")) cv.put("state", 0);
                         db.update("remote_media", cv, "dedup_key = ?", new String[]{it.dedupKey});
                         if (hasTable(db, "media")) {
                             ContentValues mCv = new ContentValues();
@@ -2012,7 +2044,13 @@ public class StorageScanner {
                             mCv.put("is_deleted", 0);
                             db.update("media", mCv, "dedup_key = ?", new String[]{it.dedupKey});
                         }
-                        if (hasTable(db, "local_media")) db.update("local_media", cv, "dedup_key = ?", new String[]{it.dedupKey});
+                        if (hasTable(db, "local_media")) {
+                            ContentValues lCv = new ContentValues();
+                            lCv.put("trash_timestamp", 0);
+                            if (hasColumn(db, "local_media", "state")) lCv.put("state", 0);
+                            if (hasColumn(db, "local_media", "desired_state")) lCv.put("desired_state", 0);
+                            db.update("local_media", lCv, "dedup_key = ?", new String[]{it.dedupKey});
+                        }
                     }
 
                     db.setTransactionSuccessful();
@@ -2029,6 +2067,7 @@ public class StorageScanner {
                         ContentValues cv = new ContentValues();
                         cv.put("is_archived", 1);
                         cv.put("trash_timestamp", 0);
+                        if (hasColumn(db, "remote_media", "state")) cv.put("state", 0);
                         db.update("remote_media", cv, "dedup_key = ?", new String[]{it.dedupKey});
                         if (hasTable(db, "media")) {
                             ContentValues mCv = new ContentValues();
@@ -2041,6 +2080,8 @@ public class StorageScanner {
                             ContentValues lCv = new ContentValues();
                             lCv.put("is_archived", 1);
                             lCv.put("trash_timestamp", 0);
+                            if (hasColumn(db, "local_media", "state")) lCv.put("state", 0);
+                            if (hasColumn(db, "local_media", "desired_state")) lCv.put("desired_state", 0);
                             db.update("local_media", lCv, "dedup_key = ?", new String[]{it.dedupKey});
                         }
                     }
@@ -2059,6 +2100,7 @@ public class StorageScanner {
                         ContentValues cv = new ContentValues();
                         cv.put("is_archived", 0);
                         cv.put("trash_timestamp", 0);
+                        if (hasColumn(db, "remote_media", "state")) cv.put("state", 0);
                         db.update("remote_media", cv, "dedup_key = ?", new String[]{it.dedupKey});
                         if (hasTable(db, "media")) {
                             ContentValues mCv = new ContentValues();
@@ -2071,6 +2113,8 @@ public class StorageScanner {
                             ContentValues lCv = new ContentValues();
                             lCv.put("is_archived", 0);
                             lCv.put("trash_timestamp", 0);
+                            if (hasColumn(db, "local_media", "state")) lCv.put("state", 0);
+                            if (hasColumn(db, "local_media", "desired_state")) lCv.put("desired_state", 0);
                             db.update("local_media", lCv, "dedup_key = ?", new String[]{it.dedupKey});
                         }
                     }
