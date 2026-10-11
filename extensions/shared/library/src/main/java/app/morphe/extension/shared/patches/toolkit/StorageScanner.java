@@ -977,10 +977,11 @@ public class StorageScanner {
 
     public static String createNativeCloudAlbum(Context context, int accountId, String title, List<String> mediaKeys, int[] outAdded) {
         String createdKey = null;
+        int totalAdded = 0;
         try {
-            Logger.printInfo(() -> "Creating native cloud album: " + title + " for account " + accountId + " with " + (mediaKeys != null ? mediaKeys.size() : 0) + " items");
+            Logger.printInfo(() -> "Creating native cloud album: '" + title + "' for account " + accountId + " with " + (mediaKeys != null ? mediaKeys.size() : 0) + " items");
 
-            // Method A: Create envelope with initial items and title using bemf.e
+            // Method A: Create envelope with initial batch of items and title using bemf.e (x = 2)
             if (mediaKeys != null && !mediaKeys.isEmpty()) {
                 try {
                     Class<?> bemfClass = Class.forName("bemf");
@@ -1060,15 +1061,11 @@ public class StorageScanner {
                                 if (createdKey != null && !createdKey.isEmpty()) {
                                     final String keyA = createdKey;
                                     Logger.printInfo(() -> "Method A created album successfully! Key: " + keyA);
-                                    int added = initialCount;
+                                    totalAdded = initialCount;
                                     if (mediaKeys.size() > initialCount) {
                                         List<String> remaining = mediaKeys.subList(initialCount, mediaKeys.size());
-                                        added += addMediaToCloudAlbum(context, accountId, createdKey, remaining);
+                                        totalAdded += addMediaToCloudAlbum(context, accountId, createdKey, remaining);
                                     }
-                                    if (outAdded != null && outAdded.length > 0) {
-                                        outAdded[0] = added;
-                                    }
-                                    return createdKey;
                                 }
                             } else {
                                 Object exc = bxuzClass.getField("e").get(result);
@@ -1083,92 +1080,83 @@ public class StorageScanner {
             }
 
             // Method B (Fallback): Create empty envelope, then add items via AddMediaToEnvelopeTask
-            Class<?> bemfClass = Class.forName("bemf");
-            Constructor<?> bemfCtor = bemfClass.getConstructor(long.class);
-            Object builder = bemfCtor.newInstance(System.currentTimeMillis());
+            if (createdKey == null || createdKey.isEmpty()) {
+                Class<?> bemfClass = Class.forName("bemf");
+                Constructor<?> bemfCtor = bemfClass.getConstructor(long.class);
+                Object builder = bemfCtor.newInstance(System.currentTimeMillis());
 
-            Field fX = bemfClass.getField("x");
-            fX.setInt(builder, 4); // 4 = ENVELOPE_TYPE_ALBUM_EMPTY (required by adwr.e)
+                Field fX = bemfClass.getField("x");
+                fX.setInt(builder, 4); // 4 = ENVELOPE_TYPE_ALBUM_EMPTY (required by adwr.e)
 
-            Field fG = bemfClass.getField("g");
-            fG.set(builder, title);
-            try {
-                Field fR = bemfClass.getField("r");
-                fR.setBoolean(builder, title != null && !title.isEmpty());
-            } catch (Throwable ignored) {}
-
-            Class<?> bemgClass = Class.forName("bemg");
-            Constructor<?> bemgCtor = bemgClass.getConstructor(bemfClass);
-            Object bemgObj = bemgCtor.newInstance(builder);
-
-            Class<?> ladwrClass = Class.forName("adwr");
-            Method dMethod = ladwrClass.getMethod("d", int.class, bemgClass);
-            Object task = dMethod.invoke(null, accountId, bemgObj);
-
-            if (task != null) {
-                Object result = null;
+                Field fG = bemfClass.getField("g");
+                fG.set(builder, title);
                 try {
-                    Class<?> bxtyClass = Class.forName("bxty");
-                    Class<?> bxueClass = Class.forName("bxue");
-                    Method fMethod = bxueClass.getMethod("f", Context.class, bxtyClass);
-                    result = fMethod.invoke(null, context, task);
-                } catch (Throwable tSync) {
-                    Class<?> bzoqClass = Class.forName("bzoq");
-                    Class<?> qcxClass = Class.forName("qcx");
-                    Method getServiceMethod = bzoqClass.getMethod("e", Context.class, Class.class);
-                    Object taskRunner = getServiceMethod.invoke(null, context, qcxClass);
-                    if (taskRunner != null) {
+                    Field fR = bemfClass.getField("r");
+                    fR.setBoolean(builder, title != null && !title.isEmpty());
+                } catch (Throwable ignored) {}
+
+                Class<?> bemgClass = Class.forName("bemg");
+                Constructor<?> bemgCtor = bemgClass.getConstructor(bemfClass);
+                Object bemgObj = bemgCtor.newInstance(builder);
+
+                Class<?> ladwrClass = Class.forName("adwr");
+                Method dMethod = ladwrClass.getMethod("d", int.class, bemgClass);
+                Object task = dMethod.invoke(null, accountId, bemgObj);
+
+                if (task != null) {
+                    Object result = null;
+                    try {
                         Class<?> bxtyClass = Class.forName("bxty");
-                        Method executeMethod = qcxClass.getMethod("a", bxtyClass);
-                        result = executeMethod.invoke(taskRunner, task);
+                        Class<?> bxueClass = Class.forName("bxue");
+                        Method fMethod = bxueClass.getMethod("f", Context.class, bxtyClass);
+                        result = fMethod.invoke(null, context, task);
+                    } catch (Throwable tSync) {
+                        Class<?> bzoqClass = Class.forName("bzoq");
+                        Class<?> qcxClass = Class.forName("qcx");
+                        Method getServiceMethod = bzoqClass.getMethod("e", Context.class, Class.class);
+                        Object taskRunner = getServiceMethod.invoke(null, context, qcxClass);
+                        if (taskRunner != null) {
+                            Class<?> bxtyClass = Class.forName("bxty");
+                            Method executeMethod = qcxClass.getMethod("a", bxtyClass);
+                            result = executeMethod.invoke(taskRunner, task);
+                        }
+                    }
+
+                    if (result != null) {
+                        Class<?> bxuzClass = Class.forName("bxuz");
+                        int statusCode = bxuzClass.getField("d").getInt(result);
+                        Logger.printInfo(() -> "Method B CreateEnvelopeTask status: " + statusCode);
+                        Method getBundleMethod = bxuzClass.getMethod("b");
+                        Bundle bundle = (Bundle) getBundleMethod.invoke(result);
+                        if (bundle != null) {
+                            createdKey = bundle.getString("envelope_media_key");
+                            if (createdKey == null || createdKey.isEmpty()) {
+                                Parcelable shareDetails = bundle.getParcelable("envelope_share_details");
+                                if (shareDetails != null) {
+                                    createdKey = (String) Class.forName("bemk").getField("a").get(shareDetails);
+                                }
+                            }
+                        }
                     }
                 }
 
-                if (result != null) {
-                    Class<?> bxuzClass = Class.forName("bxuz");
-                    int statusCode = bxuzClass.getField("d").getInt(result);
-                    Logger.printInfo(() -> "Method B CreateEnvelopeTask status: " + statusCode);
-                    Method getBundleMethod = bxuzClass.getMethod("b");
-                    Bundle bundle = (Bundle) getBundleMethod.invoke(result);
-                    if (bundle != null) {
-                        createdKey = bundle.getString("envelope_media_key");
-                        if (createdKey == null || createdKey.isEmpty()) {
-                            Parcelable shareDetails = bundle.getParcelable("envelope_share_details");
-                            if (shareDetails != null) {
-                                createdKey = (String) Class.forName("bemk").getField("a").get(shareDetails);
-                            }
-                        }
+                if (createdKey != null && !createdKey.isEmpty()) {
+                    final String keyB = createdKey;
+                    Logger.printInfo(() -> "Method B created empty album. Key: " + keyB);
+                    if (mediaKeys != null && !mediaKeys.isEmpty()) {
+                        totalAdded = addMediaToCloudAlbum(context, accountId, createdKey, mediaKeys);
                     }
                 }
             }
 
             if (createdKey != null && !createdKey.isEmpty()) {
-                final String keyB = createdKey;
-                Logger.printInfo(() -> "Method B created empty album. Key: " + keyB);
+                final String finalKey = createdKey;
+                // Set title online and locally across both methods
                 if (title != null && !title.isEmpty()) {
-                    try {
-                        File f = context.getDatabasePath("gphotos" + accountId + ".db");
-                        if (f != null && f.exists()) {
-                            try (SQLiteDatabase db = SQLiteDatabase.openDatabase(f.getAbsolutePath(), null, SQLiteDatabase.OPEN_READWRITE)) {
-                                ContentValues cv = new ContentValues();
-                                cv.put("title", title);
-                                if (hasTable(db, "envelopes")) {
-                                    db.update("envelopes", cv, "media_key = ?", new String[]{createdKey});
-                                }
-                                if (hasTable(db, "collections")) {
-                                    db.update("collections", cv, "associated_envelope_media_key = ? OR collection_media_key = ?", new String[]{createdKey, createdKey});
-                                }
-                            }
-                        }
-                    } catch (Throwable tDb) {
-                        Logger.printInfo(() -> "Could not write title to db: " + tDb.getMessage());
-                    }
+                    setCloudAlbumTitle(context, accountId, finalKey, title);
                 }
-                if (mediaKeys != null && !mediaKeys.isEmpty()) {
-                    int added = addMediaToCloudAlbum(context, accountId, createdKey, mediaKeys);
-                    if (outAdded != null && outAdded.length > 0) {
-                        outAdded[0] = added;
-                    }
+                if (outAdded != null && outAdded.length > 0) {
+                    outAdded[0] = totalAdded;
                 }
                 triggerOnlineSync(context, accountId);
                 notifyUiChanges(context, accountId);
@@ -1178,6 +1166,90 @@ public class StorageScanner {
             Logger.printException(() -> "Error in createNativeCloudAlbum", t);
         }
         return null;
+    }
+
+    public static boolean setCloudAlbumTitle(Context context, int accountId, String envelopeMediaKey, String title) {
+        if (context == null || envelopeMediaKey == null || envelopeMediaKey.isEmpty() || title == null || title.isEmpty()) {
+            return false;
+        }
+        boolean ok = false;
+        try {
+            Logger.printInfo(() -> "Setting cloud album title: '" + title + "' for " + envelopeMediaKey + " (account " + accountId + ")");
+
+            // 1. Online mutation via mbs (ChangeEnvTitleOptAction) + ActionWrapper
+            try {
+                Class<?> mbwClass = Class.forName("mbw");
+                Constructor<?> mbwCtor = mbwClass.getDeclaredConstructor();
+                mbwCtor.setAccessible(true);
+                Object mbwObj = mbwCtor.newInstance();
+
+                Field fC = mbwClass.getField("c");
+                fC.set(mbwObj, envelopeMediaKey);
+
+                Field fD = mbwClass.getField("d");
+                fD.set(mbwObj, title);
+
+                Field fB = mbwClass.getField("b");
+                fB.setInt(mbwObj, 2); // bitmask for title present
+
+                Class<?> mbsClass = Class.forName("mbs");
+                Constructor<?> mbsCtor = mbsClass.getDeclaredConstructor(Context.class, int.class, mbwClass);
+                mbsCtor.setAccessible(true);
+                Object mbsAction = mbsCtor.newInstance(context, accountId, mbwObj);
+
+                Class<?> wrapperClass = Class.forName("com.google.android.apps.photos.actionqueue.ActionWrapper");
+                Class<?> ltyClass = Class.forName("lty");
+                Constructor<?> wrapperCtor = wrapperClass.getConstructor(int.class, ltyClass);
+                Object actionWrapper = wrapperCtor.newInstance(accountId, mbsAction);
+
+                Class<?> bxtyClass = Class.forName("bxty");
+                Class<?> bxueClass = Class.forName("bxue");
+                Method runMethod = bxueClass.getMethod("f", Context.class, bxtyClass);
+                Object res = runMethod.invoke(null, context, actionWrapper);
+
+                if (res != null) {
+                    Bundle bundle = (Bundle) res.getClass().getMethod("b").invoke(res);
+                    long actionId = bundle != null ? bundle.getLong("LocalResult__action_id", -1L) : -1L;
+                    if (actionId != -1L) {
+                        Class<?> aokqClass = Class.forName("aokq");
+                        Constructor<?> aokqCtor = aokqClass.getConstructor(int.class, long.class);
+                        Object aokqInst = aokqCtor.newInstance(accountId, actionId);
+                        Method aMethod = aokqClass.getMethod("a", Context.class);
+                        aMethod.invoke(aokqInst, context);
+                        Logger.printInfo(() -> "Successfully flushed title mutation via aokq!");
+                        ok = true;
+                    }
+                }
+            } catch (Throwable tOpt) {
+                Logger.printInfo(() -> "mbs title action failed: " + tOpt.getMessage());
+            }
+
+            // 2. Local SQLite write in WAL mode as immediate safety net
+            try {
+                File f = context.getDatabasePath("gphotos" + accountId + ".db");
+                if (f != null && f.exists()) {
+                    try (SQLiteDatabase db = SQLiteDatabase.openDatabase(f.getAbsolutePath(), null, SQLiteDatabase.OPEN_READWRITE | 0x20000000)) {
+                        ContentValues cv = new ContentValues();
+                        cv.put("title", title);
+                        if (hasTable(db, "envelopes")) {
+                            int envRows = db.update("envelopes", cv, "media_key = ?", new String[]{envelopeMediaKey});
+                            Logger.printInfo(() -> "Directly updated envelopes title rows: " + envRows);
+                            if (envRows > 0) ok = true;
+                        }
+                        if (hasTable(db, "collections")) {
+                            int colRows = db.update("collections", cv, "associated_envelope_media_key = ? OR collection_media_key = ?", new String[]{envelopeMediaKey, envelopeMediaKey});
+                            Logger.printInfo(() -> "Directly updated collections title rows: " + colRows);
+                            if (colRows > 0) ok = true;
+                        }
+                    }
+                }
+            } catch (Throwable tDb) {
+                Logger.printInfo(() -> "Direct db title write failed: " + tDb.getMessage());
+            }
+        } catch (Throwable t) {
+            Logger.printException(() -> "Error in setCloudAlbumTitle", t);
+        }
+        return ok;
     }
 
     public static int addMediaToCloudAlbum(Context context, int accountId, String envelopeMediaKey, List<String> mediaKeys) {
@@ -1256,10 +1328,10 @@ public class StorageScanner {
                             String msg = (String) bxuzClass.getField("f").get(result);
                             Logger.printInfo(() -> "AddMediaToEnvelopeTask error status: " + statusCode + ", msg: " + msg + ", exc: " + exc);
                             if (chunk.size() > 1) {
-                                Logger.printInfo(() -> "Retrying chunk of " + chunk.size() + " items individually...");
-                                for (String singleKey : chunk) {
-                                    totalAdded += addMediaToCloudAlbum(context, accountId, envelopeMediaKey, Collections.singletonList(singleKey));
-                                }
+                                Logger.printInfo(() -> "Chunk of " + chunk.size() + " items failed, splitting into halves...");
+                                int mid = chunk.size() / 2;
+                                totalAdded += addMediaToCloudAlbum(context, accountId, envelopeMediaKey, chunk.subList(0, mid));
+                                totalAdded += addMediaToCloudAlbum(context, accountId, envelopeMediaKey, chunk.subList(mid, chunk.size()));
                             }
                         }
                     }
@@ -1415,25 +1487,13 @@ public class StorageScanner {
         try {
             File f = context != null ? context.getDatabasePath("gphotos" + accountId + ".db") : null;
             if (f != null && f.exists()) {
-                db = SQLiteDatabase.openDatabase(f.getAbsolutePath(), null, SQLiteDatabase.OPEN_READONLY);
+                db = SQLiteDatabase.openDatabase(f.getAbsolutePath(), null, SQLiteDatabase.OPEN_READONLY | 0x20000000);
             }
         } catch (Throwable ignored) {}
 
         for (MediaItem it : items) {
             boolean foundAny = false;
-            // 1. Look up media table first by dedupKey for canonical_media_key
-            if (db != null && it.dedupKey != null && !it.dedupKey.trim().isEmpty() && hasTable(db, "media") && hasColumn(db, "media", "canonical_media_key")) {
-                try (Cursor c = db.rawQuery("SELECT DISTINCT canonical_media_key FROM media WHERE dedup_key = ? AND canonical_media_key IS NOT NULL AND canonical_media_key != '' AND canonical_media_key NOT LIKE 'local:%'", new String[]{it.dedupKey})) {
-                    while (c != null && c.moveToNext()) {
-                        String rk = c.getString(0);
-                        if (rk != null && !rk.trim().isEmpty()) {
-                            mediaKeys.add(rk.trim());
-                            foundAny = true;
-                        }
-                    }
-                } catch (Throwable ignored) {}
-            }
-            // 2. Look up remote_media table - query ALL matching rows (including duplicate copies)
+            // 1. Look up remote_media table first by dedupKey (guaranteed backed-up cloud photos)
             if (db != null && it.dedupKey != null && !it.dedupKey.trim().isEmpty() && hasTable(db, "remote_media")) {
                 try (Cursor c = db.rawQuery("SELECT DISTINCT COALESCE(NULLIF(remote_media_key, ''), media_key) FROM remote_media WHERE dedup_key = ?", new String[]{it.dedupKey})) {
                     while (c != null && c.moveToNext()) {
@@ -1445,12 +1505,19 @@ public class StorageScanner {
                     }
                 } catch (Throwable ignored) {}
             }
-            // 3. Fallback: item's own mediaKey if remote
-            if (!foundAny && it.mediaKey != null && !it.mediaKey.trim().isEmpty() && !it.mediaKey.startsWith("local:")) {
-                mediaKeys.add(it.mediaKey.trim());
-                foundAny = true;
+            // 2. Look up media table for canonical_media_key
+            if (db != null && it.dedupKey != null && !it.dedupKey.trim().isEmpty() && hasTable(db, "media") && hasColumn(db, "media", "canonical_media_key")) {
+                try (Cursor c = db.rawQuery("SELECT DISTINCT canonical_media_key FROM media WHERE dedup_key = ? AND canonical_media_key IS NOT NULL AND canonical_media_key != '' AND canonical_media_key NOT LIKE 'local:%'", new String[]{it.dedupKey})) {
+                    while (c != null && c.moveToNext()) {
+                        String rk = c.getString(0);
+                        if (rk != null && !rk.trim().isEmpty()) {
+                            mediaKeys.add(rk.trim());
+                            foundAny = true;
+                        }
+                    }
+                } catch (Throwable ignored) {}
             }
-            // 4. Look up shared_media table
+            // 3. Look up shared_media table
             if (db != null && it.dedupKey != null && !it.dedupKey.trim().isEmpty() && hasTable(db, "shared_media")) {
                 try (Cursor c = db.rawQuery("SELECT DISTINCT remote_media_key FROM shared_media WHERE dedup_key = ? AND remote_media_key IS NOT NULL AND remote_media_key != '' AND remote_media_key NOT LIKE 'local:%'", new String[]{it.dedupKey})) {
                     while (c != null && c.moveToNext()) {
@@ -1461,6 +1528,17 @@ public class StorageScanner {
                         }
                     }
                 } catch (Throwable ignored) {}
+            }
+            // 4. Fallback: only if item.mediaKey exists, is not local, AND is verified present in remote_media
+            if (!foundAny && it.mediaKey != null && !it.mediaKey.trim().isEmpty() && !it.mediaKey.startsWith("local:")) {
+                if (db != null && hasTable(db, "remote_media")) {
+                    try (Cursor c = db.rawQuery("SELECT 1 FROM remote_media WHERE media_key = ? OR remote_media_key = ? LIMIT 1", new String[]{it.mediaKey, it.mediaKey})) {
+                        if (c != null && c.moveToFirst()) {
+                            mediaKeys.add(it.mediaKey.trim());
+                            foundAny = true;
+                        }
+                    } catch (Throwable ignored) {}
+                }
             }
         }
 
