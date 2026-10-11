@@ -1007,33 +1007,29 @@ public class NativeToolkitDialog {
         container.setOrientation(LinearLayout.VERTICAL);
 
         String[][] actions = new String[][]{
-                {"toExistingAlbum", "Add to Album"},
                 {"toNewAlbum", "New Album"},
-                {"removeFromAlbum", "Remove from Album"},
-                {"toTrash", "Trash"},
-                {"restoreTrash", "Restore"},
+                {"toExistingAlbum", "Add to Album"},
                 {"toArchive", "Archive"},
                 {"unArchive", "Un-Archive"},
                 {"toFavorite", "Favorite"},
                 {"unFavorite", "Un-Favorite"},
-                {"lock", "Lock"},
-                {"unLock", "Unlock"},
-                {"copyDescFromOther", "Copy EXIF Desc"},
-                {"setDateFromFilename", "Date from Name"},
+                {"toTrash", "Trash"},
+                {"restoreTrash", "Restore"},
                 {"exportMetadata", "Export Metadata (CSV)"}
         };
 
         LinearLayout currentRow = null;
         for (int i = 0; i < actions.length; i++) {
-            if (i % 2 == 0) {
+            final String actionId = actions[i][0];
+            final String actionLabel = actions[i][1];
+            boolean isSingleFullWidth = (i == actions.length - 1);
+
+            if (isSingleFullWidth || i % 2 == 0) {
                 currentRow = new LinearLayout(activity);
                 currentRow.setOrientation(LinearLayout.HORIZONTAL);
                 currentRow.setLayoutParams(new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
                 container.addView(currentRow);
             }
-
-            final String actionId = actions[i][0];
-            final String actionLabel = actions[i][1];
 
             TextView btn = new TextView(activity);
             btn.setText(actionLabel);
@@ -1049,7 +1045,7 @@ public class NativeToolkitDialog {
 
             LinearLayout.LayoutParams bLp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
             bLp.bottomMargin = (int) (6 * density);
-            if (i % 2 == 0) bLp.rightMargin = (int) (6 * density);
+            if (!isSingleFullWidth && i % 2 == 0) bLp.rightMargin = (int) (6 * density);
             btn.setLayoutParams(bLp);
 
             btn.setOnClickListener(v -> {
@@ -1079,12 +1075,6 @@ public class NativeToolkitDialog {
                     showNewAlbumDialog(activity, items, refreshRunner, density, theme);
                 } else if ("toExistingAlbum".equals(actionId)) {
                     showAlbumPickerDialog(activity, items, refreshRunner, density, theme);
-                } else if ("removeFromAlbum".equals(actionId)) {
-                    String param = !currentCriteria.albumsInclude.isEmpty() ? TextUtils.join(",", currentCriteria.albumsInclude) : null;
-                    final String targetAlbumKeys = param;
-                    showActionConfirmDialog(activity, "Remove " + items.size() + " items from album?", () -> {
-                        executeDbActionAsync(activity, actionId, items, targetAlbumKeys, refreshRunner);
-                    }, density, theme);
                 } else if ("toTrash".equals(actionId)) {
                     String param = null;
                     String confirmMsg;
@@ -1097,14 +1087,6 @@ public class NativeToolkitDialog {
                     final String targetAlbumKeys = param;
                     showActionConfirmDialog(activity, confirmMsg, () -> {
                         executeDbActionAsync(activity, actionId, items, targetAlbumKeys, refreshRunner);
-                    }, density, theme);
-                } else if ("lock".equals(actionId)) {
-                    showActionConfirmDialog(activity, "Lock " + items.size() + " items into Locked Folder?", () -> {
-                        executeDbActionAsync(activity, actionId, items, null, refreshRunner);
-                    }, density, theme);
-                } else if ("copyDescFromOther".equals(actionId)) {
-                    showActionConfirmDialog(activity, "Copy captions/descriptions for " + items.size() + " items?", () -> {
-                        executeDbActionAsync(activity, actionId, items, null, refreshRunner);
                     }, density, theme);
                 } else {
                     executeDbActionAsync(activity, actionId, items, null, refreshRunner);
@@ -1119,16 +1101,12 @@ public class NativeToolkitDialog {
     }
 
     private static String getActionDisabledHint(String actionId, StorageScanner.FilterCriteria crit) {
-        if ("removeFromAlbum".equals(actionId)) return "Source must be Albums to remove items from an album";
         if ("toTrash".equals(actionId)) return "Items are already in Trash";
         if ("restoreTrash".equals(actionId)) return "Source must be Trash to restore items";
-        if ("lock".equals(actionId)) return "Items are already in Locked Folder";
-        if ("unLock".equals(actionId)) return "Source must be Locked Folder to unlock items";
         if ("toArchive".equals(actionId)) return "Items are already archived";
         if ("unArchive".equals(actionId)) return "Items are not archived";
         if ("toFavorite".equals(actionId)) return "Items are already favorited";
         if ("unFavorite".equals(actionId)) return "Items are not favorited";
-        if ("copyDescFromOther".equals(actionId)) return "Cannot copy description on trashed items";
         return null;
     }
 
@@ -1140,19 +1118,14 @@ public class NativeToolkitDialog {
         boolean favoritesOnly = Boolean.TRUE.equals(crit.favorite) || src == StorageScanner.SourceType.FAVORITES;
         boolean favoritesExcluded = Boolean.FALSE.equals(crit.favorite) || crit.excludeFavorites;
 
-        setActionState(actionButtons.get("removeFromAlbum"), src == StorageScanner.SourceType.ALBUMS);
         setActionState(actionButtons.get("toTrash"), src != StorageScanner.SourceType.TRASH);
         setActionState(actionButtons.get("restoreTrash"), src == StorageScanner.SourceType.TRASH);
-        setActionState(actionButtons.get("lock"), src != StorageScanner.SourceType.LOCKED);
-        setActionState(actionButtons.get("unLock"), src == StorageScanner.SourceType.LOCKED);
 
         setActionState(actionButtons.get("toArchive"), !archivedOnly);
         setActionState(actionButtons.get("unArchive"), !archivedExcluded);
 
         setActionState(actionButtons.get("toFavorite"), !favoritesOnly && src != StorageScanner.SourceType.FAVORITES);
         setActionState(actionButtons.get("unFavorite"), !favoritesExcluded);
-
-        setActionState(actionButtons.get("copyDescFromOther"), src != StorageScanner.SourceType.TRASH);
     }
 
     private static void setActionState(TextView btn, boolean enabled) {
