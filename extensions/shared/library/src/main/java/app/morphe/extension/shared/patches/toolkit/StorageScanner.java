@@ -1433,10 +1433,10 @@ public class StorageScanner {
                 if (!hasTable(db, "remote_media")) return;
 
                 List<MediaItem> pendingItems = new ArrayList<>();
-                String mediaKeyCol = hasColumn(db, "remote_media", "remote_media_key") ? "COALESCE(NULLIF(remote_media_key, ''), media_key)" : "media_key";
-                String sql = "SELECT DISTINCT r.dedup_key, r." + mediaKeyCol + ", r.filename, r.size_bytes FROM (" +
-                        "SELECT dedup_key, " + mediaKeyCol + ", filename, size_bytes FROM remote_media WHERE trash_timestamp > 0 AND (is_archived IS NULL OR is_archived = 0) " +
-                        (hasTable(db, "media") ? "UNION SELECT dedup_key, '' as " + mediaKeyCol + ", '' as filename, 0 as size_bytes FROM media WHERE trash_timestamp > 0 AND (is_archived IS NULL OR is_archived = 0)" : "") +
+                String remoteKeyExpr = hasColumn(db, "remote_media", "remote_media_key") ? "COALESCE(NULLIF(remote_media_key, ''), media_key) AS media_key" : "media_key";
+                String sql = "SELECT DISTINCT r.dedup_key, r.media_key, r.filename, r.size_bytes FROM (" +
+                        "SELECT dedup_key, " + remoteKeyExpr + ", filename, size_bytes FROM remote_media WHERE trash_timestamp > 0 AND (is_archived IS NULL OR is_archived = 0) " +
+                        (hasTable(db, "media") ? "UNION SELECT dedup_key, '' AS media_key, '' as filename, 0 as size_bytes FROM media WHERE trash_timestamp > 0 AND (is_archived IS NULL OR is_archived = 0)" : "") +
                         ") r LIMIT 500";
                 try (Cursor c = db.rawQuery(sql, null)) {
                     while (c != null && c.moveToNext()) {
