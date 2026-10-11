@@ -392,6 +392,13 @@ public class StorageScanner {
         File dbFile = new File(account.dbPath);
         if (!dbFile.exists()) return items;
 
+        if (crit.source == SourceType.TRASH) {
+            Context ctx = app.morphe.extension.shared.Utils.getContext();
+            if (ctx != null) {
+                syncCloudTrashToLocalDb(ctx, account);
+            }
+        }
+
         SQLiteDatabase db = null;
         try {
             db = SQLiteDatabase.openDatabase(dbFile.getAbsolutePath(), null, SQLiteDatabase.OPEN_READONLY);
@@ -1671,6 +1678,242 @@ public class StorageScanner {
         return successCount > 0;
     }
 
+    private static Object getMediaFeature(Object media, Class<?> featureClass) {
+        if (media == null || featureClass == null) return null;
+        try {
+            Method bMethod = media.getClass().getMethod("b", Class.class);
+            return bMethod.invoke(media, featureClass);
+        } catch (Throwable t) {
+            try {
+                Method cMethod = media.getClass().getMethod("c", Class.class);
+                return cMethod.invoke(media, featureClass);
+            } catch (Throwable ignored) {}
+        }
+        return null;
+    }
+
+    private static String extractDedupKey(Object media, Class<?> zonClass) {
+        if (media == null || zonClass == null) return null;
+        try {
+            Object feat = getMediaFeature(media, zonClass);
+            if (feat != null) {
+                Field af = feat.getClass().getField("a");
+                Object opt = af.get(feat);
+                if (opt != null) {
+                    try {
+                        Method isPresent = opt.getClass().getMethod("isPresent");
+                        if (Boolean.TRUE.equals(isPresent.invoke(opt))) {
+                            Object val = opt.getClass().getMethod("get").invoke(opt);
+                            if (val != null) {
+                                try {
+                                    Field bField = val.getClass().getField("b");
+                                    Object bVal = bField.get(val);
+                                    if (bVal != null) return bVal.toString();
+                                } catch (Throwable ignored) {
+                                    return val.toString();
+                                }
+                            }
+                        }
+                    } catch (Throwable ignored) {
+                        return opt.toString();
+                    }
+                }
+            }
+        } catch (Throwable ignored) {}
+        return null;
+    }
+
+    private static List<String> extractMediaKeys(Object media, Class<?> bamsClass) {
+        List<String> res = new ArrayList<>();
+        if (media == null || bamsClass == null) return res;
+        try {
+            Object feat = getMediaFeature(media, bamsClass);
+            if (feat != null) {
+                Field af = feat.getClass().getField("a");
+                List<?> keys = (List<?>) af.get(feat);
+                if (keys != null) {
+                    for (Object k : keys) {
+                        if (k != null) {
+                            res.add(k.toString());
+                        }
+                    }
+                }
+            }
+        } catch (Throwable ignored) {}
+        return res;
+    }
+
+    private static void syncCloudTrashToLocalDb(Context context, AccountInfo account) {
+        if (context == null || account == null) return;
+        try {
+            Class<?> bjjqClass = Class.forName("bjjq");
+            Method aMethod = bjjqClass.getMethod("a", int.class);
+            Object trashCollectionRef = aMethod.invoke(null, account.accountId);
+
+            Class<?> wrlClass = Class.forName("wrl");
+            Class<?> wryClass = Class.forName("wry");
+            Class<?> wqsClass = Class.forName("wqs");
+            Class<?> wqbClass = Class.forName("wqb");
+
+            Object wqsVal = wqsClass.getField("a").get(null);
+            Object wqbVal = buildCoreFeaturesRequest(context);
+            if (wqbVal == null) {
+                wqbVal = wqbClass.getField("a").get(null);
+            }
+
+            Method hMethod = wrlClass.getMethod("H", Context.class, wryClass, wqsClass, wqbClass);
+            List<?> allTrashMedia = (List<?>) hMethod.invoke(null, context, trashCollectionRef, wqsVal, wqbVal);
+            if (allTrashMedia == null || allTrashMedia.isEmpty()) {
+                Log.i("morphe: StorageScanner", "syncCloudTrashToLocalDb: Trash collection returned 0 items");
+                return;
+            }
+
+            Log.i("morphe: StorageScanner", "syncCloudTrashToLocalDb: Loaded " + allTrashMedia.size() + " items from trash collection");
+
+            Class<?> zonClass = null;
+            try { zonClass = Class.forName("zon"); } catch (Throwable ignored) {}
+            Class<?> bamsClass = null;
+            try { bamsClass = Class.forName("bams"); } catch (Throwable ignored) {}
+
+            List<String> dedupKeys = new ArrayList<>();
+            List<String> mediaKeys = new ArrayList<>();
+            for (Object m : allTrashMedia) {
+                String d = extractDedupKey(m, zonClass);
+                if (d != null && !d.isEmpty()) dedupKeys.add(d);
+                List<String> mks = extractMediaKeys(m, bamsClass);
+                mediaKeys.addAll(mks);
+            }
+
+            File dbf = new File(account.dbPath);
+            if (!dbf.exists()) return;
+
+            SQLiteDatabase db = SQLiteDatabase.openDatabase(dbf.getAbsolutePath(), null, SQLiteDatabase.OPEN_READWRITE);
+            try {
+                db.beginTransaction();
+                long now = System.currentTimeMillis();
+                int updated = 0;
+                for (String dk : dedupKeys) {
+                    ContentValues cv = new ContentValues();
+                    if (hasColumn(db, "remote_media", "state")) cv.put("state", 2);
+                    cv.put("trash_timestamp", now);
+                    updated += db.update("remote_media", cv, "dedup_key = ? AND (state != 2 OR trash_timestamp IS NULL OR trash_timestamp = 0)", new String[]{dk});
+                    if (hasTable(db, "media")) {
+                        ContentValues mCv = new ContentValues();
+                        mCv.put("trash_timestamp", now);
+                        mCv.put("is_deleted", 1);
+                        db.update("media", mCv, "dedup_key = ?", new String[]{dk});
+                    }
+                }
+                for (String mk : mediaKeys) {
+                    ContentValues cv = new ContentValues();
+                    if (hasColumn(db, "remote_media", "state")) cv.put("state", 2);
+                    cv.put("trash_timestamp", now);
+                    updated += db.update("remote_media", cv, "media_key = ? AND (state != 2 OR trash_timestamp IS NULL OR trash_timestamp = 0)", new String[]{mk});
+                }
+                db.setTransactionSuccessful();
+                Log.i("morphe: StorageScanner", "syncCloudTrashToLocalDb: Marked " + updated + " cloud trash items as state=2 locally");
+            } finally {
+                db.endTransaction();
+                db.close();
+            }
+        } catch (Throwable t) {
+            Log.w("morphe: StorageScanner", "syncCloudTrashToLocalDb failed: " + t.getMessage());
+        }
+    }
+
+    private static List<?> loadTrashMediaItems(Context context, int accountId, List<MediaItem> items) {
+        List<Object> result = new ArrayList<>();
+        if (context == null || items == null || items.isEmpty()) return result;
+
+        try {
+            Class<?> bjjqClass = Class.forName("bjjq");
+            Method aMethod = bjjqClass.getMethod("a", int.class);
+            Object trashCollectionRef = aMethod.invoke(null, accountId);
+
+            Class<?> wrlClass = Class.forName("wrl");
+            Class<?> wryClass = Class.forName("wry");
+            Class<?> wqsClass = Class.forName("wqs");
+            Class<?> wqbClass = Class.forName("wqb");
+
+            Object wqsVal = wqsClass.getField("a").get(null);
+            Object wqbVal = buildCoreFeaturesRequest(context);
+            if (wqbVal == null) {
+                wqbVal = wqbClass.getField("a").get(null);
+            }
+
+            Method hMethod = wrlClass.getMethod("H", Context.class, wryClass, wqsClass, wqbClass);
+            List<?> allTrashMedia = (List<?>) hMethod.invoke(null, context, trashCollectionRef, wqsVal, wqbVal);
+            if (allTrashMedia == null || allTrashMedia.isEmpty()) {
+                Log.w("morphe: StorageScanner", "loadTrashMediaItems: Trash collection returned 0 items");
+                return result;
+            }
+
+            Log.i("morphe: StorageScanner", "loadTrashMediaItems: Loaded " + allTrashMedia.size() + " items from trash collection");
+
+            // Filter for matching items by dedupKey or mediaKey
+            Set<String> targetDedupKeys = new HashSet<>();
+            Set<String> targetMediaKeys = new HashSet<>();
+            for (MediaItem it : items) {
+                if (it.dedupKey != null && !it.dedupKey.trim().isEmpty()) {
+                    targetDedupKeys.add(it.dedupKey.trim().toLowerCase());
+                }
+                if (it.mediaKey != null && !it.mediaKey.trim().isEmpty()) {
+                    targetMediaKeys.add(it.mediaKey.trim().toLowerCase());
+                }
+            }
+
+            Class<?> zonClass = null;
+            try { zonClass = Class.forName("zon"); } catch (Throwable ignored) {}
+            Class<?> bamsClass = null;
+            try { bamsClass = Class.forName("bams"); } catch (Throwable ignored) {}
+
+            for (Object media : allTrashMedia) {
+                if (media == null) continue;
+                boolean match = false;
+
+                String dKey = extractDedupKey(media, zonClass);
+                if (dKey != null && !dKey.isEmpty()) {
+                    String lower = dKey.toLowerCase();
+                    for (String target : targetDedupKeys) {
+                        if (lower.contains(target) || target.contains(lower)) {
+                            match = true;
+                            break;
+                        }
+                    }
+                }
+
+                if (!match) {
+                    List<String> mKeys = extractMediaKeys(media, bamsClass);
+                    for (String k : mKeys) {
+                        String lower = k.toLowerCase();
+                        for (String target : targetMediaKeys) {
+                            if (lower.contains(target) || target.contains(lower)) {
+                                match = true;
+                                break;
+                            }
+                        }
+                        if (match) break;
+                    }
+                }
+
+                if (match) {
+                    result.add(media);
+                }
+            }
+
+            // Fallback: If feature matching returned 0 but total trash count is <= requested items
+            if (result.isEmpty() && allTrashMedia.size() <= items.size()) {
+                Log.i("morphe: StorageScanner", "loadTrashMediaItems: feature matching empty, using all " + allTrashMedia.size() + " trash collection items");
+                result.addAll(allTrashMedia);
+            }
+        } catch (Throwable t) {
+            Log.e("morphe: StorageScanner", "Error in loadTrashMediaItems", t);
+        }
+
+        Log.i("morphe: StorageScanner", "loadTrashMediaItems: Returning " + result.size() + " items for restore");
+        return result;
+    }
+
     private static boolean executeOnlineRestoreTask(Context context, int accountId, List<MediaItem> items) {
         if (context == null || items == null || items.isEmpty()) return false;
         Log.i("morphe: StorageScanner", "executeOnlineRestoreTask: starting for " + items.size() + " items");
@@ -1685,28 +1928,72 @@ public class StorageScanner {
             boolean chunkSuccess = false;
 
             try {
-                List<?> coreItems = loadCoreMediaItems(context, accountId, chunk);
+                // 1. Primary: load CoreMedia from the official Trash collection
+                List<?> coreItems = loadTrashMediaItems(context, accountId, chunk);
+                if (coreItems.isEmpty()) {
+                    // Fallback to library loader if items were somehow already untrashed locally
+                    coreItems = loadCoreMediaItems(context, accountId, chunk);
+                }
+
                 if (!coreItems.isEmpty()) {
                     Class<?> bdkqClass = Class.forName("bdkq");
                     Constructor<?> bdkqCtor = bdkqClass.getConstructor(Collection.class);
                     Object mediaGroup = bdkqCtor.newInstance(coreItems);
 
-                    Class<?> restoreClass = Class.forName("com.google.android.apps.photos.trash.restore.RestoreActionTask");
-                    Constructor<?> restoreCtor = restoreClass.getConstructor(int.class, bdkqClass, boolean.class);
-                    Object task = restoreCtor.newInstance(accountId, mediaGroup, true);
+                    // Strategy 1: RestoreActionTask via bxue.f
+                    try {
+                        Class<?> restoreClass = Class.forName("com.google.android.apps.photos.trash.restore.RestoreActionTask");
+                        Constructor<?> restoreCtor = restoreClass.getConstructor(int.class, bdkqClass, boolean.class);
+                        Object task = restoreCtor.newInstance(accountId, mediaGroup, true);
 
-                    Class<?> bxtyClass = Class.forName("bxty");
-                    Class<?> bxueClass = Class.forName("bxue");
-                    Method runMethod = bxueClass.getMethod("f", Context.class, bxtyClass);
-                    Object res = runMethod.invoke(null, context, task);
-                    if (res != null) {
-                        try {
-                            int statusCode = res.getClass().getField("d").getInt(res);
-                            if (statusCode == 200) chunkSuccess = true;
-                        } catch (Throwable ignored) {}
+                        Class<?> bxtyClass = Class.forName("bxty");
+                        Class<?> bxueClass = Class.forName("bxue");
+                        Method runMethod = bxueClass.getMethod("f", Context.class, bxtyClass);
+                        Object res = runMethod.invoke(null, context, task);
+                        if (res != null) {
+                            try {
+                                int statusCode = res.getClass().getField("d").getInt(res);
+                                if (statusCode == 200) {
+                                    chunkSuccess = true;
+                                } else {
+                                    Object exc = res.getClass().getField("e").get(res);
+                                    String msg = (String) res.getClass().getField("f").get(res);
+                                    Log.w("morphe: StorageScanner", "RestoreActionTask returned status " + statusCode + ", msg: " + msg, (Throwable) exc);
+                                }
+                            } catch (Throwable ignored) {}
+                        }
+                    } catch (Throwable tTask) {
+                        Log.w("morphe: StorageScanner", "RestoreActionTask failed for chunk " + chunkIndex, tTask);
                     }
+
+                    // Strategy 2: Direct bjim.a + wqx.a RPC fallback
+                    if (!chunkSuccess) {
+                        try {
+                            Class<?> bjimClass = Class.forName("bjim");
+                            Class<?> bzoqClass = Class.forName("bzoq");
+                            Method eMethod = bzoqClass.getMethod("e", Context.class, Class.class);
+                            Object bjimImpl = eMethod.invoke(null, context, bjimClass);
+
+                            Class<?> cjizClass = Class.forName("cjiz");
+                            Class<?> romClass = Class.forName("rom");
+                            Method romMethod = romClass.getMethod("b", Context.class);
+                            Object cjizSource = romMethod.invoke(null, context);
+
+                            Method aMethod = bjimClass.getMethod("a", int.class, Collection.class, boolean.class, cjizClass);
+                            Object wqxAction = aMethod.invoke(bjimImpl, accountId, coreItems, false, cjizSource);
+                            if (wqxAction != null) {
+                                Method execMethod = Class.forName("wqx").getMethod("a");
+                                Object execRes = execMethod.invoke(wqxAction);
+                                Log.i("morphe: StorageScanner", "Direct bjim.a restore returned: " + execRes);
+                                chunkSuccess = true;
+                            }
+                        } catch (Throwable tBjim) {
+                            Log.w("morphe: StorageScanner", "Direct bjim restore fallback failed for chunk " + chunkIndex, tBjim);
+                        }
+                    }
+
                     if (chunkSuccess) {
-                        Log.i("morphe: StorageScanner", "RestoreActionTask succeeded for chunk " + chunkIndex + "/" + totalChunks);
+                        Log.i("morphe: StorageScanner", "Online restore succeeded for chunk " + chunkIndex + "/" + totalChunks);
                     }
                 } else {
                     Log.w("morphe: StorageScanner", "RestoreActionTask chunk " + chunkIndex + ": 0 core items loaded");
@@ -2065,6 +2352,9 @@ public class StorageScanner {
         if ("restoreTrash".equals(actionId)) {
             boolean dispatchedOnlineRestore = executeOnlineRestoreTask(context, account.accountId, items);
             Logger.printInfo(() -> "Dispatched official online restore task: " + dispatchedOnlineRestore);
+            if (!dispatchedOnlineRestore) {
+                return new ActionResult(false, 0, "Cloud restore failed: unable to resolve trash items from Google Photos servers");
+            }
         } else if ("toArchive".equals(actionId)) {
             boolean dispatchedOnlineArchive = executeOnlineArchiveTask(context, account.accountId, items, true);
             Logger.printInfo(() -> "Dispatched official online archive task: " + dispatchedOnlineArchive);
