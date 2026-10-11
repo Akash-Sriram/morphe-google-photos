@@ -1168,30 +1168,41 @@ public class StorageScanner {
 
         for (MediaItem it : items) {
             String key = null;
-            // 1. Look up remote_media table first by dedupKey to get authentic library remote_media_key
-            if (db != null && it.dedupKey != null && !it.dedupKey.trim().isEmpty()) {
-                try (Cursor c = db.rawQuery("SELECT COALESCE(NULLIF(remote_media_key, ''), media_key) FROM remote_media WHERE dedup_key = ? LIMIT 1", new String[]{it.dedupKey})) {
+            // 1. Look up media table first by dedupKey for canonical_media_key (cloud primary copy)
+            if (db != null && it.dedupKey != null && !it.dedupKey.trim().isEmpty() && hasTable(db, "media") && hasColumn(db, "media", "canonical_media_key")) {
+                try (Cursor c = db.rawQuery("SELECT canonical_media_key FROM media WHERE dedup_key = ? AND canonical_media_key IS NOT NULL AND canonical_media_key != '' AND canonical_media_key NOT LIKE 'local:%' LIMIT 1", new String[]{it.dedupKey})) {
                     if (c != null && c.moveToFirst()) {
                         String rk = c.getString(0);
-                        if (rk != null && !rk.trim().isEmpty() && !rk.startsWith("local:")) {
-                            key = rk;
+                        if (rk != null && !rk.trim().isEmpty()) {
+                            key = rk.trim();
                         }
                     }
                 } catch (Throwable ignored) {}
             }
-            // 2. If not found in remote_media, check item's own mediaKey
+            // 2. Look up remote_media table ordered by is_canonical DESC, is_canonical_copy DESC
+            if ((key == null || key.startsWith("local:")) && db != null && it.dedupKey != null && !it.dedupKey.trim().isEmpty() && hasTable(db, "remote_media")) {
+                try (Cursor c = db.rawQuery("SELECT COALESCE(NULLIF(remote_media_key, ''), media_key) FROM remote_media WHERE dedup_key = ? AND (trash_timestamp IS NULL OR trash_timestamp = 0) ORDER BY is_canonical DESC, is_canonical_copy DESC LIMIT 1", new String[]{it.dedupKey})) {
+                    if (c != null && c.moveToFirst()) {
+                        String rk = c.getString(0);
+                        if (rk != null && !rk.trim().isEmpty() && !rk.startsWith("local:")) {
+                            key = rk.trim();
+                        }
+                    }
+                } catch (Throwable ignored) {}
+            }
+            // 3. If not found in remote_media, check item's own mediaKey
             if (key == null || key.startsWith("local:")) {
                 if (it.mediaKey != null && !it.mediaKey.trim().isEmpty() && !it.mediaKey.startsWith("local:")) {
-                    key = it.mediaKey;
+                    key = it.mediaKey.trim();
                 }
             }
-            // 3. If still local or null, check shared_media
-            if ((key == null || key.startsWith("local:")) && db != null && it.dedupKey != null) {
+            // 4. If still local or null, check shared_media
+            if ((key == null || key.startsWith("local:")) && db != null && it.dedupKey != null && !it.dedupKey.trim().isEmpty() && hasTable(db, "shared_media")) {
                 try (Cursor c = db.rawQuery("SELECT remote_media_key FROM shared_media WHERE dedup_key = ? AND remote_media_key IS NOT NULL AND remote_media_key != '' AND remote_media_key NOT LIKE 'local:%' LIMIT 1", new String[]{it.dedupKey})) {
                     if (c != null && c.moveToFirst()) {
                         String rk = c.getString(0);
                         if (rk != null && !rk.trim().isEmpty()) {
-                            key = rk;
+                            key = rk.trim();
                         }
                     }
                 } catch (Throwable ignored) {}
@@ -1348,7 +1359,12 @@ public class StorageScanner {
             Object mediaGroup = bdkqCtor.newInstance(coreItems);
 
             Class<?> lakjzClass = Class.forName("akjz");
-            Object targetMode = lakjzClass.getField("b").get(null);
+            Object targetMode = null;
+            try {
+                targetMode = lakjzClass.getField("c").get(null);
+            } catch (Throwable t) {
+                targetMode = lakjzClass.getField("b").get(null);
+            }
 
             Class<?> romClass = Class.forName("rom");
             Method romMethod = romClass.getMethod("b", Context.class);
@@ -1556,8 +1572,8 @@ public class StorageScanner {
                 }
             }
 
-            // 3. Fallback for purely local items if online trash could not be dispatched
-            if (!dispatchedOnlineTrash && items != null && !items.isEmpty()) {
+            // 3. Optimistic local database update on media, remote_media, local_media
+            if (items != null && !items.isEmpty()) {
                 File dbFile = new File(account.dbPath);
                 if (dbFile.exists()) {
                     SQLiteDatabase localDb = null;
@@ -1579,8 +1595,8 @@ public class StorageScanner {
                         }
                         localDb.setTransactionSuccessful();
                         localDb.endTransaction();
-                    } catch (Throwable tFallback) {
-                        Logger.printException(() -> "Error in local trash fallback", tFallback);
+                    } catch (Throwable tLocal) {
+                        Logger.printException(() -> "Error in local trash update", tLocal);
                     } finally {
                         if (localDb != null) {
                             try { localDb.close(); } catch (Throwable ignored) {}
