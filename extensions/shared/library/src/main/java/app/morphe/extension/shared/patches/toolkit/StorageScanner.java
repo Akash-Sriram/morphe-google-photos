@@ -1367,10 +1367,70 @@ public class StorageScanner {
 
     private static boolean executeOnlineTrashTask(Context context, int accountId, List<MediaItem> items) {
         if (context == null || items == null || items.isEmpty()) return false;
+
+        List<String> mediaKeys = resolveRemoteMediaKeys(context, accountId, items);
+        List<String> dedupKeys = new ArrayList<>();
+        for (MediaItem it : items) {
+            if (it.dedupKey != null && !it.dedupKey.trim().isEmpty()) {
+                dedupKeys.add(it.dedupKey.trim());
+            }
+        }
+
+        // Strategy 1: Dispatch official Google Photos Online Trash Action (bjir) via ActionWrapper directly.
+        // This invokes bjir.d(context, accountId) -> bjhp.b -> Protobuf RPC to Google Photos servers.
+        if (!mediaKeys.isEmpty()) {
+            try {
+                Class<?> bjirClass = Class.forName("bjir");
+                Class<?> cjizClass = Class.forName("cjiz");
+                Class<?> romClass = Class.forName("rom");
+                Method romMethod = romClass.getMethod("b", Context.class);
+                Object cjizSource = romMethod.invoke(null, context);
+
+                Method rMethod = bjirClass.getMethod("r", int.class, Collection.class, Collection.class, Collection.class, Collection.class, cjizClass);
+                // r(int accountId, Collection col1, Collection col2, Collection col3, Collection col4, cjiz source)
+                Object bjirAction = rMethod.invoke(null, accountId, mediaKeys, mediaKeys, dedupKeys, mediaKeys, cjizSource);
+
+                Class<?> wrapperClass = Class.forName("com.google.android.apps.photos.actionqueue.ActionWrapper");
+                Class<?> ltyClass = Class.forName("lty");
+                Constructor<?> wrapperCtor = wrapperClass.getConstructor(int.class, ltyClass);
+                Object actionWrapper = wrapperCtor.newInstance(accountId, bjirAction);
+
+                try {
+                    wrapperClass.getMethod("c").invoke(actionWrapper);
+                } catch (Throwable ignored) {}
+
+                Class<?> bxtyClass = Class.forName("bxty");
+                Class<?> bxueClass = Class.forName("bxue");
+                Method runMethod = bxueClass.getMethod("f", Context.class, bxtyClass);
+                Object res = runMethod.invoke(null, context, actionWrapper);
+
+                boolean success = false;
+                if (res != null) {
+                    try {
+                        int statusCode = res.getClass().getField("d").getInt(res);
+                        Logger.printInfo(() -> "bjir ActionWrapper synchronous result status: " + statusCode);
+                        if (statusCode == 200) success = true;
+                    } catch (Throwable ignored) {}
+                    if (!success) {
+                        try {
+                            boolean isError = (Boolean) res.getClass().getMethod("e").invoke(res);
+                            if (!isError) success = true;
+                        } catch (Throwable ignored) {}
+                    }
+                }
+                final boolean fSuccess = success;
+                Logger.printInfo(() -> "Executed bjir ActionWrapper with " + mediaKeys.size() + " media keys, success=" + fSuccess);
+                if (success) return true;
+            } catch (Throwable t) {
+                Logger.printException(() -> "Error invoking bjir ActionWrapper, trying MoveToTrashActionWrapper fallback", t);
+            }
+        }
+
+        // Strategy 2: Fallback to MoveToTrashActionWrapper
         try {
             List<?> coreItems = loadCoreMediaItems(context, accountId, items);
             if (coreItems.isEmpty()) {
-                Logger.printInfo(() -> "executeOnlineTrashTask: 0 core media items loaded, cannot dispatch MoveToTrashActionWrapper");
+                Logger.printInfo(() -> "executeOnlineTrashTask fallback: 0 core media items loaded, cannot dispatch MoveToTrashActionWrapper");
                 return false;
             }
 
