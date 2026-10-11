@@ -435,9 +435,22 @@ public class StorageScanner {
                     }
                     if (crit.searchQuery != null && !crit.searchQuery.trim().isEmpty()) {
                         String q = "%" + crit.searchQuery.trim() + "%";
-                        where.append(" AND (filename LIKE ? OR caption LIKE ?)");
-                        args.add(q);
-                        args.add(q);
+                        boolean hasCap = hasColumn(db, targetTable, "caption");
+                        boolean hasUserCap = hasColumn(db, targetTable, "user_specified_caption");
+                        if (hasCap && hasUserCap) {
+                            where.append(" AND (filename LIKE ? OR caption LIKE ? OR user_specified_caption LIKE ?)");
+                            args.add(q);
+                            args.add(q);
+                            args.add(q);
+                        } else if (hasCap || hasUserCap) {
+                            String col = hasCap ? "caption" : "user_specified_caption";
+                            where.append(" AND (filename LIKE ? OR ").append(col).append(" LIKE ?)");
+                            args.add(q);
+                            args.add(q);
+                        } else {
+                            where.append(" AND filename LIKE ?");
+                            args.add(q);
+                        }
                     }
                     break;
                 case ALBUMS:
@@ -648,7 +661,19 @@ public class StorageScanner {
 
             String latExpr = hasLat ? "latitude" : "0.0";
             String lonExpr = hasLon ? "longitude" : "0.0";
-            String captionExpr = hasColumn(db, targetTable, "caption") ? "caption" : "''";
+            boolean hasCaption = hasColumn(db, targetTable, "caption");
+            boolean hasUserCaption = hasColumn(db, targetTable, "user_specified_caption");
+            String captionExpr;
+            if (hasCaption && hasUserCaption) {
+                captionExpr = "COALESCE(NULLIF(user_specified_caption, ''), caption, '')";
+            } else if (hasUserCaption) {
+                captionExpr = "COALESCE(user_specified_caption, '')";
+            } else if (hasCaption) {
+                captionExpr = "COALESCE(caption, '')";
+            } else {
+                captionExpr = "''";
+            }
+
             String mediaKeyExpr = hasColumn(db, targetTable, "remote_media_key") ? "COALESCE(NULLIF(remote_media_key, ''), media_key)" : "media_key";
             String trashExpr = hasColumn(db, targetTable, "trash_timestamp")
                     ? (hasColumn(db, targetTable, "state")
@@ -670,15 +695,16 @@ public class StorageScanner {
                     "WHERE " + where + groupByClause + " " +
                     "ORDER BY " + orderBy + " LIMIT " + crit.limit;
 
+            Pattern fileNamePat = null;
+            if (crit.fileNameRegex != null && !crit.fileNameRegex.isEmpty()) {
+                try { fileNamePat = Pattern.compile(crit.fileNameRegex, Pattern.CASE_INSENSITIVE); } catch (Exception ignored) {}
+            }
+            Pattern descPat = null;
+            if (crit.descriptionRegex != null && !crit.descriptionRegex.isEmpty()) {
+                try { descPat = Pattern.compile(crit.descriptionRegex, Pattern.CASE_INSENSITIVE); } catch (Exception ignored) {}
+            }
+
             try (Cursor c = db.rawQuery(sql, args.toArray(new String[0]))) {
-                Pattern fileNamePat = null;
-                if (crit.fileNameRegex != null && !crit.fileNameRegex.isEmpty()) {
-                    try { fileNamePat = Pattern.compile(crit.fileNameRegex, Pattern.CASE_INSENSITIVE); } catch (Exception ignored) {}
-                }
-                Pattern descPat = null;
-                if (crit.descriptionRegex != null && !crit.descriptionRegex.isEmpty()) {
-                    try { descPat = Pattern.compile(crit.descriptionRegex, Pattern.CASE_INSENSITIVE); } catch (Exception ignored) {}
-                }
 
                 while (c != null && c.moveToNext()) {
                     String filename = c.getString(2);
@@ -734,7 +760,18 @@ public class StorageScanner {
                     String sharedMediaKeyExpr = hasColumn(db, "shared_media", "remote_media_key") ? "COALESCE(NULLIF(remote_media_key, ''), media_key)" : "media_key";
                     String sharedLatExpr = hasColumn(db, "shared_media", "latitude") ? "latitude" : "0.0";
                     String sharedLonExpr = hasColumn(db, "shared_media", "longitude") ? "longitude" : "0.0";
-                    String sharedCapExpr = hasColumn(db, "shared_media", "caption") ? "caption" : "''";
+                    boolean hasSharedCap = hasColumn(db, "shared_media", "caption");
+                    boolean hasSharedUserCap = hasColumn(db, "shared_media", "user_specified_caption");
+                    String sharedCapExpr;
+                    if (hasSharedCap && hasSharedUserCap) {
+                        sharedCapExpr = "COALESCE(NULLIF(user_specified_caption, ''), caption, '')";
+                    } else if (hasSharedUserCap) {
+                        sharedCapExpr = "COALESCE(user_specified_caption, '')";
+                    } else if (hasSharedCap) {
+                        sharedCapExpr = "COALESCE(caption, '')";
+                    } else {
+                        sharedCapExpr = "''";
+                    }
 
                     String sharedSql = "SELECT dedup_key, " + sharedMediaKeyExpr + ", filename, size_bytes, quota_charged_bytes, capture_timestamp, remote_url, " +
                             "0, width, height, duration, 0, (is_favorite IS NOT NULL AND is_favorite = 1), (is_micro_video IS NOT NULL AND is_micro_video = 1), mime_type, " +
@@ -746,10 +783,26 @@ public class StorageScanner {
                         while (sc != null && sc.moveToNext()) {
                             String dKey = sc.getString(0);
                             if (dKey == null || seen.contains(dKey)) continue;
+
+                            String filename = sc.getString(2);
+                            String caption = sc.getString(17);
+
+                            // In-memory Regex matching
+                            if (fileNamePat != null) {
+                                boolean matches = fileNamePat.matcher(filename != null ? filename : "").find();
+                                if ("exclude".equals(crit.fileNameMatchType) && matches) continue;
+                                if ("include".equals(crit.fileNameMatchType) && !matches) continue;
+                            }
+                            if (descPat != null) {
+                                boolean matches = descPat.matcher(caption != null ? caption : "").find();
+                                if ("exclude".equals(crit.descriptionMatchType) && matches) continue;
+                                if ("include".equals(crit.descriptionMatchType) && !matches) continue;
+                            }
+
                             items.add(new MediaItem(
                                     dKey,
                                     sc.getString(1),
-                                    sc.getString(2),
+                                    filename,
                                     sc.getLong(3),
                                     sc.getLong(4),
                                     sc.getLong(5),
@@ -764,7 +817,7 @@ public class StorageScanner {
                                     sc.getString(14),
                                     sc.getDouble(15),
                                     sc.getDouble(16),
-                                    sc.getString(17)
+                                    caption
                             ));
                             seen.add(dKey);
                         }

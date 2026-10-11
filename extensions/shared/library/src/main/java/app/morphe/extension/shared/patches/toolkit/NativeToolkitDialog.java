@@ -65,6 +65,8 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.lang.reflect.Constructor;
+import java.lang.reflect.Method;
 
 import app.morphe.extension.shared.Logger;
 import app.morphe.extension.shared.patches.PhenotypeFlagManager;
@@ -1410,11 +1412,18 @@ public class NativeToolkitDialog {
             String sub = item.getFormattedSize();
             if (item.captureTimestamp > 0) sub += " • " + DATE_FORMAT.format(new Date(item.captureTimestamp));
             if (item.clusterId > 0) sub += " • Similar #" + item.clusterId;
+            if (item.caption != null && !item.caption.trim().isEmpty()) {
+                sub += "\n💬 " + item.caption.trim();
+            }
 
             TextView tvSub = new TextView(activity);
             tvSub.setText(sub);
             tvSub.setTextSize(11f);
             tvSub.setTextColor(theme.textSecondary);
+            if (item.caption != null && !item.caption.trim().isEmpty()) {
+                tvSub.setMaxLines(3);
+                tvSub.setEllipsize(TextUtils.TruncateAt.END);
+            }
             textCol.addView(tvSub);
             card.addView(textCol);
 
@@ -1433,7 +1442,8 @@ public class NativeToolkitDialog {
             }
             card.addView(badge);
 
-            loadThumbAsync(thumb, item.remoteUrl);
+            int accId = currentAccount != null ? currentAccount.accountId : 0;
+            loadThumbAsync(activity, thumb, item.remoteUrl, accId);
             container.addView(card);
         }
 
@@ -1464,10 +1474,54 @@ public class NativeToolkitDialog {
         }
     }
 
-    private static void loadThumbAsync(ImageView iv, String urlStr) {
+    private static void loadThumbAsync(Activity activity, ImageView iv, String urlStr, int accountId) {
         iv.setImageDrawable(null);
-        if (urlStr == null || urlStr.isEmpty()) return;
+        if (activity == null || activity.isFinishing() || activity.isDestroyed()) return;
+        if (urlStr == null || urlStr.trim().isEmpty()) return;
 
+        // 1. Primary: Native Google Photos Glide loading with RemoteMediaModel authentication
+        try {
+            Class<?> khcClass = Class.forName("khc");
+            Method withMethod = khcClass.getMethod("e", Context.class);
+            Object requestManager = withMethod.invoke(null, activity);
+
+            Object model = null;
+            if (urlStr.startsWith("http://") || urlStr.startsWith("https://")) {
+                try {
+                    Class<?> akioClass = Class.forName("akio");
+                    Object defaultOptions = akioClass.getField("a").get(null);
+                    Class<?> akinClass = Class.forName("akin");
+                    Constructor<?> akinCtor = akinClass.getConstructor(String.class, int.class, akioClass);
+                    model = akinCtor.newInstance(urlStr, accountId, defaultOptions);
+                } catch (Throwable t) {
+                    Logger.printInfo(() -> "RemoteMediaModel creation fallback: " + t.getMessage());
+                }
+            }
+
+            Class<?> kiiClass = Class.forName("kii");
+            Object requestBuilder = null;
+            if (model != null) {
+                Method loadMethod = kiiClass.getMethod("l", Object.class);
+                requestBuilder = loadMethod.invoke(requestManager, model);
+            } else if (urlStr.startsWith("content://") || urlStr.startsWith("file://")) {
+                Method loadUriMethod = kiiClass.getMethod("j", Uri.class);
+                requestBuilder = loadUriMethod.invoke(requestManager, Uri.parse(urlStr));
+            } else {
+                Method loadStrMethod = kiiClass.getMethod("m", String.class);
+                requestBuilder = loadStrMethod.invoke(requestManager, urlStr);
+            }
+
+            if (requestBuilder != null) {
+                Class<?> kifClass = Class.forName("kif");
+                Method intoMethod = kifClass.getMethod("t", ImageView.class);
+                intoMethod.invoke(requestBuilder, iv);
+                return;
+            }
+        } catch (Throwable tGlide) {
+            Logger.printInfo(() -> "Glide loadThumbAsync error: " + tGlide.getMessage());
+        }
+
+        // 2. Secondary fallback: in-memory cache + direct fetch
         Bitmap cached = THUMB_CACHE.get(urlStr);
         if (cached != null) {
             iv.setImageBitmap(cached);
