@@ -972,6 +972,10 @@ public class StorageScanner {
     }
 
     public static String createNativeCloudAlbum(Context context, int accountId, String title, List<String> mediaKeys) {
+        return createNativeCloudAlbum(context, accountId, title, mediaKeys, null);
+    }
+
+    public static String createNativeCloudAlbum(Context context, int accountId, String title, List<String> mediaKeys, int[] outAdded) {
         String createdKey = null;
         try {
             Logger.printInfo(() -> "Creating native cloud album: " + title + " for account " + accountId + " with " + (mediaKeys != null ? mediaKeys.size() : 0) + " items");
@@ -983,9 +987,13 @@ public class StorageScanner {
                     Constructor<?> bemfCtor = bemfClass.getConstructor(long.class);
                     Object builder = bemfCtor.newInstance(System.currentTimeMillis());
 
-                    // Set title in bemf.g
+                    // Set title in bemf.g and flag in bemf.r
                     Field fG = bemfClass.getField("g");
                     fG.set(builder, title);
+                    try {
+                        Field fR = bemfClass.getField("r");
+                        fR.setBoolean(builder, title != null && !title.isEmpty());
+                    } catch (Throwable ignored) {}
 
                     // Build initial batch of bemh items (up to 50 items)
                     Class<?> bemhClass = Class.forName("bemh");
@@ -1052,12 +1060,20 @@ public class StorageScanner {
                                 if (createdKey != null && !createdKey.isEmpty()) {
                                     final String keyA = createdKey;
                                     Logger.printInfo(() -> "Method A created album successfully! Key: " + keyA);
+                                    int added = initialCount;
                                     if (mediaKeys.size() > initialCount) {
                                         List<String> remaining = mediaKeys.subList(initialCount, mediaKeys.size());
-                                        addMediaToCloudAlbum(context, accountId, createdKey, remaining);
+                                        added += addMediaToCloudAlbum(context, accountId, createdKey, remaining);
+                                    }
+                                    if (outAdded != null && outAdded.length > 0) {
+                                        outAdded[0] = added;
                                     }
                                     return createdKey;
                                 }
+                            } else {
+                                Object exc = bxuzClass.getField("e").get(result);
+                                String msg = (String) bxuzClass.getField("f").get(result);
+                                Logger.printInfo(() -> "Method A CreateEnvelopeTask error: status=" + statusCode + ", msg=" + msg + ", exc=" + exc);
                             }
                         }
                     }
@@ -1076,6 +1092,10 @@ public class StorageScanner {
 
             Field fG = bemfClass.getField("g");
             fG.set(builder, title);
+            try {
+                Field fR = bemfClass.getField("r");
+                fR.setBoolean(builder, title != null && !title.isEmpty());
+            } catch (Throwable ignored) {}
 
             Class<?> bemgClass = Class.forName("bemg");
             Constructor<?> bemgCtor = bemgClass.getConstructor(bemfClass);
@@ -1125,9 +1145,33 @@ public class StorageScanner {
             if (createdKey != null && !createdKey.isEmpty()) {
                 final String keyB = createdKey;
                 Logger.printInfo(() -> "Method B created empty album. Key: " + keyB);
-                if (mediaKeys != null && !mediaKeys.isEmpty()) {
-                    addMediaToCloudAlbum(context, accountId, createdKey, mediaKeys);
+                if (title != null && !title.isEmpty()) {
+                    try {
+                        File f = context.getDatabasePath("gphotos" + accountId + ".db");
+                        if (f != null && f.exists()) {
+                            try (SQLiteDatabase db = SQLiteDatabase.openDatabase(f.getAbsolutePath(), null, SQLiteDatabase.OPEN_READWRITE)) {
+                                ContentValues cv = new ContentValues();
+                                cv.put("title", title);
+                                if (hasTable(db, "envelopes")) {
+                                    db.update("envelopes", cv, "media_key = ?", new String[]{createdKey});
+                                }
+                                if (hasTable(db, "collections")) {
+                                    db.update("collections", cv, "associated_envelope_media_key = ? OR collection_media_key = ?", new String[]{createdKey, createdKey});
+                                }
+                            }
+                        }
+                    } catch (Throwable tDb) {
+                        Logger.printInfo(() -> "Could not write title to db: " + tDb.getMessage());
+                    }
                 }
+                if (mediaKeys != null && !mediaKeys.isEmpty()) {
+                    int added = addMediaToCloudAlbum(context, accountId, createdKey, mediaKeys);
+                    if (outAdded != null && outAdded.length > 0) {
+                        outAdded[0] = added;
+                    }
+                }
+                triggerOnlineSync(context, accountId);
+                notifyUiChanges(context, accountId);
                 return createdKey;
             }
         } catch (Throwable t) {
@@ -1178,24 +1222,46 @@ public class StorageScanner {
                 Method dMethod = lamwaClass.getMethod("d");
                 Object task = dMethod.invoke(builder);
 
-                Class<?> bzoqClass = Class.forName("bzoq");
-                Class<?> qcxClass = Class.forName("qcx");
-                Method getServiceMethod = bzoqClass.getMethod("e", Context.class, Class.class);
-                Object taskRunner = getServiceMethod.invoke(null, context, qcxClass);
+                if (task != null) {
+                    Object result = null;
+                    try {
+                        Class<?> bxtyClass = Class.forName("bxty");
+                        Class<?> bxueClass = Class.forName("bxue");
+                        Method fMethod = bxueClass.getMethod("f", Context.class, bxtyClass);
+                        result = fMethod.invoke(null, context, task);
+                    } catch (Throwable tSync) {
+                        Logger.printInfo(() -> "bxue.f failed for AddMedia, trying TaskRunner: " + tSync.getMessage());
+                        Class<?> bzoqClass = Class.forName("bzoq");
+                        Class<?> qcxClass = Class.forName("qcx");
+                        Method getServiceMethod = bzoqClass.getMethod("e", Context.class, Class.class);
+                        Object taskRunner = getServiceMethod.invoke(null, context, qcxClass);
+                        if (taskRunner != null) {
+                            Class<?> bxtyClass = Class.forName("bxty");
+                            Method executeMethod = qcxClass.getMethod("a", bxtyClass);
+                            result = executeMethod.invoke(taskRunner, task);
+                        }
+                    }
 
-                Class<?> bxtyClass = Class.forName("bxty");
-                Method executeMethod = qcxClass.getMethod("a", bxtyClass);
-                Object result = executeMethod.invoke(taskRunner, task);
-
-                if (result != null) {
-                    Class<?> bxuzClass = Class.forName("bxuz");
-                    int statusCode = bxuzClass.getField("d").getInt(result);
-                    Logger.printInfo(() -> "AddMediaToEnvelopeTask chunk status code: " + statusCode);
-                    if (statusCode == 200) {
-                        Method getBundleMethod = bxuzClass.getMethod("b");
-                        Bundle bundle = (Bundle) getBundleMethod.invoke(result);
-                        int added = bundle != null ? bundle.getInt("added_media_count", chunk.size()) : chunk.size();
-                        totalAdded += added;
+                    if (result != null) {
+                        Class<?> bxuzClass = Class.forName("bxuz");
+                        int statusCode = bxuzClass.getField("d").getInt(result);
+                        Logger.printInfo(() -> "AddMediaToEnvelopeTask chunk status code: " + statusCode);
+                        if (statusCode == 200) {
+                            Method getBundleMethod = bxuzClass.getMethod("b");
+                            Bundle bundle = (Bundle) getBundleMethod.invoke(result);
+                            int added = bundle != null ? bundle.getInt("added_media_count", chunk.size()) : chunk.size();
+                            totalAdded += added;
+                        } else {
+                            Object exc = bxuzClass.getField("e").get(result);
+                            String msg = (String) bxuzClass.getField("f").get(result);
+                            Logger.printInfo(() -> "AddMediaToEnvelopeTask error status: " + statusCode + ", msg: " + msg + ", exc: " + exc);
+                            if (chunk.size() > 1) {
+                                Logger.printInfo(() -> "Retrying chunk of " + chunk.size() + " items individually...");
+                                for (String singleKey : chunk) {
+                                    totalAdded += addMediaToCloudAlbum(context, accountId, envelopeMediaKey, Collections.singletonList(singleKey));
+                                }
+                            }
+                        }
                     }
                 }
             } catch (Throwable t) {
@@ -2302,11 +2368,13 @@ public class StorageScanner {
             if (mediaKeys.isEmpty()) {
                 return new ActionResult(false, 0, "None of the selected items have a cloud media key. Albums require backed-up photos.");
             }
-            String cloudAlbumKey = createNativeCloudAlbum(context, account.accountId, newAlbumName, mediaKeys);
+            int[] outAdded = new int[1];
+            String cloudAlbumKey = createNativeCloudAlbum(context, account.accountId, newAlbumName, mediaKeys, outAdded);
             if (cloudAlbumKey == null) {
                 return new ActionResult(false, 0, "Failed to create cloud album on Google Photos servers. Please check your internet connection.");
             }
-            return new ActionResult(true, mediaKeys.size(), "Successfully created album '" + newAlbumName + "' with " + mediaKeys.size() + " items");
+            int count = outAdded[0];
+            return new ActionResult(true, count, "Successfully created album '" + newAlbumName + "' with " + count + " items");
         }
 
         if ("toExistingAlbum".equals(actionId)) {
