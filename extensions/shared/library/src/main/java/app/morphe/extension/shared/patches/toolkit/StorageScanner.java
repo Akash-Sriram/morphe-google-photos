@@ -1106,45 +1106,65 @@ public class StorageScanner {
                     Logger.printException(() -> "Error calling DeleteSharedCollectionTask", tDel);
                 }
             } else {
-                // 2. Private Album: invoke official mne.a (RemoveCollectionProvider)
+                // 2. Private Album: invoke RemoveCollectionProvider$RemoveCollectionTask synchronously
                 try {
-                    Class<?> bzoqClass = Class.forName("bzoq");
-                    Method eMethod = bzoqClass.getMethod("e", Context.class, Class.class);
-                    Class<?> mneClass = Class.forName("mne");
-                    Object mneInstance = eMethod.invoke(null, context, mneClass);
-                    Method aMethod = mneClass.getMethod("a", int.class, ahnrClass);
-                    aMethod.invoke(mneInstance, accountId, optionalKey);
-                    Logger.printInfo(() -> "Successfully invoked mne.a for private album " + albumMediaKey);
-                    success = true;
-                } catch (Throwable tMne) {
-                    Logger.printException(() -> "Error calling mne.a", tMne);
+                    Class<?> wrrClass = Class.forName("wrr");
+                    Object emptyFeatures = wrrClass.getField("a").get(null);
+                    Class<?> nysClass = Class.forName("nys");
+                    Constructor<?> nysCtor = nysClass.getConstructor(int.class, ahnrClass, wrrClass);
+                    Object collection = nysCtor.newInstance(accountId, optionalKey, emptyFeatures);
+
+                    Class<?> bwpgClass = Class.forName("bwpg");
+                    Class<?> removeTaskClass = Class.forName("com.google.android.apps.photos.album.removealbum.RemoveCollectionProvider$RemoveCollectionTask");
+                    Constructor<?> removeCtor = removeTaskClass.getConstructor(int.class, bwpgClass);
+                    Object removeTask = removeCtor.newInstance(accountId, collection);
+
+                    Object res = fMethod.invoke(null, context, removeTask);
+                    if (res != null) {
+                        try {
+                            int statusCode = res.getClass().getField("d").getInt(res);
+                            Logger.printInfo(() -> "RemoveCollectionTask synchronous result status: " + statusCode);
+                            if (statusCode == 200) success = true;
+                        } catch (Throwable ignored) {}
+                    }
+                } catch (Throwable tRemove) {
+                    Logger.printException(() -> "Error calling RemoveCollectionProvider$RemoveCollectionTask", tRemove);
                 }
 
-                // Fallback to RemoveCollectionProvider$RemoveCollectionTask directly if mne.a failed
+                // Fallback to mne.a
                 if (!success) {
                     try {
-                        Class<?> wrrClass = Class.forName("wrr");
-                        Object emptyFeatures = wrrClass.getField("a").get(null);
-                        Class<?> nysClass = Class.forName("nys");
-                        Constructor<?> nysCtor = nysClass.getConstructor(int.class, ahnrClass, wrrClass);
-                        Object collection = nysCtor.newInstance(accountId, optionalKey, emptyFeatures);
-
-                        Class<?> bwpgClass = Class.forName("bwpg");
-                        Class<?> removeTaskClass = Class.forName("com.google.android.apps.photos.album.removealbum.RemoveCollectionProvider$RemoveCollectionTask");
-                        Constructor<?> removeCtor = removeTaskClass.getConstructor(int.class, bwpgClass);
-                        Object removeTask = removeCtor.newInstance(accountId, collection);
-
-                        Object res = fMethod.invoke(null, context, removeTask);
-                        if (res != null) {
-                            try {
-                                int statusCode = res.getClass().getField("d").getInt(res);
-                                if (statusCode == 200) success = true;
-                            } catch (Throwable ignored) {}
-                        }
-                    } catch (Throwable tRemove) {
-                        Logger.printException(() -> "Error calling RemoveCollectionProvider$RemoveCollectionTask", tRemove);
+                        Class<?> bzoqClass = Class.forName("bzoq");
+                        Method eMethod = bzoqClass.getMethod("e", Context.class, Class.class);
+                        Class<?> mneClass = Class.forName("mne");
+                        Object mneInstance = eMethod.invoke(null, context, mneClass);
+                        Method aMethod = mneClass.getMethod("a", int.class, ahnrClass);
+                        aMethod.invoke(mneInstance, accountId, optionalKey);
+                        Logger.printInfo(() -> "Successfully invoked mne.a fallback for private album " + albumMediaKey);
+                        success = true;
+                    } catch (Throwable tMne) {
+                        Logger.printException(() -> "Error calling mne.a fallback", tMne);
                     }
                 }
+            }
+
+            // 3. Local SQLite cleanup: purge local album records so the UI immediately drops the album
+            try {
+                File dbf = context.getDatabasePath("gphotos" + accountId + ".db");
+                if (dbf != null && dbf.exists()) {
+                    SQLiteDatabase localDb = SQLiteDatabase.openDatabase(dbf.getAbsolutePath(), null, SQLiteDatabase.OPEN_READWRITE | SQLiteDatabase.ENABLE_WRITE_AHEAD_LOGGING);
+                    try {
+                        localDb.delete("collections", "collection_media_key = ?", new String[]{albumMediaKey});
+                        localDb.delete("envelopes", "media_key = ?", new String[]{albumMediaKey});
+                        localDb.delete("remote_media", "collection_id = ?", new String[]{albumMediaKey});
+                        localDb.delete("shared_media", "collection_id = ?", new String[]{albumMediaKey});
+                        success = true;
+                    } finally {
+                        localDb.close();
+                    }
+                }
+            } catch (Throwable tDb) {
+                Logger.printException(() -> "Error cleaning up local album SQLite rows", tDb);
             }
 
             return success;
@@ -1359,12 +1379,7 @@ public class StorageScanner {
             Object mediaGroup = bdkqCtor.newInstance(coreItems);
 
             Class<?> lakjzClass = Class.forName("akjz");
-            Object targetMode = null;
-            try {
-                targetMode = lakjzClass.getField("c").get(null);
-            } catch (Throwable t) {
-                targetMode = lakjzClass.getField("b").get(null);
-            }
+            Object targetMode = lakjzClass.getField("b").get(null);
 
             Class<?> romClass = Class.forName("rom");
             Method romMethod = romClass.getMethod("b", Context.class);
