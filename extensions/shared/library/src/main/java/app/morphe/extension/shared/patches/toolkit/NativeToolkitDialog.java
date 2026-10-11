@@ -428,10 +428,11 @@ public class NativeToolkitDialog {
 
                         MAIN_HANDLER.post(() -> tvResultsStatus.setText("Clustering visual similarity (checking top " + maxCandidates + " items)..."));
 
+                        int accId = currentAccount != null ? currentAccount.accountId : 0;
                         for (StorageScanner.MediaItem it : candidates) {
                             Bitmap bm = THUMB_CACHE.get(it.remoteUrl != null ? it.remoteUrl : "");
                             if (bm == null && it.remoteUrl != null && !it.remoteUrl.isEmpty()) {
-                                bm = fetchThumbSync(it.remoteUrl);
+                                bm = fetchThumbSync(activity, it.remoteUrl, accId);
                                 if (bm != null) {
                                     THUMB_CACHE.put(it.remoteUrl, bm);
                                 }
@@ -1458,14 +1459,68 @@ public class NativeToolkitDialog {
         }
     }
 
-    private static Bitmap fetchThumbSync(String urlStr) {
-        if (urlStr == null || urlStr.isEmpty()) return null;
+    private static Bitmap fetchThumbSync(Context context, String urlStr, int accountId) {
+        if (urlStr == null || urlStr.trim().isEmpty()) return null;
+        if (context == null) context = app.morphe.extension.shared.Utils.getContext();
+        if (context == null) return null;
+
+        try {
+            Class<?> khcClass = Class.forName("khc");
+            Method withMethod = khcClass.getMethod("e", Context.class);
+            Object requestManager = withMethod.invoke(null, context);
+
+            Class<?> kiiClass = Class.forName("kii");
+            Method asBitmapMethod = kiiClass.getMethod("b");
+            Object requestBuilder = asBitmapMethod.invoke(requestManager);
+
+            Object model = null;
+            if (urlStr.startsWith("http://") || urlStr.startsWith("https://")) {
+                try {
+                    Class<?> akioClass = Class.forName("akio");
+                    Object defaultOptions = akioClass.getField("a").get(null);
+                    Class<?> akinClass = Class.forName("akin");
+                    Constructor<?> akinCtor = akinClass.getConstructor(String.class, int.class, akioClass);
+                    model = akinCtor.newInstance(urlStr, accountId, defaultOptions);
+                } catch (Throwable t) {
+                    Logger.printInfo(() -> "fetchThumbSync RemoteMediaModel error: " + t.getMessage());
+                }
+            }
+
+            Class<?> kifClass = Class.forName("kif");
+            if (model != null) {
+                Method loadMethod = kifClass.getMethod("l", Object.class);
+                requestBuilder = loadMethod.invoke(requestBuilder, model);
+            } else if (urlStr.startsWith("content://") || urlStr.startsWith("file://")) {
+                Method loadUriMethod = kifClass.getMethod("j", Uri.class);
+                requestBuilder = loadUriMethod.invoke(requestBuilder, Uri.parse(urlStr));
+            } else {
+                Method loadStrMethod = kifClass.getMethod("m", String.class);
+                requestBuilder = loadStrMethod.invoke(requestBuilder, urlStr);
+            }
+
+            if (requestBuilder != null) {
+                Method submitMethod = kifClass.getMethod("u", int.class, int.class);
+                java.util.concurrent.Future<?> future = (java.util.concurrent.Future<?>) submitMethod.invoke(requestBuilder, 128, 128);
+                if (future != null) {
+                    Object result = future.get(8, java.util.concurrent.TimeUnit.SECONDS);
+                    if (result instanceof Bitmap) {
+                        return (Bitmap) result;
+                    } else if (result instanceof android.graphics.drawable.BitmapDrawable) {
+                        return ((android.graphics.drawable.BitmapDrawable) result).getBitmap();
+                    }
+                }
+            }
+        } catch (Throwable tGlide) {
+            Logger.printInfo(() -> "fetchThumbSync Glide error: " + tGlide.getMessage());
+        }
+
+        // Secondary fallback: raw HTTP connection (works for unauthenticated public URLs)
         try {
             String thumbUrl = urlStr.replace("=s0-d", "=s140-c");
             URL u = new URL(thumbUrl);
             HttpURLConnection conn = (HttpURLConnection) u.openConnection();
-            conn.setConnectTimeout(1500);
-            conn.setReadTimeout(1500);
+            conn.setConnectTimeout(2000);
+            conn.setReadTimeout(2000);
             try (InputStream is = conn.getInputStream()) {
                 return BitmapFactory.decodeStream(is);
             }
@@ -1521,7 +1576,7 @@ public class NativeToolkitDialog {
             Logger.printInfo(() -> "Glide loadThumbAsync error: " + tGlide.getMessage());
         }
 
-        // 2. Secondary fallback: in-memory cache + direct fetch
+        // 2. Secondary fallback: in-memory cache + authenticated fetch
         Bitmap cached = THUMB_CACHE.get(urlStr);
         if (cached != null) {
             iv.setImageBitmap(cached);
@@ -1529,7 +1584,7 @@ public class NativeToolkitDialog {
         }
 
         THREAD_POOL.execute(() -> {
-            Bitmap bm = fetchThumbSync(urlStr);
+            Bitmap bm = fetchThumbSync(activity, urlStr, accountId);
             if (bm != null) {
                 THUMB_CACHE.put(urlStr, bm);
                 MAIN_HANDLER.post(() -> iv.setImageBitmap(bm));
