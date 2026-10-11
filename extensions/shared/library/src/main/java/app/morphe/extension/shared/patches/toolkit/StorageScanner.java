@@ -1719,7 +1719,7 @@ public class StorageScanner {
 
                         Class<?> ptfClass = Class.forName("ptf");
                         Constructor<?> ptfCtor = ptfClass.getConstructor(int.class, boolean.class, int.class, bdkqClass, String.class);
-                        Object ptfInst = ptfCtor.newInstance(accountId, archive, 1, mediaGroup, "UndoableActionManager-Act");
+                        Object ptfInst = ptfCtor.newInstance(accountId, archive, 2, mediaGroup, "UndoableActionManager-Act");
 
                         Class<?> taskClass = Class.forName("com.google.android.apps.photos.undoaction.MediaUndoActionTask");
                         Class<?> bjrdClass = Class.forName("bjrd");
@@ -1742,7 +1742,7 @@ public class StorageScanner {
                             Object psuInst = eMethod.invoke(null, context, psuClass);
                             if (psuInst != null) {
                                 Method aMethod = psuClass.getMethod("a", int.class, List.class, boolean.class, int.class);
-                                Object res = aMethod.invoke(psuInst, accountId, coreItems, archive, 1);
+                                Object res = aMethod.invoke(psuInst, accountId, coreItems, archive, 2);
                                 if (res != null) chunkSuccess = true;
                             }
                         } catch (Throwable tPsu) {
@@ -1759,7 +1759,7 @@ public class StorageScanner {
                         Method dMethod = psyClass.getMethod("d", int.class);
                         dMethod.invoke(builder, accountId);
                         psyClass.getField("b").setBoolean(builder, archive);
-                        psyClass.getField("c").setInt(builder, 1);
+                        psyClass.getField("c").setInt(builder, 2);
                         Method cMethod = psyClass.getMethod("c", List.class);
                         cMethod.invoke(builder, chunkRemoteKeys);
                         Method buildMethod = psyClass.getMethod("a");
