@@ -406,12 +406,18 @@ public class StorageScanner {
             switch (crit.source) {
                 case LIBRARY:
                     where.append(" AND (trash_timestamp IS NULL OR trash_timestamp = 0)");
+                    if (hasColumn(db, targetTable, "is_canonical")) {
+                        where.append(" AND (is_canonical = 1 OR is_canonical IS NULL)");
+                    }
                     if (crit.excludeFavorites) {
                         where.append(" AND (is_favorite IS NULL OR is_favorite = 0)");
                     }
                     break;
                 case SEARCH:
                     where.append(" AND (trash_timestamp IS NULL OR trash_timestamp = 0)");
+                    if (hasColumn(db, targetTable, "is_canonical")) {
+                        where.append(" AND (is_canonical = 1 OR is_canonical IS NULL)");
+                    }
                     if (crit.searchQuery != null && !crit.searchQuery.trim().isEmpty()) {
                         String q = "%" + crit.searchQuery.trim() + "%";
                         where.append(" AND (filename LIKE ? OR caption LIKE ?)");
@@ -611,6 +617,7 @@ public class StorageScanner {
             String captionExpr = hasColumn(db, targetTable, "caption") ? "caption" : "''";
             String mediaKeyExpr = hasColumn(db, targetTable, "remote_media_key") ? "COALESCE(NULLIF(remote_media_key, ''), media_key)" : "media_key";
 
+            String groupByClause = "remote_media".equals(targetTable) ? " GROUP BY dedup_key" : "";
             String sql = "SELECT dedup_key, " + mediaKeyExpr + ", filename, size_bytes, quota_charged_bytes, capture_timestamp, remote_url, " +
                     (hasColumn(db, targetTable, "trash_timestamp") ? "trash_timestamp" : "0") + ", " +
                     "width, height, duration, " +
@@ -619,7 +626,7 @@ public class StorageScanner {
                     (hasColumn(db, targetTable, "is_micro_video") ? "is_micro_video" : "0") + ", " +
                     "mime_type, " + latExpr + ", " + lonExpr + ", " + captionExpr + " " +
                     "FROM " + targetTable + " " +
-                    "WHERE " + where + " " +
+                    "WHERE " + where + groupByClause + " " +
                     "ORDER BY " + orderBy + " LIMIT " + crit.limit;
 
             try (Cursor c = db.rawQuery(sql, args.toArray(new String[0]))) {
@@ -1712,7 +1719,8 @@ public class StorageScanner {
                                 mCv.put("is_deleted", 0);
                                 localDb.update("media", mCv, "dedup_key = ?", new String[]{it.dedupKey});
                             }
-                            if (hasTable(localDb, "local_media")) localDb.update("local_media", cv, "dedup_key = ?", new String[]{it.dedupKey});
+                            // Do not modify local_media.trash_timestamp directly: local disk files must only be
+                            // trashed via Android MediaStore, otherwise Google Photos app restore will conflict with OS MediaStore.
                         }
                         localDb.setTransactionSuccessful();
                         localDb.endTransaction();
