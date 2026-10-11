@@ -1014,42 +1014,49 @@ public class StorageScanner {
                     Object task = dMethod.invoke(null, accountId, bemgObj);
 
                     if (task != null) {
-                        Class<?> bzoqClass = Class.forName("bzoq");
-                        Class<?> qcxClass = Class.forName("qcx");
-                        Method getServiceMethod = bzoqClass.getMethod("e", Context.class, Class.class);
-                        Object taskRunner = getServiceMethod.invoke(null, context, qcxClass);
-
-                        if (taskRunner != null) {
+                        Object result = null;
+                        try {
                             Class<?> bxtyClass = Class.forName("bxty");
-                            Method executeMethod = qcxClass.getMethod("a", bxtyClass);
-                            Object result = executeMethod.invoke(taskRunner, task);
+                            Class<?> bxueClass = Class.forName("bxue");
+                            Method fMethod = bxueClass.getMethod("f", Context.class, bxtyClass);
+                            result = fMethod.invoke(null, context, task);
+                        } catch (Throwable tSync) {
+                            Logger.printInfo(() -> "bxue.f failed, trying TaskRunner: " + tSync.getMessage());
+                            Class<?> bzoqClass = Class.forName("bzoq");
+                            Class<?> qcxClass = Class.forName("qcx");
+                            Method getServiceMethod = bzoqClass.getMethod("e", Context.class, Class.class);
+                            Object taskRunner = getServiceMethod.invoke(null, context, qcxClass);
+                            if (taskRunner != null) {
+                                Class<?> bxtyClass = Class.forName("bxty");
+                                Method executeMethod = qcxClass.getMethod("a", bxtyClass);
+                                result = executeMethod.invoke(taskRunner, task);
+                            }
+                        }
 
-                            if (result != null) {
-                                Class<?> bxuzClass = Class.forName("bxuz");
-                                int statusCode = bxuzClass.getField("d").getInt(result);
-                                Logger.printInfo(() -> "Method A CreateEnvelopeTask status: " + statusCode);
-                                if (statusCode == 200) {
-                                    Method getBundleMethod = bxuzClass.getMethod("b");
-                                    Bundle bundle = (Bundle) getBundleMethod.invoke(result);
-                                    if (bundle != null) {
-                                        createdKey = bundle.getString("envelope_media_key");
-                                        if (createdKey == null || createdKey.isEmpty()) {
-                                            Parcelable shareDetails = bundle.getParcelable("envelope_share_details");
-                                            if (shareDetails != null) {
-                                                createdKey = (String) Class.forName("bemk").getField("a").get(shareDetails);
-                                            }
+                        if (result != null) {
+                            Class<?> bxuzClass = Class.forName("bxuz");
+                            int statusCode = bxuzClass.getField("d").getInt(result);
+                            Logger.printInfo(() -> "Method A CreateEnvelopeTask status: " + statusCode);
+                            if (statusCode == 200) {
+                                Method getBundleMethod = bxuzClass.getMethod("b");
+                                Bundle bundle = (Bundle) getBundleMethod.invoke(result);
+                                if (bundle != null) {
+                                    createdKey = bundle.getString("envelope_media_key");
+                                    if (createdKey == null || createdKey.isEmpty()) {
+                                        Parcelable shareDetails = bundle.getParcelable("envelope_share_details");
+                                        if (shareDetails != null) {
+                                            createdKey = (String) Class.forName("bemk").getField("a").get(shareDetails);
                                         }
                                     }
-                                    if (createdKey != null && !createdKey.isEmpty()) {
-                                        final String keyA = createdKey;
-                                        Logger.printInfo(() -> "Method A created album successfully! Key: " + keyA);
-                                        // If more items remain, add them via AddMediaToEnvelopeTask
-                                        if (mediaKeys.size() > initialCount) {
-                                            List<String> remaining = mediaKeys.subList(initialCount, mediaKeys.size());
-                                            addMediaToCloudAlbum(context, accountId, createdKey, remaining);
-                                        }
-                                        return createdKey;
+                                }
+                                if (createdKey != null && !createdKey.isEmpty()) {
+                                    final String keyA = createdKey;
+                                    Logger.printInfo(() -> "Method A created album successfully! Key: " + keyA);
+                                    if (mediaKeys.size() > initialCount) {
+                                        List<String> remaining = mediaKeys.subList(initialCount, mediaKeys.size());
+                                        addMediaToCloudAlbum(context, accountId, createdKey, remaining);
                                     }
+                                    return createdKey;
                                 }
                             }
                         }
@@ -1065,7 +1072,7 @@ public class StorageScanner {
             Object builder = bemfCtor.newInstance(System.currentTimeMillis());
 
             Field fX = bemfClass.getField("x");
-            fX.setInt(builder, 2); // 2 = ENVELOPE_TYPE_ALBUM
+            fX.setInt(builder, 4); // 4 = ENVELOPE_TYPE_ALBUM_EMPTY (required by adwr.e)
 
             Field fG = bemfClass.getField("g");
             fG.set(builder, title);
@@ -1079,29 +1086,36 @@ public class StorageScanner {
             Object task = dMethod.invoke(null, accountId, bemgObj);
 
             if (task != null) {
-                Class<?> bzoqClass = Class.forName("bzoq");
-                Class<?> qcxClass = Class.forName("qcx");
-                Method getServiceMethod = bzoqClass.getMethod("e", Context.class, Class.class);
-                Object taskRunner = getServiceMethod.invoke(null, context, qcxClass);
-
-                if (taskRunner != null) {
+                Object result = null;
+                try {
                     Class<?> bxtyClass = Class.forName("bxty");
-                    Method executeMethod = qcxClass.getMethod("a", bxtyClass);
-                    Object result = executeMethod.invoke(taskRunner, task);
+                    Class<?> bxueClass = Class.forName("bxue");
+                    Method fMethod = bxueClass.getMethod("f", Context.class, bxtyClass);
+                    result = fMethod.invoke(null, context, task);
+                } catch (Throwable tSync) {
+                    Class<?> bzoqClass = Class.forName("bzoq");
+                    Class<?> qcxClass = Class.forName("qcx");
+                    Method getServiceMethod = bzoqClass.getMethod("e", Context.class, Class.class);
+                    Object taskRunner = getServiceMethod.invoke(null, context, qcxClass);
+                    if (taskRunner != null) {
+                        Class<?> bxtyClass = Class.forName("bxty");
+                        Method executeMethod = qcxClass.getMethod("a", bxtyClass);
+                        result = executeMethod.invoke(taskRunner, task);
+                    }
+                }
 
-                    if (result != null) {
-                        Class<?> bxuzClass = Class.forName("bxuz");
-                        int statusCode = bxuzClass.getField("d").getInt(result);
-                        Logger.printInfo(() -> "Method B CreateEnvelopeTask status: " + statusCode);
-                        Method getBundleMethod = bxuzClass.getMethod("b");
-                        Bundle bundle = (Bundle) getBundleMethod.invoke(result);
-                        if (bundle != null) {
-                            createdKey = bundle.getString("envelope_media_key");
-                            if (createdKey == null || createdKey.isEmpty()) {
-                                Parcelable shareDetails = bundle.getParcelable("envelope_share_details");
-                                if (shareDetails != null) {
-                                    createdKey = (String) Class.forName("bemk").getField("a").get(shareDetails);
-                                }
+                if (result != null) {
+                    Class<?> bxuzClass = Class.forName("bxuz");
+                    int statusCode = bxuzClass.getField("d").getInt(result);
+                    Logger.printInfo(() -> "Method B CreateEnvelopeTask status: " + statusCode);
+                    Method getBundleMethod = bxuzClass.getMethod("b");
+                    Bundle bundle = (Bundle) getBundleMethod.invoke(result);
+                    if (bundle != null) {
+                        createdKey = bundle.getString("envelope_media_key");
+                        if (createdKey == null || createdKey.isEmpty()) {
+                            Parcelable shareDetails = bundle.getParcelable("envelope_share_details");
+                            if (shareDetails != null) {
+                                createdKey = (String) Class.forName("bemk").getField("a").get(shareDetails);
                             }
                         }
                     }
