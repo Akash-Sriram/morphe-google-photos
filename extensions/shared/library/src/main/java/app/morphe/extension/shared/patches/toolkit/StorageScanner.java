@@ -11,6 +11,8 @@ import android.graphics.Color;
 import android.net.Uri;
 import android.os.Bundle;
 import android.os.Parcelable;
+import android.provider.MediaStore;
+import android.util.Log;
 
 import java.io.ByteArrayOutputStream;
 import java.io.File;
@@ -31,6 +33,8 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -1197,8 +1201,8 @@ public class StorageScanner {
     }
 
     private static List<String> resolveRemoteMediaKeys(Context context, int accountId, List<MediaItem> items) {
-        List<String> mediaKeys = new ArrayList<>();
-        if (items == null || items.isEmpty()) return mediaKeys;
+        Set<String> mediaKeys = new LinkedHashSet<>();
+        if (items == null || items.isEmpty()) return new ArrayList<>(mediaKeys);
 
         SQLiteDatabase db = null;
         try {
@@ -1209,55 +1213,54 @@ public class StorageScanner {
         } catch (Throwable ignored) {}
 
         for (MediaItem it : items) {
-            String key = null;
-            // 1. Look up media table first by dedupKey for canonical_media_key (cloud primary copy)
+            boolean foundAny = false;
+            // 1. Look up media table first by dedupKey for canonical_media_key
             if (db != null && it.dedupKey != null && !it.dedupKey.trim().isEmpty() && hasTable(db, "media") && hasColumn(db, "media", "canonical_media_key")) {
-                try (Cursor c = db.rawQuery("SELECT canonical_media_key FROM media WHERE dedup_key = ? AND canonical_media_key IS NOT NULL AND canonical_media_key != '' AND canonical_media_key NOT LIKE 'local:%' LIMIT 1", new String[]{it.dedupKey})) {
-                    if (c != null && c.moveToFirst()) {
+                try (Cursor c = db.rawQuery("SELECT DISTINCT canonical_media_key FROM media WHERE dedup_key = ? AND canonical_media_key IS NOT NULL AND canonical_media_key != '' AND canonical_media_key NOT LIKE 'local:%'", new String[]{it.dedupKey})) {
+                    while (c != null && c.moveToNext()) {
                         String rk = c.getString(0);
                         if (rk != null && !rk.trim().isEmpty()) {
-                            key = rk.trim();
+                            mediaKeys.add(rk.trim());
+                            foundAny = true;
                         }
                     }
                 } catch (Throwable ignored) {}
             }
-            // 2. Look up remote_media table ordered by is_canonical DESC, is_canonical_copy DESC
-            if ((key == null || key.startsWith("local:")) && db != null && it.dedupKey != null && !it.dedupKey.trim().isEmpty() && hasTable(db, "remote_media")) {
-                try (Cursor c = db.rawQuery("SELECT COALESCE(NULLIF(remote_media_key, ''), media_key) FROM remote_media WHERE dedup_key = ? AND (trash_timestamp IS NULL OR trash_timestamp = 0) ORDER BY is_canonical DESC, is_canonical_copy DESC LIMIT 1", new String[]{it.dedupKey})) {
-                    if (c != null && c.moveToFirst()) {
+            // 2. Look up remote_media table - query ALL matching rows (including duplicate copies)
+            if (db != null && it.dedupKey != null && !it.dedupKey.trim().isEmpty() && hasTable(db, "remote_media")) {
+                try (Cursor c = db.rawQuery("SELECT DISTINCT COALESCE(NULLIF(remote_media_key, ''), media_key) FROM remote_media WHERE dedup_key = ? AND (trash_timestamp IS NULL OR trash_timestamp = 0)", new String[]{it.dedupKey})) {
+                    while (c != null && c.moveToNext()) {
                         String rk = c.getString(0);
                         if (rk != null && !rk.trim().isEmpty() && !rk.startsWith("local:")) {
-                            key = rk.trim();
+                            mediaKeys.add(rk.trim());
+                            foundAny = true;
                         }
                     }
                 } catch (Throwable ignored) {}
             }
-            // 3. If not found in remote_media, check item's own mediaKey
-            if (key == null || key.startsWith("local:")) {
-                if (it.mediaKey != null && !it.mediaKey.trim().isEmpty() && !it.mediaKey.startsWith("local:")) {
-                    key = it.mediaKey.trim();
-                }
+            // 3. Fallback: item's own mediaKey if remote
+            if (!foundAny && it.mediaKey != null && !it.mediaKey.trim().isEmpty() && !it.mediaKey.startsWith("local:")) {
+                mediaKeys.add(it.mediaKey.trim());
+                foundAny = true;
             }
-            // 4. If still local or null, check shared_media
-            if ((key == null || key.startsWith("local:")) && db != null && it.dedupKey != null && !it.dedupKey.trim().isEmpty() && hasTable(db, "shared_media")) {
-                try (Cursor c = db.rawQuery("SELECT remote_media_key FROM shared_media WHERE dedup_key = ? AND remote_media_key IS NOT NULL AND remote_media_key != '' AND remote_media_key NOT LIKE 'local:%' LIMIT 1", new String[]{it.dedupKey})) {
-                    if (c != null && c.moveToFirst()) {
+            // 4. Look up shared_media table
+            if (db != null && it.dedupKey != null && !it.dedupKey.trim().isEmpty() && hasTable(db, "shared_media")) {
+                try (Cursor c = db.rawQuery("SELECT DISTINCT remote_media_key FROM shared_media WHERE dedup_key = ? AND remote_media_key IS NOT NULL AND remote_media_key != '' AND remote_media_key NOT LIKE 'local:%'", new String[]{it.dedupKey})) {
+                    while (c != null && c.moveToNext()) {
                         String rk = c.getString(0);
                         if (rk != null && !rk.trim().isEmpty()) {
-                            key = rk.trim();
+                            mediaKeys.add(rk.trim());
+                            foundAny = true;
                         }
                     }
                 } catch (Throwable ignored) {}
-            }
-            if (key != null && !key.trim().isEmpty() && !key.startsWith("local:")) {
-                mediaKeys.add(key);
             }
         }
 
         if (db != null) {
             try { db.close(); } catch (Throwable ignored) {}
         }
-        return mediaKeys;
+        return new ArrayList<>(mediaKeys);
     }
 
     private static List<String> resolveRemoteMediaKeys(AccountInfo account, List<MediaItem> items) {
@@ -1361,39 +1364,43 @@ public class StorageScanner {
         if (context == null || items == null || items.isEmpty()) return result;
         List<String> keys = resolveRemoteMediaKeys(context, accountId, items);
         if (keys.isEmpty()) {
-            Logger.printInfo(() -> "resolveRemoteMediaKeys found 0 remote keys for account " + accountId);
+            Log.w("morphe: StorageScanner", "resolveRemoteMediaKeys found 0 remote keys for account " + accountId);
             return result;
         }
 
-        try {
-            Object mediaCollection = createMediaCollectionForKeys(accountId, keys);
-            if (mediaCollection == null) return result;
+        int chunkSize = 100;
+        for (int i = 0; i < keys.size(); i += chunkSize) {
+            List<String> chunkKeys = keys.subList(i, Math.min(i + chunkSize, keys.size()));
+            try {
+                Object mediaCollection = createMediaCollectionForKeys(accountId, chunkKeys);
+                if (mediaCollection == null) continue;
 
-            Class<?> bwpgClass = Class.forName("bwpg");
-            Class<?> wsgClass = Class.forName("wsg");
-            Method aRefMethod = wsgClass.getMethod("a", bwpgClass);
-            Object collectionRef = aRefMethod.invoke(null, mediaCollection);
+                Class<?> bwpgClass = Class.forName("bwpg");
+                Class<?> wsgClass = Class.forName("wsg");
+                Method aRefMethod = wsgClass.getMethod("a", bwpgClass);
+                Object collectionRef = aRefMethod.invoke(null, mediaCollection);
 
-            Class<?> wrlClass = Class.forName("wrl");
-            Class<?> wryClass = Class.forName("wry");
-            Class<?> wqsClass = Class.forName("wqs");
-            Class<?> wqbClass = Class.forName("wqb");
+                Class<?> wrlClass = Class.forName("wrl");
+                Class<?> wryClass = Class.forName("wry");
+                Class<?> wqsClass = Class.forName("wqs");
+                Class<?> wqbClass = Class.forName("wqb");
 
-            Object wqsVal = wqsClass.getField("a").get(null);
-            Object wqbVal = buildCoreFeaturesRequest(context);
-            if (wqbVal == null) {
-                wqbVal = wqbClass.getField("a").get(null);
+                Object wqsVal = wqsClass.getField("a").get(null);
+                Object wqbVal = buildCoreFeaturesRequest(context);
+                if (wqbVal == null) {
+                    wqbVal = wqbClass.getField("a").get(null);
+                }
+
+                Method hMethod = wrlClass.getMethod("H", Context.class, wryClass, wqsClass, wqbClass);
+                List<?> loaded = (List<?>) hMethod.invoke(null, context, collectionRef, wqsVal, wqbVal);
+                if (loaded != null) {
+                    result.addAll(loaded);
+                }
+            } catch (Throwable t) {
+                Log.e("morphe: StorageScanner", "Error loading core media items chunk (" + chunkKeys.size() + " keys)", t);
             }
-
-            Method hMethod = wrlClass.getMethod("H", Context.class, wryClass, wqsClass, wqbClass);
-            List<?> loaded = (List<?>) hMethod.invoke(null, context, collectionRef, wqsVal, wqbVal);
-            if (loaded != null) {
-                result.addAll(loaded);
-            }
-            Logger.printInfo(() -> "Loaded " + result.size() + " core media items for " + keys.size() + " keys");
-        } catch (Throwable t) {
-            Logger.printException(() -> "Error loading core media items (bwpf)", t);
         }
+        Log.i("morphe: StorageScanner", "Loaded " + result.size() + " core media items for " + keys.size() + " keys");
         return result;
     }
 
@@ -1688,47 +1695,134 @@ public class StorageScanner {
 
     private static boolean executeOnlineArchiveTask(Context context, int accountId, List<MediaItem> items, boolean archive) {
         if (context == null || items == null || items.isEmpty()) return false;
-        try {
-            List<?> coreItems = loadCoreMediaItems(context, accountId, items);
-            if (coreItems.isEmpty()) {
-                Logger.printInfo(() -> "executeOnlineArchiveTask: loadCoreMediaItems returned 0 items");
-                return false;
-            }
+        Log.i("morphe: StorageScanner", "executeOnlineArchiveTask: starting for " + items.size() + " items, archive=" + archive);
 
-            Class<?> psuClass = Class.forName("psu");
-            Class<?> bzoqClass = Class.forName("bzoq");
-            Method eMethod = bzoqClass.getMethod("e", Context.class, Class.class);
-            Object psuInst = eMethod.invoke(null, context, psuClass);
-            if (psuInst == null) {
-                Logger.printInfo(() -> "executeOnlineArchiveTask: bzoq.e returned null for psu");
-                return false;
-            }
+        int chunkSize = 100;
+        int totalChunks = (items.size() + chunkSize - 1) / chunkSize;
+        int successCount = 0;
 
-            Method aMethod = psuClass.getMethod("a", int.class, List.class, boolean.class, int.class);
-            Object res = aMethod.invoke(psuInst, accountId, coreItems, archive, 1);
-            boolean success = false;
-            if (res != null) {
-                try {
-                    Method aResMethod = res.getClass().getMethod("a");
-                    Object val = aResMethod.invoke(res);
-                    if (val != null) {
-                        if (val instanceof Collection) {
-                            success = !((Collection<?>) val).isEmpty();
-                        } else {
-                            success = true;
+        for (int i = 0; i < items.size(); i += chunkSize) {
+            int chunkIndex = (i / chunkSize) + 1;
+            List<MediaItem> chunk = items.subList(i, Math.min(i + chunkSize, items.size()));
+            boolean chunkSuccess = false;
+
+            try {
+                List<String> chunkRemoteKeys = resolveRemoteMediaKeys(context, accountId, chunk);
+                List<?> coreItems = loadCoreMediaItems(context, accountId, chunk);
+
+                // 1. Dispatch official TaskRunner MediaUndoActionTask with ptf
+                if (!coreItems.isEmpty()) {
+                    try {
+                        Class<?> bdkqClass = Class.forName("bdkq");
+                        Constructor<?> bdkqCtor = bdkqClass.getConstructor(Collection.class);
+                        Object mediaGroup = bdkqCtor.newInstance(coreItems);
+
+                        Class<?> ptfClass = Class.forName("ptf");
+                        Constructor<?> ptfCtor = ptfClass.getConstructor(int.class, boolean.class, int.class, bdkqClass, String.class);
+                        Object ptfInst = ptfCtor.newInstance(accountId, archive, 1, mediaGroup, "UndoableActionManager-Act");
+
+                        Class<?> taskClass = Class.forName("com.google.android.apps.photos.undoaction.MediaUndoActionTask");
+                        Class<?> bjrdClass = Class.forName("bjrd");
+                        Constructor<?> taskCtor = taskClass.getConstructor(String.class, bjrdClass, boolean.class, boolean.class);
+                        Object undoTask = taskCtor.newInstance("UndoableActionManager-Act", ptfInst, false, true);
+
+                        Class<?> bxtyClass = Class.forName("bxty");
+                        Class<?> bxueClass = Class.forName("bxue");
+                        Method fMethod = bxueClass.getMethod("f", Context.class, bxtyClass);
+                        fMethod.invoke(null, context, undoTask);
+                        chunkSuccess = true;
+                        Log.i("morphe: StorageScanner", "Dispatched MediaUndoActionTask chunk " + chunkIndex + "/" + totalChunks);
+                    } catch (Throwable tTask) {
+                        Log.w("morphe: StorageScanner", "Error running MediaUndoActionTask chunk " + chunkIndex + ": " + tTask.getMessage());
+                        // Fallback: direct psu.a invocation
+                        try {
+                            Class<?> psuClass = Class.forName("psu");
+                            Class<?> bzoqClass = Class.forName("bzoq");
+                            Method eMethod = bzoqClass.getMethod("e", Context.class, Class.class);
+                            Object psuInst = eMethod.invoke(null, context, psuClass);
+                            if (psuInst != null) {
+                                Method aMethod = psuClass.getMethod("a", int.class, List.class, boolean.class, int.class);
+                                Object res = aMethod.invoke(psuInst, accountId, coreItems, archive, 1);
+                                if (res != null) chunkSuccess = true;
+                            }
+                        } catch (Throwable tPsu) {
+                            Log.w("morphe: StorageScanner", "Error in psu.a fallback: " + tPsu.getMessage());
                         }
                     }
-                } catch (Throwable tRes) {
-                    Logger.printException(() -> "Error evaluating archive/unarchive result wqx", tRes);
                 }
+
+                // 2. Dispatch online mutation RPC and ActionQueue via psz
+                if (!chunkRemoteKeys.isEmpty()) {
+                    try {
+                        Class<?> psyClass = Class.forName("psy");
+                        Object builder = psyClass.getConstructor().newInstance();
+                        Method dMethod = psyClass.getMethod("d", int.class);
+                        dMethod.invoke(builder, accountId);
+                        psyClass.getField("b").setBoolean(builder, archive);
+                        psyClass.getField("c").setInt(builder, 1);
+                        Method cMethod = psyClass.getMethod("c", List.class);
+                        cMethod.invoke(builder, chunkRemoteKeys);
+                        Method buildMethod = psyClass.getMethod("a");
+                        Object pszInst = buildMethod.invoke(builder);
+
+                        // Direct synchronous RPC (BatchSetArchiveStateRequest)
+                        try {
+                            Method hMethod = pszInst.getClass().getMethod("h", Context.class, int.class);
+                            Object future = hMethod.invoke(pszInst, context, 0);
+                            if (future instanceof Future) {
+                                try {
+                                    ((Future<?>) future).get(15, TimeUnit.SECONDS);
+                                    chunkSuccess = true;
+                                    Log.i("morphe: StorageScanner", "Direct archive RPC confirmed chunk " + chunkIndex + "/" + totalChunks);
+                                } catch (Throwable tWait) {
+                                    Log.w("morphe: StorageScanner", "Direct archive RPC wait chunk " + chunkIndex + ": " + tWait.getMessage());
+                                }
+                            }
+                        } catch (Throwable tRpc) {
+                            Log.w("morphe: StorageScanner", "Error invoking psz.h RPC chunk " + chunkIndex + ": " + tRpc.getMessage());
+                        }
+
+                        // Enqueue via ActionWrapper & flush with aokq
+                        try {
+                            Class<?> wrapperClass = Class.forName("com.google.android.apps.photos.actionqueue.ActionWrapper");
+                            Class<?> ltyClass = Class.forName("lty");
+                            Constructor<?> wrapperCtor = wrapperClass.getConstructor(int.class, ltyClass);
+                            Object actionWrapper = wrapperCtor.newInstance(accountId, pszInst);
+
+                            Class<?> bxtyClass = Class.forName("bxty");
+                            Class<?> bxueClass = Class.forName("bxue");
+                            Method runMethod = bxueClass.getMethod("f", Context.class, bxtyClass);
+                            Object res = runMethod.invoke(null, context, actionWrapper);
+
+                            if (res != null) {
+                                Bundle bundle = (Bundle) res.getClass().getMethod("b").invoke(res);
+                                long actionId = bundle != null ? bundle.getLong("LocalResult__action_id", -1L) : -1L;
+                                if (actionId != -1L) {
+                                    Class<?> aokqClass = Class.forName("aokq");
+                                    Constructor<?> aokqCtor = aokqClass.getConstructor(int.class, long.class);
+                                    Object aokqInst = aokqCtor.newInstance(accountId, actionId);
+                                    Method aMethod = aokqClass.getMethod("a", Context.class);
+                                    aMethod.invoke(aokqInst, context);
+                                    chunkSuccess = true;
+                                    Log.i("morphe: StorageScanner", "ActionQueue flushed via aokq chunk " + chunkIndex + "/" + totalChunks);
+                                }
+                            }
+                        } catch (Throwable tQueue) {
+                            Log.w("morphe: StorageScanner", "Error in ActionWrapper/aokq chunk " + chunkIndex + ": " + tQueue.getMessage());
+                        }
+                    } catch (Throwable tPsz) {
+                        Log.w("morphe: StorageScanner", "Error constructing psz chunk " + chunkIndex + ": " + tPsz.getMessage());
+                    }
+                }
+            } catch (Throwable tChunk) {
+                Log.e("morphe: StorageScanner", "Error processing chunk " + chunkIndex + "/" + totalChunks, tChunk);
             }
-            final boolean finalSuccess = success;
-            Logger.printInfo(() -> "executeOnlineArchiveTask(archive=" + archive + ") result success=" + finalSuccess);
-            return success;
-        } catch (Throwable t) {
-            Logger.printException(() -> "Error invoking psu.a for archive=" + archive, t);
-            return false;
+
+            if (chunkSuccess) successCount++;
         }
+
+        Log.i("morphe: StorageScanner", "executeOnlineArchiveTask finished: " + successCount + "/" + totalChunks + " chunks successful");
+        return successCount > 0;
     }
 
     private static boolean executeOnlineFavoriteTask(Context context, int accountId, List<MediaItem> items, boolean favorite) {
@@ -1783,6 +1877,30 @@ public class StorageScanner {
         } catch (Throwable t) {
             Logger.printException(() -> "Could not run SyncActionQueueBlock", t);
         }
+    }
+
+    private static void notifyUiChanges(Context context, int accountId) {
+        if (context == null) return;
+        try {
+            Class<?> bbphClass = Class.forName("bbph");
+            Constructor<?> ctor = bbphClass.getConstructor(Context.class);
+            Object monitor = ctor.newInstance(context);
+            bbphClass.getMethod("c", int.class).invoke(monitor, accountId);
+            bbphClass.getMethod("d", int.class).invoke(monitor, accountId);
+            Log.i("morphe: StorageScanner", "Notified bbph UI monitor for account " + accountId);
+        } catch (Throwable t) {
+            Log.w("morphe: StorageScanner", "Error in bbph UI notification: " + t.getMessage());
+        }
+
+        try {
+            ContentResolver cr = context.getContentResolver();
+            cr.notifyChange(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, null);
+            cr.notifyChange(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, null);
+            cr.notifyChange(Uri.parse("content://GPhotos/all_photos"), null);
+            cr.notifyChange(Uri.parse("content://GPhotos/archive"), null);
+            cr.notifyChange(Uri.parse("content://GPhotos/trash"), null);
+            cr.notifyChange(Uri.parse("content://GPhotos/collections"), null);
+        } catch (Throwable ignored) {}
     }
 
     public static ActionResult executeDatabaseAction(Context context, AccountInfo account, String actionId, List<MediaItem> items, String param) {
@@ -1880,15 +1998,7 @@ public class StorageScanner {
 
             // 4. Trigger MetaSync & ActionQueue sync to flush to Google Photos servers
             triggerOnlineSync(context, account.accountId);
-
-            try {
-                if (context != null) {
-                    ContentResolver cr = context.getContentResolver();
-                    cr.notifyChange(Uri.parse("content://GPhotos/trash"), null);
-                    cr.notifyChange(Uri.parse("content://GPhotos/all_photos"), null);
-                    cr.notifyChange(Uri.parse("content://GPhotos/collections"), null);
-                }
-            } catch (Throwable ignored) {}
+            notifyUiChanges(context, account.accountId);
 
             int count = (items != null) ? items.size() : 0;
             if (deletedAlbums > 0) {
@@ -1947,14 +2057,7 @@ public class StorageScanner {
                     try { db.close(); db = null; } catch (Throwable ignored) {}
 
                     triggerOnlineSync(context, account.accountId);
-
-                    try {
-                        if (context != null) {
-                            ContentResolver cr = context.getContentResolver();
-                            cr.notifyChange(Uri.parse("content://GPhotos/trash"), null);
-                            cr.notifyChange(Uri.parse("content://GPhotos/all_photos"), null);
-                        }
-                    } catch (Throwable ignored) {}
+                    notifyUiChanges(context, account.accountId);
 
                     return new ActionResult(true, count, "Successfully restored " + count + " items from Trash");
 
@@ -1984,13 +2087,7 @@ public class StorageScanner {
                     try { db.close(); db = null; } catch (Throwable ignored) {}
 
                     triggerOnlineSync(context, account.accountId);
-
-                    try {
-                        if (context != null) {
-                            ContentResolver cr = context.getContentResolver();
-                            cr.notifyChange(Uri.parse("content://GPhotos/all_photos"), null);
-                        }
-                    } catch (Throwable ignored) {}
+                    notifyUiChanges(context, account.accountId);
 
                     return new ActionResult(true, count, "Successfully archived " + count + " items");
 
@@ -2020,13 +2117,7 @@ public class StorageScanner {
                     try { db.close(); db = null; } catch (Throwable ignored) {}
 
                     triggerOnlineSync(context, account.accountId);
-
-                    try {
-                        if (context != null) {
-                            ContentResolver cr = context.getContentResolver();
-                            cr.notifyChange(Uri.parse("content://GPhotos/all_photos"), null);
-                        }
-                    } catch (Throwable ignored) {}
+                    notifyUiChanges(context, account.accountId);
 
                     return new ActionResult(true, count, "Successfully un-archived " + count + " items");
 
@@ -2044,13 +2135,7 @@ public class StorageScanner {
                     try { db.close(); db = null; } catch (Throwable ignored) {}
 
                     triggerOnlineSync(context, account.accountId);
-
-                    try {
-                        if (context != null) {
-                            ContentResolver cr = context.getContentResolver();
-                            cr.notifyChange(Uri.parse("content://GPhotos/all_photos"), null);
-                        }
-                    } catch (Throwable ignored) {}
+                    notifyUiChanges(context, account.accountId);
 
                     return new ActionResult(true, count, "Successfully added " + count + " items to favorites");
 
@@ -2068,13 +2153,7 @@ public class StorageScanner {
                     try { db.close(); db = null; } catch (Throwable ignored) {}
 
                     triggerOnlineSync(context, account.accountId);
-
-                    try {
-                        if (context != null) {
-                            ContentResolver cr = context.getContentResolver();
-                            cr.notifyChange(Uri.parse("content://GPhotos/all_photos"), null);
-                        }
-                    } catch (Throwable ignored) {}
+                    notifyUiChanges(context, account.accountId);
 
                     return new ActionResult(true, count, "Successfully removed " + count + " items from favorites");
 
@@ -2101,13 +2180,7 @@ public class StorageScanner {
                     try { db.close(); db = null; } catch (Throwable ignored) {}
 
                     triggerOnlineSync(context, account.accountId);
-
-                    try {
-                        if (context != null) {
-                            ContentResolver cr = context.getContentResolver();
-                            cr.notifyChange(Uri.parse("content://GPhotos/collections"), null);
-                        }
-                    } catch (Throwable ignored) {}
+                    notifyUiChanges(context, account.accountId);
 
                     return new ActionResult(true, count, "Removed " + count + " items from album");
 
@@ -2132,13 +2205,7 @@ public class StorageScanner {
                     try { db.close(); db = null; } catch (Throwable ignored) {}
 
                     triggerOnlineSync(context, account.accountId);
-
-                    try {
-                        if (context != null) {
-                            ContentResolver cr = context.getContentResolver();
-                            cr.notifyChange(Uri.parse("content://GPhotos/all_photos"), null);
-                        }
-                    } catch (Throwable ignored) {}
+                    notifyUiChanges(context, account.accountId);
 
                     return new ActionResult(true, count, "Locked " + count + " items");
 
@@ -2157,13 +2224,7 @@ public class StorageScanner {
                     try { db.close(); db = null; } catch (Throwable ignored) {}
 
                     triggerOnlineSync(context, account.accountId);
-
-                    try {
-                        if (context != null) {
-                            ContentResolver cr = context.getContentResolver();
-                            cr.notifyChange(Uri.parse("content://GPhotos/all_photos"), null);
-                        }
-                    } catch (Throwable ignored) {}
+                    notifyUiChanges(context, account.accountId);
 
                     return new ActionResult(true, count, "Unlocked " + count + " items");
 
