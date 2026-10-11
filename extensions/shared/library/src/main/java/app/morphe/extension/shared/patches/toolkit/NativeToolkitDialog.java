@@ -411,6 +411,7 @@ public class NativeToolkitDialog {
                     }
                     if (currentAccount != null) {
                         availableAlbums = StorageScanner.getAvailableAlbums(currentAccount);
+                        StorageScanner.syncPendingLocalTrash(activity, currentAccount.accountId);
                     }
 
                     List<StorageScanner.MediaItem> items = StorageScanner.queryMedia(currentAccount, currentCriteria);

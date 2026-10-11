@@ -26,6 +26,7 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.Date;
 import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -391,7 +392,7 @@ public class StorageScanner {
         try {
             db = SQLiteDatabase.openDatabase(dbFile.getAbsolutePath(), null, SQLiteDatabase.OPEN_READONLY);
             String targetTable = "remote_media";
-            if (crit.source == SourceType.SHARED || crit.source == SourceType.ALBUMS) {
+            if (crit.source == SourceType.SHARED) {
                 targetTable = "shared_media";
             } else if (crit.source == SourceType.LOCKED) {
                 targetTable = "remote_locked_media";
@@ -684,46 +685,52 @@ public class StorageScanner {
                 }
             }
 
-            // If Source is ALBUMS, also query remote_media in case items were synced there
-            if (crit.source == SourceType.ALBUMS && hasTable(db, "remote_media") && !crit.albumsInclude.isEmpty()) {
+            // If Source is ALBUMS, also query shared_media in case items belong to a shared album
+            if (crit.source == SourceType.ALBUMS && hasTable(db, "shared_media") && !crit.albumsInclude.isEmpty()) {
                 try {
-                    StringBuilder remWhere = new StringBuilder("collection_id IN (");
-                    List<String> remArgs = new ArrayList<>();
+                    StringBuilder sharedWhere = new StringBuilder("collection_id IN (");
+                    List<String> sharedArgs = new ArrayList<>();
                     for (int i = 0; i < crit.albumsInclude.size(); i++) {
-                        if (i > 0) remWhere.append(",");
-                        remWhere.append("?");
-                        remArgs.add(crit.albumsInclude.get(i));
+                        if (i > 0) sharedWhere.append(",");
+                        sharedWhere.append("?");
+                        sharedArgs.add(crit.albumsInclude.get(i));
                     }
-                    remWhere.append(") AND (trash_timestamp IS NULL OR trash_timestamp = 0)");
+                    sharedWhere.append(")");
 
-                    String remSql = "SELECT dedup_key, " + mediaKeyExpr + ", filename, size_bytes, quota_charged_bytes, capture_timestamp, remote_url, " +
-                            "trash_timestamp, width, height, duration, is_archived, is_favorite, is_micro_video, mime_type, " + latExpr + ", " + lonExpr + ", " + captionExpr + " " +
-                            "FROM remote_media WHERE " + remWhere;
-                    try (Cursor rc = db.rawQuery(remSql, remArgs.toArray(new String[0]))) {
+                    String sharedMediaKeyExpr = hasColumn(db, "shared_media", "remote_media_key") ? "COALESCE(NULLIF(remote_media_key, ''), media_key)" : "media_key";
+                    String sharedLatExpr = hasColumn(db, "shared_media", "latitude") ? "latitude" : "0.0";
+                    String sharedLonExpr = hasColumn(db, "shared_media", "longitude") ? "longitude" : "0.0";
+                    String sharedCapExpr = hasColumn(db, "shared_media", "caption") ? "caption" : "''";
+
+                    String sharedSql = "SELECT dedup_key, " + sharedMediaKeyExpr + ", filename, size_bytes, quota_charged_bytes, capture_timestamp, remote_url, " +
+                            "0, width, height, duration, 0, (is_favorite IS NOT NULL AND is_favorite = 1), (is_micro_video IS NOT NULL AND is_micro_video = 1), mime_type, " +
+                            sharedLatExpr + ", " + sharedLonExpr + ", " + sharedCapExpr + " " +
+                            "FROM shared_media WHERE " + sharedWhere;
+                    try (Cursor sc = db.rawQuery(sharedSql, sharedArgs.toArray(new String[0]))) {
                         HashSet<String> seen = new HashSet<>();
                         for (MediaItem it : items) seen.add(it.dedupKey);
-                        while (rc != null && rc.moveToNext()) {
-                            String dKey = rc.getString(0);
-                            if (seen.contains(dKey)) continue;
+                        while (sc != null && sc.moveToNext()) {
+                            String dKey = sc.getString(0);
+                            if (dKey == null || seen.contains(dKey)) continue;
                             items.add(new MediaItem(
                                     dKey,
-                                    rc.getString(1),
-                                    rc.getString(2),
-                                    rc.getLong(3),
-                                    rc.getLong(4),
-                                    rc.getLong(5),
-                                    rc.getString(6),
-                                    rc.getLong(7),
-                                    rc.getInt(8),
-                                    rc.getInt(9),
-                                    rc.getLong(10),
-                                    rc.getInt(11) == 1,
-                                    rc.getInt(12) == 1,
-                                    rc.getInt(13) == 1,
-                                    rc.getString(14),
-                                    rc.getDouble(15),
-                                    rc.getDouble(16),
-                                    rc.getString(17)
+                                    sc.getString(1),
+                                    sc.getString(2),
+                                    sc.getLong(3),
+                                    sc.getLong(4),
+                                    sc.getLong(5),
+                                    sc.getString(6),
+                                    sc.getLong(7),
+                                    sc.getInt(8),
+                                    sc.getInt(9),
+                                    sc.getLong(10),
+                                    sc.getInt(11) == 1,
+                                    sc.getInt(12) == 1,
+                                    sc.getInt(13) == 1,
+                                    sc.getString(14),
+                                    sc.getDouble(15),
+                                    sc.getDouble(16),
+                                    sc.getString(17)
                             ));
                             seen.add(dKey);
                         }
@@ -1169,8 +1176,10 @@ public class StorageScanner {
                     try {
                         localDb.delete("collections", "collection_media_key = ?", new String[]{albumMediaKey});
                         localDb.delete("envelopes", "media_key = ?", new String[]{albumMediaKey});
-                        localDb.delete("remote_media", "collection_id = ?", new String[]{albumMediaKey});
-                        localDb.delete("shared_media", "collection_id = ?", new String[]{albumMediaKey});
+                        ContentValues nullCv = new ContentValues();
+                        nullCv.putNull("collection_id");
+                        localDb.update("remote_media", nullCv, "collection_id = ?", new String[]{albumMediaKey});
+                        localDb.update("shared_media", nullCv, "collection_id = ?", new String[]{albumMediaKey});
                         success = true;
                     } finally {
                         localDb.close();
@@ -1378,111 +1387,194 @@ public class StorageScanner {
         return result;
     }
 
+    public static void syncPendingLocalTrash(Context context, int accountId) {
+        if (context == null) return;
+        new Thread(() -> {
+            SQLiteDatabase db = null;
+            try {
+                File dbf = context.getDatabasePath("gphotos" + accountId + ".db");
+                if (dbf == null || !dbf.exists()) {
+                    List<AccountInfo> accounts = getAvailableAccounts(context);
+                    for (AccountInfo a : accounts) {
+                        if (a.accountId == accountId) {
+                            dbf = new File(a.dbPath);
+                            break;
+                        }
+                    }
+                }
+                if (dbf == null || !dbf.exists()) return;
+
+                db = SQLiteDatabase.openDatabase(dbf.getAbsolutePath(), null, SQLiteDatabase.OPEN_READONLY);
+                if (!hasTable(db, "remote_media")) return;
+
+                List<MediaItem> pendingItems = new ArrayList<>();
+                String mediaKeyCol = hasColumn(db, "remote_media", "remote_media_key") ? "COALESCE(NULLIF(remote_media_key, ''), media_key)" : "media_key";
+                String sql = "SELECT DISTINCT r.dedup_key, r." + mediaKeyCol + ", r.filename, r.size_bytes FROM (" +
+                        "SELECT dedup_key, " + mediaKeyCol + ", filename, size_bytes FROM remote_media WHERE trash_timestamp > 0 " +
+                        (hasTable(db, "media") ? "UNION SELECT dedup_key, '' as " + mediaKeyCol + ", '' as filename, 0 as size_bytes FROM media WHERE trash_timestamp > 0" : "") +
+                        ") r LIMIT 500";
+                try (Cursor c = db.rawQuery(sql, null)) {
+                    while (c != null && c.moveToNext()) {
+                        String dKey = c.getString(0);
+                        String mKey = c.getString(1);
+                        String fname = c.getString(2);
+                        long sz = c.getLong(3);
+                        if (dKey != null && !dKey.isEmpty()) {
+                            pendingItems.add(new MediaItem(dKey, mKey, fname, sz, 0, 0, "", 1, 0, 0, 0, false, false, false, "", 0, 0, ""));
+                        }
+                    }
+                }
+
+                if (!pendingItems.isEmpty()) {
+                    Logger.printInfo(() -> "syncPendingLocalTrash: Found " + pendingItems.size() + " locally trashed items pending cloud sync. Syncing...");
+                    executeOnlineTrashTask(context, accountId, pendingItems);
+                }
+            } catch (Throwable t) {
+                Logger.printException(() -> "Error in syncPendingLocalTrash", t);
+            } finally {
+                if (db != null) {
+                    try { db.close(); } catch (Throwable ignored) {}
+                }
+            }
+        }).start();
+    }
+
     private static boolean executeOnlineTrashTask(Context context, int accountId, List<MediaItem> items) {
         if (context == null || items == null || items.isEmpty()) return false;
 
         List<String> mediaKeys = resolveRemoteMediaKeys(context, accountId, items);
-        List<String> dedupKeys = new ArrayList<>();
+        LinkedHashSet<String> uniqueDedupKeys = new LinkedHashSet<>();
         for (MediaItem it : items) {
             if (it.dedupKey != null && !it.dedupKey.trim().isEmpty()) {
-                dedupKeys.add(it.dedupKey.trim());
+                uniqueDedupKeys.add(it.dedupKey.trim());
             }
+        }
+        List<String> dedupKeys = new ArrayList<>(uniqueDedupKeys);
+
+        if (dedupKeys.isEmpty() && mediaKeys.isEmpty()) {
+            Logger.printInfo(() -> "executeOnlineTrashTask: No dedupKeys or mediaKeys found");
+            return false;
         }
 
         // Strategy 1: Dispatch official Google Photos Online Trash Action (bjir).
         // Directly invokes bjir.a(context) to mark local media and bjir.d(context, 0) -> bjhp.b -> Protobuf RPC to Google Photos servers.
-        if (!mediaKeys.isEmpty()) {
+        try {
+            Class<?> bjirClass = Class.forName("bjir");
+            Class<?> cjizClass = Class.forName("cjiz");
+            Class<?> romClass = Class.forName("rom");
+            Method romMethod = romClass.getMethod("b", Context.class);
+            Object cjizSource = romMethod.invoke(null, context);
+
+            // Construct Collection<ahnr> for col1 and col4
+            Collection<?> ahnrCol = null;
+            Collection<String> keyStrings = !mediaKeys.isEmpty() ? mediaKeys : dedupKeys;
             try {
-                Class<?> bjirClass = Class.forName("bjir");
-                Class<?> cjizClass = Class.forName("cjiz");
-                Class<?> romClass = Class.forName("rom");
-                Method romMethod = romClass.getMethod("b", Context.class);
-                Object cjizSource = romMethod.invoke(null, context);
-
-                Method rMethod = bjirClass.getMethod("r", int.class, Collection.class, Collection.class, Collection.class, Collection.class, cjizClass);
-                // r(int accountId, Collection col1, Collection col2, Collection col3, Collection col4, cjiz source)
-                Object bjirAction = rMethod.invoke(null, accountId, mediaKeys, mediaKeys, dedupKeys, mediaKeys, cjizSource);
-
-                boolean success = false;
-
-                // 1. Mark local database items as trashed
-                try {
-                    Method aMethod = bjirClass.getMethod("a", Context.class);
-                    aMethod.invoke(bjirAction, context);
-                    Logger.printInfo(() -> "Executed bjir.a(context) successfully");
-                } catch (Throwable t) {
-                    Logger.printException(() -> "Error in bjir.a(context)", t);
-                }
-
-                // 2. Direct synchronous execution of online mutation RPC to Google Photos backend servers
-                try {
-                    Method dMethod = bjirClass.getMethod("d", Context.class, int.class);
-                    Object ltvRes = dMethod.invoke(bjirAction, context, 0);
-                    Logger.printInfo(() -> "Executed bjir.d(context, 0) directly, ltv: " + ltvRes);
-                    if (ltvRes != null) {
-                        try {
-                            boolean isSuccess = ltvRes.getClass().getField("b").getBoolean(ltvRes);
-                            Logger.printInfo(() -> "bjir.d result isSuccess=" + isSuccess);
-                            if (isSuccess) success = true;
-                        } catch (Throwable ignored) {}
-                        if (!success) {
-                            try {
-                                int stCode = ltvRes.getClass().getField("e").getInt(ltvRes);
-                                Logger.printInfo(() -> "bjir.d result statusCode=" + stCode);
-                                if (stCode == 1 || stCode == 2) success = true;
-                            } catch (Throwable ignored) {}
-                        }
-                    }
-                } catch (Throwable t) {
-                    Logger.printException(() -> "Error in bjir.d(context, 0) direct call", t);
-                }
-
-                // 3. Enqueue and execute via ActionWrapper & aokq to update internal system action queue
-                try {
-                    Class<?> wrapperClass = Class.forName("com.google.android.apps.photos.actionqueue.ActionWrapper");
-                    Class<?> ltyClass = Class.forName("lty");
-                    Constructor<?> wrapperCtor = wrapperClass.getConstructor(int.class, ltyClass);
-                    Object actionWrapper = wrapperCtor.newInstance(accountId, bjirAction);
-
-                    try {
-                        wrapperClass.getMethod("c").invoke(actionWrapper);
-                    } catch (Throwable ignored) {}
-
-                    Class<?> bxtyClass = Class.forName("bxty");
-                    Class<?> bxueClass = Class.forName("bxue");
-                    Method runMethod = bxueClass.getMethod("f", Context.class, bxtyClass);
-                    Object res = runMethod.invoke(null, context, actionWrapper);
-
-                    if (res != null) {
-                        Bundle bundle = (Bundle) res.getClass().getMethod("b").invoke(res);
-                        long actionId = bundle != null ? bundle.getLong("LocalResult__action_id", -1L) : -1L;
-                        Logger.printInfo(() -> "bjir ActionWrapper actionId: " + actionId);
-                        if (actionId != -1L) {
-                            try {
-                                Class<?> aokqClass = Class.forName("aokq");
-                                Constructor<?> aokqCtor = aokqClass.getConstructor(int.class, long.class);
-                                Object aokqInst = aokqCtor.newInstance(accountId, actionId);
-                                Method aMethod = aokqClass.getMethod("a", Context.class);
-                                boolean dispatched = (Boolean) aMethod.invoke(aokqInst, context);
-                                Logger.printInfo(() -> "Dispatched aokq for actionId=" + actionId + ", result=" + dispatched);
-                                success = true;
-                            } catch (Throwable t) {
-                                Logger.printException(() -> "Error running aokq for actionId=" + actionId, t);
-                            }
-                        } else {
-                            success = true;
-                        }
-                    }
-                } catch (Throwable t) {
-                    Logger.printException(() -> "Error in ActionWrapper/aokq queue execution", t);
-                }
-
-                final boolean fSuccess = success;
-                Logger.printInfo(() -> "Executed bjir online trash with " + mediaKeys.size() + " media keys, success=" + fSuccess);
-                if (success) return true;
+                Class<?> ahnsClass = Class.forName("ahns");
+                Method aColMethod = ahnsClass.getMethod("a", Collection.class);
+                ahnrCol = (Collection<?>) aColMethod.invoke(null, keyStrings);
             } catch (Throwable t) {
-                Logger.printException(() -> "Error invoking bjir, trying MoveToTrashActionWrapper fallback", t);
+                try {
+                    Class<?> ahnrClass = Class.forName("ahnr");
+                    Method aStrMethod = ahnrClass.getMethod("a", String.class);
+                    List<Object> list = new ArrayList<>();
+                    for (String s : keyStrings) {
+                        list.add(aStrMethod.invoke(null, s));
+                    }
+                    ahnrCol = list;
+                } catch (Throwable t2) {
+                    Logger.printException(() -> "Error constructing ahnr list", t2);
+                }
             }
+
+            Collection<?> col1 = ahnrCol != null ? ahnrCol : Collections.emptyList();
+            Collection<String> col2 = !dedupKeys.isEmpty() ? dedupKeys : mediaKeys;
+            Collection<String> col3 = !mediaKeys.isEmpty() ? mediaKeys : dedupKeys;
+            Collection<?> col4 = ahnrCol != null ? ahnrCol : Collections.emptyList();
+
+            Method rMethod = bjirClass.getMethod("r", int.class, Collection.class, Collection.class, Collection.class, Collection.class, cjizClass);
+            // r(int accountId, Collection col1, Collection col2, Collection col3, Collection col4, cjiz source)
+            Object bjirAction = rMethod.invoke(null, accountId, col1, col2, col3, col4, cjizSource);
+
+            boolean success = false;
+
+            // 1. Mark local database items as trashed
+            try {
+                Method aMethod = bjirClass.getMethod("a", Context.class);
+                aMethod.invoke(bjirAction, context);
+                Logger.printInfo(() -> "Executed bjir.a(context) successfully");
+            } catch (Throwable t) {
+                Logger.printException(() -> "Error in bjir.a(context)", t);
+            }
+
+            // 2. Direct synchronous execution of online mutation RPC to Google Photos backend servers
+            try {
+                Method dMethod = bjirClass.getMethod("d", Context.class, int.class);
+                Object ltvRes = dMethod.invoke(bjirAction, context, 0);
+                Logger.printInfo(() -> "Executed bjir.d(context, 0) directly, ltv: " + ltvRes);
+                if (ltvRes != null) {
+                    try {
+                        int resultType = ltvRes.getClass().getField("e").getInt(ltvRes);
+                        Logger.printInfo(() -> "bjir.d resultType=" + resultType);
+                        if (resultType == 1) success = true;
+                    } catch (Throwable ignored) {}
+                    try {
+                        boolean isSuccess = ltvRes.getClass().getField("b").getBoolean(ltvRes);
+                        Logger.printInfo(() -> "bjir.d isSuccess=" + isSuccess);
+                        if (isSuccess) success = true;
+                    } catch (Throwable ignored) {}
+                    if (ltvRes.toString().contains("SUCCESS")) {
+                        success = true;
+                    }
+                }
+            } catch (Throwable t) {
+                Logger.printException(() -> "Error in bjir.d(context, 0) direct call", t);
+            }
+
+            // 3. Enqueue and execute via ActionWrapper & aokq to update internal system action queue
+            try {
+                Class<?> wrapperClass = Class.forName("com.google.android.apps.photos.actionqueue.ActionWrapper");
+                Class<?> ltyClass = Class.forName("lty");
+                Constructor<?> wrapperCtor = wrapperClass.getConstructor(int.class, ltyClass);
+                Object actionWrapper = wrapperCtor.newInstance(accountId, bjirAction);
+
+                try {
+                    wrapperClass.getMethod("c").invoke(actionWrapper);
+                } catch (Throwable ignored) {}
+
+                Class<?> bxtyClass = Class.forName("bxty");
+                Class<?> bxueClass = Class.forName("bxue");
+                Method runMethod = bxueClass.getMethod("f", Context.class, bxtyClass);
+                Object res = runMethod.invoke(null, context, actionWrapper);
+
+                if (res != null) {
+                    Bundle bundle = (Bundle) res.getClass().getMethod("b").invoke(res);
+                    long actionId = bundle != null ? bundle.getLong("LocalResult__action_id", -1L) : -1L;
+                    Logger.printInfo(() -> "bjir ActionWrapper actionId: " + actionId);
+                    if (actionId != -1L) {
+                        try {
+                            Class<?> aokqClass = Class.forName("aokq");
+                            Constructor<?> aokqCtor = aokqClass.getConstructor(int.class, long.class);
+                            Object aokqInst = aokqCtor.newInstance(accountId, actionId);
+                            Method aMethod = aokqClass.getMethod("a", Context.class);
+                            boolean dispatched = (Boolean) aMethod.invoke(aokqInst, context);
+                            Logger.printInfo(() -> "Dispatched aokq for actionId=" + actionId + ", result=" + dispatched);
+                            success = true;
+                        } catch (Throwable t) {
+                            Logger.printException(() -> "Error running aokq for actionId=" + actionId, t);
+                        }
+                    } else {
+                        success = true;
+                    }
+                }
+            } catch (Throwable t) {
+                Logger.printException(() -> "Error in ActionWrapper/aokq queue execution", t);
+            }
+
+            final boolean fSuccess = success;
+            Logger.printInfo(() -> "Executed bjir online trash with " + dedupKeys.size() + " items, success=" + fSuccess);
+            if (success) return true;
+        } catch (Throwable t) {
+            Logger.printException(() -> "Error invoking bjir, trying MoveToTrashActionWrapper fallback", t);
         }
 
         // Strategy 2: Fallback to MoveToTrashActionWrapper
@@ -1692,6 +1784,9 @@ public class StorageScanner {
             // 1. Invoke official Google Photos MoveToTrashActionWrapper synchronously FIRST
             boolean dispatchedOnlineTrash = executeOnlineTrashTask(context, account.accountId, items);
             Logger.printInfo(() -> "Executed official online trash task: " + dispatchedOnlineTrash);
+
+            // Reconcile any prior pending local trashed items as well
+            syncPendingLocalTrash(context, account.accountId);
 
             // 2. Invoke official Google Photos DeleteSharedCollectionTask / mne synchronously SECOND while envelopes/collections are intact
             int deletedAlbums = 0;
