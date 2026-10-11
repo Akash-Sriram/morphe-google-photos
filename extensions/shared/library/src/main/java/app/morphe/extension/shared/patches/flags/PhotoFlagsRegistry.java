@@ -96,12 +96,14 @@ public final class PhotoFlagsRegistry {
         register("45836696", "Collage Grid Layout 45836696", "Controls multi-photo collage layout grids, cutout borders, and scrapbook art styles via Lcnzc.", "📑 Create Tab: Collage & Scrapbook (Stamp M2)", "Collage Template & Grid Engine", FlagType.BOOLEAN, Boolean.TRUE);
         register("45839387", "Collage Grid Layout 45839387", "Controls multi-photo collage layout grids, cutout borders, and scrapbook art styles via Lcnzc.", "📑 Create Tab: Collage & Scrapbook (Stamp M2)", "Collage Template & Grid Engine", FlagType.BOOLEAN, Boolean.TRUE);
 
-        // 📁 Collections V2 & Shelves (5 Flags)
+        // 📁 Collections V2 & Shelves (7 Flags)
         register("45762698", "Collections V2 Shelves Layout", "Reorganizes the Library tab into modern categorized Collections V2 horizontal shelves (0=Off, 1=Legacy, 2=Full V2).", "📁 Collections V2 & Shelves", "Collections Shelves Structure", FlagType.LONG, 2L);
         register("45802110", "Collections V2 Content Activation", "Populates dynamic categorized content cards within the Collections V2 shelves.", "📁 Collections V2 & Shelves", "Dynamic Shelf Content", FlagType.LONG, 2L);
         register("45794037", "Screenshots Shelf", "Dedicated shelf grouping on-device screenshots with quick share options.", "📁 Collections V2 & Shelves", "Screenshots Category Shelf", FlagType.BOOLEAN, Boolean.TRUE);
         register("45794038", "Documents Shelf", "Dedicated shelf filtering receipts, documents, identity cards, and notes.", "📁 Collections V2 & Shelves", "Documents Category Shelf", FlagType.BOOLEAN, Boolean.TRUE);
         register("photos.flowers.bouquet_creation", "Bouquet Album Creation & Naming", "Enables custom title and naming support when creating albums and envelopes natively.", "📁 Collections V2 & Shelves", "Album Creation Title Engine", FlagType.BOOLEAN, Boolean.TRUE);
+        register("photos.flowers.bouquet", "Bouquet Album Master", "Master flag for Bouquet collection and envelope features.", "📁 Collections V2 & Shelves", "Album Creation Master Engine", FlagType.BOOLEAN, Boolean.TRUE);
+        register("3226", "Bouquet Album Title Online", "Enables title string creation in CreateEnvelope RPC.", "📁 Collections V2 & Shelves", "Album Title Engine", FlagType.BOOLEAN, Boolean.TRUE);
 
         // 🤖 Gemini & Ask Photos Search (2 Flags)
         register("3013", "Gemini Search UI & Sparkle Indicator", "Enables modern Gemini AI search interface and interactive sparkle highlights (1 = Modern fluid expand).", "🤖 Gemini & Ask Photos Search", "Gemini UI & Sparkle Physics", FlagType.LONG, 1L);
