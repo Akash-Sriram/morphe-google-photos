@@ -9,6 +9,7 @@ import android.database.sqlite.SQLiteDatabase;
 import android.graphics.Bitmap;
 import android.graphics.Color;
 import android.net.Uri;
+import android.os.Build;
 import android.os.Bundle;
 import android.os.Parcelable;
 import android.provider.MediaStore;
@@ -858,13 +859,20 @@ public class StorageScanner {
     public static long calculateAverageHash(Bitmap bitmap, int hashSize) {
         if (bitmap == null || bitmap.isRecycled()) return 0;
         try {
+            Bitmap swBitmap = bitmap;
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && bitmap.getConfig() == Bitmap.Config.HARDWARE) {
+                swBitmap = bitmap.copy(Bitmap.Config.ARGB_8888, false);
+            }
+            if (swBitmap == null || swBitmap.isRecycled()) return 0;
+
             // dHash: 9 wide x 8 tall = 64 bits (compare adjacent pixels per row)
             int cols = 9;
             int rows = 8;
-            Bitmap scaled = Bitmap.createScaledBitmap(bitmap, cols, rows, true);
+            Bitmap scaled = Bitmap.createScaledBitmap(swBitmap, cols, rows, true);
             int[] pixels = new int[cols * rows];
             scaled.getPixels(pixels, 0, cols, 0, 0, cols, rows);
-            if (scaled != bitmap) scaled.recycle();
+            if (scaled != swBitmap && scaled != bitmap) scaled.recycle();
+            if (swBitmap != bitmap) swBitmap.recycle();
 
             long hash = 0;
             int bit = 0;
@@ -880,8 +888,10 @@ public class StorageScanner {
                     bit++;
                 }
             }
+            Log.i("morphe: StorageScanner", "calculateAverageHash computed: " + Long.toHexString(hash));
             return hash;
         } catch (Throwable t) {
+            Log.e("morphe: StorageScanner", "calculateAverageHash error: " + t.getMessage(), t);
             return 0;
         }
     }
