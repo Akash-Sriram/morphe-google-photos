@@ -1376,8 +1376,8 @@ public class StorageScanner {
             }
         }
 
-        // Strategy 1: Dispatch official Google Photos Online Trash Action (bjir) via ActionWrapper directly.
-        // This invokes bjir.d(context, accountId) -> bjhp.b -> Protobuf RPC to Google Photos servers.
+        // Strategy 1: Dispatch official Google Photos Online Trash Action (bjir).
+        // Directly invokes bjir.a(context) to mark local media and bjir.d(context, 0) -> bjhp.b -> Protobuf RPC to Google Photos servers.
         if (!mediaKeys.isEmpty()) {
             try {
                 Class<?> bjirClass = Class.forName("bjir");
@@ -1390,39 +1390,85 @@ public class StorageScanner {
                 // r(int accountId, Collection col1, Collection col2, Collection col3, Collection col4, cjiz source)
                 Object bjirAction = rMethod.invoke(null, accountId, mediaKeys, mediaKeys, dedupKeys, mediaKeys, cjizSource);
 
-                Class<?> wrapperClass = Class.forName("com.google.android.apps.photos.actionqueue.ActionWrapper");
-                Class<?> ltyClass = Class.forName("lty");
-                Constructor<?> wrapperCtor = wrapperClass.getConstructor(int.class, ltyClass);
-                Object actionWrapper = wrapperCtor.newInstance(accountId, bjirAction);
-
-                try {
-                    wrapperClass.getMethod("c").invoke(actionWrapper);
-                } catch (Throwable ignored) {}
-
-                Class<?> bxtyClass = Class.forName("bxty");
-                Class<?> bxueClass = Class.forName("bxue");
-                Method runMethod = bxueClass.getMethod("f", Context.class, bxtyClass);
-                Object res = runMethod.invoke(null, context, actionWrapper);
-
                 boolean success = false;
-                if (res != null) {
-                    try {
-                        int statusCode = res.getClass().getField("d").getInt(res);
-                        Logger.printInfo(() -> "bjir ActionWrapper synchronous result status: " + statusCode);
-                        if (statusCode == 200) success = true;
-                    } catch (Throwable ignored) {}
-                    if (!success) {
-                        try {
-                            boolean isError = (Boolean) res.getClass().getMethod("e").invoke(res);
-                            if (!isError) success = true;
-                        } catch (Throwable ignored) {}
-                    }
+
+                // 1. Mark local database items as trashed
+                try {
+                    Method aMethod = bjirClass.getMethod("a", Context.class);
+                    aMethod.invoke(bjirAction, context);
+                    Logger.printInfo(() -> "Executed bjir.a(context) successfully");
+                } catch (Throwable t) {
+                    Logger.printException(() -> "Error in bjir.a(context)", t);
                 }
+
+                // 2. Direct synchronous execution of online mutation RPC to Google Photos backend servers
+                try {
+                    Method dMethod = bjirClass.getMethod("d", Context.class, int.class);
+                    Object ltvRes = dMethod.invoke(bjirAction, context, 0);
+                    Logger.printInfo(() -> "Executed bjir.d(context, 0) directly, ltv: " + ltvRes);
+                    if (ltvRes != null) {
+                        try {
+                            boolean isSuccess = ltvRes.getClass().getField("b").getBoolean(ltvRes);
+                            Logger.printInfo(() -> "bjir.d result isSuccess=" + isSuccess);
+                            if (isSuccess) success = true;
+                        } catch (Throwable ignored) {}
+                        if (!success) {
+                            try {
+                                int stCode = ltvRes.getClass().getField("e").getInt(ltvRes);
+                                Logger.printInfo(() -> "bjir.d result statusCode=" + stCode);
+                                if (stCode == 1 || stCode == 2) success = true;
+                            } catch (Throwable ignored) {}
+                        }
+                    }
+                } catch (Throwable t) {
+                    Logger.printException(() -> "Error in bjir.d(context, 0) direct call", t);
+                }
+
+                // 3. Enqueue and execute via ActionWrapper & aokq to update internal system action queue
+                try {
+                    Class<?> wrapperClass = Class.forName("com.google.android.apps.photos.actionqueue.ActionWrapper");
+                    Class<?> ltyClass = Class.forName("lty");
+                    Constructor<?> wrapperCtor = wrapperClass.getConstructor(int.class, ltyClass);
+                    Object actionWrapper = wrapperCtor.newInstance(accountId, bjirAction);
+
+                    try {
+                        wrapperClass.getMethod("c").invoke(actionWrapper);
+                    } catch (Throwable ignored) {}
+
+                    Class<?> bxtyClass = Class.forName("bxty");
+                    Class<?> bxueClass = Class.forName("bxue");
+                    Method runMethod = bxueClass.getMethod("f", Context.class, bxtyClass);
+                    Object res = runMethod.invoke(null, context, actionWrapper);
+
+                    if (res != null) {
+                        Bundle bundle = (Bundle) res.getClass().getMethod("b").invoke(res);
+                        long actionId = bundle != null ? bundle.getLong("LocalResult__action_id", -1L) : -1L;
+                        Logger.printInfo(() -> "bjir ActionWrapper actionId: " + actionId);
+                        if (actionId != -1L) {
+                            try {
+                                Class<?> aokqClass = Class.forName("aokq");
+                                Constructor<?> aokqCtor = aokqClass.getConstructor(int.class, long.class);
+                                Object aokqInst = aokqCtor.newInstance(accountId, actionId);
+                                Method aMethod = aokqClass.getMethod("a", Context.class);
+                                boolean dispatched = (Boolean) aMethod.invoke(aokqInst, context);
+                                Logger.printInfo(() -> "Dispatched aokq for actionId=" + actionId + ", result=" + dispatched);
+                                success = true;
+                            } catch (Throwable t) {
+                                Logger.printException(() -> "Error running aokq for actionId=" + actionId, t);
+                            }
+                        } else {
+                            success = true;
+                        }
+                    }
+                } catch (Throwable t) {
+                    Logger.printException(() -> "Error in ActionWrapper/aokq queue execution", t);
+                }
+
                 final boolean fSuccess = success;
-                Logger.printInfo(() -> "Executed bjir ActionWrapper with " + mediaKeys.size() + " media keys, success=" + fSuccess);
+                Logger.printInfo(() -> "Executed bjir online trash with " + mediaKeys.size() + " media keys, success=" + fSuccess);
                 if (success) return true;
             } catch (Throwable t) {
-                Logger.printException(() -> "Error invoking bjir ActionWrapper, trying MoveToTrashActionWrapper fallback", t);
+                Logger.printException(() -> "Error invoking bjir, trying MoveToTrashActionWrapper fallback", t);
             }
         }
 
