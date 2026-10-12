@@ -600,9 +600,9 @@ public class StorageScanner {
 
             // Media Type
             if ("image".equalsIgnoreCase(crit.mediaType)) {
-                where.append(" AND mime_type LIKE 'image/%'");
+                where.append(" AND (mime_type LIKE 'image/%' OR type = 1)");
             } else if ("video".equalsIgnoreCase(crit.mediaType)) {
-                where.append(" AND mime_type LIKE 'video/%'");
+                where.append(" AND (mime_type LIKE 'video/%' OR type = 2)");
             } else if ("live".equalsIgnoreCase(crit.mediaType)) {
                 where.append(" AND is_micro_video = 1");
             }
