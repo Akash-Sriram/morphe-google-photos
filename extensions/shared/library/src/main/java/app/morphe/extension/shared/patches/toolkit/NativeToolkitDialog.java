@@ -398,17 +398,83 @@ public class NativeToolkitDialog {
         hChipsScroll.addView(chipsContainer);
         workflowLayout.addView(hChipsScroll);
 
+        // Category Discovery Chips Row (Makes available filter options immediately discoverable)
+        HorizontalScrollView hCatScroll = new HorizontalScrollView(activity);
+        hCatScroll.setHorizontalScrollBarEnabled(false);
+        LinearLayout.LayoutParams hcatLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        hcatLp.bottomMargin = (int) (6 * density);
+        hCatScroll.setLayoutParams(hcatLp);
+
+        LinearLayout catContainer = new LinearLayout(activity);
+        catContainer.setOrientation(LinearLayout.HORIZONTAL);
+        hCatScroll.addView(catContainer);
+        workflowLayout.addView(hCatScroll);
+
         LinearLayout filtersAccordionContainer = new LinearLayout(activity);
         filtersAccordionContainer.setOrientation(LinearLayout.VERTICAL);
+
+        LinearLayout filterActionRow = new LinearLayout(activity);
+        filterActionRow.setOrientation(LinearLayout.HORIZONTAL);
+        filterActionRow.setPadding(0, (int) (10 * density), 0, (int) (14 * density));
+
+        String[][] filterCategories = new String[][]{
+                {"dateInterval", "Date Range"},
+                {"includeAlbums", "Albums"},
+                {"filename", "Filename"},
+                {"size", "Size & Quota"},
+                {"location", "Location"},
+                {"type", "Media Type"},
+                {"favorite", "Favorite"},
+                {"resolution", "Resolution"},
+                {"duration", "Duration"},
+                {"quality", "Quality"},
+                {"similarity", "Similarity"}
+        };
+
+        for (String[] cat : filterCategories) {
+            final String cardKey = cat[0];
+            final String cardLabel = cat[1];
+            TextView catChip = new TextView(activity);
+            catChip.setText(cardLabel);
+            catChip.setTextSize(11f);
+            catChip.setTypeface(null, Typeface.BOLD);
+            catChip.setTextColor(theme.textSecondary);
+            catChip.setBackground(createActionPillDrawable(theme.surfaceContainer, 12 * density));
+            int cpPadH = (int) (10 * density);
+            int cpPadV = (int) (4 * density);
+            catChip.setPadding(cpPadH, cpPadV, cpPadH, cpPadV);
+            catChip.setClickable(true);
+            catChip.setFocusable(true);
+            LinearLayout.LayoutParams cpLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            cpLp.rightMargin = (int) (6 * density);
+            catChip.setLayoutParams(cpLp);
+
+            catChip.setOnClickListener(v -> {
+                if (filtersAccordionContainer.getVisibility() != View.VISIBLE) {
+                    filtersAccordionContainer.setVisibility(View.VISIBLE);
+                    filterActionRow.setVisibility(View.VISIBLE);
+                    hCatScroll.setVisibility(View.VISIBLE);
+                    ivFiltersChevron.setImageDrawable(new MaterialVectorDrawable(MaterialVectorDrawable.TYPE_CHEVRON_UP, theme.textSecondary));
+                }
+                Map<String, View> cards = filterCardsRef[0];
+                if (cards != null) {
+                    View targetCard = cards.get(cardKey);
+                    if (targetCard != null) {
+                        targetCard.setVisibility(View.VISIBLE);
+                        targetCard.performClick();
+                        targetCard.post(() -> mainScrollView.smoothScrollTo(0, targetCard.getTop()));
+                    }
+                }
+            });
+            catContainer.addView(catChip);
+        }
+
         workflowLayout.addView(filtersAccordionContainer);
 
         filterCardsRef[0] = build21FiltersAccordion(activity, filtersAccordionContainer, density, theme, onFilterChanged);
         updateFilterVisibility(currentCriteria.source, filterCardsRef[0]);
 
         // Scan / Filter Trigger Buttons
-        LinearLayout filterActionRow = new LinearLayout(activity);
-        filterActionRow.setOrientation(LinearLayout.HORIZONTAL);
-        filterActionRow.setPadding(0, (int) (10 * density), 0, (int) (14 * density));
 
         TextView btnResetFilters = new TextView(activity);
         btnResetFilters.setText("Reset Filters");
@@ -509,10 +575,12 @@ public class NativeToolkitDialog {
             if (isExpanded) {
                 filtersAccordionContainer.setVisibility(View.GONE);
                 filterActionRow.setVisibility(View.GONE);
+                hCatScroll.setVisibility(View.GONE);
                 ivFiltersChevron.setImageDrawable(new MaterialVectorDrawable(MaterialVectorDrawable.TYPE_CHEVRON_DOWN, theme.textSecondary));
             } else {
                 filtersAccordionContainer.setVisibility(View.VISIBLE);
                 filterActionRow.setVisibility(View.VISIBLE);
+                hCatScroll.setVisibility(View.VISIBLE);
                 ivFiltersChevron.setImageDrawable(new MaterialVectorDrawable(MaterialVectorDrawable.TYPE_CHEVRON_UP, theme.textSecondary));
             }
         });
@@ -531,12 +599,13 @@ public class NativeToolkitDialog {
             // Auto-collapse filters on apply so preview is immediately prominent
             filtersAccordionContainer.setVisibility(View.GONE);
             filterActionRow.setVisibility(View.GONE);
+            hCatScroll.setVisibility(View.GONE);
             ivFiltersChevron.setImageDrawable(new MaterialVectorDrawable(MaterialVectorDrawable.TYPE_CHEVRON_DOWN, theme.textSecondary));
             onFilterChanged.run();
         });
 
         // ─────────────────────────────────────────────────────────────────────
-        // STEP 3: CHOOSE ACTION (9 Actions, Collapsible)
+        // STEP 3: CHOOSE ACTION (13 Actions, Collapsible)
         // ─────────────────────────────────────────────────────────────────────
         LinearLayout actionHeaderRow = new LinearLayout(activity);
         actionHeaderRow.setOrientation(LinearLayout.HORIZONTAL);
@@ -559,7 +628,7 @@ public class NativeToolkitDialog {
         actionHeaderRow.addView(badge3);
 
         TextView tvActionsTitle = new TextView(activity);
-        tvActionsTitle.setText("Choose Action (9)");
+        tvActionsTitle.setText("Choose Action (13)");
         tvActionsTitle.setTextSize(14f);
         tvActionsTitle.setTypeface(null, Typeface.BOLD);
         tvActionsTitle.setTextColor(theme.textPrimary);
@@ -1442,10 +1511,14 @@ public class NativeToolkitDialog {
         String[][] actions = new String[][]{
                 {"toNewAlbum", "New Album"},
                 {"toExistingAlbum", "Add to Album"},
+                {"removeFromAlbum", "Remove from Album"},
+                {"setDateFromFilename", "Date from Name"},
                 {"toArchive", "Archive"},
                 {"unArchive", "Un-Archive"},
                 {"toFavorite", "Favorite"},
                 {"unFavorite", "Un-Favorite"},
+                {"lock", "Move to Locker"},
+                {"unLock", "Unlock"},
                 {"toTrash", "Trash"},
                 {"restoreTrash", "Restore"},
                 {"exportMetadata", "Export Metadata (CSV)"}
@@ -1508,6 +1581,24 @@ public class NativeToolkitDialog {
                     showNewAlbumDialog(activity, items, refreshRunner, density, theme);
                 } else if ("toExistingAlbum".equals(actionId)) {
                     showAlbumPickerDialog(activity, items, refreshRunner, density, theme);
+                } else if ("removeFromAlbum".equals(actionId)) {
+                    String param = (currentCriteria.source == StorageScanner.SourceType.ALBUMS && !currentCriteria.albumsInclude.isEmpty())
+                            ? TextUtils.join(",", currentCriteria.albumsInclude) : null;
+                    showActionConfirmDialog(activity, "Remove " + items.size() + " item(s) from album?", () -> {
+                        executeDbActionAsync(activity, actionId, items, param, refreshRunner);
+                    }, density, theme);
+                } else if ("lock".equals(actionId)) {
+                    showActionConfirmDialog(activity, "Move " + items.size() + " item(s) to Locked Folder?", () -> {
+                        executeDbActionAsync(activity, actionId, items, null, refreshRunner);
+                    }, density, theme);
+                } else if ("unLock".equals(actionId)) {
+                    showActionConfirmDialog(activity, "Unlock " + items.size() + " item(s) from Locked Folder?", () -> {
+                        executeDbActionAsync(activity, actionId, items, null, refreshRunner);
+                    }, density, theme);
+                } else if ("setDateFromFilename".equals(actionId)) {
+                    showActionConfirmDialog(activity, "Update date from filename for " + items.size() + " item(s)?", () -> {
+                        executeDbActionAsync(activity, actionId, items, null, refreshRunner);
+                    }, density, theme);
                 } else if ("toTrash".equals(actionId)) {
                     String param = null;
                     String confirmMsg;
@@ -1534,31 +1625,64 @@ public class NativeToolkitDialog {
     }
 
     private static String getActionDisabledHint(String actionId, StorageScanner.FilterCriteria crit) {
-        if ("toTrash".equals(actionId)) return "Items are already in Trash";
+        if ("toTrash".equals(actionId)) {
+            if (crit.source == StorageScanner.SourceType.LOCKED) return "Cannot trash items in Locked Folder";
+            return "Items are already in Trash";
+        }
         if ("restoreTrash".equals(actionId)) return "Source must be Trash to restore items";
-        if ("toArchive".equals(actionId)) return "Items are already archived";
+        if ("toArchive".equals(actionId)) {
+            if (crit.source == StorageScanner.SourceType.LOCKED) return "Cannot archive items in Locked Folder";
+            return "Items are already archived";
+        }
         if ("unArchive".equals(actionId)) return "Items are not archived";
-        if ("toFavorite".equals(actionId)) return "Items are already favorited";
+        if ("toFavorite".equals(actionId)) {
+            if (crit.source == StorageScanner.SourceType.LOCKED) return "Cannot favorite items in Locked Folder";
+            return "Items are already favorited";
+        }
         if ("unFavorite".equals(actionId)) return "Items are not favorited";
+        if ("removeFromAlbum".equals(actionId)) return "Source must be Albums with an active album selected";
+        if ("lock".equals(actionId)) {
+            if (crit.source == StorageScanner.SourceType.LOCKED) return "Items are already in Locked Folder";
+            if (crit.source == StorageScanner.SourceType.TRASH) return "Cannot move Trash items to Locked Folder";
+            return null;
+        }
+        if ("unLock".equals(actionId)) return "Source must be Locked Folder to unlock items";
+        if ("setDateFromFilename".equals(actionId)) return "Cannot update date for items in Trash";
+        if ("toNewAlbum".equals(actionId) || "toExistingAlbum".equals(actionId)) {
+            if (crit.source == StorageScanner.SourceType.LOCKED) return "Cannot add Locked Folder items to albums";
+            if (crit.source == StorageScanner.SourceType.TRASH) return "Cannot add Trash items to albums";
+        }
         return null;
     }
 
     private static void updateActionStates(StorageScanner.SourceType src, StorageScanner.FilterCriteria crit, Map<String, TextView> actionButtons) {
         if (actionButtons == null || actionButtons.isEmpty()) return;
 
+        boolean isLocked = (src == StorageScanner.SourceType.LOCKED);
+        boolean isTrash = (src == StorageScanner.SourceType.TRASH);
+
         boolean archivedOnly = Boolean.TRUE.equals(crit.archived);
         boolean archivedExcluded = Boolean.FALSE.equals(crit.archived);
         boolean favoritesOnly = Boolean.TRUE.equals(crit.favorite) || src == StorageScanner.SourceType.FAVORITES;
         boolean favoritesExcluded = Boolean.FALSE.equals(crit.favorite) || crit.excludeFavorites;
 
-        setActionState(actionButtons.get("toTrash"), src != StorageScanner.SourceType.TRASH);
-        setActionState(actionButtons.get("restoreTrash"), src == StorageScanner.SourceType.TRASH);
+        setActionState(actionButtons.get("toNewAlbum"), !isLocked && !isTrash);
+        setActionState(actionButtons.get("toExistingAlbum"), !isLocked && !isTrash);
+        setActionState(actionButtons.get("removeFromAlbum"), !isLocked && src == StorageScanner.SourceType.ALBUMS && !crit.albumsInclude.isEmpty());
 
-        setActionState(actionButtons.get("toArchive"), !archivedOnly);
-        setActionState(actionButtons.get("unArchive"), !archivedExcluded);
+        setActionState(actionButtons.get("toTrash"), !isTrash && !isLocked);
+        setActionState(actionButtons.get("restoreTrash"), isTrash);
 
-        setActionState(actionButtons.get("toFavorite"), !favoritesOnly && src != StorageScanner.SourceType.FAVORITES);
-        setActionState(actionButtons.get("unFavorite"), !favoritesExcluded);
+        setActionState(actionButtons.get("toArchive"), !isLocked && !isTrash && !archivedOnly);
+        setActionState(actionButtons.get("unArchive"), !isLocked && !isTrash && !archivedExcluded);
+
+        setActionState(actionButtons.get("toFavorite"), !isLocked && !isTrash && !favoritesOnly && src != StorageScanner.SourceType.FAVORITES);
+        setActionState(actionButtons.get("unFavorite"), !isLocked && !isTrash && !favoritesExcluded);
+
+        setActionState(actionButtons.get("lock"), !isTrash && !isLocked);
+        setActionState(actionButtons.get("unLock"), isLocked);
+        setActionState(actionButtons.get("setDateFromFilename"), !isTrash);
+        setActionState(actionButtons.get("exportMetadata"), true);
     }
 
     private static void setActionState(TextView btn, boolean enabled) {
@@ -2355,7 +2479,9 @@ public class NativeToolkitDialog {
 
         // 6. Metadata filters visible everywhere EXCEPT Trash
         if (src != StorageScanner.SourceType.TRASH) {
-            if ((v = filterCards.get("quality")) != null) v.setVisibility(View.VISIBLE);
+            if (src != StorageScanner.SourceType.LOCKED) {
+                if ((v = filterCards.get("quality")) != null) v.setVisibility(View.VISIBLE);
+            }
             if ((v = filterCards.get("size")) != null) v.setVisibility(View.VISIBLE);
             if ((v = filterCards.get("resolution")) != null) v.setVisibility(View.VISIBLE);
             if ((v = filterCards.get("location")) != null) v.setVisibility(View.VISIBLE);

@@ -408,6 +408,11 @@ public class StorageScanner {
                 targetTable = "shared_media";
             } else if (crit.source == SourceType.LOCKED) {
                 targetTable = "remote_locked_media";
+                if (!hasTable(db, targetTable) || getTableRowCount(db, targetTable) == 0) {
+                    if (hasTable(db, "account_local_locked_media")) {
+                        targetTable = "account_local_locked_media";
+                    }
+                }
             }
 
             if (!hasTable(db, targetTable)) return items;
@@ -682,7 +687,13 @@ public class StorageScanner {
                 captionExpr = "''";
             }
 
-            String mediaKeyExpr = hasColumn(db, targetTable, "remote_media_key") ? "COALESCE(NULLIF(remote_media_key, ''), media_key)" : "media_key";
+            String mediaKeyExpr = hasColumn(db, targetTable, "remote_media_key")
+                    ? "COALESCE(NULLIF(remote_media_key, ''), media_key)"
+                    : (hasColumn(db, targetTable, "media_key") ? "media_key" : "dedup_key");
+            String remoteUrlExpr = hasColumn(db, targetTable, "remote_url")
+                    ? "remote_url"
+                    : (hasColumn(db, targetTable, "private_file_path") ? "private_file_path" : "''");
+            String quotaExpr = hasColumn(db, targetTable, "quota_charged_bytes") ? "quota_charged_bytes" : "0";
             String trashExpr = hasColumn(db, targetTable, "trash_timestamp")
                     ? (hasColumn(db, targetTable, "state")
                             ? "CASE WHEN state = 2 AND (trash_timestamp IS NULL OR trash_timestamp = 0) THEN 1 ELSE COALESCE(trash_timestamp, 0) END"
@@ -692,7 +703,7 @@ public class StorageScanner {
                             : "0");
 
             String groupByClause = "remote_media".equals(targetTable) ? " GROUP BY dedup_key" : "";
-            String sql = "SELECT dedup_key, " + mediaKeyExpr + ", filename, size_bytes, quota_charged_bytes, capture_timestamp, remote_url, " +
+            String sql = "SELECT dedup_key, " + mediaKeyExpr + ", filename, size_bytes, " + quotaExpr + ", capture_timestamp, " + remoteUrlExpr + ", " +
                     trashExpr + ", " +
                     "width, height, duration, " +
                     (hasColumn(db, targetTable, "is_archived") ? "is_archived" : "0") + ", " +
@@ -833,6 +844,56 @@ public class StorageScanner {
                 } catch (Throwable ignored) {}
             }
 
+            // If Source is LOCKED, also query account_local_locked_media for any local locked items
+            if (crit.source == SourceType.LOCKED && hasTable(db, "account_local_locked_media")) {
+                try {
+                    String localLockedSql = "SELECT dedup_key, dedup_key, filename, size_bytes, 0, capture_timestamp, private_file_path, " +
+                            "0, width, height, duration, 0, 0, (is_micro_video IS NOT NULL AND is_micro_video = 1), mime_type, " +
+                            (hasColumn(db, "account_local_locked_media", "latitude") ? "latitude" : "0.0") + ", " +
+                            (hasColumn(db, "account_local_locked_media", "longitude") ? "longitude" : "0.0") + ", '' " +
+                            "FROM account_local_locked_media";
+                    try (Cursor lc = db.rawQuery(localLockedSql, null)) {
+                        HashSet<String> seen = new HashSet<>();
+                        for (MediaItem it : items) seen.add(it.dedupKey);
+                        while (lc != null && lc.moveToNext()) {
+                            String dKey = lc.getString(0);
+                            if (dKey == null || seen.contains(dKey)) continue;
+
+                            String filename = lc.getString(2);
+                            if (fileNamePat != null) {
+                                boolean matches = fileNamePat.matcher(filename != null ? filename : "").find();
+                                if ("exclude".equals(crit.fileNameMatchType) && matches) continue;
+                                if ("include".equals(crit.fileNameMatchType) && !matches) continue;
+                            }
+
+                            String path = lc.getString(6);
+                            String fileUri = (path != null && !path.isEmpty()) ? (path.startsWith("/") ? "file://" + path : path) : "";
+
+                            items.add(new MediaItem(
+                                    dKey,
+                                    dKey,
+                                    filename,
+                                    lc.getLong(3),
+                                    lc.getLong(4),
+                                    lc.getLong(5),
+                                    fileUri,
+                                    0,
+                                    lc.getInt(8),
+                                    lc.getInt(9),
+                                    lc.getLong(10),
+                                    false,
+                                    false,
+                                    lc.getInt(13) == 1,
+                                    lc.getString(14),
+                                    lc.getDouble(15),
+                                    lc.getDouble(16),
+                                    ""
+                            ));
+                            seen.add(dKey);
+                        }
+                    }
+                } catch (Throwable ignored) {}
+            }
         } catch (Throwable t) {
             Logger.printException(() -> "Error querying media items", t);
         } finally {
@@ -1577,12 +1638,32 @@ public class StorageScanner {
                 } catch (Throwable ignored) {}
             }
 
-            // 4. Fallback: only if item.mediaKey exists, is not local, AND is verified present in remote_media
+            // 4. Look up remote_locked_media table if not found yet
+            if (remoteKey == null && db != null && it.dedupKey != null && !it.dedupKey.trim().isEmpty() && hasTable(db, "remote_locked_media")) {
+                try (Cursor c = db.rawQuery("SELECT COALESCE(NULLIF(remote_media_key, ''), media_key) FROM remote_locked_media WHERE dedup_key = ? LIMIT 1", new String[]{it.dedupKey})) {
+                    if (c != null && c.moveToFirst()) {
+                        String rk = c.getString(0);
+                        if (rk != null && !rk.trim().isEmpty() && !rk.startsWith("local:")) {
+                            remoteKey = rk.trim();
+                        }
+                    }
+                } catch (Throwable ignored) {}
+            }
+
+            // 5. Fallback: only if item.mediaKey exists, is not local, AND is verified present in remote_media or remote_locked_media
             if (remoteKey == null && it.mediaKey != null && !it.mediaKey.trim().isEmpty() && !it.mediaKey.startsWith("local:")) {
-                if (db != null && hasTable(db, "remote_media")) {
-                    try (Cursor c = db.rawQuery("SELECT 1 FROM remote_media WHERE media_key = ? OR remote_media_key = ? LIMIT 1", new String[]{it.mediaKey, it.mediaKey})) {
-                        if (c != null && c.moveToFirst()) {
-                            remoteKey = it.mediaKey.trim();
+                if (db != null) {
+                    try {
+                        String checkSql = (hasTable(db, "remote_media") && hasTable(db, "remote_locked_media"))
+                                ? "SELECT 1 FROM remote_media WHERE media_key = ? OR remote_media_key = ? UNION SELECT 1 FROM remote_locked_media WHERE media_key = ? OR remote_media_key = ? LIMIT 1"
+                                : (hasTable(db, "remote_media") ? "SELECT 1 FROM remote_media WHERE media_key = ? OR remote_media_key = ? LIMIT 1" : "SELECT 1 FROM remote_locked_media WHERE media_key = ? OR remote_media_key = ? LIMIT 1");
+                        String[] checkArgs = (hasTable(db, "remote_media") && hasTable(db, "remote_locked_media"))
+                                ? new String[]{it.mediaKey, it.mediaKey, it.mediaKey, it.mediaKey}
+                                : new String[]{it.mediaKey, it.mediaKey};
+                        try (Cursor c = db.rawQuery(checkSql, checkArgs)) {
+                            if (c != null && c.moveToFirst()) {
+                                remoteKey = it.mediaKey.trim();
+                            }
                         }
                     } catch (Throwable ignored) {}
                 }
@@ -2443,6 +2524,371 @@ public class StorageScanner {
         return successCount > 0;
     }
 
+    private static Object createMarsMoveTask(Context context, int accountId, Collection<?> coreItems) {
+        try {
+            Class<?> taskClass = Class.forName("com.google.android.apps.photos.mars.actionhandler.impl.MarsMoveTask");
+            for (Constructor<?> ctor : taskClass.getDeclaredConstructors()) {
+                ctor.setAccessible(true);
+                Class<?>[] params = ctor.getParameterTypes();
+                if (params.length == 3 && params[0] == Context.class && params[1] == int.class && Collection.class.isAssignableFrom(params[2])) {
+                    return ctor.newInstance(context, accountId, coreItems);
+                }
+                if (params.length == 2 && params[0] == int.class && Collection.class.isAssignableFrom(params[1])) {
+                    return ctor.newInstance(accountId, coreItems);
+                }
+                if (params.length == 1 && params[0] == String.class) {
+                    Object task = ctor.newInstance("mars_move_result");
+                    for (Field f : taskClass.getDeclaredFields()) {
+                        f.setAccessible(true);
+                        if (f.getType() == int.class && !java.lang.reflect.Modifier.isStatic(f.getModifiers())) {
+                            f.setInt(task, accountId);
+                        } else if (Collection.class.isAssignableFrom(f.getType())) {
+                            f.set(task, coreItems);
+                        }
+                    }
+                    return task;
+                }
+            }
+        } catch (Throwable t) {
+            Logger.printException(() -> "createMarsMoveTask error", t);
+        }
+        return null;
+    }
+
+    private static boolean executeOnlineMarsMoveTask(Context context, int accountId, List<MediaItem> items) {
+        if (context == null || items == null || items.isEmpty()) return false;
+        Log.i("morphe: StorageScanner", "executeOnlineMarsMoveTask: starting for " + items.size() + " items");
+
+        int chunkSize = 50;
+        int totalChunks = (items.size() + chunkSize - 1) / chunkSize;
+        int successCount = 0;
+
+        for (int i = 0; i < items.size(); i += chunkSize) {
+            int chunkIndex = (i / chunkSize) + 1;
+            List<MediaItem> chunk = items.subList(i, Math.min(i + chunkSize, items.size()));
+            boolean chunkSuccess = false;
+
+            try {
+                List<?> coreItems = loadCoreMediaItems(context, accountId, chunk);
+                if (!coreItems.isEmpty()) {
+                    Object task = createMarsMoveTask(context, accountId, coreItems);
+                    if (task != null) {
+                        Class<?> bxtyClass = Class.forName("bxty");
+                        Class<?> bxueClass = Class.forName("bxue");
+                        Method runMethod = bxueClass.getMethod("f", Context.class, bxtyClass);
+                        Object res = runMethod.invoke(null, context, task);
+                        if (res != null) {
+                            try {
+                                int statusCode = res.getClass().getField("d").getInt(res);
+                                if (statusCode == 200) chunkSuccess = true;
+                            } catch (Throwable ignored) {
+                                chunkSuccess = true;
+                            }
+                        }
+                    }
+                }
+            } catch (Throwable t) {
+                Log.w("morphe: StorageScanner", "Error invoking MarsMoveTask chunk " + chunkIndex, t);
+            }
+
+            if (chunkSuccess) successCount++;
+        }
+
+        Log.i("morphe: StorageScanner", "executeOnlineMarsMoveTask finished: " + successCount + "/" + totalChunks + " chunks successful");
+        return successCount > 0;
+    }
+
+    private static boolean executeOnlineMarsRemoveTask(Context context, int accountId, List<MediaItem> items) {
+        if (context == null || items == null || items.isEmpty()) return false;
+        Log.i("morphe: StorageScanner", "executeOnlineMarsRemoveTask: starting for " + items.size() + " items");
+
+        int chunkSize = 50;
+        int totalChunks = (items.size() + chunkSize - 1) / chunkSize;
+        int successCount = 0;
+
+        for (int i = 0; i < items.size(); i += chunkSize) {
+            int chunkIndex = (i / chunkSize) + 1;
+            List<MediaItem> chunk = items.subList(i, Math.min(i + chunkSize, items.size()));
+            boolean chunkSuccess = false;
+
+            try {
+                List<?> coreItems = loadCoreMediaItems(context, accountId, chunk);
+                if (!coreItems.isEmpty()) {
+                    Class<?> ccrgClass = Class.forName("ccrg");
+                    Method copyOfMethod = ccrgClass.getMethod("h", Collection.class);
+                    Object immutableList = copyOfMethod.invoke(null, coreItems);
+
+                    Class<?> mbjClass = Class.forName("mbj");
+                    Constructor<?> mbjCtor = mbjClass.getConstructor(Object.class, int.class, int.class);
+                    Object mbjInstance = mbjCtor.newInstance(immutableList, accountId, 7);
+
+                    Object azlkMu = Class.forName("azlk").getField("mu").get(null);
+
+                    Class<?> rgaClass = Class.forName("rga");
+                    Method lMethod = rgaClass.getMethod("l", String.class, Class.forName("lazll"), String.class, Class.forName("qdr"));
+                    Object qdp = lMethod.invoke(null, "com.google.android.apps.photos.mars.actionhandler.impl.MarsMoveHandlerImpl.MarsRemoveTask", azlkMu, "mars_remove_result", mbjInstance);
+
+                    if (qdp != null) {
+                        Object qdn = qdp.getClass().getMethod("b").invoke(qdp);
+                        Object task = qdn.getClass().getMethod("a").invoke(qdn);
+
+                        Class<?> bxtyClass = Class.forName("bxty");
+                        Class<?> bxueClass = Class.forName("bxue");
+                        Method runMethod = bxueClass.getMethod("f", Context.class, bxtyClass);
+                        Object res = runMethod.invoke(null, context, task);
+                        if (res != null) {
+                            try {
+                                int statusCode = res.getClass().getField("d").getInt(res);
+                                if (statusCode == 200) chunkSuccess = true;
+                            } catch (Throwable ignored) {
+                                chunkSuccess = true;
+                            }
+                        }
+                    }
+                }
+            } catch (Throwable t) {
+                Log.w("morphe: StorageScanner", "Error invoking MarsRemoveTask chunk " + chunkIndex, t);
+            }
+
+            if (chunkSuccess) successCount++;
+        }
+
+        Log.i("morphe: StorageScanner", "executeOnlineMarsRemoveTask finished: " + successCount + "/" + totalChunks + " chunks successful");
+        return successCount > 0;
+    }
+
+    private static Object createAlbumCollection(int accountId, String albumMediaKey) {
+        String[] factoryClasses = new String[]{"nyt", "bfvn", "dyu", "bfqd"};
+        for (String cls : factoryClasses) {
+            try {
+                Class<?> c = Class.forName(cls);
+                for (Method m : c.getDeclaredMethods()) {
+                    if (java.lang.reflect.Modifier.isStatic(m.getModifiers())
+                            && m.getParameterTypes().length == 2
+                            && m.getParameterTypes()[0] == int.class
+                            && m.getParameterTypes()[1] == String.class
+                            && "bwpg".equals(m.getReturnType().getSimpleName())) {
+                        m.setAccessible(true);
+                        Object res = m.invoke(null, accountId, albumMediaKey);
+                        if (res != null) return res;
+                    }
+                }
+            } catch (Throwable ignored) {}
+        }
+        return null;
+    }
+
+    private static boolean executeOnlineRemoveFromAlbumTask(Context context, int accountId, String albumMediaKey, List<MediaItem> items) {
+        if (context == null || albumMediaKey == null || albumMediaKey.isEmpty() || items == null || items.isEmpty()) return false;
+        Log.i("morphe: StorageScanner", "executeOnlineRemoveFromAlbumTask: starting for " + items.size() + " items from " + albumMediaKey);
+
+        int chunkSize = 50;
+        int totalChunks = (items.size() + chunkSize - 1) / chunkSize;
+        int successCount = 0;
+
+        for (int i = 0; i < items.size(); i += chunkSize) {
+            int chunkIndex = (i / chunkSize) + 1;
+            List<MediaItem> chunk = items.subList(i, Math.min(i + chunkSize, items.size()));
+            boolean chunkSuccess = false;
+
+            try {
+                List<?> coreItems = loadCoreMediaItems(context, accountId, chunk);
+                if (!coreItems.isEmpty()) {
+                    Object collection = createAlbumCollection(accountId, albumMediaKey);
+                    Object task = null;
+                    if (collection != null) {
+                        try {
+                            Class<?> iyoClass = Class.forName("iyo");
+                            Method rMethod = iyoClass.getMethod("r", int.class, Class.forName("bwpg"), List.class);
+                            task = rMethod.invoke(null, accountId, collection, coreItems);
+                        } catch (Throwable ignored) {}
+
+                        if (task == null) {
+                            try {
+                                Class<?> taskClass = Class.forName("com.google.android.apps.photos.album.removefromalbum.RemoveFromCollectionTask");
+                                Constructor<?> ctor = taskClass.getConstructor(int.class, Collection.class, Class.forName("bwpg"));
+                                task = ctor.newInstance(accountId, coreItems, collection);
+                            } catch (Throwable ignored) {}
+                        }
+                    }
+
+                    if (task != null) {
+                        Class<?> bxtyClass = Class.forName("bxty");
+                        Class<?> bxueClass = Class.forName("bxue");
+                        Method runMethod = bxueClass.getMethod("f", Context.class, bxtyClass);
+                        Object res = runMethod.invoke(null, context, task);
+                        if (res != null) {
+                            try {
+                                int statusCode = res.getClass().getField("d").getInt(res);
+                                if (statusCode == 200) chunkSuccess = true;
+                            } catch (Throwable ignored) {
+                                chunkSuccess = true;
+                            }
+                        }
+                    }
+                }
+            } catch (Throwable t) {
+                Log.w("morphe: StorageScanner", "Error invoking RemoveFromCollectionTask chunk " + chunkIndex, t);
+            }
+
+            if (chunkSuccess) successCount++;
+        }
+
+        // Optimistic purge in local shared_media table
+        try {
+            File dbf = context.getDatabasePath("gphotos" + accountId + ".db");
+            if (dbf != null && dbf.exists()) {
+                try (SQLiteDatabase db = SQLiteDatabase.openDatabase(dbf.getAbsolutePath(), null, SQLiteDatabase.OPEN_READWRITE)) {
+                    for (MediaItem it : items) {
+                        if (hasTable(db, "shared_media")) {
+                            db.delete("shared_media", "dedup_key = ? AND collection_id = ?", new String[]{it.dedupKey, albumMediaKey});
+                        }
+                    }
+                }
+            }
+        } catch (Throwable ignored) {}
+
+        Log.i("morphe: StorageScanner", "executeOnlineRemoveFromAlbumTask finished: " + successCount + "/" + totalChunks + " chunks successful");
+        return successCount > 0;
+    }
+
+    public static Long parseDateFromFilename(String filename) {
+        if (filename == null || filename.trim().isEmpty()) return null;
+        String baseName = new File(filename).getName();
+        int dot = baseName.lastIndexOf('.');
+        if (dot > 0) baseName = baseName.substring(0, dot);
+
+        // Pattern 1: YYYYMMDD_HHMMSS or YYYYMMDD-HHMMSS or YYYYMMDDTHHMMSS
+        Pattern p1 = Pattern.compile(".*?(20\\d{2}|19\\d{2})[-_]?([01]\\d)[-_]?([0-3]\\d)[_T -]?([0-2]\\d)[-_:.]?([0-5]\\d)[-_:.]?([0-5]\\d).*");
+        Matcher m1 = p1.matcher(baseName);
+        if (m1.matches()) {
+            try {
+                int y = Integer.parseInt(m1.group(1));
+                int mo = Integer.parseInt(m1.group(2));
+                int d = Integer.parseInt(m1.group(3));
+                int h = Integer.parseInt(m1.group(4));
+                int mi = Integer.parseInt(m1.group(5));
+                int s = Integer.parseInt(m1.group(6));
+                if (mo >= 1 && mo <= 12 && d >= 1 && d <= 31 && h <= 23 && mi <= 59 && s <= 59) {
+                    java.util.Calendar cal = java.util.Calendar.getInstance();
+                    cal.set(y, mo - 1, d, h, mi, s);
+                    cal.set(java.util.Calendar.MILLISECOND, 0);
+                    return cal.getTimeInMillis();
+                }
+            } catch (Throwable ignored) {}
+        }
+
+        // Pattern 2: YYYYMMDD or YYYY-MM-DD or YYYY_MM_DD
+        Pattern p2 = Pattern.compile(".*?(20\\d{2}|19\\d{2})[-_]?([01]\\d)[-_]?([0-3]\\d).*");
+        Matcher m2 = p2.matcher(baseName);
+        if (m2.matches()) {
+            try {
+                int y = Integer.parseInt(m2.group(1));
+                int mo = Integer.parseInt(m2.group(2));
+                int d = Integer.parseInt(m2.group(3));
+                if (mo >= 1 && mo <= 12 && d >= 1 && d <= 31) {
+                    java.util.Calendar cal = java.util.Calendar.getInstance();
+                    cal.set(y, mo - 1, d, 12, 0, 0);
+                    cal.set(java.util.Calendar.MILLISECOND, 0);
+                    return cal.getTimeInMillis();
+                }
+            } catch (Throwable ignored) {}
+        }
+
+        return null;
+    }
+
+    private static ActionResult executeSetDateFromFilename(Context context, AccountInfo account, List<MediaItem> items) {
+        if (context == null || account == null || items == null || items.isEmpty()) {
+            return new ActionResult(false, 0, "No items to process");
+        }
+
+        int updatedCount = 0;
+        int skippedCount = 0;
+
+        File dbFile = new File(account.dbPath);
+        SQLiteDatabase db = null;
+        try {
+            if (dbFile.exists()) {
+                db = SQLiteDatabase.openDatabase(dbFile.getAbsolutePath(), null, SQLiteDatabase.OPEN_READWRITE | SQLiteDatabase.ENABLE_WRITE_AHEAD_LOGGING);
+            }
+
+            for (MediaItem item : items) {
+                Long parsedDate = parseDateFromFilename(item.filename);
+                if (parsedDate == null) {
+                    skippedCount++;
+                    continue;
+                }
+
+                long oldUtc = item.captureTimestamp > 0 ? item.captureTimestamp : System.currentTimeMillis();
+                long newUtc = parsedDate;
+
+                // 1. Dispatch EditDateTimeTask
+                try {
+                    List<?> coreItems = loadCoreMediaItems(context, account.accountId, Collections.singletonList(item));
+                    if (!coreItems.isEmpty()) {
+                        Constructor<?> bwzeCtor = Class.forName("bwze").getConstructor(long.class, long.class);
+                        Object oldBwze = bwzeCtor.newInstance(oldUtc, 0L);
+                        Object newBwze = bwzeCtor.newInstance(newUtc, 0L);
+
+                        Class<?> ccrgClass = Class.forName("ccrg");
+                        Method copyOfMethod = ccrgClass.getMethod("h", Collection.class);
+                        Object immutableList = copyOfMethod.invoke(null, coreItems);
+
+                        Class<?> ajwaClass = Class.forName("ajwa");
+                        Constructor<?> ajwaCtor = ajwaClass.getConstructor(int.class, ccrgClass, Class.forName("bwze"), Class.forName("bwze"), int.class);
+                        Object ajwaInstance = ajwaCtor.newInstance(account.accountId, immutableList, oldBwze, newBwze, 1);
+
+                        Object azlkMu = Class.forName("azlk").getField("mu").get(null);
+
+                        Class<?> rgaClass = Class.forName("rga");
+                        Method gMethod = rgaClass.getMethod("g", String.class, Class.forName("lazll"), Class.forName("qdo"));
+                        Object qdp = gMethod.invoke(null, "com.google.android.photos.mediadetails.datetime.EditDateTimeTask", azlkMu, ajwaInstance);
+
+                        if (qdp != null) {
+                            Object qdn = qdp.getClass().getMethod("b").invoke(qdp);
+                            Object task = qdn.getClass().getMethod("a").invoke(qdn);
+
+                            Class<?> bxtyClass = Class.forName("bxty");
+                            Class<?> bxueClass = Class.forName("bxue");
+                            bxueClass.getMethod("f", Context.class, bxtyClass).invoke(null, context, task);
+                        }
+                    }
+                } catch (Throwable tTask) {
+                    Log.w("morphe: StorageScanner", "EditDateTimeTask error for " + item.filename, tTask);
+                }
+
+                // 2. Local database update
+                if (db != null) {
+                    try {
+                        ContentValues cv = new ContentValues();
+                        cv.put("capture_timestamp", newUtc);
+                        cv.put("utc_timestamp", newUtc);
+                        db.update("remote_media", cv, "dedup_key = ?", new String[]{item.dedupKey});
+                        if (hasTable(db, "media")) db.update("media", cv, "dedup_key = ?", new String[]{item.dedupKey});
+                        if (hasTable(db, "local_media")) db.update("local_media", cv, "dedup_key = ?", new String[]{item.dedupKey});
+                    } catch (Throwable tDb) {
+                        Log.w("morphe: StorageScanner", "Local db date update error for " + item.filename, tDb);
+                    }
+                }
+
+                updatedCount++;
+            }
+        } finally {
+            if (db != null) {
+                try { db.close(); } catch (Throwable ignored) {}
+            }
+        }
+
+        triggerOnlineSync(context, account.accountId);
+        notifyUiChanges(context, account.accountId);
+
+        if (updatedCount == 0 && skippedCount > 0) {
+            return new ActionResult(false, 0, "No parseable timestamps found in filenames (" + skippedCount + " skipped)");
+        }
+        return new ActionResult(true, updatedCount, "Successfully updated dates for " + updatedCount + " items" + (skippedCount > 0 ? " (" + skippedCount + " skipped)" : ""));
+    }
+
     private static void triggerOnlineSync(Context context, int accountId) {
         if (context == null) return;
         try {
@@ -2526,6 +2972,54 @@ public class StorageScanner {
                 return new ActionResult(false, 0, "Failed to add items to cloud album on Google Photos servers.");
             }
             return new ActionResult(true, added, "Successfully added " + added + " items to album");
+        }
+
+        if ("lock".equals(actionId)) {
+            boolean dispatched = executeOnlineMarsMoveTask(context, account.accountId, items);
+            Logger.printInfo(() -> "executeOnlineMarsMoveTask result: " + dispatched);
+            triggerOnlineSync(context, account.accountId);
+            notifyUiChanges(context, account.accountId);
+            int count = (items != null) ? items.size() : 0;
+            return new ActionResult(dispatched, count, dispatched ? "Successfully moved " + count + " items to Locked Folder" : "Failed to move items to Locked Folder");
+        }
+
+        if ("unLock".equals(actionId)) {
+            boolean dispatched = executeOnlineMarsRemoveTask(context, account.accountId, items);
+            Logger.printInfo(() -> "executeOnlineMarsRemoveTask result: " + dispatched);
+            triggerOnlineSync(context, account.accountId);
+            notifyUiChanges(context, account.accountId);
+            int count = (items != null) ? items.size() : 0;
+            return new ActionResult(dispatched, count, dispatched ? "Successfully unlocked " + count + " items from Locked Folder" : "Failed to unlock items from Locked Folder");
+        }
+
+        if ("removeFromAlbum".equals(actionId)) {
+            String albumKeyParam = param != null && !param.trim().isEmpty() ? param.trim() : null;
+            if (albumKeyParam == null) {
+                return new ActionResult(false, 0, "No album specified to remove items from");
+            }
+            boolean dispatched = false;
+            String[] albumKeys = albumKeyParam.split(",");
+            for (String key : albumKeys) {
+                String k = key.trim();
+                if (!k.isEmpty()) {
+                    if (executeOnlineRemoveFromAlbumTask(context, account.accountId, k, items)) {
+                        dispatched = true;
+                    }
+                }
+            }
+            final boolean finalDispatched = dispatched;
+            Logger.printInfo(() -> "executeOnlineRemoveFromAlbumTask result: " + finalDispatched);
+            triggerOnlineSync(context, account.accountId);
+            notifyUiChanges(context, account.accountId);
+            int count = (items != null) ? items.size() : 0;
+            return new ActionResult(dispatched, count, dispatched ? "Successfully removed " + count + " items from album" : "Failed to remove items from album");
+        }
+
+        if ("setDateFromFilename".equals(actionId)) {
+            ActionResult res = executeSetDateFromFilename(context, account, items);
+            triggerOnlineSync(context, account.accountId);
+            notifyUiChanges(context, account.accountId);
+            return res;
         }
 
         if ("toTrash".equals(actionId)) {
@@ -2768,13 +3262,9 @@ public class StorageScanner {
 
                     return new ActionResult(true, count, "Successfully removed " + count + " items from favorites");
 
-                case "removeFromAlbum":
-                case "lock":
-                case "unLock":
                 case "copyDescFromOther":
-                case "setDateFromFilename":
                     db.endTransaction();
-                    return new ActionResult(false, 0, "Action '" + actionId + "' deprecated to prevent cloud desynchronization");
+                    return new ActionResult(false, 0, "Action 'copyDescFromOther' deprecated to prevent cloud desynchronization");
 
                 default:
                     db.endTransaction();
@@ -2834,6 +3324,15 @@ public class StorageScanner {
         } catch (Throwable ignored) {
             return false;
         }
+    }
+
+    private static int getTableRowCount(SQLiteDatabase db, String tableName) {
+        try (Cursor c = db.rawQuery("SELECT count(*) FROM " + tableName, null)) {
+            if (c != null && c.moveToFirst()) {
+                return c.getInt(0);
+            }
+        } catch (Throwable ignored) {}
+        return 0;
     }
 
     private static boolean hasColumn(SQLiteDatabase db, String table, String col) {
