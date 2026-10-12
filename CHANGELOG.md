@@ -1,3 +1,9 @@
+## [1.14.4](https://github.com/Akash-Sriram/morphe-google-photos/compare/v1.14.3...v1.14.4) (2026-10-12)
+
+### 🐛 Bug Fixes
+
+* **Google Photos - Backup:** initialize missing notification channels on startup to prevent JobScheduler crash ([1ee0725](https://github.com/Akash-Sriram/morphe-google-photos/commit/1ee072577222a1e59fcebfcf624174daacecc3a4)), closes [#32](https://github.com/Akash-Sriram/morphe-google-photos/issues/32)
+
 ## [1.14.3](https://github.com/Akash-Sriram/morphe-google-photos/compare/v1.14.2...v1.14.3) (2026-10-09)
 
 ### 🐛 Bug Fixes

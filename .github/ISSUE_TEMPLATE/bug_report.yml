@@ -23,7 +23,11 @@ body:
   - type: textarea
     attributes:
       label: Error logs
-      description: Exceptions can be captured by running `logcat | grep AndroidRuntime` in a shell.
+      description: |
+        Please provide the diagnostic log or crash report:
+        - **Option 1 (Recommended)**: In Google Photos, go to **Settings > Diagnostics & Logs**. Tap **Export File** and drag-and-drop the exported `.log` file into this box, OR tap **Copy (GitHub)** and paste the pre-formatted report directly.
+        - **Option 2 (Terminal/ADB)**: Run `adb logcat -d -s AndroidRuntime:E DEBUG:*` to capture clean crash exceptions.
+        - **Notice**: If your log is longer than 25 lines, please attach the `.log` or `.txt` file instead of pasting an uncollapsed wall of text.
       render: shell
   - type: checkboxes
     id: acknowledgements

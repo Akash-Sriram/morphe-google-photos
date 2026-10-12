@@ -180,6 +180,24 @@ public final class DiagnosticsDialog {
         sessionSelectorBox.addView(ivChevron);
 
         sessionCard.addView(sessionSelectorBox);
+
+        // Crash Warning Banner
+        LinearLayout crashBanner = new LinearLayout(activity);
+        crashBanner.setOrientation(LinearLayout.VERTICAL);
+        crashBanner.setBackground(createRoundedDrawable(theme.isDark ? 0x33BA1A1A : 0x22BA1A1A, 8 * density));
+        crashBanner.setPadding((int) (10 * density), (int) (6 * density), (int) (10 * density), (int) (6 * density));
+        LinearLayout.LayoutParams cbLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        cbLp.topMargin = (int) (6 * density);
+        crashBanner.setLayoutParams(cbLp);
+        crashBanner.setVisibility(View.GONE);
+
+        TextView tvCrashBannerText = new TextView(activity);
+        tvCrashBannerText.setTextSize(11.5f);
+        tvCrashBannerText.setTextColor(theme.isDark ? 0xFFFFB4AB : 0xFFBA1A1A);
+        tvCrashBannerText.setTypeface(null, Typeface.BOLD);
+        crashBanner.addView(tvCrashBannerText);
+        sessionCard.addView(crashBanner);
+
         root.addView(sessionCard);
 
         // ─────────────────────────────────────────────────────────────────────
@@ -262,41 +280,41 @@ public final class DiagnosticsDialog {
         bottomDock.setGravity(Gravity.CENTER_VERTICAL);
         bottomDock.setPadding(padH, (int) (6 * density), padH, (int) (16 * density));
 
-        // Share Button (Primary Pill)
-        LinearLayout btnShare = new LinearLayout(activity);
-        btnShare.setOrientation(LinearLayout.HORIZONTAL);
-        btnShare.setGravity(Gravity.CENTER);
-        btnShare.setBackground(createRoundedDrawable(theme.primary, 22 * density));
-        btnShare.setClickable(true);
-        btnShare.setFocusable(true);
-        LinearLayout.LayoutParams shareLp = new LinearLayout.LayoutParams(0, (int) (44 * density), 1.25f);
-        shareLp.setMargins(0, 0, (int) (8 * density), 0);
-        btnShare.setLayoutParams(shareLp);
+        // Export File Button (Primary Pill)
+        LinearLayout btnExport = new LinearLayout(activity);
+        btnExport.setOrientation(LinearLayout.HORIZONTAL);
+        btnExport.setGravity(Gravity.CENTER);
+        btnExport.setBackground(createRoundedDrawable(theme.primary, 22 * density));
+        btnExport.setClickable(true);
+        btnExport.setFocusable(true);
+        LinearLayout.LayoutParams exportLp = new LinearLayout.LayoutParams(0, (int) (44 * density), 1.0f);
+        exportLp.setMargins(0, 0, (int) (6 * density), 0);
+        btnExport.setLayoutParams(exportLp);
 
-        ImageView ivShare = new ImageView(activity);
-        ivShare.setImageDrawable(new MaterialVectorDrawable(MaterialVectorDrawable.TYPE_EXPORT, theme.onPrimary));
-        LinearLayout.LayoutParams ivShareLp = new LinearLayout.LayoutParams((int) (18 * density), (int) (18 * density));
-        ivShareLp.setMargins(0, 0, (int) (8 * density), 0);
-        ivShare.setLayoutParams(ivShareLp);
-        btnShare.addView(ivShare);
+        ImageView ivExport = new ImageView(activity);
+        ivExport.setImageDrawable(new MaterialVectorDrawable(MaterialVectorDrawable.TYPE_EXPORT, theme.onPrimary));
+        LinearLayout.LayoutParams ivExportLp = new LinearLayout.LayoutParams((int) (18 * density), (int) (18 * density));
+        ivExportLp.setMargins(0, 0, (int) (6 * density), 0);
+        ivExport.setLayoutParams(ivExportLp);
+        btnExport.addView(ivExport);
 
-        TextView tvShare = new TextView(activity);
-        tvShare.setText("Share Log");
-        tvShare.setTextSize(13.5f);
-        tvShare.setTypeface(null, Typeface.BOLD);
-        tvShare.setTextColor(theme.onPrimary);
-        btnShare.addView(tvShare);
-        bottomDock.addView(btnShare);
+        TextView tvExport = new TextView(activity);
+        tvExport.setText("Export File");
+        tvExport.setTextSize(13f);
+        tvExport.setTypeface(null, Typeface.BOLD);
+        tvExport.setTextColor(theme.onPrimary);
+        btnExport.addView(tvExport);
+        bottomDock.addView(btnExport);
 
-        // Copy Button (Tonal Outlined Pill)
+        // Copy (GitHub) Button (Tonal Outlined Pill)
         LinearLayout btnCopy = new LinearLayout(activity);
         btnCopy.setOrientation(LinearLayout.HORIZONTAL);
         btnCopy.setGravity(Gravity.CENTER);
         btnCopy.setBackground(createRoundedCardDrawable(theme.surfaceContainer, theme.outline, 22 * density));
         btnCopy.setClickable(true);
         btnCopy.setFocusable(true);
-        LinearLayout.LayoutParams copyLp = new LinearLayout.LayoutParams(0, (int) (44 * density), 1.0f);
-        copyLp.setMargins(0, 0, (int) (8 * density), 0);
+        LinearLayout.LayoutParams copyLp = new LinearLayout.LayoutParams(0, (int) (44 * density), 1.15f);
+        copyLp.setMargins(0, 0, (int) (6 * density), 0);
         btnCopy.setLayoutParams(copyLp);
 
         ImageView ivCopy = new ImageView(activity);
@@ -307,12 +325,28 @@ public final class DiagnosticsDialog {
         btnCopy.addView(ivCopy);
 
         TextView tvCopy = new TextView(activity);
-        tvCopy.setText("Copy");
-        tvCopy.setTextSize(13.5f);
+        tvCopy.setText("Copy (GitHub)");
+        tvCopy.setTextSize(12.5f);
         tvCopy.setTypeface(null, Typeface.BOLD);
         tvCopy.setTextColor(theme.primary);
         btnCopy.addView(tvCopy);
         bottomDock.addView(btnCopy);
+
+        // Share Button (Tonal Outlined Icon)
+        FrameLayout btnShare = new FrameLayout(activity);
+        btnShare.setBackground(createRoundedCardDrawable(theme.surfaceContainer, theme.outline, 22 * density));
+        btnShare.setClickable(true);
+        btnShare.setFocusable(true);
+        LinearLayout.LayoutParams shareLp = new LinearLayout.LayoutParams((int) (44 * density), (int) (44 * density));
+        shareLp.setMargins(0, 0, (int) (6 * density), 0);
+        btnShare.setLayoutParams(shareLp);
+
+        ImageView ivShare = new ImageView(activity);
+        ivShare.setImageDrawable(new MaterialVectorDrawable(MaterialVectorDrawable.TYPE_EXPORT, theme.textPrimary));
+        FrameLayout.LayoutParams ivShareLp = new FrameLayout.LayoutParams((int) (18 * density), (int) (18 * density), Gravity.CENTER);
+        ivShare.setLayoutParams(ivShareLp);
+        btnShare.addView(ivShare);
+        bottomDock.addView(btnShare);
 
         // Clear Button (Destructive Tonal Pill)
         FrameLayout btnClear = new FrameLayout(activity);
@@ -375,6 +409,7 @@ public final class DiagnosticsDialog {
 
             activeSession[0] = sessions.get(defaultIndex);
             tvSelectedSession.setText(activeSession[0].getDisplayName());
+            updateCrashBanner(crashBanner, tvCrashBannerText, activeSession[0]);
             loadLogs.run();
         };
 
@@ -383,6 +418,7 @@ public final class DiagnosticsDialog {
             showSessionPicker(activity, theme, sessions, activeSession[0], selectedSession -> {
                 activeSession[0] = selectedSession;
                 tvSelectedSession.setText(selectedSession.getDisplayName());
+                updateCrashBanner(crashBanner, tvCrashBannerText, activeSession[0]);
                 loadLogs.run();
             });
         });
@@ -419,15 +455,28 @@ public final class DiagnosticsDialog {
         });
 
         // Action Buttons Click Handlers
-        btnShare.setOnClickListener(v -> {
+        btnExport.setOnClickListener(v -> {
             if (activeSession[0] != null) {
-                SessionLogManager.shareSession(activity, activeSession[0]);
+                showExportOptionsDialog(activity, theme, activeSession[0]);
             }
         });
 
         btnCopy.setOnClickListener(v -> {
             if (activeSession[0] != null) {
+                SessionLogManager.copyGitHubMarkdown(activity, activeSession[0]);
+            }
+        });
+
+        btnCopy.setOnLongClickListener(v -> {
+            if (activeSession[0] != null) {
                 SessionLogManager.copyToClipboard(activity, activeSession[0]);
+            }
+            return true;
+        });
+
+        btnShare.setOnClickListener(v -> {
+            if (activeSession[0] != null) {
+                showShareOptionsDialog(activity, theme, activeSession[0]);
             }
         });
 
@@ -720,5 +769,234 @@ public final class DiagnosticsDialog {
             w.setGravity(Gravity.CENTER);
         }
         d.show();
+    }
+
+    private static void updateCrashBanner(View banner, TextView bannerText, SessionLogManager.SessionInfo session) {
+        if (session != null && session.isCrashed) {
+            banner.setVisibility(View.VISIBLE);
+            String summary = session.crashSummary != null && !session.crashSummary.isEmpty()
+                    ? session.crashSummary
+                    : "Crash detected in this session";
+            bannerText.setText("🚨 " + summary);
+        } else {
+            banner.setVisibility(View.GONE);
+        }
+    }
+
+    private static void showExportOptionsDialog(Activity activity, Theme theme, SessionLogManager.SessionInfo session) {
+        float density = activity.getResources().getDisplayMetrics().density;
+        Dialog d = new Dialog(activity);
+        d.requestWindowFeature(Window.FEATURE_NO_TITLE);
+
+        LinearLayout root = new LinearLayout(activity);
+        root.setOrientation(LinearLayout.VERTICAL);
+        root.setBackground(createRoundedDrawable(theme.surface, 28 * density));
+        int pad = (int) (24 * density);
+        root.setPadding(pad, pad, pad, (int) (18 * density));
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+            root.setOutlineProvider(new ViewOutlineProvider() {
+                @Override
+                public void getOutline(View view, Outline outline) {
+                    outline.setRoundRect(0, 0, view.getWidth(), view.getHeight(), 28 * density);
+                }
+            });
+            root.setClipToOutline(true);
+        }
+
+        TextView tvTitle = new TextView(activity);
+        tvTitle.setText("Export Log File");
+        tvTitle.setTextSize(18.5f);
+        tvTitle.setTypeface(null, Typeface.BOLD);
+        tvTitle.setTextColor(theme.textPrimary);
+        root.addView(tvTitle);
+
+        TextView tvSub = new TextView(activity);
+        tvSub.setText("Select file format to save into Downloads/Morphe/:");
+        tvSub.setTextSize(13f);
+        tvSub.setTextColor(theme.textSecondary);
+        LinearLayout.LayoutParams subLp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        subLp.setMargins(0, (int) (6 * density), 0, (int) (16 * density));
+        tvSub.setLayoutParams(subLp);
+        root.addView(tvSub);
+
+        // Option 1: Raw .log
+        View optLog = createOptionCard(activity, theme, "📄", "Raw Log File (.log)",
+                "Standard log file containing complete terminal output & stack traces", v -> {
+                    d.dismiss();
+                    SessionLogManager.exportSessionToFile(activity, session, false);
+                });
+        root.addView(optLog);
+
+        // Option 2: GitHub .md
+        View optMd = createOptionCard(activity, theme, "🐙", "GitHub Markdown (.md)",
+                "Formatted report with device specs, crash summary & <details> tags", v -> {
+                    d.dismiss();
+                    SessionLogManager.exportSessionToFile(activity, session, true);
+                });
+        LinearLayout.LayoutParams optMdLp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        optMdLp.topMargin = (int) (8 * density);
+        optMd.setLayoutParams(optMdLp);
+        root.addView(optMd);
+
+        // Cancel
+        TextView btnCancel = new TextView(activity);
+        btnCancel.setText("Cancel");
+        btnCancel.setTextSize(14f);
+        btnCancel.setTypeface(null, Typeface.BOLD);
+        btnCancel.setTextColor(theme.primary);
+        btnCancel.setGravity(Gravity.CENTER);
+        btnCancel.setClickable(true);
+        btnCancel.setFocusable(true);
+        btnCancel.setPadding((int) (16 * density), (int) (10 * density), (int) (16 * density), (int) (10 * density));
+        btnCancel.setOnClickListener(v -> d.dismiss());
+        LinearLayout.LayoutParams cancelLp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        cancelLp.gravity = Gravity.END;
+        cancelLp.topMargin = (int) (16 * density);
+        root.addView(btnCancel, cancelLp);
+
+        d.setContentView(root);
+        Window w = d.getWindow();
+        if (w != null) {
+            w.setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
+            int screenWidth = activity.getResources().getDisplayMetrics().widthPixels;
+            w.setLayout(Math.min((int) (screenWidth * 0.90f), (int) (380 * density)),
+                    ViewGroup.LayoutParams.WRAP_CONTENT);
+            w.setGravity(Gravity.CENTER);
+        }
+        d.show();
+    }
+
+    private static void showShareOptionsDialog(Activity activity, Theme theme, SessionLogManager.SessionInfo session) {
+        float density = activity.getResources().getDisplayMetrics().density;
+        Dialog d = new Dialog(activity);
+        d.requestWindowFeature(Window.FEATURE_NO_TITLE);
+
+        LinearLayout root = new LinearLayout(activity);
+        root.setOrientation(LinearLayout.VERTICAL);
+        root.setBackground(createRoundedDrawable(theme.surface, 28 * density));
+        int pad = (int) (24 * density);
+        root.setPadding(pad, pad, pad, (int) (18 * density));
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+            root.setOutlineProvider(new ViewOutlineProvider() {
+                @Override
+                public void getOutline(View view, Outline outline) {
+                    outline.setRoundRect(0, 0, view.getWidth(), view.getHeight(), 28 * density);
+                }
+            });
+            root.setClipToOutline(true);
+        }
+
+        TextView tvTitle = new TextView(activity);
+        tvTitle.setText("Share Diagnostics");
+        tvTitle.setTextSize(18.5f);
+        tvTitle.setTypeface(null, Typeface.BOLD);
+        tvTitle.setTextColor(theme.textPrimary);
+        root.addView(tvTitle);
+
+        TextView tvSub = new TextView(activity);
+        tvSub.setText("Select how to share this session:");
+        tvSub.setTextSize(13f);
+        tvSub.setTextColor(theme.textSecondary);
+        LinearLayout.LayoutParams subLp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        subLp.setMargins(0, (int) (6 * density), 0, (int) (16 * density));
+        tvSub.setLayoutParams(subLp);
+        root.addView(tvSub);
+
+        // Option 1: Share .log file
+        View optLog = createOptionCard(activity, theme, "📄", "Share Log File (.log)",
+                "Sends actual .log file attachment via Android share sheet", v -> {
+                    d.dismiss();
+                    SessionLogManager.shareSessionFile(activity, session, false);
+                });
+        root.addView(optLog);
+
+        // Option 2: Share .md file
+        View optMd = createOptionCard(activity, theme, "🐙", "Share GitHub Report (.md)",
+                "Sends formatted Markdown report attachment via share sheet", v -> {
+                    d.dismiss();
+                    SessionLogManager.shareSessionFile(activity, session, true);
+                });
+        LinearLayout.LayoutParams optMdLp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        optMdLp.topMargin = (int) (8 * density);
+        optMd.setLayoutParams(optMdLp);
+        root.addView(optMd);
+
+        // Cancel
+        TextView btnCancel = new TextView(activity);
+        btnCancel.setText("Cancel");
+        btnCancel.setTextSize(14f);
+        btnCancel.setTypeface(null, Typeface.BOLD);
+        btnCancel.setTextColor(theme.primary);
+        btnCancel.setGravity(Gravity.CENTER);
+        btnCancel.setClickable(true);
+        btnCancel.setFocusable(true);
+        btnCancel.setPadding((int) (16 * density), (int) (10 * density), (int) (16 * density), (int) (10 * density));
+        btnCancel.setOnClickListener(v -> d.dismiss());
+        LinearLayout.LayoutParams cancelLp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        cancelLp.gravity = Gravity.END;
+        cancelLp.topMargin = (int) (16 * density);
+        root.addView(btnCancel, cancelLp);
+
+        d.setContentView(root);
+        Window w = d.getWindow();
+        if (w != null) {
+            w.setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
+            int screenWidth = activity.getResources().getDisplayMetrics().widthPixels;
+            w.setLayout(Math.min((int) (screenWidth * 0.90f), (int) (380 * density)),
+                    ViewGroup.LayoutParams.WRAP_CONTENT);
+            w.setGravity(Gravity.CENTER);
+        }
+        d.show();
+    }
+
+    private static View createOptionCard(Activity activity, Theme theme, String emoji, String title, String subtitle, View.OnClickListener onClick) {
+        float density = activity.getResources().getDisplayMetrics().density;
+        LinearLayout card = new LinearLayout(activity);
+        card.setOrientation(LinearLayout.HORIZONTAL);
+        card.setGravity(Gravity.CENTER_VERTICAL);
+        card.setBackground(createRoundedCardDrawable(theme.surfaceContainer, theme.outline, 14 * density));
+        int p = (int) (12 * density);
+        card.setPadding(p, p, p, p);
+        card.setClickable(true);
+        card.setFocusable(true);
+        card.setOnClickListener(onClick);
+
+        TextView tvEmoji = new TextView(activity);
+        tvEmoji.setText(emoji);
+        tvEmoji.setTextSize(20f);
+        LinearLayout.LayoutParams emojiLp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        emojiLp.rightMargin = (int) (12 * density);
+        tvEmoji.setLayoutParams(emojiLp);
+        card.addView(tvEmoji);
+
+        LinearLayout textCol = new LinearLayout(activity);
+        textCol.setOrientation(LinearLayout.VERTICAL);
+        LinearLayout.LayoutParams tcLp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+        textCol.setLayoutParams(tcLp);
+
+        TextView tvTitle = new TextView(activity);
+        tvTitle.setText(title);
+        tvTitle.setTextSize(14f);
+        tvTitle.setTypeface(null, Typeface.BOLD);
+        tvTitle.setTextColor(theme.textPrimary);
+        textCol.addView(tvTitle);
+
+        TextView tvSub = new TextView(activity);
+        tvSub.setText(subtitle);
+        tvSub.setTextSize(11.5f);
+        tvSub.setTextColor(theme.textSecondary);
+        textCol.addView(tvSub);
+
+        card.addView(textCol);
+        return card;
     }
 }
