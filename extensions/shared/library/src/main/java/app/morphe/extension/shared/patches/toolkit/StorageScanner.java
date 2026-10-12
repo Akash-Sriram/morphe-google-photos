@@ -2605,18 +2605,21 @@ public class StorageScanner {
 
     public static volatile List<MediaItem> sPendingUnlockItems = null;
     public static volatile int sPendingUnlockAccountId = -1;
+    public static volatile Runnable sPendingUnlockCallback = null;
 
     public static void onMarsGridActivityCreated(final Activity activity) {
         Log.i("morphe: StorageScanner", "onMarsGridActivityCreated called: activity=" + activity + " pendingItems=" + sPendingUnlockItems + " accountId=" + sPendingUnlockAccountId);
         if (activity == null) return;
         final List<MediaItem> itemsToUnlock = sPendingUnlockItems;
         final int accountId = sPendingUnlockAccountId;
+        final Runnable onDoneCallback = sPendingUnlockCallback;
         if (itemsToUnlock == null || itemsToUnlock.isEmpty()) {
             Log.w("morphe: StorageScanner", "onMarsGridActivityCreated: no pending items — skipping unlock");
             return;
         }
         sPendingUnlockItems = null;
         sPendingUnlockAccountId = -1;
+        sPendingUnlockCallback = null;
 
         Log.i("morphe: StorageScanner", "onMarsGridActivityCreated: starting auto-unlock for " + itemsToUnlock.size() + " items");
 
@@ -2668,6 +2671,7 @@ public class StorageScanner {
                                         Toast.makeText(activity, ok ? "Successfully unlocked " + itemsToUnlock.size() + " item(s)!" : "Failed to unlock items.", Toast.LENGTH_SHORT).show();
                                         triggerOnlineSync(activity, accountId);
                                         notifyUiChanges(activity, accountId);
+                                        if (onDoneCallback != null) onDoneCallback.run();
                                         activity.finish();
                                     });
                                 }).start();
@@ -2675,6 +2679,7 @@ public class StorageScanner {
                                 Toast.makeText(activity, "Successfully unlocked " + itemsToUnlock.size() + " item(s)!", Toast.LENGTH_SHORT).show();
                                 triggerOnlineSync(activity, accountId);
                                 notifyUiChanges(activity, accountId);
+                                if (onDoneCallback != null) onDoneCallback.run();
                                 activity.finish();
                             }
                         });
@@ -2685,6 +2690,7 @@ public class StorageScanner {
                                 Toast.makeText(activity, ok ? "Successfully unlocked " + itemsToUnlock.size() + " item(s)!" : "Failed to unlock items.", Toast.LENGTH_SHORT).show();
                                 triggerOnlineSync(activity, accountId);
                                 notifyUiChanges(activity, accountId);
+                                if (onDoneCallback != null) onDoneCallback.run();
                                 activity.finish();
                             });
                         }).start();

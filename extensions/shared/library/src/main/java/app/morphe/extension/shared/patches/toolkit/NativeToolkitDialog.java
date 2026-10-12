@@ -1826,13 +1826,22 @@ public class NativeToolkitDialog {
                 if (sProgressBar != null) sProgressBar.setVisibility(View.GONE);
                 Toast.makeText(activity, res.message, Toast.LENGTH_SHORT).show();
                 if (res.success) {
+                    if ("unLock".equals(actionId)) {
+                        StorageScanner.sPendingUnlockCallback = () -> {
+                            MAIN_HANDLER.post(() -> {
+                                if (refreshRunner != null && refreshRunner[0] != null) {
+                                    refreshRunner[0].run();
+                                }
+                            });
+                        };
+                    }
                     if ("toTrash".equals(actionId) && currentCriteria.source == StorageScanner.SourceType.ALBUMS) {
                         currentCriteria.albumsInclude.clear();
                     }
                     if (currentAccount != null) {
                         availableAlbums = StorageScanner.getAvailableAlbums(currentAccount);
                     }
-                    if (refreshRunner != null && refreshRunner[0] != null) {
+                    if (!"unLock".equals(actionId) && refreshRunner != null && refreshRunner[0] != null) {
                         refreshRunner[0].run();
                     }
                 }
