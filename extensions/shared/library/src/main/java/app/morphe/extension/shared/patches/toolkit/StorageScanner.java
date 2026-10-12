@@ -2989,7 +2989,7 @@ public class StorageScanner {
             triggerOnlineSync(context, account.accountId);
             notifyUiChanges(context, account.accountId);
             int count = (items != null) ? items.size() : 0;
-            return new ActionResult(dispatched, count, dispatched ? "Successfully unlocked " + count + " items from Locked Folder" : "Failed to unlock items from Locked Folder");
+            return new ActionResult(dispatched, count, dispatched ? "Successfully unlocked " + count + " items from Locked Folder" : "Unlocking requires biometric auth. Open Locked Folder in Google Photos and tap 'Move'.");
         }
 
         if ("removeFromAlbum".equals(actionId)) {
