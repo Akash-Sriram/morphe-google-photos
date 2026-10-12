@@ -848,9 +848,10 @@ public class NativeToolkitDialog {
                                 "live".equals(currentCriteria.mediaType) ? "Live Photos" : null,
                 (content, updateBadge) -> {
                     int sel = "image".equals(currentCriteria.mediaType) ? 1 : "video".equals(currentCriteria.mediaType) ? 2 : "live".equals(currentCriteria.mediaType) ? 3 : 0;
-                    RadioGroup rg = createRadioGroup(activity, new String[]{"Any", "Image", "Video", "Live Photo"},
+                    RadioGroup rg = createRadioGroup(activity, new String[]{"Any", "Images", "Videos", "Live Photos"},
                             sel, theme, idx -> {
                                 currentCriteria.mediaType = idx == 1 ? "image" : idx == 2 ? "video" : idx == 3 ? "live" : null;
+                                Logger.printInfo(() -> "Type filter changed: idx=" + idx + ", mediaType=" + currentCriteria.mediaType);
                                 updateBadge.run();
                             });
                     content.addView(rg);
@@ -1914,13 +1915,17 @@ public class NativeToolkitDialog {
         RadioGroup rg = new RadioGroup(activity);
         rg.setOrientation(RadioGroup.VERTICAL);
         int selectedId = -1;
+        float density = activity.getResources().getDisplayMetrics().density;
+        int padV = (int) (6 * density);
         for (int i = 0; i < labels.length; i++) {
             RadioButton rb = new RadioButton(activity);
             int id = View.generateViewId();
             rb.setId(id);
+            rb.setTag(i);
             rb.setText(labels[i]);
             rb.setTextSize(13f);
             rb.setTextColor(theme.textPrimary);
+            rb.setPadding(rb.getPaddingLeft(), padV, rb.getPaddingRight(), padV);
             rg.addView(rb);
             if (i == defaultIdx) {
                 selectedId = id;
@@ -1930,10 +1935,16 @@ public class NativeToolkitDialog {
             rg.check(selectedId);
         }
         rg.setOnCheckedChangeListener((group, checkedId) -> {
-            for (int i = 0; i < group.getChildCount(); i++) {
-                if (group.getChildAt(i).getId() == checkedId) {
-                    listener.onSelected(i);
-                    break;
+            View v = group.findViewById(checkedId);
+            if (v != null && v.getTag() instanceof Integer) {
+                int idx = (Integer) v.getTag();
+                listener.onSelected(idx);
+            } else {
+                for (int i = 0; i < group.getChildCount(); i++) {
+                    if (group.getChildAt(i).getId() == checkedId) {
+                        listener.onSelected(i);
+                        break;
+                    }
                 }
             }
         });

@@ -840,6 +840,7 @@ public class StorageScanner {
                 try { db.close(); } catch (Throwable ignored) {}
             }
         }
+        Logger.printInfo(() -> "queryMedia finished: " + items.size() + " items returned (mediaType=" + crit.mediaType + ", source=" + crit.source + ")");
         return items;
     }
 
