@@ -169,7 +169,7 @@ public class NativeToolkitDialog {
         titleCol.addView(tvSub);
         topBar.addView(titleCol);
 
-        View btnClose = createHeaderIconButton(activity, new MaterialVectorDrawable(MaterialVectorDrawable.TYPE_CLOSE, theme.textPrimary), (int) (40 * density), (int) (20 * density));
+        View btnClose = createHeaderIconButton(activity, theme.textPrimary, (int) (40 * density));
         topBar.addView(btnClose);
         root.addView(topBar);
 
@@ -2687,17 +2687,25 @@ public class NativeToolkitDialog {
         return shape;
     }
 
-    private static View createHeaderIconButton(Activity activity, Drawable iconDrawable, int touchSizePx, int iconSizePx) {
+    private static View createHeaderIconButton(Activity activity, int color, int touchSizePx) {
         FrameLayout box = new FrameLayout(activity);
         box.setClickable(true);
         box.setFocusable(true);
+        box.setContentDescription("Close");
+        box.setTag("toolkit_no_avatar");
         box.setLayoutParams(new LinearLayout.LayoutParams(touchSizePx, touchSizePx));
 
-        ImageView iv = new ImageView(activity);
-        iv.setImageDrawable(iconDrawable);
-        FrameLayout.LayoutParams ivLp = new FrameLayout.LayoutParams(iconSizePx, iconSizePx, Gravity.CENTER);
-        iv.setLayoutParams(ivLp);
-        box.addView(iv);
+        TextView tv = new TextView(activity);
+        tv.setText("✕");
+        tv.setTextSize(18f);
+        tv.setTypeface(null, Typeface.BOLD);
+        tv.setTextColor(color);
+        tv.setGravity(Gravity.CENTER);
+        tv.setContentDescription("Close");
+        tv.setTag("toolkit_no_avatar");
+        FrameLayout.LayoutParams tvLp = new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT);
+        tv.setLayoutParams(tvLp);
+        box.addView(tv);
         return box;
     }
 }

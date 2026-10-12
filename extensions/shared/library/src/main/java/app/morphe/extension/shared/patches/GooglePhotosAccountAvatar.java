@@ -859,6 +859,10 @@ public final class GooglePhotosAccountAvatar {
                     d.contains("expand") || d.contains("backup complete") || d.contains("settings"))
                 return true;
         }
+        Object tag = view.getTag();
+        if (tag instanceof CharSequence && tag.toString().toLowerCase(Locale.ROOT).contains("no_avatar")) {
+            return true;
+        }
         return false;
     }
 
