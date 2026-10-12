@@ -424,7 +424,7 @@ public class StorageScanner {
                     if (hasColumn(db, targetTable, "trash_timestamp")) {
                         where.append(" AND (trash_timestamp IS NULL OR trash_timestamp = 0)");
                     }
-                    if (hasColumn(db, targetTable, "is_canonical")) {
+                    if (hasColumn(db, targetTable, "is_canonical") && (crit.archived == null || !crit.archived)) {
                         where.append(" AND (is_canonical = 1 OR is_canonical IS NULL)");
                     }
                     if (crit.excludeFavorites) {
@@ -1216,7 +1216,7 @@ public class StorageScanner {
             try {
                 File f = context.getDatabasePath("gphotos" + accountId + ".db");
                 if (f != null && f.exists()) {
-                    try (SQLiteDatabase db = SQLiteDatabase.openDatabase(f.getAbsolutePath(), null, SQLiteDatabase.OPEN_READWRITE | 0x20000000)) {
+                    try (SQLiteDatabase db = SQLiteDatabase.openDatabase(f.getAbsolutePath(), null, SQLiteDatabase.OPEN_READWRITE | SQLiteDatabase.ENABLE_WRITE_AHEAD_LOGGING)) {
                         ContentValues cv = new ContentValues();
                         cv.put("title", title);
                         if (hasTable(db, "envelopes")) {
@@ -1250,7 +1250,7 @@ public class StorageScanner {
         try {
             File f = context.getDatabasePath("gphotos" + accountId + ".db");
             if (f != null && f.exists()) {
-                try (SQLiteDatabase db = SQLiteDatabase.openDatabase(f.getAbsolutePath(), null, SQLiteDatabase.OPEN_READONLY | 0x20000000)) {
+                try (SQLiteDatabase db = SQLiteDatabase.openDatabase(f.getAbsolutePath(), null, SQLiteDatabase.OPEN_READONLY | SQLiteDatabase.ENABLE_WRITE_AHEAD_LOGGING)) {
                     if (hasTable(db, "collections")) {
                         try (Cursor c = db.rawQuery("SELECT 1 FROM collections WHERE collection_media_key = ? LIMIT 1", new String[]{envelopeMediaKey})) {
                             if (c != null && c.moveToFirst()) {
@@ -1533,7 +1533,7 @@ public class StorageScanner {
         try {
             File f = context != null ? context.getDatabasePath("gphotos" + accountId + ".db") : null;
             if (f != null && f.exists()) {
-                db = SQLiteDatabase.openDatabase(f.getAbsolutePath(), null, SQLiteDatabase.OPEN_READONLY | 0x20000000);
+                db = SQLiteDatabase.openDatabase(f.getAbsolutePath(), null, SQLiteDatabase.OPEN_READONLY | SQLiteDatabase.ENABLE_WRITE_AHEAD_LOGGING);
             }
         } catch (Throwable ignored) {}
 
@@ -1763,6 +1763,12 @@ public class StorageScanner {
                         healDb.execSQL("UPDATE remote_media SET trash_timestamp = 0 WHERE is_archived = 1 AND trash_timestamp > 0;");
                         if (hasTable(healDb, "media")) {
                             healDb.execSQL("UPDATE media SET trash_timestamp = 0, is_deleted = 0 WHERE is_archived = 1 AND trash_timestamp > 0;");
+                        }
+                        if (hasColumn(healDb, "remote_media", "is_canonical")) {
+                            healDb.execSQL("UPDATE remote_media SET is_archived = 0 WHERE is_canonical = 0 AND is_archived = 1;");
+                            if (hasTable(healDb, "media")) {
+                                healDb.execSQL("UPDATE media SET is_archived = 0 WHERE is_archived = 1 AND dedup_key IN (SELECT dedup_key FROM remote_media WHERE is_canonical = 1 AND (is_archived IS NULL OR is_archived = 0));");
+                            }
                         }
                     } finally {
                         healDb.close();
@@ -2658,7 +2664,14 @@ public class StorageScanner {
                         cv.put("is_archived", 1);
                         cv.put("trash_timestamp", 0);
                         if (hasColumn(db, "remote_media", "state")) cv.put("state", 0);
-                        db.update("remote_media", cv, "dedup_key = ?", new String[]{it.dedupKey});
+                        if (hasColumn(db, "remote_media", "is_canonical")) {
+                            db.update("remote_media", cv, "dedup_key = ? AND (is_canonical = 1 OR is_canonical IS NULL)", new String[]{it.dedupKey});
+                            ContentValues nonCanonCv = new ContentValues();
+                            nonCanonCv.put("is_archived", 0);
+                            db.update("remote_media", nonCanonCv, "dedup_key = ? AND is_canonical = 0", new String[]{it.dedupKey});
+                        } else {
+                            db.update("remote_media", cv, "dedup_key = ?", new String[]{it.dedupKey});
+                        }
                         if (hasTable(db, "media")) {
                             ContentValues mCv = new ContentValues();
                             mCv.put("is_archived", 1);
