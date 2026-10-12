@@ -42,6 +42,7 @@ import android.widget.FrameLayout;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.ListView;
+import android.widget.ProgressBar;
 import android.widget.RadioButton;
 import android.widget.RadioGroup;
 import android.util.Pair;
@@ -96,6 +97,7 @@ public class NativeToolkitDialog {
     private static StorageScanner.FilterCriteria currentCriteria = new StorageScanner.FilterCriteria();
     private static List<StorageScanner.MediaItem> allQueriedItems = new ArrayList<>();
     private static List<StorageScanner.AlbumInfo> availableAlbums = new ArrayList<>();
+    private static ProgressBar sProgressBar = null;
 
     public static void show(Activity activity) {
         if (activity == null || activity.isFinishing() || activity.isDestroyed()) return;
@@ -158,66 +160,16 @@ public class NativeToolkitDialog {
         if (currentAccount == null) {
             currentAccount = StorageScanner.getActiveAccount(activity);
         }
-        final List<StorageScanner.AccountInfo> allAccs = StorageScanner.getAvailableAccounts(activity);
 
         TextView tvSub = new TextView(activity);
         String accLabel = currentAccount != null ? currentAccount.accountName : "No Account";
-        tvSub.setText(accLabel + " • Tap to switch");
+        tvSub.setText(accLabel + " (Active Account)");
         tvSub.setTextSize(11.5f);
-        tvSub.setTextColor(theme.primary);
-        tvSub.setClickable(true);
-        tvSub.setFocusable(true);
-        tvSub.setOnClickListener(v -> {
-            if (allAccs.size() <= 1) return;
-            Dialog accDialog = new Dialog(activity);
-            accDialog.requestWindowFeature(Window.FEATURE_NO_TITLE);
-            LinearLayout accBox = new LinearLayout(activity);
-            accBox.setOrientation(LinearLayout.VERTICAL);
-            accBox.setBackground(createRoundedDrawable(theme.surface, 20 * density));
-            int p = (int) (18 * density);
-            accBox.setPadding(p, p, p, (int) (12 * density));
-
-            TextView accT = new TextView(activity);
-            accT.setText("Select Account");
-            accT.setTextSize(15f);
-            accT.setTextColor(theme.textPrimary);
-            accT.setTypeface(null, Typeface.BOLD);
-            accT.setPadding(0, 0, 0, (int) (10 * density));
-            accBox.addView(accT);
-
-            for (StorageScanner.AccountInfo a : allAccs) {
-                TextView row = new TextView(activity);
-                row.setText(a.accountName + " (Account " + a.accountId + ")");
-                row.setTextSize(13f);
-                row.setTextColor(theme.textPrimary);
-                row.setPadding((int) (12 * density), (int) (10 * density), (int) (12 * density), (int) (10 * density));
-                row.setBackground(createActionPillDrawable(theme.surfaceContainer, 10 * density));
-                LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-                lp.bottomMargin = (int) (4 * density);
-                row.setLayoutParams(lp);
-                row.setOnClickListener(rv -> {
-                    currentAccount = a;
-                    tvSub.setText(a.accountName + " • Tap to switch");
-                    accDialog.dismiss();
-                    if (runScanRef[0] != null) runScanRef[0].run();
-                });
-                accBox.addView(row);
-            }
-            accDialog.setContentView(accBox);
-            accDialog.show();
-            Window w = accDialog.getWindow();
-            if (w != null) {
-                w.setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
-                int screenWidth = activity.getResources().getDisplayMetrics().widthPixels;
-                w.setLayout((int) (screenWidth * 0.85f), ViewGroup.LayoutParams.WRAP_CONTENT);
-            }
-        });
+        tvSub.setTextColor(theme.textSecondary);
         titleCol.addView(tvSub);
         topBar.addView(titleCol);
 
-        View btnSync = createHeaderIconButton(activity, new MaterialVectorDrawable(MaterialVectorDrawable.TYPE_SYNC, theme.textPrimary), (int) (40 * density), (int) (20 * density));
         View btnClose = createHeaderIconButton(activity, new MaterialVectorDrawable(MaterialVectorDrawable.TYPE_CLOSE, theme.textPrimary), (int) (40 * density), (int) (20 * density));
-        topBar.addView(btnSync);
         topBar.addView(btnClose);
         root.addView(topBar);
 
@@ -347,10 +299,19 @@ public class NativeToolkitDialog {
         hSourceScroll.addView(sourcePillsInner);
         workflowLayout.addView(hSourceScroll);
 
-        // Step 2 & 3 containers & maps
+        // Step 2, 3, 4 state & controllers
+        Set<String> selectedMediaKeys = new HashSet<>();
+        boolean[] isGridViewRef = new boolean[]{true};
         Map<String, View>[] filterCardsRef = new Map[1];
         Map<String, TextView> actionButtonsMap = new HashMap<>();
         Runnable[] updateChipsAndBadgeRef = new Runnable[1];
+        Runnable[] updateSelectionSummaryRef = new Runnable[1];
+
+        Runnable onFilterChanged = () -> {
+            updateActionStates(currentCriteria.source, currentCriteria, actionButtonsMap);
+            if (updateChipsAndBadgeRef[0] != null) updateChipsAndBadgeRef[0].run();
+            if (runScanRef[0] != null) runScanRef[0].run();
+        };
 
         // Wire Source pill click listener
         for (int i = 0; i < sources.length; i++) {
@@ -365,9 +326,7 @@ public class NativeToolkitDialog {
                     sourceViews.get(j).setBackground(createRoundedDrawable(sel ? theme.primaryContainer : theme.surfaceContainer, 12 * density));
                 }
                 updateFilterVisibility(src, filterCardsRef[0]);
-                updateActionStates(src, currentCriteria, actionButtonsMap);
-                if (updateChipsAndBadgeRef[0] != null) updateChipsAndBadgeRef[0].run();
-                if (runScanRef[0] != null) runScanRef[0].run();
+                onFilterChanged.run();
             });
         }
 
@@ -404,15 +363,15 @@ public class NativeToolkitDialog {
         TextView tvFiltersActiveBadge = new TextView(activity);
         tvFiltersActiveBadge.setTextSize(10.5f);
         tvFiltersActiveBadge.setTypeface(null, Typeface.BOLD);
-        tvFiltersActiveBadge.setTextColor(theme.onPrimaryContainer);
-        tvFiltersActiveBadge.setBackground(createRoundedDrawable(theme.primaryContainer, 10 * density));
+        tvFiltersActiveBadge.setTextColor(theme.textSecondary);
+        tvFiltersActiveBadge.setBackground(createRoundedDrawable(theme.surfaceContainer, 10 * density));
+        tvFiltersActiveBadge.setText("All Media (No filters)");
         int fabPadH = (int) (7 * density);
         int fabPadV = (int) (2 * density);
         tvFiltersActiveBadge.setPadding(fabPadH, fabPadV, fabPadH, fabPadV);
         LinearLayout.LayoutParams fabLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         fabLp.leftMargin = (int) (8 * density);
         tvFiltersActiveBadge.setLayoutParams(fabLp);
-        tvFiltersActiveBadge.setVisibility(View.GONE);
         filterHeaderRow.addView(tvFiltersActiveBadge);
 
         View filterHeaderSpacer = new View(activity);
@@ -443,7 +402,7 @@ public class NativeToolkitDialog {
         filtersAccordionContainer.setOrientation(LinearLayout.VERTICAL);
         workflowLayout.addView(filtersAccordionContainer);
 
-        filterCardsRef[0] = build21FiltersAccordion(activity, filtersAccordionContainer, density, theme, runScanRef);
+        filterCardsRef[0] = build21FiltersAccordion(activity, filtersAccordionContainer, density, theme, onFilterChanged);
         updateFilterVisibility(currentCriteria.source, filterCardsRef[0]);
 
         // Scan / Filter Trigger Buttons
@@ -485,11 +444,22 @@ public class NativeToolkitDialog {
             List<Pair<String, Runnable>> activeList = getActiveFilterList(currentCriteria);
             int activeCount = activeList.size();
             if (activeCount > 0) {
-                tvFiltersActiveBadge.setText(activeCount + " active");
+                StringBuilder summary = new StringBuilder();
+                for (int i = 0; i < Math.min(activeList.size(), 2); i++) {
+                    if (i > 0) summary.append(", ");
+                    summary.append(activeList.get(i).first);
+                }
+                if (activeList.size() > 2) summary.append("...");
+                tvFiltersActiveBadge.setText(activeCount + " Active: " + summary.toString());
+                tvFiltersActiveBadge.setTextColor(theme.onPrimaryContainer);
+                tvFiltersActiveBadge.setBackground(createRoundedDrawable(theme.primaryContainer, 10 * density));
                 tvFiltersActiveBadge.setVisibility(View.VISIBLE);
                 hChipsScroll.setVisibility(View.VISIBLE);
             } else {
-                tvFiltersActiveBadge.setVisibility(View.GONE);
+                tvFiltersActiveBadge.setText("All Media (No filters)");
+                tvFiltersActiveBadge.setTextColor(theme.textSecondary);
+                tvFiltersActiveBadge.setBackground(createRoundedDrawable(theme.surfaceContainer, 10 * density));
+                tvFiltersActiveBadge.setVisibility(View.VISIBLE);
                 hChipsScroll.setVisibility(View.GONE);
             }
 
@@ -525,11 +495,9 @@ public class NativeToolkitDialog {
                 chip.setFocusable(true);
                 chip.setOnClickListener(v -> {
                     item.second.run();
-                    filterCardsRef[0] = build21FiltersAccordion(activity, filtersAccordionContainer, density, theme, runScanRef);
+                    filterCardsRef[0] = build21FiltersAccordion(activity, filtersAccordionContainer, density, theme, onFilterChanged);
                     updateFilterVisibility(currentCriteria.source, filterCardsRef[0]);
-                    updateActionStates(currentCriteria.source, currentCriteria, actionButtonsMap);
-                    updateChipsAndBadgeRef[0].run();
-                    if (runScanRef[0] != null) runScanRef[0].run();
+                    onFilterChanged.run();
                 });
                 chipsContainer.addView(chip);
             }
@@ -553,22 +521,18 @@ public class NativeToolkitDialog {
             StorageScanner.SourceType savedSource = currentCriteria.source;
             currentCriteria = new StorageScanner.FilterCriteria();
             currentCriteria.source = savedSource;
-            filterCardsRef[0] = build21FiltersAccordion(activity, filtersAccordionContainer, density, theme, runScanRef);
+            filterCardsRef[0] = build21FiltersAccordion(activity, filtersAccordionContainer, density, theme, onFilterChanged);
             updateFilterVisibility(currentCriteria.source, filterCardsRef[0]);
-            updateActionStates(currentCriteria.source, currentCriteria, actionButtonsMap);
-            updateChipsAndBadgeRef[0].run();
-            if (runScanRef[0] != null) runScanRef[0].run();
+            onFilterChanged.run();
             Toast.makeText(activity, "Reset all filters to default", Toast.LENGTH_SHORT).show();
         });
 
         btnApplyScan.setOnClickListener(v -> {
-            updateActionStates(currentCriteria.source, currentCriteria, actionButtonsMap);
             // Auto-collapse filters on apply so preview is immediately prominent
             filtersAccordionContainer.setVisibility(View.GONE);
             filterActionRow.setVisibility(View.GONE);
             ivFiltersChevron.setImageDrawable(new MaterialVectorDrawable(MaterialVectorDrawable.TYPE_CHEVRON_DOWN, theme.textSecondary));
-            updateChipsAndBadgeRef[0].run();
-            if (runScanRef[0] != null) runScanRef[0].run();
+            onFilterChanged.run();
         });
 
         // ─────────────────────────────────────────────────────────────────────
@@ -601,6 +565,20 @@ public class NativeToolkitDialog {
         tvActionsTitle.setTextColor(theme.textPrimary);
         actionHeaderRow.addView(tvActionsTitle);
 
+        TextView tvActionsActiveBadge = new TextView(activity);
+        tvActionsActiveBadge.setText("0 selected");
+        tvActionsActiveBadge.setTextSize(10.5f);
+        tvActionsActiveBadge.setTypeface(null, Typeface.BOLD);
+        tvActionsActiveBadge.setTextColor(theme.onPrimaryContainer);
+        tvActionsActiveBadge.setBackground(createRoundedDrawable(theme.primaryContainer, 10 * density));
+        int aabPadH = (int) (7 * density);
+        int aabPadV = (int) (2 * density);
+        tvActionsActiveBadge.setPadding(aabPadH, aabPadV, aabPadH, aabPadV);
+        LinearLayout.LayoutParams aabLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        aabLp.leftMargin = (int) (8 * density);
+        tvActionsActiveBadge.setLayoutParams(aabLp);
+        actionHeaderRow.addView(tvActionsActiveBadge);
+
         View actionHeaderSpacer = new View(activity);
         actionHeaderRow.addView(actionHeaderSpacer, new LinearLayout.LayoutParams(0, 0, 1f));
 
@@ -611,7 +589,17 @@ public class NativeToolkitDialog {
 
         workflowLayout.addView(actionHeaderRow);
 
-        LinearLayout actionGrid = buildActionButtonsGrid(activity, density, theme, () -> allQueriedItems, runScanRef, actionButtonsMap);
+        ItemsProvider selectedItemsProvider = () -> {
+            List<StorageScanner.MediaItem> list = new ArrayList<>();
+            for (StorageScanner.MediaItem it : allQueriedItems) {
+                if (selectedMediaKeys.contains(getItemKey(it))) {
+                    list.add(it);
+                }
+            }
+            return list;
+        };
+
+        LinearLayout actionGrid = buildActionButtonsGrid(activity, density, theme, selectedItemsProvider, runScanRef, actionButtonsMap);
         updateActionStates(currentCriteria.source, currentCriteria, actionButtonsMap);
         workflowLayout.addView(actionGrid);
 
@@ -626,14 +614,70 @@ public class NativeToolkitDialog {
             }
         });
 
+        // Visual Material Progress Bar
+        sProgressBar = new ProgressBar(activity, null, android.R.attr.progressBarStyleHorizontal);
+        sProgressBar.setIndeterminate(true);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+            sProgressBar.setIndeterminateTintList(ColorStateList.valueOf(theme.primary));
+        }
+        sProgressBar.setVisibility(View.GONE);
+        LinearLayout.LayoutParams pbLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, (int) (4 * density));
+        pbLp.topMargin = (int) (8 * density);
+        pbLp.bottomMargin = (int) (4 * density);
+        sProgressBar.setLayoutParams(pbLp);
+        workflowLayout.addView(sProgressBar);
+
         // ─────────────────────────────────────────────────────────────────────
         // STEP 4: MATCHED MEDIA RESULTS
         // ─────────────────────────────────────────────────────────────────────
         LinearLayout resultsHeader = new LinearLayout(activity);
         resultsHeader.setOrientation(LinearLayout.VERTICAL);
-        resultsHeader.setPadding(0, (int) (12 * density), 0, (int) (6 * density));
+        resultsHeader.setPadding(0, (int) (8 * density), 0, (int) (6 * density));
 
         LinearLayout resTitleRow = createSectionHeader(activity, 4, "Matched Media Results", density, theme);
+
+        View resSpacer = new View(activity);
+        resTitleRow.addView(resSpacer, new LinearLayout.LayoutParams(0, 0, 1f));
+
+        TextView btnSelectAll = new TextView(activity);
+        btnSelectAll.setText("All");
+        btnSelectAll.setTextSize(11f);
+        btnSelectAll.setTypeface(null, Typeface.BOLD);
+        btnSelectAll.setTextColor(theme.primary);
+        btnSelectAll.setBackground(createActionPillDrawable(theme.surfaceContainer, 10 * density));
+        btnSelectAll.setPadding((int) (8 * density), (int) (3 * density), (int) (8 * density), (int) (3 * density));
+        LinearLayout.LayoutParams allLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        allLp.rightMargin = (int) (5 * density);
+        btnSelectAll.setLayoutParams(allLp);
+        btnSelectAll.setClickable(true);
+        btnSelectAll.setFocusable(true);
+        resTitleRow.addView(btnSelectAll);
+
+        TextView btnClearSelect = new TextView(activity);
+        btnClearSelect.setText("None");
+        btnClearSelect.setTextSize(11f);
+        btnClearSelect.setTypeface(null, Typeface.BOLD);
+        btnClearSelect.setTextColor(theme.textSecondary);
+        btnClearSelect.setBackground(createActionPillDrawable(theme.surfaceContainer, 10 * density));
+        btnClearSelect.setPadding((int) (8 * density), (int) (3 * density), (int) (8 * density), (int) (3 * density));
+        LinearLayout.LayoutParams noneLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        noneLp.rightMargin = (int) (8 * density);
+        btnClearSelect.setLayoutParams(noneLp);
+        btnClearSelect.setClickable(true);
+        btnClearSelect.setFocusable(true);
+        resTitleRow.addView(btnClearSelect);
+
+        TextView btnToggleView = new TextView(activity);
+        btnToggleView.setText(isGridViewRef[0] ? "⊞ Grid" : "☰ List");
+        btnToggleView.setTextSize(11f);
+        btnToggleView.setTypeface(null, Typeface.BOLD);
+        btnToggleView.setTextColor(theme.onPrimaryContainer);
+        btnToggleView.setBackground(createActionPillDrawable(theme.primaryContainer, 10 * density));
+        btnToggleView.setPadding((int) (9 * density), (int) (3 * density), (int) (9 * density), (int) (3 * density));
+        btnToggleView.setClickable(true);
+        btnToggleView.setFocusable(true);
+        resTitleRow.addView(btnToggleView);
+
         resultsHeader.addView(resTitleRow);
 
         tvResultsStatus.setText("Scanning items...");
@@ -645,12 +689,40 @@ public class NativeToolkitDialog {
 
         workflowLayout.addView(resultsListContainer);
 
+        updateSelectionSummaryRef[0] = () -> {
+            int selCount = selectedMediaKeys.size();
+            tvActionsActiveBadge.setText(selCount + " selected");
+        };
+
+        btnSelectAll.setOnClickListener(v -> {
+            for (StorageScanner.MediaItem it : allQueriedItems) {
+                selectedMediaKeys.add(getItemKey(it));
+            }
+            updateSelectionSummaryRef[0].run();
+            renderResults(activity, resultsListContainer, allQueriedItems, selectedMediaKeys, isGridViewRef[0], updateSelectionSummaryRef[0], density, theme);
+        });
+
+        btnClearSelect.setOnClickListener(v -> {
+            selectedMediaKeys.clear();
+            updateSelectionSummaryRef[0].run();
+            renderResults(activity, resultsListContainer, allQueriedItems, selectedMediaKeys, isGridViewRef[0], updateSelectionSummaryRef[0], density, theme);
+        });
+
+        btnToggleView.setOnClickListener(v -> {
+            isGridViewRef[0] = !isGridViewRef[0];
+            btnToggleView.setText(isGridViewRef[0] ? "⊞ Grid" : "☰ List");
+            renderResults(activity, resultsListContainer, allQueriedItems, selectedMediaKeys, isGridViewRef[0], updateSelectionSummaryRef[0], density, theme);
+        });
+
         // ─────────────────────────────────────────────────────────────────────
         // Query Execution Engine
         // ─────────────────────────────────────────────────────────────────────
         runScanRef[0] = () -> {
-            tvResultsStatus.setText("Scanning media matching filters...");
-            tvScanButtonLabel.setText("Scanning...");
+            MAIN_HANDLER.post(() -> {
+                tvResultsStatus.setText("Scanning media matching filters...");
+                tvScanButtonLabel.setText("Scanning...");
+                if (sProgressBar != null) sProgressBar.setVisibility(View.VISIBLE);
+            });
             THREAD_POOL.execute(() -> {
                 try {
                     if (currentAccount == null) {
@@ -695,7 +767,13 @@ public class NativeToolkitDialog {
                         }
                     }
 
+                    selectedMediaKeys.clear();
+                    for (StorageScanner.MediaItem it : allQueriedItems) {
+                        selectedMediaKeys.add(getItemKey(it));
+                    }
+
                     MAIN_HANDLER.post(() -> {
+                        if (sProgressBar != null) sProgressBar.setVisibility(View.GONE);
                         tvScanButtonLabel.setText("Scan & Filter (" + allQueriedItems.size() + ")");
                         int consuming = 0;
                         long totalQuotaBytes = 0;
@@ -706,12 +784,14 @@ public class NativeToolkitDialog {
                             }
                         }
                         tvResultsStatus.setText(allQueriedItems.size() + " matched • " + consuming + " consuming (" + StorageScanner.formatBytes(totalQuotaBytes) + ")");
-                        renderResultsList(activity, resultsListContainer, allQueriedItems, density, theme);
+                        if (updateSelectionSummaryRef[0] != null) updateSelectionSummaryRef[0].run();
+                        renderResults(activity, resultsListContainer, allQueriedItems, selectedMediaKeys, isGridViewRef[0], updateSelectionSummaryRef[0], density, theme);
                         if (updateChipsAndBadgeRef[0] != null) updateChipsAndBadgeRef[0].run();
                     });
                 } catch (Throwable t) {
                     Logger.printException(() -> "Error in runScan", t);
                     MAIN_HANDLER.post(() -> {
+                        if (sProgressBar != null) sProgressBar.setVisibility(View.GONE);
                         tvScanButtonLabel.setText("Scan & Filter");
                         tvResultsStatus.setText("Scan error: " + t.getMessage());
                     });
@@ -719,10 +799,6 @@ public class NativeToolkitDialog {
             });
         };
 
-        btnSync.setOnClickListener(v -> {
-            runScanRef[0].run();
-            Toast.makeText(activity, "Refreshing query...", Toast.LENGTH_SHORT).show();
-        });
         btnClose.setOnClickListener(v -> dialog.dismiss());
 
         // Window size - popup-friendly (94% width, 88% height)
@@ -873,7 +949,7 @@ public class NativeToolkitDialog {
     // ─────────────────────────────────────────────────────────────────────────
     // STEP 2: All 21 Filters Accordion Builder (Direct from user.js)
     // ─────────────────────────────────────────────────────────────────────────
-    private static Map<String, View> build21FiltersAccordion(Activity activity, LinearLayout container, float density, Theme theme, Runnable[] runScanRef) {
+    private static Map<String, View> build21FiltersAccordion(Activity activity, LinearLayout container, float density, Theme theme, Runnable onFilterChanged) {
         container.removeAllViews();
         Set<String> expandedSet = new HashSet<>();
         Map<String, View> cards = new HashMap<>();
@@ -885,7 +961,7 @@ public class NativeToolkitDialog {
                 (content, updateBadge) -> {
                     if (availableAlbums.isEmpty()) {
                         TextView tvEmpty = new TextView(activity);
-                        tvEmpty.setText("No albums loaded. Tap Refresh top-right.");
+                        tvEmpty.setText("No albums loaded.");
                         tvEmpty.setTextColor(theme.textSecondary);
                         content.addView(tvEmpty);
                     } else {
@@ -898,9 +974,7 @@ public class NativeToolkitDialog {
                                 if (c) currentCriteria.albumsInclude.add(alb.mediaKey);
                                 else currentCriteria.albumsInclude.remove(alb.mediaKey);
                                 updateBadge.run();
-                                if (runScanRef != null && runScanRef[0] != null) {
-                                    runScanRef[0].run();
-                                }
+                                if (onFilterChanged != null) onFilterChanged.run();
                             });
                             content.addView(cb);
                         }
@@ -914,10 +988,10 @@ public class NativeToolkitDialog {
                 (content, updateBadge) -> {
                     EditText et = createFilterInput(activity, density, theme, "Enter search query...");
                     et.setText(currentCriteria.searchQuery != null ? currentCriteria.searchQuery : "");
-                    et.addTextChangedListener(new SimpleWatcher(s -> {
+                    et.addTextChangedListener(new DebounceWatcher(s -> {
                         currentCriteria.searchQuery = s;
                         updateBadge.run();
-                    }));
+                    }, onFilterChanged));
                     content.addView(et);
                 }));
 
@@ -935,9 +1009,7 @@ public class NativeToolkitDialog {
                             if (c) currentCriteria.albumsExclude.add(alb.mediaKey);
                             else currentCriteria.albumsExclude.remove(alb.mediaKey);
                             updateBadge.run();
-                            if (runScanRef != null && runScanRef[0] != null) {
-                                runScanRef[0].run();
-                            }
+                            if (onFilterChanged != null) onFilterChanged.run();
                         });
                         content.addView(cb);
                     }
@@ -961,12 +1033,14 @@ public class NativeToolkitDialog {
                     LinearLayout rowFrom = createDateTimePickerRow(activity, density, theme, "From Date & Time:", currentCriteria.lowerBoundaryDate, epochMs -> {
                         currentCriteria.lowerBoundaryDate = epochMs;
                         updateBadge.run();
+                        if (onFilterChanged != null) onFilterChanged.run();
                     });
                     content.addView(rowFrom);
 
                     LinearLayout rowTo = createDateTimePickerRow(activity, density, theme, "To Date & Time:", currentCriteria.higherBoundaryDate, epochMs -> {
                         currentCriteria.higherBoundaryDate = epochMs;
                         updateBadge.run();
+                        if (onFilterChanged != null) onFilterChanged.run();
                     });
                     content.addView(rowTo);
 
@@ -974,6 +1048,7 @@ public class NativeToolkitDialog {
                             "include".equals(currentCriteria.intervalType) ? 0 : 1, theme, idx -> {
                                 currentCriteria.intervalType = idx == 0 ? "include" : "exclude";
                                 updateBadge.run();
+                                if (onFilterChanged != null) onFilterChanged.run();
                             });
                     content.addView(rgInt);
 
@@ -981,6 +1056,7 @@ public class NativeToolkitDialog {
                             "taken".equals(currentCriteria.dateType) ? 0 : 1, theme, idx -> {
                                 currentCriteria.dateType = idx == 0 ? "taken" : "uploaded";
                                 updateBadge.run();
+                                if (onFilterChanged != null) onFilterChanged.run();
                             });
                     content.addView(rgType);
                 }));
@@ -992,16 +1068,17 @@ public class NativeToolkitDialog {
                 (content, updateBadge) -> {
                     EditText et = createFilterInput(activity, density, theme, "Regex (e.g. ^IMG_.*\\.jpg$)");
                     et.setText(currentCriteria.fileNameRegex != null ? currentCriteria.fileNameRegex : "");
-                    et.addTextChangedListener(new SimpleWatcher(s -> {
+                    et.addTextChangedListener(new DebounceWatcher(s -> {
                         currentCriteria.fileNameRegex = s;
                         updateBadge.run();
-                    }));
+                    }, onFilterChanged));
                     content.addView(et);
 
                     RadioGroup rg = createRadioGroup(activity, new String[]{"Include Matches", "Exclude Matches"},
                             "include".equals(currentCriteria.fileNameMatchType) ? 0 : 1, theme, idx -> {
                                 currentCriteria.fileNameMatchType = idx == 0 ? "include" : "exclude";
                                 updateBadge.run();
+                                if (onFilterChanged != null) onFilterChanged.run();
                             });
                     content.addView(rg);
                 }));
@@ -1013,16 +1090,17 @@ public class NativeToolkitDialog {
                 (content, updateBadge) -> {
                     EditText et = createFilterInput(activity, density, theme, "Regex (e.g. vacation)");
                     et.setText(currentCriteria.descriptionRegex != null ? currentCriteria.descriptionRegex : "");
-                    et.addTextChangedListener(new SimpleWatcher(s -> {
+                    et.addTextChangedListener(new DebounceWatcher(s -> {
                         currentCriteria.descriptionRegex = s;
                         updateBadge.run();
-                    }));
+                    }, onFilterChanged));
                     content.addView(et);
 
                     RadioGroup rg = createRadioGroup(activity, new String[]{"Include Matches", "Exclude Matches"},
                             "include".equals(currentCriteria.descriptionMatchType) ? 0 : 1, theme, idx -> {
                                 currentCriteria.descriptionMatchType = idx == 0 ? "include" : "exclude";
                                 updateBadge.run();
+                                if (onFilterChanged != null) onFilterChanged.run();
                             });
                     content.addView(rg);
                 }));
@@ -1040,6 +1118,7 @@ public class NativeToolkitDialog {
                                 currentCriteria.space = idx == 1 ? StorageScanner.SpaceFilter.CONSUMING :
                                         idx == 2 ? StorageScanner.SpaceFilter.NON_CONSUMING : StorageScanner.SpaceFilter.ANY;
                                 updateBadge.run();
+                                if (onFilterChanged != null) onFilterChanged.run();
                             });
                     content.addView(rg);
                 }));
@@ -1058,18 +1137,18 @@ public class NativeToolkitDialog {
 
                     EditText etThresh = createFilterInput(activity, density, theme, "Threshold (0.01 - 1.0, e.g. 0.90)");
                     if (currentCriteria.similarityThreshold > 0) etThresh.setText(String.valueOf(currentCriteria.similarityThreshold));
-                    etThresh.addTextChangedListener(new SimpleWatcher(s -> {
+                    etThresh.addTextChangedListener(new DebounceWatcher(s -> {
                         try { currentCriteria.similarityThreshold = Float.parseFloat(s); } catch (Exception e) { currentCriteria.similarityThreshold = 0; }
                         updateBadge.run();
-                    }));
+                    }, onFilterChanged));
                     content.addView(etThresh);
 
                     EditText etH = createFilterInput(activity, density, theme, "Image Hash Size (default: 16)");
                     etH.setText(String.valueOf(currentCriteria.imageHeight));
-                    etH.addTextChangedListener(new SimpleWatcher(s -> {
+                    etH.addTextChangedListener(new DebounceWatcher(s -> {
                         try { currentCriteria.imageHeight = Integer.parseInt(s); } catch (Exception e) { currentCriteria.imageHeight = 16; }
                         updateBadge.run();
-                    }));
+                    }, onFilterChanged));
                     content.addView(etH);
                 }));
 
@@ -1089,18 +1168,18 @@ public class NativeToolkitDialog {
                 (content, updateBadge) -> {
                     EditText etMin = createFilterInput(activity, density, theme, "More Than (e.g. 5MB, 5000000)");
                     if (currentCriteria.lowerBoundarySize > 0) etMin.setText(StorageScanner.formatBytes(currentCriteria.lowerBoundarySize));
-                    etMin.addTextChangedListener(new SimpleWatcher(s -> {
+                    etMin.addTextChangedListener(new DebounceWatcher(s -> {
                         currentCriteria.lowerBoundarySize = parseBytesInput(s);
                         updateBadge.run();
-                    }));
+                    }, onFilterChanged));
                     content.addView(etMin);
 
                     EditText etMax = createFilterInput(activity, density, theme, "Less Than (e.g. 50MB, 50000000)");
                     if (currentCriteria.higherBoundarySize > 0) etMax.setText(StorageScanner.formatBytes(currentCriteria.higherBoundarySize));
-                    etMax.addTextChangedListener(new SimpleWatcher(s -> {
+                    etMax.addTextChangedListener(new DebounceWatcher(s -> {
                         currentCriteria.higherBoundarySize = parseBytesInput(s);
                         updateBadge.run();
-                    }));
+                    }, onFilterChanged));
                     content.addView(etMax);
                 }));
 
@@ -1111,34 +1190,34 @@ public class NativeToolkitDialog {
                 (content, updateBadge) -> {
                     EditText etMinW = createFilterInput(activity, density, theme, "Min Width (px)");
                     if (currentCriteria.minWidth > 0) etMinW.setText(String.valueOf(currentCriteria.minWidth));
-                    etMinW.addTextChangedListener(new SimpleWatcher(s -> {
+                    etMinW.addTextChangedListener(new DebounceWatcher(s -> {
                         try { currentCriteria.minWidth = Integer.parseInt(s); } catch (Exception e) { currentCriteria.minWidth = 0; }
                         updateBadge.run();
-                    }));
+                    }, onFilterChanged));
                     content.addView(etMinW);
 
                     EditText etMaxW = createFilterInput(activity, density, theme, "Max Width (px)");
                     if (currentCriteria.maxWidth > 0) etMaxW.setText(String.valueOf(currentCriteria.maxWidth));
-                    etMaxW.addTextChangedListener(new SimpleWatcher(s -> {
+                    etMaxW.addTextChangedListener(new DebounceWatcher(s -> {
                         try { currentCriteria.maxWidth = Integer.parseInt(s); } catch (Exception e) { currentCriteria.maxWidth = 0; }
                         updateBadge.run();
-                    }));
+                    }, onFilterChanged));
                     content.addView(etMaxW);
 
                     EditText etMinH = createFilterInput(activity, density, theme, "Min Height (px)");
                     if (currentCriteria.minHeight > 0) etMinH.setText(String.valueOf(currentCriteria.minHeight));
-                    etMinH.addTextChangedListener(new SimpleWatcher(s -> {
+                    etMinH.addTextChangedListener(new DebounceWatcher(s -> {
                         try { currentCriteria.minHeight = Integer.parseInt(s); } catch (Exception e) { currentCriteria.minHeight = 0; }
                         updateBadge.run();
-                    }));
+                    }, onFilterChanged));
                     content.addView(etMinH);
 
                     EditText etMaxH = createFilterInput(activity, density, theme, "Max Height (px)");
                     if (currentCriteria.maxHeight > 0) etMaxH.setText(String.valueOf(currentCriteria.maxHeight));
-                    etMaxH.addTextChangedListener(new SimpleWatcher(s -> {
+                    etMaxH.addTextChangedListener(new DebounceWatcher(s -> {
                         try { currentCriteria.maxHeight = Integer.parseInt(s); } catch (Exception e) { currentCriteria.maxHeight = 0; }
                         updateBadge.run();
-                    }));
+                    }, onFilterChanged));
                     content.addView(etMaxH);
                 }));
 
@@ -1149,18 +1228,18 @@ public class NativeToolkitDialog {
                 (content, updateBadge) -> {
                     EditText etMinD = createFilterInput(activity, density, theme, "Min Duration (s)");
                     if (currentCriteria.minDuration > 0) etMinD.setText(String.valueOf(currentCriteria.minDuration));
-                    etMinD.addTextChangedListener(new SimpleWatcher(s -> {
+                    etMinD.addTextChangedListener(new DebounceWatcher(s -> {
                         try { currentCriteria.minDuration = Float.parseFloat(s); } catch (Exception e) { currentCriteria.minDuration = 0; }
                         updateBadge.run();
-                    }));
+                    }, onFilterChanged));
                     content.addView(etMinD);
 
                     EditText etMaxD = createFilterInput(activity, density, theme, "Max Duration (s)");
                     if (currentCriteria.maxDuration > 0) etMaxD.setText(String.valueOf(currentCriteria.maxDuration));
-                    etMaxD.addTextChangedListener(new SimpleWatcher(s -> {
+                    etMaxD.addTextChangedListener(new DebounceWatcher(s -> {
                         try { currentCriteria.maxDuration = Float.parseFloat(s); } catch (Exception e) { currentCriteria.maxDuration = 0; }
                         updateBadge.run();
-                    }));
+                    }, onFilterChanged));
                     content.addView(etMaxD);
                 }));
 
@@ -1175,6 +1254,7 @@ public class NativeToolkitDialog {
                             sel, theme, idx -> {
                                 currentCriteria.quality = idx == 1 ? "original" : idx == 2 ? "storage-saver" : null;
                                 updateBadge.run();
+                                if (onFilterChanged != null) onFilterChanged.run();
                             });
                     content.addView(rg);
                 }));
@@ -1192,6 +1272,7 @@ public class NativeToolkitDialog {
                                 currentCriteria.mediaType = idx == 1 ? "image" : idx == 2 ? "video" : idx == 3 ? "live" : null;
                                 Logger.printInfo(() -> "Type filter changed: idx=" + idx + ", mediaType=" + currentCriteria.mediaType);
                                 updateBadge.run();
+                                if (onFilterChanged != null) onFilterChanged.run();
                             });
                     content.addView(rg);
                 }));
@@ -1207,6 +1288,7 @@ public class NativeToolkitDialog {
                             sel, theme, idx -> {
                                 currentCriteria.uploadStatus = idx == 1 ? "full" : idx == 2 ? "partial" : null;
                                 updateBadge.run();
+                                if (onFilterChanged != null) onFilterChanged.run();
                             });
                     content.addView(rg);
                 }));
@@ -1222,6 +1304,7 @@ public class NativeToolkitDialog {
                             sel, theme, idx -> {
                                 currentCriteria.archived = idx == 1 ? Boolean.TRUE : idx == 2 ? Boolean.FALSE : null;
                                 updateBadge.run();
+                                if (onFilterChanged != null) onFilterChanged.run();
                             });
                     content.addView(rg);
                 }));
@@ -1237,6 +1320,7 @@ public class NativeToolkitDialog {
                             sel, theme, idx -> {
                                 currentCriteria.owned = idx == 1 ? Boolean.TRUE : idx == 2 ? Boolean.FALSE : null;
                                 updateBadge.run();
+                                if (onFilterChanged != null) onFilterChanged.run();
                             });
                     content.addView(rg);
                 }));
@@ -1253,21 +1337,22 @@ public class NativeToolkitDialog {
                             sel, theme, idx -> {
                                 currentCriteria.hasLocation = idx == 1 ? Boolean.TRUE : idx == 2 ? Boolean.FALSE : null;
                                 updateBadge.run();
+                                if (onFilterChanged != null) onFilterChanged.run();
                             });
                     content.addView(rg);
 
                     EditText etS = createFilterInput(activity, density, theme, "South Latitude (-90 to 90)");
-                    etS.addTextChangedListener(new SimpleWatcher(s -> {
+                    etS.addTextChangedListener(new DebounceWatcher(s -> {
                         try { currentCriteria.boundSouth = Double.parseDouble(s); } catch (Exception e) { currentCriteria.boundSouth = null; }
                         updateBadge.run();
-                    }));
+                    }, onFilterChanged));
                     content.addView(etS);
 
                     EditText etN = createFilterInput(activity, density, theme, "North Latitude (-90 to 90)");
-                    etN.addTextChangedListener(new SimpleWatcher(s -> {
+                    etN.addTextChangedListener(new DebounceWatcher(s -> {
                         try { currentCriteria.boundNorth = Double.parseDouble(s); } catch (Exception e) { currentCriteria.boundNorth = null; }
                         updateBadge.run();
-                    }));
+                    }, onFilterChanged));
                     content.addView(etN);
                 }));
 
@@ -1282,6 +1367,7 @@ public class NativeToolkitDialog {
                             sel, theme, idx -> {
                                 currentCriteria.favorite = idx == 1 ? Boolean.TRUE : idx == 2 ? Boolean.FALSE : null;
                                 updateBadge.run();
+                                if (onFilterChanged != null) onFilterChanged.run();
                             });
                     content.addView(rg);
                 }));
@@ -1298,6 +1384,7 @@ public class NativeToolkitDialog {
                     cbShared.setOnCheckedChangeListener((b, c) -> {
                         currentCriteria.excludeShared = c;
                         updateBadge.run();
+                        if (onFilterChanged != null) onFilterChanged.run();
                     });
                     content.addView(cbShared);
                 }));
@@ -1314,6 +1401,7 @@ public class NativeToolkitDialog {
                     cbFav.setOnCheckedChangeListener((b, c) -> {
                         currentCriteria.excludeFavorites = c;
                         updateBadge.run();
+                        if (onFilterChanged != null) onFilterChanged.run();
                     });
                     content.addView(cbFav);
                 }));
@@ -1330,6 +1418,7 @@ public class NativeToolkitDialog {
                     cbSort.setOnCheckedChangeListener((b, c) -> {
                         currentCriteria.sortBySize = c;
                         updateBadge.run();
+                        if (onFilterChanged != null) onFilterChanged.run();
                     });
                     content.addView(cbSort);
                 }));
@@ -1656,9 +1745,13 @@ public class NativeToolkitDialog {
     }
 
     private static void executeDbActionAsync(Activity activity, String actionId, List<StorageScanner.MediaItem> items, String param, Runnable[] refreshRunner) {
+        MAIN_HANDLER.post(() -> {
+            if (sProgressBar != null) sProgressBar.setVisibility(View.VISIBLE);
+        });
         THREAD_POOL.execute(() -> {
             StorageScanner.ActionResult res = StorageScanner.executeDatabaseAction(activity, currentAccount, actionId, items, param);
             MAIN_HANDLER.post(() -> {
+                if (sProgressBar != null) sProgressBar.setVisibility(View.GONE);
                 Toast.makeText(activity, res.message, Toast.LENGTH_SHORT).show();
                 if (res.success) {
                     if ("toTrash".equals(actionId) && currentCriteria.source == StorageScanner.SourceType.ALBUMS) {
@@ -1700,7 +1793,12 @@ public class NativeToolkitDialog {
     // ─────────────────────────────────────────────────────────────────────────
     // Results List Renderer
     // ─────────────────────────────────────────────────────────────────────────
-    private static void renderResultsList(Activity activity, LinearLayout container, List<StorageScanner.MediaItem> items, float density, Theme theme) {
+    // ─────────────────────────────────────────────────────────────────────────
+    // Results List / Grid Renderer (with Checkbox Selection)
+    // ─────────────────────────────────────────────────────────────────────────
+    private static void renderResults(Activity activity, LinearLayout container, List<StorageScanner.MediaItem> items,
+                                      Set<String> selectedKeys, boolean isGrid, Runnable onSelectionChanged,
+                                      float density, Theme theme) {
         container.removeAllViews();
         if (items.isEmpty()) {
             TextView tvEmpty = new TextView(activity);
@@ -1713,85 +1811,239 @@ public class NativeToolkitDialog {
             return;
         }
 
-        int maxDisplay = Math.min(items.size(), 50);
-        for (int i = 0; i < maxDisplay; i++) {
-            StorageScanner.MediaItem item = items.get(i);
-            LinearLayout card = new LinearLayout(activity);
-            card.setOrientation(LinearLayout.HORIZONTAL);
-            card.setGravity(Gravity.CENTER_VERTICAL);
-            int padH = (int) (12 * density);
-            int padV = (int) (9 * density);
-            card.setPadding(padH, padV, padH, padV);
-            card.setBackground(createCardDrawable(false, density, theme));
-            LinearLayout.LayoutParams cLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-            cLp.bottomMargin = (int) (6 * density);
-            card.setLayoutParams(cLp);
+        int maxDisplay = Math.min(items.size(), 60);
+        int accId = currentAccount != null ? currentAccount.accountId : 0;
 
-            ImageView thumb = new ImageView(activity);
-            int thSize = (int) (44 * density);
-            LinearLayout.LayoutParams thLp = new LinearLayout.LayoutParams(thSize, thSize);
-            thumb.setLayoutParams(thLp);
-            thumb.setScaleType(ImageView.ScaleType.CENTER_CROP);
-            thumb.setBackground(createRoundedDrawable(theme.surfaceContainer, 8 * density));
-            thumb.setClipToOutline(true);
-            card.addView(thumb);
+        if (isGrid) {
+            // 3-Column Square Tile Grid
+            int colCount = 3;
+            LinearLayout currentRow = null;
+            for (int i = 0; i < maxDisplay; i++) {
+                if (i % colCount == 0) {
+                    currentRow = new LinearLayout(activity);
+                    currentRow.setOrientation(LinearLayout.HORIZONTAL);
+                    LinearLayout.LayoutParams rLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+                    rLp.bottomMargin = (int) (3 * density);
+                    currentRow.setLayoutParams(rLp);
+                    container.addView(currentRow);
+                }
 
-            LinearLayout textCol = new LinearLayout(activity);
-            textCol.setOrientation(LinearLayout.VERTICAL);
-            LinearLayout.LayoutParams tLp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
-            tLp.setMargins((int) (10 * density), 0, (int) (6 * density), 0);
-            textCol.setLayoutParams(tLp);
+                final StorageScanner.MediaItem item = items.get(i);
+                final String itemKey = getItemKey(item);
 
-            TextView tvName = new TextView(activity);
-            tvName.setText(item.filename);
-            tvName.setTextSize(13f);
-            tvName.setTypeface(null, Typeface.BOLD);
-            tvName.setTextColor(theme.textPrimary);
-            tvName.setSingleLine(true);
-            tvName.setEllipsize(TextUtils.TruncateAt.END);
-            textCol.addView(tvName);
+                FrameLayout tile = new FrameLayout(activity) {
+                    @Override
+                    protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
+                        super.onMeasure(widthMeasureSpec, widthMeasureSpec);
+                    }
+                };
+                LinearLayout.LayoutParams tLp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+                int m = (int) (2 * density);
+                tLp.setMargins(m, m, m, m);
+                tile.setLayoutParams(tLp);
+                tile.setBackground(createRoundedDrawable(theme.surfaceContainer, 8 * density));
+                tile.setClipToOutline(true);
 
-            String sub = item.getFormattedSize();
-            if (item.captureTimestamp > 0) sub += " • " + DATE_FORMAT.format(new Date(item.captureTimestamp));
-            if (item.clusterId > 0) sub += " • Similar #" + item.clusterId;
-            if (item.caption != null && !item.caption.trim().isEmpty()) {
-                sub += "\n💬 " + item.caption.trim();
+                ImageView thumb = new ImageView(activity);
+                thumb.setLayoutParams(new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+                thumb.setScaleType(ImageView.ScaleType.CENTER_CROP);
+                tile.addView(thumb);
+
+                // Video indicator
+                if (item.duration > 0 || (item.mimeType != null && item.mimeType.startsWith("video"))) {
+                    TextView tvVid = new TextView(activity);
+                    tvVid.setText("▶ " + (item.duration > 0 ? (int) item.duration + "s" : ""));
+                    tvVid.setTextSize(9f);
+                    tvVid.setTypeface(null, Typeface.BOLD);
+                    tvVid.setTextColor(Color.WHITE);
+                    tvVid.setBackground(createRoundedDrawable(0xAA000000, 4 * density));
+                    tvVid.setPadding((int) (4 * density), (int) (1.5f * density), (int) (4 * density), (int) (1.5f * density));
+                    FrameLayout.LayoutParams vLp = new FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM | Gravity.START);
+                    vLp.setMargins((int) (4 * density), 0, 0, (int) (4 * density));
+                    tile.addView(tvVid, vLp);
+                }
+
+                // Quota badge pill
+                TextView badge = new TextView(activity);
+                badge.setTextSize(8.5f);
+                badge.setTypeface(null, Typeface.BOLD);
+                badge.setPadding((int) (4 * density), (int) (1.5f * density), (int) (4 * density), (int) (1.5f * density));
+                badge.setBackground(createRoundedDrawable(0xBB000000, 4 * density));
+                if (item.quotaBytes > 0) {
+                    badge.setText("-" + item.getFormattedQuota());
+                    badge.setTextColor(0xFFFFB4AB);
+                } else {
+                    badge.setText("Free");
+                    badge.setTextColor(0xFF70F7E3);
+                }
+                FrameLayout.LayoutParams bLp = new FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM | Gravity.END);
+                bLp.setMargins(0, 0, (int) (4 * density), (int) (4 * density));
+                tile.addView(badge, bLp);
+
+                // Checkbox
+                TextView check = new TextView(activity);
+                int chSize = (int) (20 * density);
+                FrameLayout.LayoutParams chLp = new FrameLayout.LayoutParams(chSize, chSize, Gravity.TOP | Gravity.START);
+                chLp.setMargins((int) (5 * density), (int) (5 * density), 0, 0);
+                check.setLayoutParams(chLp);
+                check.setGravity(Gravity.CENTER);
+                check.setTextSize(10.5f);
+                check.setTypeface(null, Typeface.BOLD);
+
+                Runnable updateCheckVisual = () -> {
+                    boolean sel = selectedKeys.contains(itemKey);
+                    if (sel) {
+                        check.setText("✓");
+                        check.setTextColor(theme.onPrimary);
+                        check.setBackground(createRoundedDrawable(theme.primary, 10 * density));
+                    } else {
+                        check.setText("");
+                        GradientDrawable uncheckGd = createRoundedDrawable(0x55000000, 10 * density);
+                        uncheckGd.setStroke((int) (1.5f * density), 0xDDFFFFFF);
+                        check.setBackground(uncheckGd);
+                    }
+                };
+                updateCheckVisual.run();
+                tile.addView(check);
+
+                tile.setClickable(true);
+                tile.setFocusable(true);
+                tile.setOnClickListener(v -> {
+                    if (selectedKeys.contains(itemKey)) {
+                        selectedKeys.remove(itemKey);
+                    } else {
+                        selectedKeys.add(itemKey);
+                    }
+                    updateCheckVisual.run();
+                    if (onSelectionChanged != null) onSelectionChanged.run();
+                });
+
+                loadThumbAsync(activity, thumb, item.remoteUrl, accId);
+                currentRow.addView(tile);
             }
 
-            TextView tvSub = new TextView(activity);
-            tvSub.setText(sub);
-            tvSub.setTextSize(11f);
-            tvSub.setTextColor(theme.textSecondary);
-            if (item.caption != null && !item.caption.trim().isEmpty()) {
-                tvSub.setMaxLines(3);
-                tvSub.setEllipsize(TextUtils.TruncateAt.END);
+            int remainder = maxDisplay % colCount;
+            if (remainder != 0 && currentRow != null) {
+                for (int r = remainder; r < colCount; r++) {
+                    View emptySpacer = new View(activity);
+                    currentRow.addView(emptySpacer, new LinearLayout.LayoutParams(0, 0, 1f));
+                }
             }
-            textCol.addView(tvSub);
-            card.addView(textCol);
+        } else {
+            // Detailed List View
+            for (int i = 0; i < maxDisplay; i++) {
+                final StorageScanner.MediaItem item = items.get(i);
+                final String itemKey = getItemKey(item);
 
-            TextView badge = new TextView(activity);
-            badge.setTextSize(11f);
-            badge.setTypeface(null, Typeface.BOLD);
-            badge.setPadding((int) (8 * density), (int) (3 * density), (int) (8 * density), (int) (3 * density));
-            if (item.quotaBytes > 0) {
-                badge.setText("-" + item.getFormattedQuota());
-                badge.setTextColor(theme.isDark ? 0xFFFFB4AB : 0xFFBA1A1A);
-                badge.setBackground(createRoundedDrawable(theme.isDark ? 0xFF3E1E1E : 0xFFFFDAD6, 8 * density));
-            } else {
-                badge.setText("Free 0B");
-                badge.setTextColor(theme.isDark ? 0xFF70F7E3 : 0xFF006A60);
-                badge.setBackground(createRoundedDrawable(theme.isDark ? 0xFF1D3E38 : 0xFFCCE8E3, 8 * density));
+                LinearLayout card = new LinearLayout(activity);
+                card.setOrientation(LinearLayout.HORIZONTAL);
+                card.setGravity(Gravity.CENTER_VERTICAL);
+                int padH = (int) (10 * density);
+                int padV = (int) (8 * density);
+                card.setPadding(padH, padV, padH, padV);
+                card.setBackground(createCardDrawable(false, density, theme));
+                LinearLayout.LayoutParams cLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+                cLp.bottomMargin = (int) (5 * density);
+                card.setLayoutParams(cLp);
+
+                // Checkbox
+                TextView check = new TextView(activity);
+                int chSize = (int) (20 * density);
+                LinearLayout.LayoutParams chLp = new LinearLayout.LayoutParams(chSize, chSize);
+                chLp.rightMargin = (int) (10 * density);
+                check.setLayoutParams(chLp);
+                check.setGravity(Gravity.CENTER);
+                check.setTextSize(10.5f);
+                check.setTypeface(null, Typeface.BOLD);
+
+                Runnable updateCheckVisual = () -> {
+                    boolean sel = selectedKeys.contains(itemKey);
+                    if (sel) {
+                        check.setText("✓");
+                        check.setTextColor(theme.onPrimary);
+                        check.setBackground(createRoundedDrawable(theme.primary, 10 * density));
+                    } else {
+                        check.setText("");
+                        GradientDrawable uncheckGd = createRoundedDrawable(theme.surfaceContainer, 10 * density);
+                        uncheckGd.setStroke((int) (1.5f * density), theme.outline);
+                        check.setBackground(uncheckGd);
+                    }
+                };
+                updateCheckVisual.run();
+                card.addView(check);
+
+                ImageView thumb = new ImageView(activity);
+                int thSize = (int) (44 * density);
+                thumb.setLayoutParams(new LinearLayout.LayoutParams(thSize, thSize));
+                thumb.setScaleType(ImageView.ScaleType.CENTER_CROP);
+                thumb.setBackground(createRoundedDrawable(theme.surfaceContainer, 8 * density));
+                thumb.setClipToOutline(true);
+                card.addView(thumb);
+
+                LinearLayout textCol = new LinearLayout(activity);
+                textCol.setOrientation(LinearLayout.VERTICAL);
+                LinearLayout.LayoutParams tLp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+                tLp.setMargins((int) (10 * density), 0, (int) (6 * density), 0);
+                textCol.setLayoutParams(tLp);
+
+                TextView tvName = new TextView(activity);
+                tvName.setText(item.filename);
+                tvName.setTextSize(13f);
+                tvName.setTypeface(null, Typeface.BOLD);
+                tvName.setTextColor(theme.textPrimary);
+                tvName.setSingleLine(true);
+                tvName.setEllipsize(TextUtils.TruncateAt.END);
+                textCol.addView(tvName);
+
+                String sub = item.getFormattedSize();
+                if (item.captureTimestamp > 0) sub += " • " + DATE_FORMAT.format(new Date(item.captureTimestamp));
+                if (item.clusterId > 0) sub += " • Similar #" + item.clusterId;
+                if (item.caption != null && !item.caption.trim().isEmpty()) {
+                    sub += "\n💬 " + item.caption.trim();
+                }
+
+                TextView tvSub = new TextView(activity);
+                tvSub.setText(sub);
+                tvSub.setTextSize(11f);
+                tvSub.setTextColor(theme.textSecondary);
+                textCol.addView(tvSub);
+                card.addView(textCol);
+
+                TextView badge = new TextView(activity);
+                badge.setTextSize(11f);
+                badge.setTypeface(null, Typeface.BOLD);
+                badge.setPadding((int) (8 * density), (int) (3 * density), (int) (8 * density), (int) (3 * density));
+                if (item.quotaBytes > 0) {
+                    badge.setText("-" + item.getFormattedQuota());
+                    badge.setTextColor(theme.isDark ? 0xFFFFB4AB : 0xFFBA1A1A);
+                    badge.setBackground(createRoundedDrawable(theme.isDark ? 0xFF3E1E1E : 0xFFFFDAD6, 8 * density));
+                } else {
+                    badge.setText("Free 0B");
+                    badge.setTextColor(theme.isDark ? 0xFF70F7E3 : 0xFF006A60);
+                    badge.setBackground(createRoundedDrawable(theme.isDark ? 0xFF1D3E38 : 0xFFCCE8E3, 8 * density));
+                }
+                card.addView(badge);
+
+                card.setClickable(true);
+                card.setFocusable(true);
+                card.setOnClickListener(v -> {
+                    if (selectedKeys.contains(itemKey)) {
+                        selectedKeys.remove(itemKey);
+                    } else {
+                        selectedKeys.add(itemKey);
+                    }
+                    updateCheckVisual.run();
+                    if (onSelectionChanged != null) onSelectionChanged.run();
+                });
+
+                loadThumbAsync(activity, thumb, item.remoteUrl, accId);
+                container.addView(card);
             }
-            card.addView(badge);
-
-            int accId = currentAccount != null ? currentAccount.accountId : 0;
-            loadThumbAsync(activity, thumb, item.remoteUrl, accId);
-            container.addView(card);
         }
 
-        if (items.size() > 50) {
+        if (items.size() > maxDisplay) {
             TextView tvMore = new TextView(activity);
-            tvMore.setText("+ " + (items.size() - 50) + " more items (export CSV to view full dataset)");
+            tvMore.setText("+ " + (items.size() - maxDisplay) + " more items (export CSV to view full dataset)");
             tvMore.setTextSize(11.5f);
             tvMore.setTextColor(theme.textSecondary);
             tvMore.setGravity(Gravity.CENTER);
@@ -2362,6 +2614,35 @@ public class NativeToolkitDialog {
             w.setLayout(Math.min((int) (screenWidth * 0.88f), (int) (400 * density)), ViewGroup.LayoutParams.WRAP_CONTENT);
             w.setGravity(Gravity.CENTER);
         }
+    }
+
+    private static String getItemKey(StorageScanner.MediaItem it) {
+        if (it == null) return "";
+        if (it.mediaKey != null && !it.mediaKey.isEmpty()) return it.mediaKey;
+        if (it.filename != null && !it.filename.isEmpty()) return it.filename;
+        return String.valueOf(it.dedupKey);
+    }
+
+    private static class DebounceWatcher implements TextWatcher {
+        private final SimpleConsumer consumer;
+        private final Runnable onDebounced;
+        private Runnable pending;
+
+        DebounceWatcher(SimpleConsumer consumer, Runnable onDebounced) {
+            this.consumer = consumer;
+            this.onDebounced = onDebounced;
+        }
+
+        @Override public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
+        @Override public void onTextChanged(CharSequence s, int start, int before, int count) {
+            consumer.accept(s.toString());
+            if (onDebounced != null) {
+                if (pending != null) MAIN_HANDLER.removeCallbacks(pending);
+                pending = onDebounced;
+                MAIN_HANDLER.postDelayed(pending, 450);
+            }
+        }
+        @Override public void afterTextChanged(Editable s) {}
     }
 
     private static class SimpleWatcher implements TextWatcher {
