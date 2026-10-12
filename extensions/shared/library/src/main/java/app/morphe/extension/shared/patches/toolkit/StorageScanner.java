@@ -1,8 +1,10 @@
 package app.morphe.extension.shared.patches.toolkit;
 
+import android.app.Activity;
 import android.content.ContentResolver;
 import android.content.ContentValues;
 import android.content.Context;
+import android.content.Intent;
 import android.content.SharedPreferences;
 import android.database.Cursor;
 import android.database.sqlite.SQLiteDatabase;
@@ -2657,6 +2659,51 @@ public class StorageScanner {
         return successCount > 0;
     }
 
+    public static boolean launchMarsUnlockIntent(Context context, int accountId) {
+        if (context == null) return false;
+        try {
+            Class<?> marsGridClass = Class.forName("com.google.android.apps.photos.mars.grid.MarsGridActivity");
+            Intent gridIntent = new Intent(context, marsGridClass);
+            gridIntent.putExtra("account_id", accountId);
+            gridIntent.putExtra("is_mars_screen", true);
+            if (!(context instanceof Activity)) {
+                gridIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            }
+
+            Intent targetIntent;
+            try {
+                Class<?> reauthClass = Class.forName("com.google.android.apps.photos.mars.auth.MarsReauthActivity");
+                Intent reauthIntent = new Intent(context, reauthClass);
+                reauthIntent.putExtra("account_id", accountId);
+                reauthIntent.putExtra("pass_through_intent", gridIntent);
+                if (!(context instanceof Activity)) {
+                    reauthIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                }
+                targetIntent = reauthIntent;
+            } catch (Throwable tReauth) {
+                Logger.printInfo(() -> "MarsReauth fallback directly to MarsGridActivity: " + tReauth.getMessage());
+                targetIntent = gridIntent;
+            }
+
+            final Intent launchIntent = targetIntent;
+            if (context instanceof Activity) {
+                ((Activity) context).runOnUiThread(() -> {
+                    try {
+                        context.startActivity(launchIntent);
+                    } catch (Throwable t) {
+                        Logger.printException(() -> "Error starting Mars activity on UI thread", t);
+                    }
+                });
+            } else {
+                context.startActivity(launchIntent);
+            }
+            return true;
+        } catch (Throwable t) {
+            Logger.printException(() -> "Failed to launch Locked Folder authentication", t);
+            return false;
+        }
+    }
+
     private static Object createAlbumCollection(int accountId, String albumMediaKey) {
         String[] factoryClasses = new String[]{"nyt", "bfvn", "dyu", "bfqd"};
         for (String cls : factoryClasses) {
@@ -2984,12 +3031,14 @@ public class StorageScanner {
         }
 
         if ("unLock".equals(actionId)) {
-            boolean dispatched = executeOnlineMarsRemoveTask(context, account.accountId, items);
-            Logger.printInfo(() -> "executeOnlineMarsRemoveTask result: " + dispatched);
+            boolean launched = launchMarsUnlockIntent(context, account.accountId);
+            Logger.printInfo(() -> "launchMarsUnlockIntent result: " + launched);
             triggerOnlineSync(context, account.accountId);
             notifyUiChanges(context, account.accountId);
             int count = (items != null) ? items.size() : 0;
-            return new ActionResult(dispatched, count, dispatched ? "Successfully unlocked " + count + " items from Locked Folder" : "Unlocking requires biometric auth. Open Locked Folder in Google Photos and tap 'Move'.");
+            return new ActionResult(launched, count, launched
+                    ? "Opening Locked Folder to unlock " + count + " items. Authenticate to proceed."
+                    : "Failed to launch Locked Folder authentication.");
         }
 
         if ("removeFromAlbum".equals(actionId)) {

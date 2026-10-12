@@ -1542,7 +1542,7 @@ public class NativeToolkitDialog {
                         executeDbActionAsync(activity, actionId, items, null, refreshRunner);
                     }, density, theme);
                 } else if ("unLock".equals(actionId)) {
-                    showActionConfirmDialog(activity, "Unlock " + items.size() + " item(s) from Locked Folder?", () -> {
+                    showActionConfirmDialog(activity, "Unlocking requires biometric authentication.\nAuthenticate now to open Locked Folder and unlock " + items.size() + " item(s)?", () -> {
                         executeDbActionAsync(activity, actionId, items, null, refreshRunner);
                     }, density, theme);
                 } else if ("setDateFromFilename".equals(actionId)) {
