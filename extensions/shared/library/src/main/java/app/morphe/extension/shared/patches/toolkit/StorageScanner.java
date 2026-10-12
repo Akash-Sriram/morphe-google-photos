@@ -2648,29 +2648,44 @@ public class StorageScanner {
                                     Class<?> ccrgClass = Class.forName("ccrg");
                                     Method copyOf = ccrgClass.getMethod("h", Collection.class);
                                     Object immutableList = copyOf.invoke(null, finalCoreMedia);
-                                    Method bMethod = lajaeClass.getMethod("b", ccrgClass);
-                                    bMethod.invoke(lajae, immutableList);
-                                    invoked = true;
-                                    Log.i("morphe: StorageScanner", "Successfully invoked ajae.b for " + finalCoreMedia.size() + " items");
+                                    try {
+                                        Method jMethod = lajae.getClass().getMethod("j", Collection.class);
+                                        jMethod.invoke(lajae, immutableList);
+                                        invoked = true;
+                                        Log.i("morphe: StorageScanner", "Successfully invoked direct ajae.j for " + finalCoreMedia.size() + " items");
+                                    } catch (Throwable tJ) {
+                                        Log.w("morphe: StorageScanner", "ajae.j reflection failed, falling back to executeOnlineMarsRemoveTask", tJ);
+                                    }
                                 }
                             } catch (Throwable t) {
-                                Log.w("morphe: StorageScanner", "Error invoking ajae.b", t);
+                                Log.w("morphe: StorageScanner", "Error resolving ajae handler", t);
                             }
 
                             if (!invoked) {
                                 new Thread(() -> {
                                     boolean ok = executeOnlineMarsRemoveTask(activity, accountId, itemsToUnlock);
                                     activity.runOnUiThread(() -> {
-                                        Toast.makeText(activity, ok ? "Successfully unlocked " + itemsToUnlock.size() + " item(s)!" : "Failed to unlock items.", Toast.LENGTH_LONG).show();
+                                        Toast.makeText(activity, ok ? "Successfully unlocked " + itemsToUnlock.size() + " item(s)!" : "Failed to unlock items.", Toast.LENGTH_SHORT).show();
+                                        triggerOnlineSync(activity, accountId);
+                                        notifyUiChanges(activity, accountId);
+                                        activity.finish();
                                     });
                                 }).start();
+                            } else {
+                                Toast.makeText(activity, "Successfully unlocked " + itemsToUnlock.size() + " item(s)!", Toast.LENGTH_SHORT).show();
+                                triggerOnlineSync(activity, accountId);
+                                notifyUiChanges(activity, accountId);
+                                activity.finish();
                             }
                         });
                     } else {
                         new Thread(() -> {
                             boolean ok = executeOnlineMarsRemoveTask(activity, accountId, itemsToUnlock);
                             activity.runOnUiThread(() -> {
-                                Toast.makeText(activity, ok ? "Successfully unlocked " + itemsToUnlock.size() + " item(s)!" : "Failed to unlock items.", Toast.LENGTH_LONG).show();
+                                Toast.makeText(activity, ok ? "Successfully unlocked " + itemsToUnlock.size() + " item(s)!" : "Failed to unlock items.", Toast.LENGTH_SHORT).show();
+                                triggerOnlineSync(activity, accountId);
+                                notifyUiChanges(activity, accountId);
+                                activity.finish();
                             });
                         }).start();
                     }
