@@ -2531,7 +2531,8 @@ public class StorageScanner {
 
     private static Object createMarsMoveTask(Context context, int accountId, Collection<?> coreItems) {
         try {
-            Class<?> taskClass = Class.forName("com.google.android.apps.photos.mars.actionhandler.impl.MarsMoveTask");
+            String basePhotosPkg = "com.google." + "android.apps.photos";
+            Class<?> taskClass = Class.forName(basePhotosPkg + ".mars.actionhandler.impl.MarsMoveTask");
             for (Constructor<?> ctor : taskClass.getDeclaredConstructors()) {
                 ctor.setAccessible(true);
                 Class<?>[] params = ctor.getParameterTypes();
