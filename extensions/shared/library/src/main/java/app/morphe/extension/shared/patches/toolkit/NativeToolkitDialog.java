@@ -247,17 +247,75 @@ public class NativeToolkitDialog {
         resultsListContainer.setOrientation(LinearLayout.VERTICAL);
 
         // ─────────────────────────────────────────────────────────────────────
-        // STEP 1: CHOOSE SOURCE
+        // STEP 1: CHOOSE SOURCE (Collapsible)
         // ─────────────────────────────────────────────────────────────────────
-        workflowLayout.addView(createSectionHeader(activity, 1, "Choose Source", density, theme));
+        LinearLayout sourceHeaderRow = new LinearLayout(activity);
+        sourceHeaderRow.setOrientation(LinearLayout.HORIZONTAL);
+        sourceHeaderRow.setGravity(Gravity.CENTER_VERTICAL);
+        sourceHeaderRow.setPadding(0, (int) (12 * density), 0, (int) (8 * density));
+        sourceHeaderRow.setClickable(true);
+        sourceHeaderRow.setFocusable(true);
 
-        LinearLayout sourcePillsRow = new LinearLayout(activity);
-        sourcePillsRow.setOrientation(LinearLayout.HORIZONTAL);
-        sourcePillsRow.setPadding(0, (int) (4 * density), 0, (int) (10 * density));
+        TextView badge1 = new TextView(activity);
+        badge1.setText("1");
+        badge1.setTextSize(11f);
+        badge1.setTypeface(null, Typeface.BOLD);
+        badge1.setTextColor(theme.onPrimary);
+        badge1.setGravity(Gravity.CENTER);
+        int b1Size = (int) (20 * density);
+        LinearLayout.LayoutParams b1Lp = new LinearLayout.LayoutParams(b1Size, b1Size);
+        b1Lp.rightMargin = (int) (8 * density);
+        badge1.setLayoutParams(b1Lp);
+        badge1.setBackground(createRoundedDrawable(theme.primary, 10 * density));
+        sourceHeaderRow.addView(badge1);
 
-        ScrollView sourceScroll = new ScrollView(activity);
-        android.widget.HorizontalScrollView hSourceScroll = new android.widget.HorizontalScrollView(activity);
+        TextView tvSourceTitle = new TextView(activity);
+        tvSourceTitle.setText("Choose Source");
+        tvSourceTitle.setTextSize(14f);
+        tvSourceTitle.setTypeface(null, Typeface.BOLD);
+        tvSourceTitle.setTextColor(theme.textPrimary);
+        sourceHeaderRow.addView(tvSourceTitle);
+
+        TextView tvSourceActiveBadge = new TextView(activity);
+        tvSourceActiveBadge.setText(currentCriteria.source.displayName);
+        tvSourceActiveBadge.setTextSize(10.5f);
+        tvSourceActiveBadge.setTypeface(null, Typeface.BOLD);
+        tvSourceActiveBadge.setTextColor(theme.onPrimaryContainer);
+        tvSourceActiveBadge.setBackground(createRoundedDrawable(theme.primaryContainer, 10 * density));
+        int sabPadH = (int) (7 * density);
+        int sabPadV = (int) (2 * density);
+        tvSourceActiveBadge.setPadding(sabPadH, sabPadV, sabPadH, sabPadV);
+        LinearLayout.LayoutParams sabLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        sabLp.leftMargin = (int) (8 * density);
+        tvSourceActiveBadge.setLayoutParams(sabLp);
+        sourceHeaderRow.addView(tvSourceActiveBadge);
+
+        View sourceHeaderSpacer = new View(activity);
+        sourceHeaderRow.addView(sourceHeaderSpacer, new LinearLayout.LayoutParams(0, 0, 1f));
+
+        ImageView ivSourceChevron = new ImageView(activity);
+        ivSourceChevron.setImageDrawable(new MaterialVectorDrawable(MaterialVectorDrawable.TYPE_CHEVRON_UP, theme.textSecondary));
+        ivSourceChevron.setLayoutParams(new LinearLayout.LayoutParams((int) (20 * density), (int) (20 * density)));
+        sourceHeaderRow.addView(ivSourceChevron);
+
+        workflowLayout.addView(sourceHeaderRow);
+
+        HorizontalScrollView hSourceScroll = new HorizontalScrollView(activity);
         hSourceScroll.setHorizontalScrollBarEnabled(false);
+        LinearLayout.LayoutParams hssLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        hssLp.bottomMargin = (int) (6 * density);
+        hSourceScroll.setLayoutParams(hssLp);
+
+        sourceHeaderRow.setOnClickListener(v -> {
+            boolean isExpanded = (hSourceScroll.getVisibility() == View.VISIBLE);
+            if (isExpanded) {
+                hSourceScroll.setVisibility(View.GONE);
+                ivSourceChevron.setImageDrawable(new MaterialVectorDrawable(MaterialVectorDrawable.TYPE_CHEVRON_DOWN, theme.textSecondary));
+            } else {
+                hSourceScroll.setVisibility(View.VISIBLE);
+                ivSourceChevron.setImageDrawable(new MaterialVectorDrawable(MaterialVectorDrawable.TYPE_CHEVRON_UP, theme.textSecondary));
+            }
+        });
 
         LinearLayout sourcePillsInner = new LinearLayout(activity);
         sourcePillsInner.setOrientation(LinearLayout.HORIZONTAL);
@@ -300,6 +358,7 @@ public class NativeToolkitDialog {
             TextView pill = sourceViews.get(i);
             pill.setOnClickListener(v -> {
                 currentCriteria.source = src;
+                tvSourceActiveBadge.setText(src.displayName);
                 for (int j = 0; j < sources.length; j++) {
                     boolean sel = (sources[j] == currentCriteria.source);
                     sourceViews.get(j).setTextColor(sel ? theme.onPrimaryContainer : theme.textSecondary);
@@ -513,13 +572,68 @@ public class NativeToolkitDialog {
         });
 
         // ─────────────────────────────────────────────────────────────────────
-        // STEP 3: MATCHED MEDIA RESULTS (Preview visible immediately)
+        // STEP 3: CHOOSE ACTION (9 Actions, Collapsible)
+        // ─────────────────────────────────────────────────────────────────────
+        LinearLayout actionHeaderRow = new LinearLayout(activity);
+        actionHeaderRow.setOrientation(LinearLayout.HORIZONTAL);
+        actionHeaderRow.setGravity(Gravity.CENTER_VERTICAL);
+        actionHeaderRow.setPadding(0, (int) (12 * density), 0, (int) (8 * density));
+        actionHeaderRow.setClickable(true);
+        actionHeaderRow.setFocusable(true);
+
+        TextView badge3 = new TextView(activity);
+        badge3.setText("3");
+        badge3.setTextSize(11f);
+        badge3.setTypeface(null, Typeface.BOLD);
+        badge3.setTextColor(theme.onPrimary);
+        badge3.setGravity(Gravity.CENTER);
+        int b3Size = (int) (20 * density);
+        LinearLayout.LayoutParams b3Lp = new LinearLayout.LayoutParams(b3Size, b3Size);
+        b3Lp.rightMargin = (int) (8 * density);
+        badge3.setLayoutParams(b3Lp);
+        badge3.setBackground(createRoundedDrawable(theme.primary, 10 * density));
+        actionHeaderRow.addView(badge3);
+
+        TextView tvActionsTitle = new TextView(activity);
+        tvActionsTitle.setText("Choose Action (9)");
+        tvActionsTitle.setTextSize(14f);
+        tvActionsTitle.setTypeface(null, Typeface.BOLD);
+        tvActionsTitle.setTextColor(theme.textPrimary);
+        actionHeaderRow.addView(tvActionsTitle);
+
+        View actionHeaderSpacer = new View(activity);
+        actionHeaderRow.addView(actionHeaderSpacer, new LinearLayout.LayoutParams(0, 0, 1f));
+
+        ImageView ivActionsChevron = new ImageView(activity);
+        ivActionsChevron.setImageDrawable(new MaterialVectorDrawable(MaterialVectorDrawable.TYPE_CHEVRON_UP, theme.textSecondary));
+        ivActionsChevron.setLayoutParams(new LinearLayout.LayoutParams((int) (20 * density), (int) (20 * density)));
+        actionHeaderRow.addView(ivActionsChevron);
+
+        workflowLayout.addView(actionHeaderRow);
+
+        LinearLayout actionGrid = buildActionButtonsGrid(activity, density, theme, () -> allQueriedItems, runScanRef, actionButtonsMap);
+        updateActionStates(currentCriteria.source, currentCriteria, actionButtonsMap);
+        workflowLayout.addView(actionGrid);
+
+        actionHeaderRow.setOnClickListener(v -> {
+            boolean isExpanded = (actionGrid.getVisibility() == View.VISIBLE);
+            if (isExpanded) {
+                actionGrid.setVisibility(View.GONE);
+                ivActionsChevron.setImageDrawable(new MaterialVectorDrawable(MaterialVectorDrawable.TYPE_CHEVRON_DOWN, theme.textSecondary));
+            } else {
+                actionGrid.setVisibility(View.VISIBLE);
+                ivActionsChevron.setImageDrawable(new MaterialVectorDrawable(MaterialVectorDrawable.TYPE_CHEVRON_UP, theme.textSecondary));
+            }
+        });
+
+        // ─────────────────────────────────────────────────────────────────────
+        // STEP 4: MATCHED MEDIA RESULTS
         // ─────────────────────────────────────────────────────────────────────
         LinearLayout resultsHeader = new LinearLayout(activity);
         resultsHeader.setOrientation(LinearLayout.VERTICAL);
-        resultsHeader.setPadding(0, (int) (8 * density), 0, (int) (6 * density));
+        resultsHeader.setPadding(0, (int) (12 * density), 0, (int) (6 * density));
 
-        LinearLayout resTitleRow = createSectionHeader(activity, 3, "Matched Media Results", density, theme);
+        LinearLayout resTitleRow = createSectionHeader(activity, 4, "Matched Media Results", density, theme);
         resultsHeader.addView(resTitleRow);
 
         tvResultsStatus.setText("Scanning items...");
@@ -530,15 +644,6 @@ public class NativeToolkitDialog {
         workflowLayout.addView(resultsHeader);
 
         workflowLayout.addView(resultsListContainer);
-
-        // ─────────────────────────────────────────────────────────────────────
-        // STEP 4: CHOOSE ACTION (9 Actions)
-        // ─────────────────────────────────────────────────────────────────────
-        workflowLayout.addView(createSectionHeader(activity, 4, "Choose Action (9)", density, theme));
-
-        LinearLayout actionGrid = buildActionButtonsGrid(activity, density, theme, () -> allQueriedItems, runScanRef, actionButtonsMap);
-        updateActionStates(currentCriteria.source, currentCriteria, actionButtonsMap);
-        workflowLayout.addView(actionGrid);
 
         // ─────────────────────────────────────────────────────────────────────
         // Query Execution Engine
