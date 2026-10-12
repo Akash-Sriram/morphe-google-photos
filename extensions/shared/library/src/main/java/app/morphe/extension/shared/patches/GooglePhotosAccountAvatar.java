@@ -859,9 +859,14 @@ public final class GooglePhotosAccountAvatar {
                     d.contains("expand") || d.contains("backup complete") || d.contains("settings"))
                 return true;
         }
-        Object tag = view.getTag();
-        if (tag instanceof CharSequence && tag.toString().toLowerCase(Locale.ROOT).contains("no_avatar")) {
-            return true;
+        View cur = view;
+        while (cur != null) {
+            Object tag = cur.getTag();
+            if (tag instanceof CharSequence && tag.toString().toLowerCase(Locale.ROOT).contains("no_avatar")) {
+                return true;
+            }
+            ViewParent p = cur.getParent();
+            cur = p instanceof View ? (View) p : null;
         }
         return false;
     }

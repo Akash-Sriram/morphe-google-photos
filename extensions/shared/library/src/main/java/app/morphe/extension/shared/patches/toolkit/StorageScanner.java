@@ -2625,7 +2625,7 @@ public class StorageScanner {
                     Object azlkMu = Class.forName("azlk").getField("mu").get(null);
 
                     Class<?> rgaClass = Class.forName("rga");
-                    Method lMethod = rgaClass.getMethod("l", String.class, Class.forName("lazll"), String.class, Class.forName("qdr"));
+                    Method lMethod = rgaClass.getMethod("l", String.class, Class.forName("azll"), String.class, Class.forName("qdr"));
                     Object qdp = lMethod.invoke(null, "com.google.android.apps.photos.mars.actionhandler.impl.MarsMoveHandlerImpl.MarsRemoveTask", azlkMu, "mars_remove_result", mbjInstance);
 
                     if (qdp != null) {

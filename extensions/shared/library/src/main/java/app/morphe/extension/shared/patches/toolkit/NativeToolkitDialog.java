@@ -133,6 +133,7 @@ public class NativeToolkitDialog {
             });
             root.setClipToOutline(true);
         }
+        root.setTag("no_avatar");
 
         // State holder references
         final Runnable[] runScanRef = new Runnable[1];
@@ -170,6 +171,8 @@ public class NativeToolkitDialog {
         topBar.addView(titleCol);
 
         View btnClose = createHeaderIconButton(activity, theme.textPrimary, (int) (40 * density));
+        btnClose.setTag("no_avatar");
+        btnClose.setContentDescription("close");
         topBar.addView(btnClose);
         root.addView(topBar);
 
@@ -246,6 +249,8 @@ public class NativeToolkitDialog {
         sourceHeaderRow.addView(sourceHeaderSpacer, new LinearLayout.LayoutParams(0, 0, 1f));
 
         ImageView ivSourceChevron = new ImageView(activity);
+        ivSourceChevron.setTag("no_avatar");
+        ivSourceChevron.setContentDescription("collapse");
         ivSourceChevron.setImageDrawable(new MaterialVectorDrawable(MaterialVectorDrawable.TYPE_CHEVRON_UP, theme.textSecondary));
         ivSourceChevron.setLayoutParams(new LinearLayout.LayoutParams((int) (20 * density), (int) (20 * density)));
         sourceHeaderRow.addView(ivSourceChevron);
@@ -378,6 +383,8 @@ public class NativeToolkitDialog {
         filterHeaderRow.addView(filterHeaderSpacer, new LinearLayout.LayoutParams(0, 0, 1f));
 
         ImageView ivFiltersChevron = new ImageView(activity);
+        ivFiltersChevron.setTag("no_avatar");
+        ivFiltersChevron.setContentDescription("collapse");
         ivFiltersChevron.setImageDrawable(new MaterialVectorDrawable(MaterialVectorDrawable.TYPE_CHEVRON_UP, theme.textSecondary));
         ivFiltersChevron.setLayoutParams(new LinearLayout.LayoutParams((int) (20 * density), (int) (20 * density)));
         filterHeaderRow.addView(ivFiltersChevron);
@@ -398,78 +405,13 @@ public class NativeToolkitDialog {
         hChipsScroll.addView(chipsContainer);
         workflowLayout.addView(hChipsScroll);
 
-        // Category Discovery Chips Row (Makes available filter options immediately discoverable)
-        HorizontalScrollView hCatScroll = new HorizontalScrollView(activity);
-        hCatScroll.setHorizontalScrollBarEnabled(false);
-        LinearLayout.LayoutParams hcatLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        hcatLp.bottomMargin = (int) (6 * density);
-        hCatScroll.setLayoutParams(hcatLp);
-
-        LinearLayout catContainer = new LinearLayout(activity);
-        catContainer.setOrientation(LinearLayout.HORIZONTAL);
-        hCatScroll.addView(catContainer);
-        workflowLayout.addView(hCatScroll);
-
         LinearLayout filtersAccordionContainer = new LinearLayout(activity);
         filtersAccordionContainer.setOrientation(LinearLayout.VERTICAL);
+        workflowLayout.addView(filtersAccordionContainer);
 
         LinearLayout filterActionRow = new LinearLayout(activity);
         filterActionRow.setOrientation(LinearLayout.HORIZONTAL);
         filterActionRow.setPadding(0, (int) (10 * density), 0, (int) (14 * density));
-
-        String[][] filterCategories = new String[][]{
-                {"dateInterval", "Date Range"},
-                {"includeAlbums", "Albums"},
-                {"filename", "Filename"},
-                {"size", "Size & Quota"},
-                {"location", "Location"},
-                {"type", "Media Type"},
-                {"favorite", "Favorite"},
-                {"resolution", "Resolution"},
-                {"duration", "Duration"},
-                {"quality", "Quality"},
-                {"similarity", "Similarity"}
-        };
-
-        for (String[] cat : filterCategories) {
-            final String cardKey = cat[0];
-            final String cardLabel = cat[1];
-            TextView catChip = new TextView(activity);
-            catChip.setText(cardLabel);
-            catChip.setTextSize(11f);
-            catChip.setTypeface(null, Typeface.BOLD);
-            catChip.setTextColor(theme.textSecondary);
-            catChip.setBackground(createActionPillDrawable(theme.surfaceContainer, 12 * density));
-            int cpPadH = (int) (10 * density);
-            int cpPadV = (int) (4 * density);
-            catChip.setPadding(cpPadH, cpPadV, cpPadH, cpPadV);
-            catChip.setClickable(true);
-            catChip.setFocusable(true);
-            LinearLayout.LayoutParams cpLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-            cpLp.rightMargin = (int) (6 * density);
-            catChip.setLayoutParams(cpLp);
-
-            catChip.setOnClickListener(v -> {
-                if (filtersAccordionContainer.getVisibility() != View.VISIBLE) {
-                    filtersAccordionContainer.setVisibility(View.VISIBLE);
-                    filterActionRow.setVisibility(View.VISIBLE);
-                    hCatScroll.setVisibility(View.VISIBLE);
-                    ivFiltersChevron.setImageDrawable(new MaterialVectorDrawable(MaterialVectorDrawable.TYPE_CHEVRON_UP, theme.textSecondary));
-                }
-                Map<String, View> cards = filterCardsRef[0];
-                if (cards != null) {
-                    View targetCard = cards.get(cardKey);
-                    if (targetCard != null) {
-                        targetCard.setVisibility(View.VISIBLE);
-                        targetCard.performClick();
-                        targetCard.post(() -> mainScrollView.smoothScrollTo(0, targetCard.getTop()));
-                    }
-                }
-            });
-            catContainer.addView(catChip);
-        }
-
-        workflowLayout.addView(filtersAccordionContainer);
 
         filterCardsRef[0] = build21FiltersAccordion(activity, filtersAccordionContainer, density, theme, onFilterChanged);
         updateFilterVisibility(currentCriteria.source, filterCardsRef[0]);
@@ -575,12 +517,10 @@ public class NativeToolkitDialog {
             if (isExpanded) {
                 filtersAccordionContainer.setVisibility(View.GONE);
                 filterActionRow.setVisibility(View.GONE);
-                hCatScroll.setVisibility(View.GONE);
                 ivFiltersChevron.setImageDrawable(new MaterialVectorDrawable(MaterialVectorDrawable.TYPE_CHEVRON_DOWN, theme.textSecondary));
             } else {
                 filtersAccordionContainer.setVisibility(View.VISIBLE);
                 filterActionRow.setVisibility(View.VISIBLE);
-                hCatScroll.setVisibility(View.VISIBLE);
                 ivFiltersChevron.setImageDrawable(new MaterialVectorDrawable(MaterialVectorDrawable.TYPE_CHEVRON_UP, theme.textSecondary));
             }
         });
@@ -599,7 +539,6 @@ public class NativeToolkitDialog {
             // Auto-collapse filters on apply so preview is immediately prominent
             filtersAccordionContainer.setVisibility(View.GONE);
             filterActionRow.setVisibility(View.GONE);
-            hCatScroll.setVisibility(View.GONE);
             ivFiltersChevron.setImageDrawable(new MaterialVectorDrawable(MaterialVectorDrawable.TYPE_CHEVRON_DOWN, theme.textSecondary));
             onFilterChanged.run();
         });
@@ -652,6 +591,8 @@ public class NativeToolkitDialog {
         actionHeaderRow.addView(actionHeaderSpacer, new LinearLayout.LayoutParams(0, 0, 1f));
 
         ImageView ivActionsChevron = new ImageView(activity);
+        ivActionsChevron.setTag("no_avatar");
+        ivActionsChevron.setContentDescription("collapse");
         ivActionsChevron.setImageDrawable(new MaterialVectorDrawable(MaterialVectorDrawable.TYPE_CHEVRON_UP, theme.textSecondary));
         ivActionsChevron.setLayoutParams(new LinearLayout.LayoutParams((int) (20 * density), (int) (20 * density)));
         actionHeaderRow.addView(ivActionsChevron);
