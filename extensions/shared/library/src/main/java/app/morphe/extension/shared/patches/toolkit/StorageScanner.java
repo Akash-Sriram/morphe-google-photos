@@ -2607,10 +2607,14 @@ public class StorageScanner {
     public static volatile int sPendingUnlockAccountId = -1;
 
     public static void onMarsGridActivityCreated(final Activity activity) {
+        Log.i("morphe: StorageScanner", "onMarsGridActivityCreated called: activity=" + activity + " pendingItems=" + sPendingUnlockItems + " accountId=" + sPendingUnlockAccountId);
         if (activity == null) return;
         final List<MediaItem> itemsToUnlock = sPendingUnlockItems;
         final int accountId = sPendingUnlockAccountId;
-        if (itemsToUnlock == null || itemsToUnlock.isEmpty()) return;
+        if (itemsToUnlock == null || itemsToUnlock.isEmpty()) {
+            Log.w("morphe: StorageScanner", "onMarsGridActivityCreated: no pending items — skipping unlock");
+            return;
+        }
         sPendingUnlockItems = null;
         sPendingUnlockAccountId = -1;
 
@@ -2633,7 +2637,12 @@ public class StorageScanner {
                             boolean invoked = false;
                             try {
                                 Class<?> bzoqClass = Class.forName("bzoq");
-                                Class<?> lajaeClass = Class.forName("lajae");
+                                Class<?> lajaeClass;
+                                try {
+                                    lajaeClass = Class.forName("ajae");
+                                } catch (Throwable t1) {
+                                    lajaeClass = Class.forName("lajae");
+                                }
                                 Object lajae = bzoqClass.getMethod("e", Context.class, Class.class).invoke(null, activity, lajaeClass);
                                 if (lajae != null) {
                                     Class<?> ccrgClass = Class.forName("ccrg");
@@ -2642,10 +2651,10 @@ public class StorageScanner {
                                     Method bMethod = lajaeClass.getMethod("b", ccrgClass);
                                     bMethod.invoke(lajae, immutableList);
                                     invoked = true;
-                                    Log.i("morphe: StorageScanner", "Successfully invoked Lajae.b for " + finalCoreMedia.size() + " items");
+                                    Log.i("morphe: StorageScanner", "Successfully invoked ajae.b for " + finalCoreMedia.size() + " items");
                                 }
                             } catch (Throwable t) {
-                                Log.w("morphe: StorageScanner", "Error invoking Lajae.b", t);
+                                Log.w("morphe: StorageScanner", "Error invoking ajae.b", t);
                             }
 
                             if (!invoked) {
@@ -2675,7 +2684,12 @@ public class StorageScanner {
     private static List<?> loadDirectMarsMedia(Context context, int accountId, List<MediaItem> items) {
         List<Object> matched = new ArrayList<>();
         try {
-            Class<?> lajhxClass = Class.forName("lajhx");
+            Class<?> lajhxClass;
+            try {
+                lajhxClass = Class.forName("ajhx");
+            } catch (Throwable t1) {
+                lajhxClass = Class.forName("lajhx");
+            }
             Object marsColl = lajhxClass.getConstructor(int.class).newInstance(accountId);
             Class<?> bwpgClass = Class.forName("bwpg");
             Class<?> wsgClass = Class.forName("wsg");
