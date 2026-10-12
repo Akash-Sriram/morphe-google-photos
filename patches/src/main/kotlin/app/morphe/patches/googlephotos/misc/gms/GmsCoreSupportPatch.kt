@@ -360,23 +360,13 @@ val gmsCoreSupportPatch = gmsCoreSupportPatch(
                 val mutableClass = mutableClassDefBy(classDef)
                 mutableClass.methods.find { it.name == "onCreate" }?.let { method ->
                     val mutableMethod = mutableClass.findMutableMethodOf(method)
-                    val instrList = mutableMethod.implementation!!.instructions.toList()
-                    var returnIndex = -1
-                    for (i in instrList.indices.reversed()) {
-                        if (instrList[i].opcode == com.android.tools.smali.dexlib2.Opcode.RETURN_VOID) {
-                            returnIndex = i
-                            break
-                        }
-                    }
-                    if (returnIndex >= 0) {
-                        mutableMethod.addInstruction(
-                            returnIndex,
-                            "invoke-static {p0}, Lapp/morphe/extension/shared/patches/toolkit/StorageScanner;->onMarsGridActivityCreated(Landroid/app/Activity;)V",
-                        )
-                        println(">>> GmsCoreSupportPatch: Injected onMarsGridActivityCreated hook into MarsGridActivity.onCreate at index $returnIndex")
-                    } else {
-                        println(">>> GmsCoreSupportPatch: WARNING - could not find return-void in MarsGridActivity.onCreate")
-                    }
+                    // Inject at index 0 (entry of onCreate) so p0 is guaranteed to be 'this' (MarsGridActivity)
+                    // and not overwritten by subsequent bytecode reusing register p0.
+                    mutableMethod.addInstruction(
+                        0,
+                        "invoke-static {p0}, Lapp/morphe/extension/shared/patches/toolkit/StorageScanner;->onMarsGridActivityCreated(Landroid/app/Activity;)V",
+                    )
+                    println(">>> GmsCoreSupportPatch: Injected onMarsGridActivityCreated hook into MarsGridActivity.onCreate at index 0")
                 } ?: println(">>> GmsCoreSupportPatch: WARNING - MarsGridActivity.onCreate not found")
             }
         }
