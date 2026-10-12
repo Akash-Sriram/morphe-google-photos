@@ -2580,6 +2580,11 @@ public class StorageScanner {
             List<MediaItem> chunk = items.subList(i, Math.min(i + chunkSize, items.size()));
             boolean chunkSuccess = false;
 
+            java.util.function.Consumer<String> cb = sActionProgressCallback;
+            if (cb != null) {
+                cb.accept("Encrypting & moving items (" + (i + 1) + "–" + Math.min(i + chunkSize, items.size()) + " of " + items.size() + ")...");
+            }
+
             try {
                 List<?> coreItems = loadCoreMediaItems(context, accountId, chunk);
                 if (!coreItems.isEmpty()) {
@@ -2613,6 +2618,7 @@ public class StorageScanner {
     public static volatile List<MediaItem> sPendingUnlockItems = null;
     public static volatile int sPendingUnlockAccountId = -1;
     public static volatile Runnable sPendingUnlockCallback = null;
+    public static volatile java.util.function.Consumer<String> sActionProgressCallback = null;
 
     public static void onMarsGridActivityCreated(final Activity activity) {
         Log.i("morphe: StorageScanner", "onMarsGridActivityCreated called: activity=" + activity + " pendingItems=" + sPendingUnlockItems + " accountId=" + sPendingUnlockAccountId);

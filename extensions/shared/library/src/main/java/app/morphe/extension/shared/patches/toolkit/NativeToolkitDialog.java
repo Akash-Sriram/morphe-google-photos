@@ -98,6 +98,7 @@ public class NativeToolkitDialog {
     private static List<StorageScanner.MediaItem> allQueriedItems = new ArrayList<>();
     private static List<StorageScanner.AlbumInfo> availableAlbums = new ArrayList<>();
     private static ProgressBar sProgressBar = null;
+    private static TextView sTvProgressInfo = null;
 
     public static void show(Activity activity) {
         if (activity == null || activity.isFinishing() || activity.isDestroyed()) return;
@@ -645,6 +646,17 @@ public class NativeToolkitDialog {
         pbLp.bottomMargin = (int) (4 * density);
         sProgressBar.setLayoutParams(pbLp);
         workflowLayout.addView(sProgressBar);
+
+        sTvProgressInfo = new TextView(activity);
+        sTvProgressInfo.setTextSize(11.5f);
+        sTvProgressInfo.setTextColor(theme.primary);
+        sTvProgressInfo.setGravity(Gravity.CENTER);
+        sTvProgressInfo.setVisibility(View.GONE);
+        LinearLayout.LayoutParams piLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        piLp.topMargin = (int) (2 * density);
+        piLp.bottomMargin = (int) (6 * density);
+        sTvProgressInfo.setLayoutParams(piLp);
+        workflowLayout.addView(sTvProgressInfo);
 
         // ─────────────────────────────────────────────────────────────────────
         // STEP 4: MATCHED MEDIA RESULTS
@@ -1819,11 +1831,28 @@ public class NativeToolkitDialog {
     private static void executeDbActionAsync(Activity activity, String actionId, List<StorageScanner.MediaItem> items, String param, Runnable[] refreshRunner) {
         MAIN_HANDLER.post(() -> {
             if (sProgressBar != null) sProgressBar.setVisibility(View.VISIBLE);
+            if (sTvProgressInfo != null) {
+                sTvProgressInfo.setText("Processing " + (items != null ? items.size() : 0) + " items...");
+                sTvProgressInfo.setVisibility(View.VISIBLE);
+            }
         });
+        StorageScanner.sActionProgressCallback = msg -> {
+            MAIN_HANDLER.post(() -> {
+                if (sTvProgressInfo != null) {
+                    sTvProgressInfo.setText(msg);
+                    sTvProgressInfo.setVisibility(View.VISIBLE);
+                }
+            });
+        };
         THREAD_POOL.execute(() -> {
             StorageScanner.ActionResult res = StorageScanner.executeDatabaseAction(activity, currentAccount, actionId, items, param);
+            StorageScanner.sActionProgressCallback = null;
             MAIN_HANDLER.post(() -> {
                 if (sProgressBar != null) sProgressBar.setVisibility(View.GONE);
+                if (sTvProgressInfo != null) {
+                    sTvProgressInfo.setText("");
+                    sTvProgressInfo.setVisibility(View.GONE);
+                }
                 Toast.makeText(activity, res.message, Toast.LENGTH_SHORT).show();
                 if (res.success) {
                     if ("unLock".equals(actionId)) {
@@ -2326,6 +2355,8 @@ public class NativeToolkitDialog {
         topRow.addView(tvBadge);
 
         ImageView ivChev = new ImageView(activity);
+        ivChev.setTag("no_avatar");
+        ivChev.setContentDescription("expand/collapse");
         int chevType = expandedSet.contains(title) ? MaterialVectorDrawable.TYPE_CHEVRON_UP : MaterialVectorDrawable.TYPE_CHEVRON_DOWN;
         ivChev.setImageDrawable(new MaterialVectorDrawable(chevType, theme.textSecondary));
         ivChev.setLayoutParams(new LinearLayout.LayoutParams((int) (20 * density), (int) (20 * density)));
