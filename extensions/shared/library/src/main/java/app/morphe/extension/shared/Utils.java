@@ -400,10 +400,109 @@ public class Utils {
             try {
                 if (activity.isFinishing() || activity.isDestroyed()) return;
                 if (app.morphe.extension.shared.diagnostics.SessionLogManager.didLastSessionCrash()) {
-                    Toast.makeText(activity, "⚠️ Photos recovered from a crash. Check Diagnostics in Settings.", Toast.LENGTH_LONG).show();
+                    showCrashRecoveryDialog(activity);
                 }
             } catch (Throwable ignored) {}
-        }, 2000);
+        }, 1500);
+    }
+
+    private static void showCrashRecoveryDialog(Activity activity) {
+        try {
+            float density = activity.getResources().getDisplayMetrics().density;
+            android.app.Dialog d = new android.app.Dialog(activity);
+            d.requestWindowFeature(android.view.Window.FEATURE_NO_TITLE);
+
+            android.widget.LinearLayout root = new android.widget.LinearLayout(activity);
+            root.setOrientation(android.widget.LinearLayout.VERTICAL);
+            boolean isDark = (activity.getResources().getConfiguration().uiMode & android.content.res.Configuration.UI_MODE_NIGHT_MASK) == android.content.res.Configuration.UI_MODE_NIGHT_YES;
+            int bgColor = isDark ? 0xFF1E2022 : 0xFFFFFFFF;
+            int textColor = isDark ? 0xFFE1E3E5 : 0xFF1B1B1F;
+            int subColor = isDark ? 0xFF9E9E9E : 0xFF757575;
+            int primaryColor = isDark ? 0xFFA8C7FA : 0xFF0B57D0;
+
+            android.graphics.drawable.GradientDrawable bg = new android.graphics.drawable.GradientDrawable();
+            bg.setColor(bgColor);
+            bg.setCornerRadius(28 * density);
+            root.setBackground(bg);
+
+            int pad = (int) (24 * density);
+            root.setPadding(pad, pad, pad, (int) (18 * density));
+
+            android.widget.TextView tvTitle = new android.widget.TextView(activity);
+            tvTitle.setText("⚠️ Crash Recovery");
+            tvTitle.setTextSize(18f);
+            tvTitle.setTypeface(null, android.graphics.Typeface.BOLD);
+            tvTitle.setTextColor(textColor);
+            root.addView(tvTitle);
+
+            String crashSummary = app.morphe.extension.shared.diagnostics.SessionLogManager.getLastCrashSummary();
+            android.widget.TextView tvMsg = new android.widget.TextView(activity);
+            String msg = "Google Photos recovered from a crash in the previous session."
+                    + (crashSummary != null && !crashSummary.isEmpty() ? "\n\n" + crashSummary : "")
+                    + "\n\nWould you like to inspect or export the crash log?";
+            tvMsg.setText(msg);
+            tvMsg.setTextSize(13.5f);
+            tvMsg.setTextColor(subColor);
+            android.widget.LinearLayout.LayoutParams msgLp = new android.widget.LinearLayout.LayoutParams(
+                    android.view.ViewGroup.LayoutParams.MATCH_PARENT, android.view.ViewGroup.LayoutParams.WRAP_CONTENT);
+            msgLp.setMargins(0, (int) (8 * density), 0, (int) (20 * density));
+            tvMsg.setLayoutParams(msgLp);
+            root.addView(tvMsg);
+
+            android.widget.LinearLayout actions = new android.widget.LinearLayout(activity);
+            actions.setOrientation(android.widget.LinearLayout.HORIZONTAL);
+            actions.setGravity(android.view.Gravity.END | android.view.Gravity.CENTER_VERTICAL);
+
+            android.widget.TextView btnDismiss = new android.widget.TextView(activity);
+            btnDismiss.setText("Dismiss");
+            btnDismiss.setTextSize(14f);
+            btnDismiss.setTypeface(null, android.graphics.Typeface.BOLD);
+            btnDismiss.setTextColor(subColor);
+            btnDismiss.setGravity(android.view.Gravity.CENTER);
+            btnDismiss.setClickable(true);
+            btnDismiss.setFocusable(true);
+            btnDismiss.setPadding((int) (16 * density), (int) (10 * density), (int) (16 * density), (int) (10 * density));
+            btnDismiss.setOnClickListener(v -> d.dismiss());
+            android.widget.LinearLayout.LayoutParams dismissLp = new android.widget.LinearLayout.LayoutParams(
+                    android.view.ViewGroup.LayoutParams.WRAP_CONTENT, android.view.ViewGroup.LayoutParams.WRAP_CONTENT);
+            dismissLp.setMargins(0, 0, (int) (8 * density), 0);
+            actions.addView(btnDismiss, dismissLp);
+
+            android.widget.TextView btnView = new android.widget.TextView(activity);
+            btnView.setText("View & Export");
+            btnView.setTextSize(14f);
+            btnView.setTypeface(null, android.graphics.Typeface.BOLD);
+            btnView.setTextColor(isDark ? 0xFF003258 : 0xFFFFFFFF);
+            btnView.setGravity(android.view.Gravity.CENTER);
+            btnView.setClickable(true);
+            btnView.setFocusable(true);
+            btnView.setPadding((int) (20 * density), (int) (10 * density), (int) (20 * density), (int) (10 * density));
+            android.graphics.drawable.GradientDrawable btnBg = new android.graphics.drawable.GradientDrawable();
+            btnBg.setColor(primaryColor);
+            btnBg.setCornerRadius(18 * density);
+            btnView.setBackground(btnBg);
+            btnView.setOnClickListener(v -> {
+                d.dismiss();
+                app.morphe.extension.shared.diagnostics.DiagnosticsDialog.show(activity);
+            });
+            actions.addView(btnView, new android.widget.LinearLayout.LayoutParams(
+                    android.view.ViewGroup.LayoutParams.WRAP_CONTENT, android.view.ViewGroup.LayoutParams.WRAP_CONTENT));
+
+            root.addView(actions);
+            d.setContentView(root);
+
+            android.view.Window w = d.getWindow();
+            if (w != null) {
+                w.setBackgroundDrawable(new android.graphics.drawable.ColorDrawable(android.graphics.Color.TRANSPARENT));
+                int screenWidth = activity.getResources().getDisplayMetrics().widthPixels;
+                w.setLayout(Math.min((int) (screenWidth * 0.90f), (int) (380 * density)),
+                        android.view.ViewGroup.LayoutParams.WRAP_CONTENT);
+                w.setGravity(android.view.Gravity.CENTER);
+            }
+            d.show();
+        } catch (Throwable t) {
+            Toast.makeText(activity, "⚠️ Photos recovered from a crash. Check Diagnostics in Settings.", Toast.LENGTH_LONG).show();
+        }
     }
 
     public static Context getContext() {

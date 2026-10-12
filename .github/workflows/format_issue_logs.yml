@@ -1,0 +1,71 @@
+name: Format Issue Logs
+
+on:
+  issues:
+    types: [opened]
+
+jobs:
+  format-logs:
+    name: Format Issue Logs
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+    steps:
+      - name: Check and Format Issue Logs
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+          ISSUE_BODY: ${{ github.event.issue.body }}
+        run: |
+          python3 -c "
+          import os, re, subprocess
+
+          body = os.environ.get('ISSUE_BODY', '')
+          issue_number = os.environ.get('ISSUE_NUMBER')
+
+          if not body or not issue_number:
+              exit(0)
+
+          # Avoid re-wrapping if already collapsed inside details
+          if '<details>' in body:
+              print('Issue already contains <details>, skipping auto-collapse.')
+              exit(0)
+
+          pattern = re.compile(r'(?s)(```(?:[a-zA-Z0-9_\-]+)?\n(.*?)\n```)')
+          modified = False
+
+          def replace_block(match):
+              global modified
+              full_block = match.group(1)
+              code_content = match.group(2)
+              lines = code_content.splitlines()
+
+              if len(lines) > 25:
+                  modified = True
+                  exception_headline = ''
+                  for line in lines:
+                      clean_line = line.strip()
+                      if ('Exception' in clean_line or 'FATAL' in clean_line or 'Caused by:' in clean_line or 'Error' in clean_line) and len(clean_line) < 200:
+                          exception_headline = f'> **Detected Exception:** \`{clean_line}\`\n\n'
+                          break
+
+                  collapsed = (
+                      f'{exception_headline}'
+                      f'<details>\n'
+                      f'<summary>📄 Click to expand full log ({len(lines)} lines)</summary>\n\n'
+                      f'{full_block}\n'
+                      f'</details>'
+                  )
+                  return collapsed
+              return full_block
+
+          new_body = pattern.sub(replace_block, body)
+          if modified and new_body != body:
+              print(f'Formatting logs in issue #{issue_number}...')
+              with open('new_body.md', 'w', encoding='utf-8') as f:
+                  f.write(new_body)
+              subprocess.run(['gh', 'issue', 'edit', str(issue_number), '--body-file', 'new_body.md'], check=True)
+              print('Successfully formatted issue logs.')
+          else:
+              print('No long uncollapsed log blocks found.')
+          "

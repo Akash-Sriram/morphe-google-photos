@@ -3,23 +3,28 @@ package app.morphe.extension.shared.diagnostics;
 import android.app.Activity;
 import android.content.ClipData;
 import android.content.ClipboardManager;
+import android.content.ContentValues;
 import android.content.Context;
 import android.content.Intent;
 import android.content.pm.PackageInfo;
 import android.content.pm.PackageManager;
 import android.net.Uri;
 import android.os.Build;
+import android.os.Environment;
 import android.os.Handler;
 import android.os.Looper;
+import android.provider.MediaStore;
 import android.util.Log;
 import android.widget.Toast;
 
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
 import java.io.File;
+import java.io.FileOutputStream;
 import java.io.FileReader;
 import java.io.FileWriter;
 import java.io.InputStreamReader;
+import java.io.OutputStream;
 import java.io.PrintWriter;
 import java.io.StringWriter;
 import java.text.SimpleDateFormat;
@@ -560,44 +565,145 @@ public final class SessionLogManager {
         return sb.toString();
     }
 
-    public static void shareSession(Activity activity, SessionInfo session) {
-        if (activity == null || session == null) return;
+    public static String formatGitHubReport(SessionInfo session, String content) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("### Environment Information\n");
+        sb.append("- **Device**: ").append(Build.MANUFACTURER).append(" ").append(Build.MODEL).append("\n");
+        sb.append("- **Android OS**: ").append(Build.VERSION.RELEASE).append(" (API ").append(Build.VERSION.SDK_INT).append(")\n");
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            sb.append("- **Security Patch**: ").append(Build.VERSION.SECURITY_PATCH).append("\n");
+        }
+        sb.append("- **Photos Version**: ").append(Utils.getAppVersionName()).append("\n");
+        sb.append("- **Morphe Version**: ").append(Utils.getPatchesReleaseVersion()).append("\n");
+        if (session != null) {
+            sb.append("- **Session ID**: `").append(session.id).append("`\n");
+            sb.append("- **Session Date**: ").append(session.date.toString()).append("\n");
+            if (session.isCrashed) {
+                sb.append("- **Crashed**: Yes\n");
+            }
+        }
+        sb.append("\n");
 
-        IO_EXECUTOR.execute(() -> {
-            String content = readSessionContent(session, null, "ALL");
-            MAIN_HANDLER.post(() -> {
-                try {
-                    Intent sendIntent = new Intent(Intent.ACTION_SEND);
-                    sendIntent.setType("text/plain");
-                    sendIntent.putExtra(Intent.EXTRA_SUBJECT, "Morphe Photos Diagnostics (" + session.id + ")");
-                    sendIntent.putExtra(Intent.EXTRA_TEXT, content);
+        if (session != null && session.isCrashed && session.crashSummary != null && !session.crashSummary.isEmpty()) {
+            sb.append("### Crash Summary\n");
+            sb.append("```\n").append(session.crashSummary.trim()).append("\n```\n\n");
+        }
 
-                    activity.startActivity(Intent.createChooser(sendIntent, "Share Diagnostics Log"));
-                } catch (Throwable t) {
-                    Toast.makeText(activity, "Failed to share: " + t.getMessage(), Toast.LENGTH_SHORT).show();
+        sb.append("<details>\n");
+        sb.append("<summary>📄 Diagnostics Log (click to expand)</summary>\n\n");
+        sb.append("```log\n");
+        if (content != null) {
+            sb.append(content.trim());
+        }
+        sb.append("\n```\n");
+        sb.append("</details>\n");
+
+        return sb.toString();
+    }
+
+    public static Uri exportSessionToFile(Context context, SessionInfo session, boolean asMarkdown) {
+        if (context == null || session == null) return null;
+        try {
+            String rawContent = readSessionContent(session, null, "ALL");
+            String content = asMarkdown ? formatGitHubReport(session, rawContent) : rawContent;
+            String ext = asMarkdown ? ".md" : ".log";
+            String mimeType = asMarkdown ? "text/markdown" : "text/plain";
+            String baseName = session.id.replace(".log", "");
+            String fileName = "morphe_photos_diagnostics_" + baseName + ext;
+
+            Uri resultUri = null;
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                ContentValues values = new ContentValues();
+                values.put(MediaStore.MediaColumns.DISPLAY_NAME, fileName);
+                values.put(MediaStore.MediaColumns.MIME_TYPE, mimeType);
+                values.put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS + "/Morphe");
+                resultUri = context.getContentResolver().insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values);
+                if (resultUri != null) {
+                    try (OutputStream os = context.getContentResolver().openOutputStream(resultUri)) {
+                        if (os != null) {
+                            os.write(content.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+                            os.flush();
+                        }
+                    }
                 }
-            });
+            } else {
+                File downloadsDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS);
+                File targetDir = new File(downloadsDir, "Morphe");
+                if (!targetDir.exists()) {
+                    targetDir.mkdirs();
+                }
+                File targetFile = new File(targetDir, fileName);
+                try (FileOutputStream fos = new FileOutputStream(targetFile)) {
+                    fos.write(content.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+                    fos.flush();
+                }
+                resultUri = Uri.fromFile(targetFile);
+            }
+
+            final String toastMsg = "✓ Saved to Downloads/Morphe/" + fileName;
+            MAIN_HANDLER.post(() -> Toast.makeText(context, toastMsg, Toast.LENGTH_LONG).show());
+            return resultUri;
+        } catch (Throwable t) {
+            Log.e(TAG, "Failed exporting session to file", t);
+            MAIN_HANDLER.post(() -> Toast.makeText(context, "Export failed: " + t.getMessage(), Toast.LENGTH_SHORT).show());
+            return null;
+        }
+    }
+
+    public static void shareSessionFile(Activity activity, SessionInfo session, boolean asMarkdown) {
+        if (activity == null || session == null) return;
+        IO_EXECUTOR.execute(() -> {
+            try {
+                Uri fileUri = exportSessionToFile(activity, session, asMarkdown);
+                MAIN_HANDLER.post(() -> {
+                    try {
+                        Intent sendIntent = new Intent(Intent.ACTION_SEND);
+                        sendIntent.setType(asMarkdown ? "text/markdown" : "text/plain");
+                        sendIntent.putExtra(Intent.EXTRA_SUBJECT, "Morphe Photos Diagnostics (" + session.id + ")");
+                        if (fileUri != null) {
+                            sendIntent.putExtra(Intent.EXTRA_STREAM, fileUri);
+                            sendIntent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+                        } else {
+                            String raw = readSessionContent(session, null, "ALL");
+                            sendIntent.putExtra(Intent.EXTRA_TEXT, asMarkdown ? formatGitHubReport(session, raw) : raw);
+                        }
+                        activity.startActivity(Intent.createChooser(sendIntent, "Share Diagnostics Log"));
+                    } catch (Throwable t) {
+                        Toast.makeText(activity, "Failed to share: " + t.getMessage(), Toast.LENGTH_SHORT).show();
+                    }
+                });
+            } catch (Throwable t) {
+                Log.e(TAG, "shareSessionFile failed", t);
+            }
         });
     }
 
-    public static void copyToClipboard(Context context, SessionInfo session) {
+    public static void copyGitHubMarkdown(Context context, SessionInfo session) {
         if (context == null || session == null) return;
-
         IO_EXECUTOR.execute(() -> {
-            String content = readSessionContent(session, null, "ALL");
+            String rawContent = readSessionContent(session, null, "ALL");
+            String markdown = formatGitHubReport(session, rawContent);
             MAIN_HANDLER.post(() -> {
                 try {
                     ClipboardManager cm = (ClipboardManager) context.getSystemService(Context.CLIPBOARD_SERVICE);
                     if (cm != null) {
-                        ClipData clip = ClipData.newPlainText("Morphe Diagnostics", content);
+                        ClipData clip = ClipData.newPlainText("Morphe GitHub Diagnostics", markdown);
                         cm.setPrimaryClip(clip);
-                        Toast.makeText(context, "✓ Diagnostics copied to clipboard", Toast.LENGTH_SHORT).show();
+                        Toast.makeText(context, "✓ Copied GitHub Markdown (pre-formatted with <details>)", Toast.LENGTH_LONG).show();
                     }
                 } catch (Throwable t) {
                     Toast.makeText(context, "Failed to copy: " + t.getMessage(), Toast.LENGTH_SHORT).show();
                 }
             });
         });
+    }
+
+    public static void shareSession(Activity activity, SessionInfo session) {
+        shareSessionFile(activity, session, false);
+    }
+
+    public static void copyToClipboard(Context context, SessionInfo session) {
+        copyGitHubMarkdown(context, session);
     }
 
     public static void clearAllSessions(Runnable onComplete) {
