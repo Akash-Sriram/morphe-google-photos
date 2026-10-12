@@ -430,6 +430,7 @@ public class Utils {
         }
 
         seedPhenotypeEarly(appContext);
+        ensureNotificationChannels(appContext);
 
         AppLanguage language = BaseSettings.MORPHE_LANGUAGE.get();
         if (language != AppLanguage.DEFAULT) {
@@ -442,6 +443,14 @@ public class Utils {
 
         setThemeLightColor(getThemeColor(getThemeLightColorResourceName(), Color.WHITE));
         setThemeDarkColor(getThemeColor(getThemeDarkColorResourceName(), Color.BLACK));
+    }
+
+    public static void ensureNotificationChannels(Context context) {
+        try {
+            app.morphe.extension.shared.patches.NotificationChannelHelper.ensureChannels(context);
+        } catch (Throwable t) {
+            Logger.printInfo(() -> "ensureNotificationChannels failed: " + t);
+        }
     }
 
     public static void seedPhenotypeEarly(Context context) {
