@@ -128,7 +128,9 @@ val gmsCoreSupportPatch = gmsCoreSupportPatch(
                                 ?: return@forEachIndexed
 
                         val original = stringRef.string
-                        if (original.endsWith("Activity") || original.contains("Activity$")) {
+                        if (original.endsWith("Activity") || original.contains("Activity$") ||
+                            original.endsWith("Task") || original.contains("Task$") ||
+                            original.endsWith("Service") || original.contains("Service$")) {
                             return@forEachIndexed
                         }
                         val transformed = when {

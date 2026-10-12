@@ -2532,7 +2532,13 @@ public class StorageScanner {
     private static Object createMarsMoveTask(Context context, int accountId, Collection<?> coreItems) {
         try {
             String basePhotosPkg = "com.google." + "android.apps.photos";
-            Class<?> taskClass = Class.forName(basePhotosPkg + ".mars.actionhandler.impl.MarsMoveTask");
+            String taskName = basePhotosPkg + ".mars.actionhandler.impl.MarsMoveTask";
+            Class<?> taskClass;
+            try {
+                taskClass = context.getClassLoader().loadClass(taskName);
+            } catch (Throwable tCl) {
+                taskClass = Class.forName(taskName);
+            }
             for (Constructor<?> ctor : taskClass.getDeclaredConstructors()) {
                 ctor.setAccessible(true);
                 Class<?>[] params = ctor.getParameterTypes();
