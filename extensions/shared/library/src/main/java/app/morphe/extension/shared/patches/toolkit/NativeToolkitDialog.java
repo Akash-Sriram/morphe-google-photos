@@ -309,6 +309,7 @@ public class NativeToolkitDialog {
         boolean[] isGridViewRef = new boolean[]{true};
         Map<String, View>[] filterCardsRef = new Map[1];
         Map<String, TextView> actionButtonsMap = new HashMap<>();
+        TextView[] tvFiltersTitleRef = new TextView[1];
         Runnable[] updateChipsAndBadgeRef = new Runnable[1];
         Runnable[] updateSelectionSummaryRef = new Runnable[1];
 
@@ -330,7 +331,11 @@ public class NativeToolkitDialog {
                     sourceViews.get(j).setTextColor(sel ? theme.onPrimaryContainer : theme.textSecondary);
                     sourceViews.get(j).setBackground(createRoundedDrawable(sel ? theme.primaryContainer : theme.surfaceContainer, 12 * density));
                 }
-                updateFilterVisibility(src, filterCardsRef[0]);
+                int count = updateFilterVisibility(src, filterCardsRef[0]);
+                if (tvFiltersTitleRef[0] != null) {
+                    tvFiltersTitleRef[0].setText("Configure Filters (" + count + ")");
+                }
+                updateActionStates(src, currentCriteria, actionButtonsMap);
                 onFilterChanged.run();
             });
         }
@@ -359,7 +364,8 @@ public class NativeToolkitDialog {
         filterHeaderRow.addView(badge2);
 
         TextView tvFiltersTitle = new TextView(activity);
-        tvFiltersTitle.setText("Configure Filters (21)");
+        tvFiltersTitleRef[0] = tvFiltersTitle;
+        tvFiltersTitle.setText("Configure Filters");
         tvFiltersTitle.setTextSize(14f);
         tvFiltersTitle.setTypeface(null, Typeface.BOLD);
         tvFiltersTitle.setTextColor(theme.textPrimary);
@@ -414,7 +420,8 @@ public class NativeToolkitDialog {
         filterActionRow.setPadding(0, (int) (10 * density), 0, (int) (14 * density));
 
         filterCardsRef[0] = build21FiltersAccordion(activity, filtersAccordionContainer, density, theme, onFilterChanged);
-        updateFilterVisibility(currentCriteria.source, filterCardsRef[0]);
+        int initialFilterCount = updateFilterVisibility(currentCriteria.source, filterCardsRef[0]);
+        tvFiltersTitle.setText("Configure Filters (" + initialFilterCount + ")");
 
         // Scan / Filter Trigger Buttons
 
@@ -504,7 +511,8 @@ public class NativeToolkitDialog {
                 chip.setOnClickListener(v -> {
                     item.second.run();
                     filterCardsRef[0] = build21FiltersAccordion(activity, filtersAccordionContainer, density, theme, onFilterChanged);
-                    updateFilterVisibility(currentCriteria.source, filterCardsRef[0]);
+                    int cCount = updateFilterVisibility(currentCriteria.source, filterCardsRef[0]);
+                    if (tvFiltersTitleRef[0] != null) tvFiltersTitleRef[0].setText("Configure Filters (" + cCount + ")");
                     onFilterChanged.run();
                 });
                 chipsContainer.addView(chip);
@@ -530,7 +538,8 @@ public class NativeToolkitDialog {
             currentCriteria = new StorageScanner.FilterCriteria();
             currentCriteria.source = savedSource;
             filterCardsRef[0] = build21FiltersAccordion(activity, filtersAccordionContainer, density, theme, onFilterChanged);
-            updateFilterVisibility(currentCriteria.source, filterCardsRef[0]);
+            int rCount = updateFilterVisibility(currentCriteria.source, filterCardsRef[0]);
+            if (tvFiltersTitleRef[0] != null) tvFiltersTitleRef[0].setText("Configure Filters (" + rCount + ")");
             onFilterChanged.run();
             Toast.makeText(activity, "Reset all filters to default", Toast.LENGTH_SHORT).show();
         });
@@ -1567,7 +1576,6 @@ public class NativeToolkitDialog {
 
     private static String getActionDisabledHint(String actionId, StorageScanner.FilterCriteria crit) {
         if ("toTrash".equals(actionId)) {
-            if (crit.source == StorageScanner.SourceType.LOCKED) return "Cannot trash items in Locked Folder";
             return "Items are already in Trash";
         }
         if ("restoreTrash".equals(actionId)) return "Source must be Trash to restore items";
@@ -1590,7 +1598,6 @@ public class NativeToolkitDialog {
         if ("unLock".equals(actionId)) return "Source must be Locked Folder to unlock items";
         if ("setDateFromFilename".equals(actionId)) return "Cannot update date for items in Trash";
         if ("toNewAlbum".equals(actionId) || "toExistingAlbum".equals(actionId)) {
-            if (crit.source == StorageScanner.SourceType.LOCKED) return "Cannot add Locked Folder items to albums";
             if (crit.source == StorageScanner.SourceType.TRASH) return "Cannot add Trash items to albums";
         }
         return null;
@@ -1607,11 +1614,11 @@ public class NativeToolkitDialog {
         boolean favoritesOnly = Boolean.TRUE.equals(crit.favorite) || src == StorageScanner.SourceType.FAVORITES;
         boolean favoritesExcluded = Boolean.FALSE.equals(crit.favorite) || crit.excludeFavorites;
 
-        setActionState(actionButtons.get("toNewAlbum"), !isLocked && !isTrash);
-        setActionState(actionButtons.get("toExistingAlbum"), !isLocked && !isTrash);
+        setActionState(actionButtons.get("toNewAlbum"), !isTrash);
+        setActionState(actionButtons.get("toExistingAlbum"), !isTrash);
         setActionState(actionButtons.get("removeFromAlbum"), !isLocked && src == StorageScanner.SourceType.ALBUMS && !crit.albumsInclude.isEmpty());
 
-        setActionState(actionButtons.get("toTrash"), !isTrash && !isLocked);
+        setActionState(actionButtons.get("toTrash"), !isTrash);
         setActionState(actionButtons.get("restoreTrash"), isTrash);
 
         setActionState(actionButtons.get("toArchive"), !isLocked && !isTrash && !archivedOnly);
@@ -2378,8 +2385,8 @@ public class NativeToolkitDialog {
         return card;
     }
 
-    private static void updateFilterVisibility(StorageScanner.SourceType src, Map<String, View> filterCards) {
-        if (filterCards == null || filterCards.isEmpty()) return;
+    private static int updateFilterVisibility(StorageScanner.SourceType src, Map<String, View> filterCards) {
+        if (filterCards == null || filterCards.isEmpty()) return 0;
 
         // Hide all initially
         for (View v : filterCards.values()) {
@@ -2420,9 +2427,7 @@ public class NativeToolkitDialog {
 
         // 6. Metadata filters visible everywhere EXCEPT Trash
         if (src != StorageScanner.SourceType.TRASH) {
-            if (src != StorageScanner.SourceType.LOCKED) {
-                if ((v = filterCards.get("quality")) != null) v.setVisibility(View.VISIBLE);
-            }
+            if ((v = filterCards.get("quality")) != null) v.setVisibility(View.VISIBLE);
             if ((v = filterCards.get("size")) != null) v.setVisibility(View.VISIBLE);
             if ((v = filterCards.get("resolution")) != null) v.setVisibility(View.VISIBLE);
             if ((v = filterCards.get("location")) != null) v.setVisibility(View.VISIBLE);
@@ -2437,6 +2442,14 @@ public class NativeToolkitDialog {
                 if ((v = filterCards.get("excludeShared")) != null) v.setVisibility(View.VISIBLE);
             }
         }
+
+        int visibleCount = 0;
+        for (View card : filterCards.values()) {
+            if (card != null && card.getVisibility() == View.VISIBLE) {
+                visibleCount++;
+            }
+        }
+        return visibleCount;
     }
 
     public interface OnDateTimeSelectedListener {

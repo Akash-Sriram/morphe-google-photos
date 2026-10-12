@@ -2842,7 +2842,7 @@ public class StorageScanner {
                         Object azlkMu = Class.forName("azlk").getField("mu").get(null);
 
                         Class<?> rgaClass = Class.forName("rga");
-                        Method gMethod = rgaClass.getMethod("g", String.class, Class.forName("lazll"), Class.forName("qdo"));
+                        Method gMethod = rgaClass.getMethod("g", String.class, Class.forName("azll"), Class.forName("qdo"));
                         Object qdp = gMethod.invoke(null, "com.google.android.photos.mediadetails.datetime.EditDateTimeTask", azlkMu, ajwaInstance);
 
                         if (qdp != null) {
