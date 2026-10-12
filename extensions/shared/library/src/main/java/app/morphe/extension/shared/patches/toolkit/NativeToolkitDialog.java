@@ -44,6 +44,8 @@ import android.widget.LinearLayout;
 import android.widget.ListView;
 import android.widget.RadioButton;
 import android.widget.RadioGroup;
+import android.util.Pair;
+import android.widget.HorizontalScrollView;
 import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.Toast;
@@ -290,6 +292,7 @@ public class NativeToolkitDialog {
         // Step 2 & 3 containers & maps
         Map<String, View>[] filterCardsRef = new Map[1];
         Map<String, TextView> actionButtonsMap = new HashMap<>();
+        Runnable[] updateChipsAndBadgeRef = new Runnable[1];
 
         // Wire Source pill click listener
         for (int i = 0; i < sources.length; i++) {
@@ -304,14 +307,78 @@ public class NativeToolkitDialog {
                 }
                 updateFilterVisibility(src, filterCardsRef[0]);
                 updateActionStates(src, currentCriteria, actionButtonsMap);
+                if (updateChipsAndBadgeRef[0] != null) updateChipsAndBadgeRef[0].run();
                 if (runScanRef[0] != null) runScanRef[0].run();
             });
         }
 
         // ─────────────────────────────────────────────────────────────────────
-        // STEP 2: CONFIGURE FILTERS (All 21 Filters from user.js)
+        // STEP 2: CONFIGURE FILTERS (Collapsible Section + Active Filter Chips)
         // ─────────────────────────────────────────────────────────────────────
-        workflowLayout.addView(createSectionHeader(activity, 2, "Configure Filters (21)", density, theme));
+        LinearLayout filterHeaderRow = new LinearLayout(activity);
+        filterHeaderRow.setOrientation(LinearLayout.HORIZONTAL);
+        filterHeaderRow.setGravity(Gravity.CENTER_VERTICAL);
+        filterHeaderRow.setPadding(0, (int) (12 * density), 0, (int) (8 * density));
+        filterHeaderRow.setClickable(true);
+        filterHeaderRow.setFocusable(true);
+
+        TextView badge2 = new TextView(activity);
+        badge2.setText("2");
+        badge2.setTextSize(11f);
+        badge2.setTypeface(null, Typeface.BOLD);
+        badge2.setTextColor(theme.onPrimary);
+        badge2.setGravity(Gravity.CENTER);
+        int b2Size = (int) (20 * density);
+        LinearLayout.LayoutParams b2Lp = new LinearLayout.LayoutParams(b2Size, b2Size);
+        b2Lp.rightMargin = (int) (8 * density);
+        badge2.setLayoutParams(b2Lp);
+        badge2.setBackground(createRoundedDrawable(theme.primary, 10 * density));
+        filterHeaderRow.addView(badge2);
+
+        TextView tvFiltersTitle = new TextView(activity);
+        tvFiltersTitle.setText("Configure Filters (21)");
+        tvFiltersTitle.setTextSize(14f);
+        tvFiltersTitle.setTypeface(null, Typeface.BOLD);
+        tvFiltersTitle.setTextColor(theme.textPrimary);
+        filterHeaderRow.addView(tvFiltersTitle);
+
+        TextView tvFiltersActiveBadge = new TextView(activity);
+        tvFiltersActiveBadge.setTextSize(10.5f);
+        tvFiltersActiveBadge.setTypeface(null, Typeface.BOLD);
+        tvFiltersActiveBadge.setTextColor(theme.onPrimaryContainer);
+        tvFiltersActiveBadge.setBackground(createRoundedDrawable(theme.primaryContainer, 10 * density));
+        int fabPadH = (int) (7 * density);
+        int fabPadV = (int) (2 * density);
+        tvFiltersActiveBadge.setPadding(fabPadH, fabPadV, fabPadH, fabPadV);
+        LinearLayout.LayoutParams fabLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        fabLp.leftMargin = (int) (8 * density);
+        tvFiltersActiveBadge.setLayoutParams(fabLp);
+        tvFiltersActiveBadge.setVisibility(View.GONE);
+        filterHeaderRow.addView(tvFiltersActiveBadge);
+
+        View filterHeaderSpacer = new View(activity);
+        filterHeaderRow.addView(filterHeaderSpacer, new LinearLayout.LayoutParams(0, 0, 1f));
+
+        ImageView ivFiltersChevron = new ImageView(activity);
+        ivFiltersChevron.setImageDrawable(new MaterialVectorDrawable(MaterialVectorDrawable.TYPE_CHEVRON_UP, theme.textSecondary));
+        ivFiltersChevron.setLayoutParams(new LinearLayout.LayoutParams((int) (20 * density), (int) (20 * density)));
+        filterHeaderRow.addView(ivFiltersChevron);
+
+        workflowLayout.addView(filterHeaderRow);
+
+        // Active Filter Chips Row
+        HorizontalScrollView hChipsScroll = new HorizontalScrollView(activity);
+        hChipsScroll.setHorizontalScrollBarEnabled(false);
+        hChipsScroll.setVisibility(View.GONE);
+        LinearLayout.LayoutParams hcsLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        hcsLp.bottomMargin = (int) (6 * density);
+        hChipsScroll.setLayoutParams(hcsLp);
+
+        LinearLayout chipsContainer = new LinearLayout(activity);
+        chipsContainer.setOrientation(LinearLayout.HORIZONTAL);
+        chipsContainer.setGravity(Gravity.CENTER_VERTICAL);
+        hChipsScroll.addView(chipsContainer);
+        workflowLayout.addView(hChipsScroll);
 
         LinearLayout filtersAccordionContainer = new LinearLayout(activity);
         filtersAccordionContainer.setOrientation(LinearLayout.VERTICAL);
@@ -333,16 +400,6 @@ public class NativeToolkitDialog {
         btnResetFilters.setGravity(Gravity.CENTER);
         btnResetFilters.setPadding((int) (14 * density), (int) (9 * density), (int) (14 * density), (int) (9 * density));
         btnResetFilters.setBackground(createActionPillDrawable(theme.surfaceContainer, 16 * density));
-        btnResetFilters.setOnClickListener(v -> {
-            StorageScanner.SourceType savedSource = currentCriteria.source;
-            currentCriteria = new StorageScanner.FilterCriteria();
-            currentCriteria.source = savedSource;
-            filterCardsRef[0] = build21FiltersAccordion(activity, filtersAccordionContainer, density, theme, runScanRef);
-            updateFilterVisibility(currentCriteria.source, filterCardsRef[0]);
-            updateActionStates(currentCriteria.source, currentCriteria, actionButtonsMap);
-            if (runScanRef[0] != null) runScanRef[0].run();
-            Toast.makeText(activity, "Reset all filters to default", Toast.LENGTH_SHORT).show();
-        });
         LinearLayout.LayoutParams rfLp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
         rfLp.rightMargin = (int) (8 * density);
         btnResetFilters.setLayoutParams(rfLp);
@@ -362,44 +419,126 @@ public class NativeToolkitDialog {
         tvScanButtonLabel.setTypeface(null, Typeface.BOLD);
         tvScanButtonLabel.setTextColor(theme.onPrimary);
         btnApplyScan.addView(tvScanButtonLabel);
-
-        btnApplyScan.setOnClickListener(v -> {
-            updateActionStates(currentCriteria.source, currentCriteria, actionButtonsMap);
-            if (runScanRef[0] != null) runScanRef[0].run();
-        });
         filterActionRow.addView(btnApplyScan);
         workflowLayout.addView(filterActionRow);
 
-        // ─────────────────────────────────────────────────────────────────────
-        // STEP 3: CHOOSE ACTION (All 14 Actions from user.js)
-        // ─────────────────────────────────────────────────────────────────────
-        workflowLayout.addView(createSectionHeader(activity, 3, "Choose Action (14)", density, theme));
+        updateChipsAndBadgeRef[0] = () -> {
+            List<Pair<String, Runnable>> activeList = getActiveFilterList(currentCriteria);
+            int activeCount = activeList.size();
+            if (activeCount > 0) {
+                tvFiltersActiveBadge.setText(activeCount + " active");
+                tvFiltersActiveBadge.setVisibility(View.VISIBLE);
+                hChipsScroll.setVisibility(View.VISIBLE);
+            } else {
+                tvFiltersActiveBadge.setVisibility(View.GONE);
+                hChipsScroll.setVisibility(View.GONE);
+            }
 
-        LinearLayout actionGrid = buildActionButtonsGrid(activity, density, theme, () -> allQueriedItems, runScanRef, actionButtonsMap);
-        updateActionStates(currentCriteria.source, currentCriteria, actionButtonsMap);
-        workflowLayout.addView(actionGrid);
+            chipsContainer.removeAllViews();
+            for (Pair<String, Runnable> item : activeList) {
+                LinearLayout chip = new LinearLayout(activity);
+                chip.setOrientation(LinearLayout.HORIZONTAL);
+                chip.setGravity(Gravity.CENTER_VERTICAL);
+                chip.setBackground(createRoundedDrawable(theme.primaryContainer, 12 * density));
+                int cPadH = (int) (10 * density);
+                int cPadV = (int) (4 * density);
+                chip.setPadding(cPadH, cPadV, (int) (8 * density), cPadV);
+                LinearLayout.LayoutParams cLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+                cLp.rightMargin = (int) (6 * density);
+                chip.setLayoutParams(cLp);
+
+                TextView tvChip = new TextView(activity);
+                tvChip.setText(item.first);
+                tvChip.setTextSize(11f);
+                tvChip.setTypeface(null, Typeface.BOLD);
+                tvChip.setTextColor(theme.onPrimaryContainer);
+                chip.addView(tvChip);
+
+                TextView tvClose = new TextView(activity);
+                tvClose.setText(" ✕");
+                tvClose.setTextSize(12f);
+                tvClose.setTypeface(null, Typeface.BOLD);
+                tvClose.setTextColor(theme.onPrimaryContainer);
+                tvClose.setPadding((int) (4 * density), 0, 0, 0);
+                chip.addView(tvClose);
+
+                chip.setClickable(true);
+                chip.setFocusable(true);
+                chip.setOnClickListener(v -> {
+                    item.second.run();
+                    filterCardsRef[0] = build21FiltersAccordion(activity, filtersAccordionContainer, density, theme, runScanRef);
+                    updateFilterVisibility(currentCriteria.source, filterCardsRef[0]);
+                    updateActionStates(currentCriteria.source, currentCriteria, actionButtonsMap);
+                    updateChipsAndBadgeRef[0].run();
+                    if (runScanRef[0] != null) runScanRef[0].run();
+                });
+                chipsContainer.addView(chip);
+            }
+        };
+
+        // Header click toggles filter accordion expansion
+        filterHeaderRow.setOnClickListener(v -> {
+            boolean isExpanded = (filtersAccordionContainer.getVisibility() == View.VISIBLE);
+            if (isExpanded) {
+                filtersAccordionContainer.setVisibility(View.GONE);
+                filterActionRow.setVisibility(View.GONE);
+                ivFiltersChevron.setImageDrawable(new MaterialVectorDrawable(MaterialVectorDrawable.TYPE_CHEVRON_DOWN, theme.textSecondary));
+            } else {
+                filtersAccordionContainer.setVisibility(View.VISIBLE);
+                filterActionRow.setVisibility(View.VISIBLE);
+                ivFiltersChevron.setImageDrawable(new MaterialVectorDrawable(MaterialVectorDrawable.TYPE_CHEVRON_UP, theme.textSecondary));
+            }
+        });
+
+        btnResetFilters.setOnClickListener(v -> {
+            StorageScanner.SourceType savedSource = currentCriteria.source;
+            currentCriteria = new StorageScanner.FilterCriteria();
+            currentCriteria.source = savedSource;
+            filterCardsRef[0] = build21FiltersAccordion(activity, filtersAccordionContainer, density, theme, runScanRef);
+            updateFilterVisibility(currentCriteria.source, filterCardsRef[0]);
+            updateActionStates(currentCriteria.source, currentCriteria, actionButtonsMap);
+            updateChipsAndBadgeRef[0].run();
+            if (runScanRef[0] != null) runScanRef[0].run();
+            Toast.makeText(activity, "Reset all filters to default", Toast.LENGTH_SHORT).show();
+        });
+
+        btnApplyScan.setOnClickListener(v -> {
+            updateActionStates(currentCriteria.source, currentCriteria, actionButtonsMap);
+            // Auto-collapse filters on apply so preview is immediately prominent
+            filtersAccordionContainer.setVisibility(View.GONE);
+            filterActionRow.setVisibility(View.GONE);
+            ivFiltersChevron.setImageDrawable(new MaterialVectorDrawable(MaterialVectorDrawable.TYPE_CHEVRON_DOWN, theme.textSecondary));
+            updateChipsAndBadgeRef[0].run();
+            if (runScanRef[0] != null) runScanRef[0].run();
+        });
 
         // ─────────────────────────────────────────────────────────────────────
-        // RESULTS & MATCHED MEDIA LIST
+        // STEP 3: MATCHED MEDIA RESULTS (Preview visible immediately)
         // ─────────────────────────────────────────────────────────────────────
         LinearLayout resultsHeader = new LinearLayout(activity);
         resultsHeader.setOrientation(LinearLayout.VERTICAL);
-        resultsHeader.setPadding(0, (int) (16 * density), 0, (int) (6 * density));
+        resultsHeader.setPadding(0, (int) (8 * density), 0, (int) (6 * density));
 
-        TextView tvResTitle = new TextView(activity);
-        tvResTitle.setText("Matched Media Results");
-        tvResTitle.setTextSize(14f);
-        tvResTitle.setTypeface(null, Typeface.BOLD);
-        tvResTitle.setTextColor(theme.textPrimary);
-        resultsHeader.addView(tvResTitle);
+        LinearLayout resTitleRow = createSectionHeader(activity, 3, "Matched Media Results", density, theme);
+        resultsHeader.addView(resTitleRow);
 
         tvResultsStatus.setText("Scanning items...");
         tvResultsStatus.setTextSize(11.5f);
         tvResultsStatus.setTextColor(theme.textSecondary);
+        tvResultsStatus.setPadding((int) (28 * density), 0, 0, 0);
         resultsHeader.addView(tvResultsStatus);
         workflowLayout.addView(resultsHeader);
 
         workflowLayout.addView(resultsListContainer);
+
+        // ─────────────────────────────────────────────────────────────────────
+        // STEP 4: CHOOSE ACTION (9 Actions)
+        // ─────────────────────────────────────────────────────────────────────
+        workflowLayout.addView(createSectionHeader(activity, 4, "Choose Action (9)", density, theme));
+
+        LinearLayout actionGrid = buildActionButtonsGrid(activity, density, theme, () -> allQueriedItems, runScanRef, actionButtonsMap);
+        updateActionStates(currentCriteria.source, currentCriteria, actionButtonsMap);
+        workflowLayout.addView(actionGrid);
 
         // ─────────────────────────────────────────────────────────────────────
         // Query Execution Engine
@@ -463,6 +602,7 @@ public class NativeToolkitDialog {
                         }
                         tvResultsStatus.setText(allQueriedItems.size() + " matched • " + consuming + " consuming (" + StorageScanner.formatBytes(totalQuotaBytes) + ")");
                         renderResultsList(activity, resultsListContainer, allQueriedItems, density, theme);
+                        if (updateChipsAndBadgeRef[0] != null) updateChipsAndBadgeRef[0].run();
                     });
                 } catch (Throwable t) {
                     Logger.printException(() -> "Error in runScan", t);
@@ -497,6 +637,100 @@ public class NativeToolkitDialog {
 
         // Run initial scan
         runScanRef[0].run();
+    }
+
+    private static List<Pair<String, Runnable>> getActiveFilterList(StorageScanner.FilterCriteria crit) {
+        List<Pair<String, Runnable>> list = new ArrayList<>();
+        if (!crit.albumsInclude.isEmpty()) {
+            list.add(new Pair<>("Albums: " + crit.albumsInclude.size(), () -> crit.albumsInclude.clear()));
+        }
+        if (crit.searchQuery != null && !crit.searchQuery.trim().isEmpty()) {
+            String q = crit.searchQuery.trim();
+            if (q.length() > 12) q = q.substring(0, 10) + "..";
+            list.add(new Pair<>("Search: \"" + q + "\"", () -> crit.searchQuery = ""));
+        }
+        if (!crit.albumsExclude.isEmpty()) {
+            list.add(new Pair<>("Excl. Albums: " + crit.albumsExclude.size(), () -> crit.albumsExclude.clear()));
+        }
+        if (crit.lowerBoundaryDate > 0 || crit.higherBoundaryDate > 0) {
+            list.add(new Pair<>("Date (" + crit.intervalType + ")", () -> {
+                crit.lowerBoundaryDate = 0;
+                crit.higherBoundaryDate = 0;
+            }));
+        }
+        if (crit.fileNameRegex != null && !crit.fileNameRegex.trim().isEmpty()) {
+            String fn = crit.fileNameRegex.trim();
+            if (fn.length() > 12) fn = fn.substring(0, 10) + "..";
+            list.add(new Pair<>("File: " + fn, () -> crit.fileNameRegex = ""));
+        }
+        if (crit.descriptionRegex != null && !crit.descriptionRegex.trim().isEmpty()) {
+            String desc = crit.descriptionRegex.trim();
+            if (desc.length() > 12) desc = desc.substring(0, 10) + "..";
+            list.add(new Pair<>("Desc: " + desc, () -> crit.descriptionRegex = ""));
+        }
+        if (crit.space != null && crit.space != StorageScanner.SpaceFilter.ANY) {
+            list.add(new Pair<>("Space: " + crit.space.name().toLowerCase(), () -> crit.space = StorageScanner.SpaceFilter.ANY));
+        }
+        if (crit.similarityThreshold > 0) {
+            list.add(new Pair<>("Similarity: " + (int) (crit.similarityThreshold * 100) + "%", () -> crit.similarityThreshold = 0f));
+        }
+        if (crit.lowerBoundarySize > 0 || crit.higherBoundarySize > 0) {
+            list.add(new Pair<>("Size Range", () -> {
+                crit.lowerBoundarySize = 0;
+                crit.higherBoundarySize = 0;
+            }));
+        }
+        if (crit.minWidth > 0 || crit.maxWidth > 0 || crit.minHeight > 0 || crit.maxHeight > 0) {
+            list.add(new Pair<>("Resolution", () -> {
+                crit.minWidth = 0;
+                crit.maxWidth = 0;
+                crit.minHeight = 0;
+                crit.maxHeight = 0;
+            }));
+        }
+        if (crit.minDuration > 0 || crit.maxDuration > 0) {
+            list.add(new Pair<>("Duration", () -> {
+                crit.minDuration = 0;
+                crit.maxDuration = 0;
+            }));
+        }
+        if (crit.quality != null) {
+            list.add(new Pair<>("Quality: " + crit.quality, () -> crit.quality = null));
+        }
+        if (crit.mediaType != null) {
+            list.add(new Pair<>("Type: " + crit.mediaType, () -> crit.mediaType = null));
+        }
+        if (crit.uploadStatus != null) {
+            list.add(new Pair<>("Upload: " + crit.uploadStatus, () -> crit.uploadStatus = null));
+        }
+        if (crit.archived != null) {
+            list.add(new Pair<>("Archived: " + (crit.archived ? "Yes" : "No"), () -> crit.archived = null));
+        }
+        if (crit.owned != null) {
+            list.add(new Pair<>("Owned: " + (crit.owned ? "Yes" : "No"), () -> crit.owned = null));
+        }
+        if (crit.hasLocation != null || crit.boundSouth != null) {
+            list.add(new Pair<>("Location", () -> {
+                crit.hasLocation = null;
+                crit.boundSouth = null;
+                crit.boundWest = null;
+                crit.boundNorth = null;
+                crit.boundEast = null;
+            }));
+        }
+        if (crit.favorite != null) {
+            list.add(new Pair<>("Favorite: " + (crit.favorite ? "Yes" : "No"), () -> crit.favorite = null));
+        }
+        if (crit.excludeShared) {
+            list.add(new Pair<>("Excl. Shared", () -> crit.excludeShared = false));
+        }
+        if (crit.excludeFavorites) {
+            list.add(new Pair<>("Excl. Favs", () -> crit.excludeFavorites = false));
+        }
+        if (!crit.sortBySize) {
+            list.add(new Pair<>("Sort: Default", () -> crit.sortBySize = true));
+        }
+        return list;
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -1690,12 +1924,26 @@ public class NativeToolkitDialog {
         updateBadge.run();
         card.addView(content);
 
+        Runnable collapseThis = () -> {
+            expandedSet.remove(title);
+            content.setVisibility(View.GONE);
+            ivChev.setImageDrawable(new MaterialVectorDrawable(MaterialVectorDrawable.TYPE_CHEVRON_DOWN, theme.textSecondary));
+        };
+        card.setTag(collapseThis);
+
         View.OnClickListener toggle = v -> {
             if (expandedSet.contains(title)) {
-                expandedSet.remove(title);
-                content.setVisibility(View.GONE);
-                ivChev.setImageDrawable(new MaterialVectorDrawable(MaterialVectorDrawable.TYPE_CHEVRON_DOWN, theme.textSecondary));
+                collapseThis.run();
             } else {
+                // Smart Accordion: collapse sibling filter cards so only one stays open
+                for (int i = 0; i < container.getChildCount(); i++) {
+                    View child = container.getChildAt(i);
+                    Object tag = child.getTag();
+                    if (tag instanceof Runnable) {
+                        ((Runnable) tag).run();
+                    }
+                }
+                expandedSet.clear();
                 expandedSet.add(title);
                 content.setVisibility(View.VISIBLE);
                 ivChev.setImageDrawable(new MaterialVectorDrawable(MaterialVectorDrawable.TYPE_CHEVRON_UP, theme.textSecondary));
