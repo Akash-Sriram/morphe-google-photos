@@ -2571,7 +2571,7 @@ public class StorageScanner {
         if (context == null || items == null || items.isEmpty()) return false;
         Log.i("morphe: StorageScanner", "executeOnlineMarsMoveTask: starting for " + items.size() + " items");
 
-        int chunkSize = 50;
+        int chunkSize = 5;
         int totalChunks = (items.size() + chunkSize - 1) / chunkSize;
         int successCount = 0;
 
@@ -2787,7 +2787,7 @@ public class StorageScanner {
         if (context == null || items == null || items.isEmpty()) return false;
         Log.i("morphe: StorageScanner", "executeOnlineMarsRemoveTask: starting for " + items.size() + " items");
 
-        int chunkSize = 50;
+        int chunkSize = 5;
         int totalChunks = (items.size() + chunkSize - 1) / chunkSize;
         int successCount = 0;
 
@@ -2795,6 +2795,11 @@ public class StorageScanner {
             int chunkIndex = (i / chunkSize) + 1;
             List<MediaItem> chunk = items.subList(i, Math.min(i + chunkSize, items.size()));
             boolean chunkSuccess = false;
+
+            java.util.function.Consumer<String> cb = sActionProgressCallback;
+            if (cb != null) {
+                cb.accept("Decrypting & moving items (" + (i + 1) + "–" + Math.min(i + chunkSize, items.size()) + " of " + items.size() + ")...");
+            }
 
             try {
                 List<?> coreItems = loadCoreMediaItems(context, accountId, chunk);

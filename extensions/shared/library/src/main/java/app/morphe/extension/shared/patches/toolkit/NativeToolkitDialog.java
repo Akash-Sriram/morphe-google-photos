@@ -378,22 +378,23 @@ public class NativeToolkitDialog {
         tvFiltersActiveBadge.setTextColor(theme.textSecondary);
         tvFiltersActiveBadge.setBackground(createRoundedDrawable(theme.surfaceContainer, 10 * density));
         tvFiltersActiveBadge.setText("All Media (No filters)");
+        tvFiltersActiveBadge.setSingleLine(true);
+        tvFiltersActiveBadge.setEllipsize(TextUtils.TruncateAt.END);
         int fabPadH = (int) (7 * density);
         int fabPadV = (int) (2 * density);
         tvFiltersActiveBadge.setPadding(fabPadH, fabPadV, fabPadH, fabPadV);
-        LinearLayout.LayoutParams fabLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        LinearLayout.LayoutParams fabLp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
         fabLp.leftMargin = (int) (8 * density);
+        fabLp.rightMargin = (int) (6 * density);
         tvFiltersActiveBadge.setLayoutParams(fabLp);
         filterHeaderRow.addView(tvFiltersActiveBadge);
-
-        View filterHeaderSpacer = new View(activity);
-        filterHeaderRow.addView(filterHeaderSpacer, new LinearLayout.LayoutParams(0, 0, 1f));
 
         ImageView ivFiltersChevron = new ImageView(activity);
         ivFiltersChevron.setTag("no_avatar");
         ivFiltersChevron.setContentDescription("collapse");
         ivFiltersChevron.setImageDrawable(new MaterialVectorDrawable(MaterialVectorDrawable.TYPE_CHEVRON_UP, theme.textSecondary));
-        ivFiltersChevron.setLayoutParams(new LinearLayout.LayoutParams((int) (20 * density), (int) (20 * density)));
+        LinearLayout.LayoutParams ivLp = new LinearLayout.LayoutParams((int) (20 * density), (int) (20 * density));
+        ivFiltersChevron.setLayoutParams(ivLp);
         filterHeaderRow.addView(ivFiltersChevron);
 
         workflowLayout.addView(filterHeaderRow);
