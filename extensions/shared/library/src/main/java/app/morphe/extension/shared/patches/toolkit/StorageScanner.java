@@ -13,9 +13,12 @@ import android.graphics.Color;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
 import android.os.Parcelable;
 import android.provider.MediaStore;
 import android.util.Log;
+import android.widget.Toast;
 
 import java.io.ByteArrayOutputStream;
 import java.io.File;
@@ -2600,6 +2603,138 @@ public class StorageScanner {
         return successCount > 0;
     }
 
+    public static volatile List<MediaItem> sPendingUnlockItems = null;
+    public static volatile int sPendingUnlockAccountId = -1;
+
+    public static void onMarsGridActivityCreated(final Activity activity) {
+        if (activity == null) return;
+        final List<MediaItem> itemsToUnlock = sPendingUnlockItems;
+        final int accountId = sPendingUnlockAccountId;
+        if (itemsToUnlock == null || itemsToUnlock.isEmpty()) return;
+        sPendingUnlockItems = null;
+        sPendingUnlockAccountId = -1;
+
+        Log.i("morphe: StorageScanner", "onMarsGridActivityCreated: starting auto-unlock for " + itemsToUnlock.size() + " items");
+
+        new Handler(Looper.getMainLooper()).postDelayed(() -> {
+            if (activity.isFinishing() || activity.isDestroyed()) return;
+            Toast.makeText(activity, "Unlocking " + itemsToUnlock.size() + " item(s) from Locked Folder...", Toast.LENGTH_SHORT).show();
+
+            new Thread(() -> {
+                try {
+                    List<?> coreMedia = loadDirectMarsMedia(activity, accountId, itemsToUnlock);
+                    if (coreMedia == null || coreMedia.isEmpty()) {
+                        coreMedia = loadCoreMediaItems(activity, accountId, itemsToUnlock);
+                    }
+
+                    if (coreMedia != null && !coreMedia.isEmpty()) {
+                        final List<?> finalCoreMedia = coreMedia;
+                        activity.runOnUiThread(() -> {
+                            boolean invoked = false;
+                            try {
+                                Class<?> bzoqClass = Class.forName("bzoq");
+                                Class<?> lajaeClass = Class.forName("lajae");
+                                Object lajae = bzoqClass.getMethod("e", Context.class, Class.class).invoke(null, activity, lajaeClass);
+                                if (lajae != null) {
+                                    Class<?> ccrgClass = Class.forName("ccrg");
+                                    Method copyOf = ccrgClass.getMethod("h", Collection.class);
+                                    Object immutableList = copyOf.invoke(null, finalCoreMedia);
+                                    Method bMethod = lajaeClass.getMethod("b", ccrgClass);
+                                    bMethod.invoke(lajae, immutableList);
+                                    invoked = true;
+                                    Log.i("morphe: StorageScanner", "Successfully invoked Lajae.b for " + finalCoreMedia.size() + " items");
+                                }
+                            } catch (Throwable t) {
+                                Log.w("morphe: StorageScanner", "Error invoking Lajae.b", t);
+                            }
+
+                            if (!invoked) {
+                                new Thread(() -> {
+                                    boolean ok = executeOnlineMarsRemoveTask(activity, accountId, itemsToUnlock);
+                                    activity.runOnUiThread(() -> {
+                                        Toast.makeText(activity, ok ? "Successfully unlocked " + itemsToUnlock.size() + " item(s)!" : "Failed to unlock items.", Toast.LENGTH_LONG).show();
+                                    });
+                                }).start();
+                            }
+                        });
+                    } else {
+                        new Thread(() -> {
+                            boolean ok = executeOnlineMarsRemoveTask(activity, accountId, itemsToUnlock);
+                            activity.runOnUiThread(() -> {
+                                Toast.makeText(activity, ok ? "Successfully unlocked " + itemsToUnlock.size() + " item(s)!" : "Failed to unlock items.", Toast.LENGTH_LONG).show();
+                            });
+                        }).start();
+                    }
+                } catch (Throwable t) {
+                    Log.e("morphe: StorageScanner", "Error in auto-unlock thread", t);
+                }
+            }).start();
+        }, 600);
+    }
+
+    private static List<?> loadDirectMarsMedia(Context context, int accountId, List<MediaItem> items) {
+        List<Object> matched = new ArrayList<>();
+        try {
+            Class<?> lajhxClass = Class.forName("lajhx");
+            Object marsColl = lajhxClass.getConstructor(int.class).newInstance(accountId);
+            Class<?> bwpgClass = Class.forName("bwpg");
+            Class<?> wsgClass = Class.forName("wsg");
+            Object collRef = wsgClass.getMethod("a", bwpgClass).invoke(null, marsColl);
+
+            Class<?> wrlClass = Class.forName("wrl");
+            Class<?> wryClass = Class.forName("wry");
+            Class<?> wqsClass = Class.forName("wqs");
+            Class<?> wqbClass = Class.forName("wqb");
+
+            Object wqsVal = wqsClass.getField("a").get(null);
+            Object wqbVal = buildCoreFeaturesRequest(context);
+            if (wqbVal == null) {
+                wqbVal = wqbClass.getField("a").get(null);
+            }
+
+            Method hMethod = wrlClass.getMethod("H", Context.class, wryClass, wqsClass, wqbClass);
+            List<?> allLoaded = (List<?>) hMethod.invoke(null, context, collRef, wqsVal, wqbVal);
+            if (allLoaded != null && !allLoaded.isEmpty()) {
+                if (items == null || items.isEmpty() || items.size() == allLoaded.size()) {
+                    matched.addAll(allLoaded);
+                } else {
+                    Set<String> targetKeys = new HashSet<>();
+                    for (MediaItem mi : items) {
+                        if (mi.dedupKey != null && !mi.dedupKey.isEmpty()) targetKeys.add(mi.dedupKey);
+                        if (mi.mediaKey != null && !mi.mediaKey.isEmpty()) targetKeys.add(mi.mediaKey);
+                    }
+                    Class<?> zonClass = null;
+                    try { zonClass = Class.forName("zon"); } catch (Throwable ignored) {}
+                    for (Object media : allLoaded) {
+                        boolean match = false;
+                        if (zonClass != null) {
+                            try {
+                                Object zon = media.getClass().getMethod("b", Class.class).invoke(media, zonClass);
+                                if (zon != null) {
+                                    Field aField = zon.getClass().getField("a");
+                                    Object opt = aField.get(zon);
+                                    if (opt instanceof java.util.Optional && ((java.util.Optional<?>) opt).isPresent()) {
+                                        Object lahnp = ((java.util.Optional<?>) opt).get();
+                                        if (lahnp != null && targetKeys.contains(lahnp.toString())) match = true;
+                                    }
+                                }
+                            } catch (Throwable ignored) {}
+                        }
+                        if (match || targetKeys.isEmpty()) {
+                            matched.add(media);
+                        }
+                    }
+                    if (matched.isEmpty()) {
+                        matched.addAll(allLoaded);
+                    }
+                }
+            }
+        } catch (Throwable t) {
+            Logger.printException(() -> "loadDirectMarsMedia error", t);
+        }
+        return matched;
+    }
+
     private static boolean executeOnlineMarsRemoveTask(Context context, int accountId, List<MediaItem> items) {
         if (context == null || items == null || items.isEmpty()) return false;
         Log.i("morphe: StorageScanner", "executeOnlineMarsRemoveTask: starting for " + items.size() + " items");
@@ -2615,6 +2750,9 @@ public class StorageScanner {
 
             try {
                 List<?> coreItems = loadCoreMediaItems(context, accountId, chunk);
+                if (coreItems.isEmpty()) {
+                    coreItems = loadDirectMarsMedia(context, accountId, chunk);
+                }
                 if (!coreItems.isEmpty()) {
                     Class<?> ccrgClass = Class.forName("ccrg");
                     Method copyOfMethod = ccrgClass.getMethod("h", Collection.class);
@@ -2626,9 +2764,10 @@ public class StorageScanner {
 
                     Object azlkMu = Class.forName("azlk").getField("mu").get(null);
 
+                    String taskName = "com.google." + "android.apps.photos.mars.actionhandler.impl.MarsMoveHandlerImpl.MarsRemoveTask";
                     Class<?> rgaClass = Class.forName("rga");
                     Method lMethod = rgaClass.getMethod("l", String.class, Class.forName("azll"), String.class, Class.forName("qdr"));
-                    Object qdp = lMethod.invoke(null, "com.google.android.apps.photos.mars.actionhandler.impl.MarsMoveHandlerImpl.MarsRemoveTask", azlkMu, "mars_remove_result", mbjInstance);
+                    Object qdp = lMethod.invoke(null, taskName, azlkMu, "mars_remove_result", mbjInstance);
 
                     if (qdp != null) {
                         Object qdn = qdp.getClass().getMethod("b").invoke(qdp);
@@ -2636,15 +2775,26 @@ public class StorageScanner {
 
                         Class<?> bxtyClass = Class.forName("bxty");
                         Class<?> bxueClass = Class.forName("bxue");
-                        Method runMethod = bxueClass.getMethod("f", Context.class, bxtyClass);
-                        Object res = runMethod.invoke(null, context, task);
-                        if (res != null) {
+                        Class<?> bzoqClass = Class.forName("bzoq");
+                        Object taskManager = null;
+                        try {
+                            taskManager = bzoqClass.getMethod("e", Context.class, Class.class).invoke(null, context, bxueClass);
+                        } catch (Throwable ignored) {}
+
+                        if (taskManager != null) {
                             try {
-                                int statusCode = res.getClass().getField("d").getInt(res);
-                                if (statusCode == 200) chunkSuccess = true;
-                            } catch (Throwable ignored) {
+                                Method rMethod = bxueClass.getMethod("r", bxtyClass);
+                                rMethod.invoke(taskManager, task);
                                 chunkSuccess = true;
+                            } catch (Throwable t) {
+                                Method runMethod = bxueClass.getMethod("f", Context.class, bxtyClass);
+                                Object res = runMethod.invoke(null, context, task);
+                                if (res != null) chunkSuccess = true;
                             }
+                        } else {
+                            Method runMethod = bxueClass.getMethod("f", Context.class, bxtyClass);
+                            Object res = runMethod.invoke(null, context, task);
+                            if (res != null) chunkSuccess = true;
                         }
                     }
                 }
@@ -3045,6 +3195,8 @@ public class StorageScanner {
         }
 
         if ("unLock".equals(actionId)) {
+            sPendingUnlockItems = (items != null) ? new ArrayList<>(items) : new ArrayList<>();
+            sPendingUnlockAccountId = account.accountId;
             boolean launched = launchMarsUnlockIntent(context, account.accountId);
             Logger.printInfo(() -> "launchMarsUnlockIntent result: " + launched);
             triggerOnlineSync(context, account.accountId);

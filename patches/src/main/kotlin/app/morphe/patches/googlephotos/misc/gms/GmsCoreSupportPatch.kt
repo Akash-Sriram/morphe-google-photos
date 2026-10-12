@@ -348,6 +348,38 @@ val gmsCoreSupportPatch = gmsCoreSupportPatch(
         } else {
             println(">>> GmsCoreSupportPatch: WARNING - killswitchFieldRef was null!")
         }
+
+        // 11) Hook MarsGridActivity.onCreate to trigger auto-unlock of pending items after biometric auth.
+        //     When the Toolkit "Unlock" button is pressed, StorageScanner sets sPendingUnlockItems and
+        //     launches MarsReauthActivity -> MarsGridActivity.  Once onCreate completes and the bzoq
+        //     DI container is fully wired (including the MarsRemoveHandler / ajac binding), we call
+        //     StorageScanner.onMarsGridActivityCreated(this) which posts a short-delayed runnable on
+        //     the main thread to load & remove the pending media from the Locked Folder.
+        classDefForEach { classDef ->
+            if (classDef.type == "Lcom/google/android/apps/photos/mars/grid/MarsGridActivity;") {
+                val mutableClass = mutableClassDefBy(classDef)
+                mutableClass.methods.find { it.name == "onCreate" }?.let { method ->
+                    val mutableMethod = mutableClass.findMutableMethodOf(method)
+                    val instrList = mutableMethod.implementation!!.instructions.toList()
+                    var returnIndex = -1
+                    for (i in instrList.indices.reversed()) {
+                        if (instrList[i].opcode == com.android.tools.smali.dexlib2.Opcode.RETURN_VOID) {
+                            returnIndex = i
+                            break
+                        }
+                    }
+                    if (returnIndex >= 0) {
+                        mutableMethod.addInstruction(
+                            returnIndex,
+                            "invoke-static {p0}, Lapp/morphe/extension/shared/patches/toolkit/StorageScanner;->onMarsGridActivityCreated(Landroid/app/Activity;)V",
+                        )
+                        println(">>> GmsCoreSupportPatch: Injected onMarsGridActivityCreated hook into MarsGridActivity.onCreate at index $returnIndex")
+                    } else {
+                        println(">>> GmsCoreSupportPatch: WARNING - could not find return-void in MarsGridActivity.onCreate")
+                    }
+                } ?: println(">>> GmsCoreSupportPatch: WARNING - MarsGridActivity.onCreate not found")
+            }
+        }
     },
 ) {
     dependsOn(
