@@ -2662,7 +2662,16 @@ public class StorageScanner {
     public static boolean launchMarsUnlockIntent(Context context, int accountId) {
         if (context == null) return false;
         try {
-            Class<?> marsGridClass = Class.forName("com.google.android.apps.photos.mars.grid.MarsGridActivity");
+            // Use split literal to prevent GmsCoreSupport bytecode renamer from rewriting official class paths
+            String basePhotosPkg = "com.google." + "android.apps.photos";
+            ClassLoader cl = context.getClassLoader();
+            Class<?> marsGridClass;
+            try {
+                marsGridClass = cl.loadClass(basePhotosPkg + ".mars.grid.MarsGridActivity");
+            } catch (Throwable t) {
+                marsGridClass = Class.forName(basePhotosPkg + ".mars.grid.MarsGridActivity");
+            }
+
             Intent gridIntent = new Intent(context, marsGridClass);
             gridIntent.putExtra("account_id", accountId);
             gridIntent.putExtra("is_mars_screen", true);
@@ -2672,7 +2681,12 @@ public class StorageScanner {
 
             Intent targetIntent;
             try {
-                Class<?> reauthClass = Class.forName("com.google.android.apps.photos.mars.auth.MarsReauthActivity");
+                Class<?> reauthClass;
+                try {
+                    reauthClass = cl.loadClass(basePhotosPkg + ".mars.auth.MarsReauthActivity");
+                } catch (Throwable t) {
+                    reauthClass = Class.forName(basePhotosPkg + ".mars.auth.MarsReauthActivity");
+                }
                 Intent reauthIntent = new Intent(context, reauthClass);
                 reauthIntent.putExtra("account_id", accountId);
                 reauthIntent.putExtra("pass_through_intent", gridIntent);

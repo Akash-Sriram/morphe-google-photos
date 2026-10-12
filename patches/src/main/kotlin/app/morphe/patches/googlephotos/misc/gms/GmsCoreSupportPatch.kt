@@ -128,6 +128,9 @@ val gmsCoreSupportPatch = gmsCoreSupportPatch(
                                 ?: return@forEachIndexed
 
                         val original = stringRef.string
+                        if (original.endsWith("Activity") || original.contains("Activity$")) {
+                            return@forEachIndexed
+                        }
                         val transformed = when {
                             marsLibPrefixes.any { original.startsWith(it) } ->
                                 original.replace("com.google.android.libraries.photos.api.mars", "$targetPackageName.api.mars")
