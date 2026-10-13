@@ -1,9 +1,4 @@
-/*
- * Copyright 2026 Morphe.
- * https://github.com/MorpheApp/morphe-patches/pull/2470
- */
-
-package app.morphe.patches.all.misc.updates
+package app.morphe.patches.googlephotos.misc.gms
 
 import app.morphe.patcher.Fingerprint
 import app.morphe.patcher.extensions.InstructionExtensions.addInstruction
@@ -15,8 +10,10 @@ import app.morphe.patcher.patch.InstallerType
 import app.morphe.patcher.patch.PatchAvailability
 import app.morphe.patcher.patch.bytecodePatch
 import app.morphe.patcher.patch.resourcePatch
+import app.morphe.patches.googlephotos.misc.extension.sharedExtensionPatch
+import app.morphe.patches.googlephotos.misc.gms.Constants.MORPHE_PHOTOS_PACKAGE_NAME
 import app.morphe.patches.shared.compat.AppCompatibilities
-import app.morphe.patches.shared.misc.extension.sharedExtensionPatch
+import app.morphe.patches.shared.misc.gms.PackageNameConfig
 import app.morphe.util.getFreeRegisterProvider
 import app.morphe.util.getNode
 import app.morphe.util.matchAllMethodIndicesForEach
@@ -31,11 +28,10 @@ private const val EXTENSION_CLASS = "Lapp/morphe/extension/shared/patches/Disabl
 
 private var originalVersionCode: Int = 0
 
-private val disablePlayStoreUpdatesResourcePatch = resourcePatch {
+private val officialPackageNameResourcePatch = resourcePatch {
     execute {
         document("AndroidManifest.xml").use { document ->
             val manifest = document.getNode("manifest") as Element
-
             originalVersionCode = manifest.getAttribute("android:versionCode").toInt()
         }
     }
@@ -43,7 +39,6 @@ private val disablePlayStoreUpdatesResourcePatch = resourcePatch {
     finalize {
         document("AndroidManifest.xml").use { document ->
             val manifest = document.getNode("manifest") as Element
-
             // Max allowed by Play Store is 2100000000, but Android allows max int value.
             manifest.setAttribute("android:versionCode", Int.MAX_VALUE.toString())
         }
@@ -51,11 +46,11 @@ private val disablePlayStoreUpdatesResourcePatch = resourcePatch {
 }
 
 @Suppress("unused")
-val disablePlayStoreUpdatesPatch = bytecodePatch(
-    name = "Disable Play Store updates",
-    description = "Disables Play Store updates by setting the version code to the maximum allowed (Int.MAX_VALUE). " +
-            "Prevents Google Play from automatically overwriting the patched app when using the official package name " +
-            "on devices without preinstalled Photos.",
+val officialPackageNamePatch = bytecodePatch(
+    name = "Official package name",
+    description = "Retains the official package name (com.google.android.apps.photos) instead of renaming to " +
+        "$MORPHE_PHOTOS_PACKAGE_NAME and disables Play Store updates by setting the version code to maximum to prevent automatic overwriting. " +
+        "This is strictly for non-root users whose devices do not have Google Photos preinstalled by the OEM.",
     default = false,
 ) {
     category("Official package name")
@@ -68,8 +63,12 @@ val disablePlayStoreUpdatesPatch = bytecodePatch(
         }
     }
 
-    dependsOn(disablePlayStoreUpdatesResourcePatch)
-    dependsOn(sharedExtensionPatch("shared", false))
+    dependsOn(officialPackageNameResourcePatch)
+    dependsOn(sharedExtensionPatch)
+
+    execute {
+        PackageNameConfig.useOfficialPackageName = true
+    }
 
     finalize {
         Fingerprint(
@@ -128,12 +127,10 @@ val disablePlayStoreUpdatesPatch = bytecodePatch(
             replaceInstruction(
                 index,
                 "invoke-static/range { v$packageInfoRegister .. v$packageInfoRegister }, " +
-                        "$EXTENSION_CLASS->getVersionCode(Landroid/content/pm/PackageInfo;)I",
+                    "$EXTENSION_CLASS->getVersionCode(Landroid/content/pm/PackageInfo;)I",
             )
         }
 
-        // Replace long version code, which is a combination of
-        // regular version code and versionCodeMajor.
         Fingerprint(
             filters = listOf(
                 methodCall(
@@ -153,7 +150,7 @@ val disablePlayStoreUpdatesPatch = bytecodePatch(
             replaceInstruction(
                 index,
                 "invoke-static/range { v$register .. v$register }, " +
-                        "$EXTENSION_CLASS->getVersionCodeLong(Landroid/content/pm/PackageInfo;)J",
+                    "$EXTENSION_CLASS->getVersionCodeLong(Landroid/content/pm/PackageInfo;)J",
             )
         }
     }

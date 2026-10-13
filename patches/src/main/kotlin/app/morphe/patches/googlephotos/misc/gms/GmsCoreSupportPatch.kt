@@ -24,6 +24,7 @@ import app.morphe.util.indexOfFirstInstruction
 import app.morphe.util.indexOfFirstInstructionOrThrow
 import app.morphe.util.returnEarly
 import com.android.tools.smali.dexlib2.AccessFlags
+import com.android.tools.smali.dexlib2.Opcode
 import com.android.tools.smali.dexlib2.iface.ClassDef
 import com.android.tools.smali.dexlib2.iface.Method
 import com.android.tools.smali.dexlib2.iface.instruction.FiveRegisterInstruction
@@ -32,6 +33,12 @@ import com.android.tools.smali.dexlib2.iface.instruction.ReferenceInstruction
 import com.android.tools.smali.dexlib2.iface.reference.FieldReference
 import com.android.tools.smali.dexlib2.iface.reference.MethodReference
 import com.android.tools.smali.dexlib2.iface.reference.StringReference
+import app.morphe.patcher.extensions.InstructionExtensions.addInstructions
+import app.morphe.patcher.util.smali.ExternalLabel
+import app.morphe.patches.googlephotos.misc.bento.BentoModelBuilderFingerprint
+import app.morphe.util.addInstructionsAtControlFlowLabel
+import com.android.tools.smali.dexlib2.iface.instruction.NarrowLiteralInstruction
+import com.android.tools.smali.dexlib2.iface.instruction.TwoRegisterInstruction
 import org.w3c.dom.Element
 
 @Suppress("unused")
@@ -42,6 +49,82 @@ val gmsCoreSupportPatch = gmsCoreSupportPatch(
     extensionPatch = sharedExtensionPatch,
     gmsCoreSupportResourcePatchFactory = ::gmsCoreSupportResourcePatch,
     executeBlock = {
+        // 1. Account Avatar initialization
+        HomeActivityOnCreateFingerprint.method.addInstructions(
+            0,
+            """
+            invoke-static/range { p0 .. p0 }, Lapp/morphe/extension/shared/patches/GooglePhotosAccountAvatar;->install(Landroid/app/Activity;)V
+            invoke-static/range { p0 .. p0 }, Lapp/morphe/extension/shared/patches/GooglePhotosAccountAvatar;->restoreSelectedAccount(Landroid/app/Activity;)V
+            """.trimIndent(),
+        )
+
+        // 2. Google One Bento Badge
+        val targetBentoMethod = BentoModelBuilderFingerprint.methodOrNull
+        if (targetBentoMethod != null) {
+            val bentoClass = mutableClassDefBy(targetBentoMethod.definingClass)
+            val bentoMethod = bentoClass.findMutableMethodOf(targetBentoMethod)
+            val instructions = targetBentoMethod.implementation?.instructions?.toList()
+            if (instructions != null) {
+                val fallbackIndex = instructions.indexOfFirst { inst ->
+                    inst.opcode == Opcode.CONST_16 &&
+                        (inst as? NarrowLiteralInstruction)?.narrowLiteral == 0 &&
+                        instructions.getOrNull(instructions.indexOf(inst) + 1)?.let { nextInst ->
+                            nextInst.opcode == Opcode.IF_EQZ &&
+                                (nextInst as? OneRegisterInstruction)?.registerA == (inst as? OneRegisterInstruction)?.registerA
+                        } == true
+                }
+                if (fallbackIndex != -1) {
+                    val targetReg = (instructions[fallbackIndex] as OneRegisterInstruction).registerA
+                    val valueOfIndex = (fallbackIndex - 1 downTo 0).firstOrNull { i ->
+                        val inst = instructions[i]
+                        inst.opcode == Opcode.INVOKE_STATIC &&
+                            (inst as? ReferenceInstruction)?.reference?.toString()?.contains("Integer;->valueOf(I)Ljava/lang/Integer;") == true
+                    }
+                    if (valueOfIndex != null) {
+                        val intReg = (instructions[valueOfIndex] as? FiveRegisterInstruction)?.registerC
+                        val stringInitIndex = (valueOfIndex - 1 downTo 0).firstOrNull { i ->
+                            val inst = instructions[i]
+                            inst.opcode == Opcode.INVOKE_DIRECT &&
+                                (inst as? ReferenceInstruction)?.reference?.toString()?.contains("<init>(Ljava/lang/String;)V") == true
+                        }
+                        if (stringInitIndex != null && intReg != null) {
+                            val stringReg = (instructions[stringInitIndex] as? FiveRegisterInstruction)?.registerD
+                            var entryIndex = -1
+                            for (i in stringInitIndex - 1 downTo 0) {
+                                if (instructions[i].opcode == Opcode.NEW_INSTANCE) {
+                                    entryIndex = i
+                                } else if (entryIndex != -1) {
+                                    break
+                                }
+                            }
+                            if (entryIndex != -1 && stringReg != null) {
+                                var accountReg = 14
+                                for (i in entryIndex - 1 downTo 0) {
+                                    if (instructions[i].opcode == Opcode.IGET_BOOLEAN) {
+                                        accountReg = (instructions[i] as TwoRegisterInstruction).registerB
+                                        break
+                                    }
+                                }
+                                bentoMethod.addInstructionsAtControlFlowLabel(
+                                    fallbackIndex,
+                                    """
+                                    invoke-static { v$accountReg }, Lapp/morphe/extension/shared/patches/BentoDecorationPatch;->getBadgeText(Ljava/lang/Object;)Ljava/lang/String;
+                                    move-result-object v$stringReg
+                                    if-eqz v$stringReg, :no_badge
+                                    const/4 v$intReg, 1
+                                    goto :build_badge
+                                    :no_badge
+                                    const/16 v$targetReg, 0
+                                    """.trimIndent(),
+                                    ExternalLabel("build_badge", bentoMethod.getInstruction(entryIndex)),
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         // Unified single pass over all classes:
         //  - Google Play Services availability & signature check hooks
         //  - Relax MDD and WorkManager network constraints from UNMETERED/NOT_ROAMING to CONNECTED
