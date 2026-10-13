@@ -29,31 +29,23 @@ val fixMemoryStyleFontLoadingPatch = bytecodePatch(
     dependsOn(sharedExtensionPatch)
 
     execute {
-        classDefForEach { classDef ->
-            if (classDef.type.startsWith("Lapp/morphe/")) return@classDefForEach
-
-            // 1. Skottie font resolver in classes6.dex
-            val methodA = classDef.methods.find {
-                it.parameterTypes == listOf("Ljava/lang/String;", "Landroid/os/CancellationSignal;") &&
-                it.returnType == "Landroid/net/Uri;"
+        // 1. Skottie font resolver (bgwl)
+        val methodA = SkottieFontUriResolverFingerprint.methodOrNull
+        if (methodA != null) {
+            val mutableClass = mutableClassDefBy(methodA.definingClass)
+            val methodB = mutableClass.methods.firstOrNull {
+                it.returnType == "[B" && it.parameterTypes.size == 1 && it.parameterTypes[0] == "Landroid/net/Uri;"
             }
 
-            val methodB = classDef.methods.find {
-                it.parameterTypes == listOf("Landroid/net/Uri;") &&
-                it.returnType == "[B"
-            }
+            // Patch font URI resolver: delegate to StoryFontResolver
+            val mutableMethodA = mutableClass.findMutableMethodOf(methodA)
+            mutableMethodA.addInstructions(0, """
+                invoke-static { p1 }, Lapp/morphe/extension/shared/patches/StoryFontResolver;->resolveFontUri(Ljava/lang/String;)Landroid/net/Uri;
+                move-result-object v0
+                return-object v0
+            """.trimIndent())
 
-            if (methodA != null && methodB != null) {
-                val mutableClass = mutableClassDefBy(classDef)
-
-                // Patch font URI resolver: delegate to StoryFontResolver
-                val mutableMethodA = mutableClass.findMutableMethodOf(methodA)
-                mutableMethodA.addInstructions(0, """
-                    invoke-static { p1 }, Lapp/morphe/extension/shared/patches/StoryFontResolver;->resolveFontUri(Ljava/lang/String;)Landroid/net/Uri;
-                    move-result-object v0
-                    return-object v0
-                """.trimIndent())
-
+            if (methodB != null) {
                 // Patch font data reader: delegate to StoryFontResolver
                 val mutableMethodB = mutableClass.findMutableMethodOf(methodB)
                 mutableMethodB.addInstructions(0, """
@@ -62,39 +54,33 @@ val fixMemoryStyleFontLoadingPatch = bytecodePatch(
                     return-object v0
                 """.trimIndent())
             }
+        }
 
-            // 2. Skottie font loader dispatcher (Lbgsx;->q in classes6.dex)
-            val methodQ = classDef.methods.find {
-                it.parameterTypes.size == 8 &&
-                it.parameterTypes[0] == "Landroid/content/Context;" &&
-                it.parameterTypes.any { param -> param.contains("ConcurrentHashMap") } &&
-                it.returnType != "V"
-            }
+        // 2. Skottie font loader dispatcher (Lbgsx;->q in classes6.dex)
+        val methodQ = SkottieFontLoaderDispatcherFingerprint.methodOrNull
+        if (methodQ != null) {
+            val mutableClassQ = mutableClassDefBy(methodQ.definingClass)
+            val mutableMethodQ = mutableClassQ.findMutableMethodOf(methodQ)
 
-            if (methodQ != null) {
-                val mutableClass = mutableClassDefBy(classDef)
-                val mutableMethodQ = mutableClass.findMutableMethodOf(methodQ)
-
-                // Dynamically find immediateFuture call (e.g. Lccet;->l(Ljava/lang/Object;)Lccej;)
-                val immediateFutureCall = methodQ.implementation?.instructions?.mapNotNull { inst ->
-                    if (inst is Instruction35c && inst.opcode == Opcode.INVOKE_STATIC) {
-                        val ref = inst.reference as? MethodReference
-                        if (ref != null && ref.parameterTypes.size == 1 && ref.returnType == methodQ.returnType) {
-                            "${ref.definingClass}->${ref.name}(${ref.parameterTypes.joinToString("")})${ref.returnType}"
-                        } else null
+            // Dynamically find immediateFuture call (e.g. Lccet;->l(Ljava/lang/Object;)Lccej;)
+            val immediateFutureCall = methodQ.implementation?.instructions?.mapNotNull { inst ->
+                if (inst is Instruction35c && inst.opcode == Opcode.INVOKE_STATIC) {
+                    val ref = inst.reference as? MethodReference
+                    if (ref != null && ref.parameterTypes.size == 1 && ref.returnType == methodQ.returnType) {
+                        "${ref.definingClass}->${ref.name}(${ref.parameterTypes.joinToString("")})${ref.returnType}"
                     } else null
-                }?.firstOrNull() ?: "Lccet;->l(Ljava/lang/Object;)Lccej;"
+                } else null
+            }?.firstOrNull() ?: "Lccet;->l(Ljava/lang/Object;)Lccej;"
 
-                mutableMethodQ.addInstructions(0, """
-                    invoke-static { p0, p4, p6 }, Lapp/morphe/extension/shared/patches/StoryFontResolver;->resolveFontBytesForTarget(Landroid/content/Context;Ljava/lang/Object;Ljava/lang/Object;)[B
-                    move-result-object v0
-                    if-eqz v0, :cond_skip_custom_font
-                    invoke-static { v0 }, $immediateFutureCall
-                    move-result-object v0
-                    return-object v0
-                    :cond_skip_custom_font
-                """.trimIndent())
-            }
+            mutableMethodQ.addInstructions(0, """
+                invoke-static { p0, p4, p6 }, Lapp/morphe/extension/shared/patches/StoryFontResolver;->resolveFontBytesForTarget(Landroid/content/Context;Ljava/lang/Object;Ljava/lang/Object;)[B
+                move-result-object v0
+                if-eqz v0, :cond_skip_custom_font
+                invoke-static { v0 }, $immediateFutureCall
+                move-result-object v0
+                return-object v0
+                :cond_skip_custom_font
+            """.trimIndent())
         }
     }
 }

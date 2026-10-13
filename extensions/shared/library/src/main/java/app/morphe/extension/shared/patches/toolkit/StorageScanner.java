@@ -13,10 +13,12 @@ import android.graphics.Color;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.Environment;
 import android.os.Handler;
 import android.os.Looper;
 import android.os.Parcelable;
 import android.provider.MediaStore;
+import android.provider.Settings;
 import android.util.Log;
 import android.widget.Toast;
 
@@ -39,6 +41,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.regex.Matcher;
@@ -259,10 +262,21 @@ public class StorageScanner {
             this.isArchived = isArchived;
             this.isFavorite = isFavorite;
             this.isMicroVideo = isMicroVideo;
-            this.mimeType = mimeType != null ? mimeType : "";
+            this.mimeType = internMimeType(mimeType);
             this.latitude = latitude;
             this.longitude = longitude;
-            this.caption = caption != null ? caption : "";
+            this.caption = caption != null && !caption.isEmpty() ? caption : "";
+        }
+
+        private static String internMimeType(String mime) {
+            if (mime == null || mime.isEmpty()) return "";
+            if ("image/jpeg".equalsIgnoreCase(mime)) return "image/jpeg";
+            if ("image/png".equalsIgnoreCase(mime)) return "image/png";
+            if ("image/heic".equalsIgnoreCase(mime)) return "image/heic";
+            if ("image/webp".equalsIgnoreCase(mime)) return "image/webp";
+            if ("video/mp4".equalsIgnoreCase(mime)) return "video/mp4";
+            if ("video/quicktime".equalsIgnoreCase(mime)) return "video/quicktime";
+            return mime.intern();
         }
 
         public boolean isTrashed() {
@@ -352,6 +366,12 @@ public class StorageScanner {
         return accounts.get(0);
     }
 
+    private static void tuneDatabasePerformance(SQLiteDatabase db) {
+        if (db == null) return;
+        try (Cursor c = db.rawQuery("PRAGMA cache_size = -8000", null)) { if (c != null) c.moveToFirst(); } catch (Throwable ignored) {}
+        try (Cursor c = db.rawQuery("PRAGMA temp_store = MEMORY", null)) { if (c != null) c.moveToFirst(); } catch (Throwable ignored) {}
+    }
+
     public static List<AlbumInfo> getAvailableAlbums(AccountInfo account) {
         List<AlbumInfo> albums = new ArrayList<>();
         if (account == null) return albums;
@@ -361,6 +381,7 @@ public class StorageScanner {
         SQLiteDatabase db = null;
         try {
             db = SQLiteDatabase.openDatabase(dbFile.getAbsolutePath(), null, SQLiteDatabase.OPEN_READONLY);
+            tuneDatabasePerformance(db);
             if (hasTable(db, "collections") || hasTable(db, "envelopes")) {
                 String sql = "SELECT c.collection_media_key, coalesce(c.title_text, c.title, e.title) as album_title, c.total_items, (c.audience > 1) as is_shared " +
                         "FROM collections c LEFT JOIN envelopes e ON c.associated_envelope_media_key = e.media_key " +
@@ -408,6 +429,7 @@ public class StorageScanner {
         SQLiteDatabase db = null;
         try {
             db = SQLiteDatabase.openDatabase(dbFile.getAbsolutePath(), null, SQLiteDatabase.OPEN_READONLY);
+            tuneDatabasePerformance(db);
             String targetTable = "remote_media";
             if (crit.source == SourceType.SHARED) {
                 targetTable = "shared_media";
@@ -434,9 +456,6 @@ public class StorageScanner {
                     if (hasColumn(db, targetTable, "trash_timestamp")) {
                         where.append(" AND (trash_timestamp IS NULL OR trash_timestamp = 0)");
                     }
-                    if (hasColumn(db, targetTable, "is_canonical") && (crit.archived == null || !crit.archived)) {
-                        where.append(" AND (is_canonical = 1 OR is_canonical IS NULL)");
-                    }
                     if (crit.excludeFavorites) {
                         where.append(" AND (is_favorite IS NULL OR is_favorite = 0)");
                     }
@@ -447,9 +466,6 @@ public class StorageScanner {
                     }
                     if (hasColumn(db, targetTable, "trash_timestamp")) {
                         where.append(" AND (trash_timestamp IS NULL OR trash_timestamp = 0)");
-                    }
-                    if (hasColumn(db, targetTable, "is_canonical")) {
-                        where.append(" AND (is_canonical = 1 OR is_canonical IS NULL)");
                     }
                     if (crit.searchQuery != null && !crit.searchQuery.trim().isEmpty()) {
                         String q = "%" + crit.searchQuery.trim() + "%";
@@ -534,10 +550,12 @@ public class StorageScanner {
             }
 
             // Space filter
-            if (crit.space == SpaceFilter.CONSUMING) {
-                where.append(" AND quota_charged_bytes > 0");
-            } else if (crit.space == SpaceFilter.NON_CONSUMING) {
-                where.append(" AND (quota_charged_bytes = 0 OR quota_charged_bytes IS NULL)");
+            if (hasColumn(db, targetTable, "quota_charged_bytes")) {
+                if (crit.space == SpaceFilter.CONSUMING) {
+                    where.append(" AND quota_charged_bytes > 0");
+                } else if (crit.space == SpaceFilter.NON_CONSUMING) {
+                    where.append(" AND (quota_charged_bytes = 0 OR quota_charged_bytes IS NULL)");
+                }
             }
 
             // Date interval
@@ -634,10 +652,12 @@ public class StorageScanner {
             }
 
             // Quality
-            if ("original".equalsIgnoreCase(crit.quality)) {
-                where.append(" AND quota_charged_bytes > 0");
-            } else if ("storage-saver".equalsIgnoreCase(crit.quality)) {
-                where.append(" AND (quota_charged_bytes = 0 OR quota_charged_bytes IS NULL)");
+            if (hasColumn(db, targetTable, "quota_charged_bytes")) {
+                if ("original".equalsIgnoreCase(crit.quality)) {
+                    where.append(" AND quota_charged_bytes > 0");
+                } else if ("storage-saver".equalsIgnoreCase(crit.quality)) {
+                    where.append(" AND (quota_charged_bytes = 0 OR quota_charged_bytes IS NULL)");
+                }
             }
 
             // Ownership
@@ -673,7 +693,7 @@ public class StorageScanner {
             }
 
             String orderBy = crit.sortBySize ? "size_bytes DESC" : "capture_timestamp DESC";
-            if (crit.space == SpaceFilter.CONSUMING) {
+            if (crit.space == SpaceFilter.CONSUMING && hasColumn(db, targetTable, "quota_charged_bytes")) {
                 orderBy = "quota_charged_bytes DESC, size_bytes DESC";
             }
 
@@ -719,53 +739,67 @@ public class StorageScanner {
                     "WHERE " + where + groupByClause + " " +
                     "ORDER BY " + orderBy + " LIMIT " + crit.limit;
 
-            Pattern fileNamePat = null;
-            if (crit.fileNameRegex != null && !crit.fileNameRegex.isEmpty()) {
-                try { fileNamePat = Pattern.compile(crit.fileNameRegex, Pattern.CASE_INSENSITIVE); } catch (Exception ignored) {}
-            }
-            Pattern descPat = null;
-            if (crit.descriptionRegex != null && !crit.descriptionRegex.isEmpty()) {
-                try { descPat = Pattern.compile(crit.descriptionRegex, Pattern.CASE_INSENSITIVE); } catch (Exception ignored) {}
-            }
+            Pattern fileNamePat = getCachedPattern(crit.fileNameRegex);
+            Pattern descPat = getCachedPattern(crit.descriptionRegex);
 
             try (Cursor c = db.rawQuery(sql, args.toArray(new String[0]))) {
+                if (c != null) {
+                    final int cDedupKey = 0;
+                    final int cMediaKey = 1;
+                    final int cFilename = 2;
+                    final int cSizeBytes = 3;
+                    final int cQuotaBytes = 4;
+                    final int cCaptureTimestamp = 5;
+                    final int cRemoteUrl = 6;
+                    final int cTrashTimestamp = 7;
+                    final int cWidth = 8;
+                    final int cHeight = 9;
+                    final int cDuration = 10;
+                    final int cIsArchived = 11;
+                    final int cIsFavorite = 12;
+                    final int cIsMicroVideo = 13;
+                    final int cMimeType = 14;
+                    final int cLatitude = 15;
+                    final int cLongitude = 16;
+                    final int cCaption = 17;
 
-                while (c != null && c.moveToNext()) {
-                    String filename = c.getString(2);
-                    String caption = c.getString(17);
+                    while (c.moveToNext()) {
+                        String filename = c.getString(cFilename);
+                        String caption = c.getString(cCaption);
 
-                    // In-memory Regex matching
-                    if (fileNamePat != null) {
-                        boolean matches = fileNamePat.matcher(filename != null ? filename : "").find();
-                        if ("exclude".equals(crit.fileNameMatchType) && matches) continue;
-                        if ("include".equals(crit.fileNameMatchType) && !matches) continue;
+                        // In-memory Regex matching
+                        if (fileNamePat != null) {
+                            boolean matches = fileNamePat.matcher(filename != null ? filename : "").find();
+                            if ("exclude".equals(crit.fileNameMatchType) && matches) continue;
+                            if ("include".equals(crit.fileNameMatchType) && !matches) continue;
+                        }
+                        if (descPat != null) {
+                            boolean matches = descPat.matcher(caption != null ? caption : "").find();
+                            if ("exclude".equals(crit.descriptionMatchType) && matches) continue;
+                            if ("include".equals(crit.descriptionMatchType) && !matches) continue;
+                        }
+
+                        items.add(new MediaItem(
+                                c.getString(cDedupKey),
+                                c.getString(cMediaKey),
+                                filename,
+                                c.getLong(cSizeBytes),
+                                c.getLong(cQuotaBytes),
+                                c.getLong(cCaptureTimestamp),
+                                c.getString(cRemoteUrl),
+                                c.getLong(cTrashTimestamp),
+                                c.getInt(cWidth),
+                                c.getInt(cHeight),
+                                c.getLong(cDuration),
+                                c.getInt(cIsArchived) == 1,
+                                c.getInt(cIsFavorite) == 1,
+                                c.getInt(cIsMicroVideo) == 1,
+                                c.getString(cMimeType),
+                                c.getDouble(cLatitude),
+                                c.getDouble(cLongitude),
+                                caption
+                        ));
                     }
-                    if (descPat != null) {
-                        boolean matches = descPat.matcher(caption != null ? caption : "").find();
-                        if ("exclude".equals(crit.descriptionMatchType) && matches) continue;
-                        if ("include".equals(crit.descriptionMatchType) && !matches) continue;
-                    }
-
-                    items.add(new MediaItem(
-                            c.getString(0),
-                            c.getString(1),
-                            filename,
-                            c.getLong(3),
-                            c.getLong(4),
-                            c.getLong(5),
-                            c.getString(6),
-                            c.getLong(7),
-                            c.getInt(8),
-                            c.getInt(9),
-                            c.getLong(10),
-                            c.getInt(11) == 1,
-                            c.getInt(12) == 1,
-                            c.getInt(13) == 1,
-                            c.getString(14),
-                            c.getDouble(15),
-                            c.getDouble(16),
-                            caption
-                    ));
                 }
             }
 
@@ -802,48 +836,70 @@ public class StorageScanner {
                             sharedLatExpr + ", " + sharedLonExpr + ", " + sharedCapExpr + " " +
                             "FROM shared_media WHERE " + sharedWhere;
                     try (Cursor sc = db.rawQuery(sharedSql, sharedArgs.toArray(new String[0]))) {
-                        HashSet<String> seen = new HashSet<>();
-                        for (MediaItem it : items) seen.add(it.dedupKey);
-                        while (sc != null && sc.moveToNext()) {
-                            String dKey = sc.getString(0);
-                            if (dKey == null || seen.contains(dKey)) continue;
+                        if (sc != null) {
+                            final int scDedupKey = 0;
+                            final int scMediaKey = 1;
+                            final int scFilename = 2;
+                            final int scSizeBytes = 3;
+                            final int scQuotaBytes = 4;
+                            final int scCaptureTimestamp = 5;
+                            final int scRemoteUrl = 6;
+                            final int scTrashTimestamp = 7;
+                            final int scWidth = 8;
+                            final int scHeight = 9;
+                            final int scDuration = 10;
+                            final int scIsArchived = 11;
+                            final int scIsFavorite = 12;
+                            final int scIsMicroVideo = 13;
+                            final int scMimeType = 14;
+                            final int scLatitude = 15;
+                            final int scLongitude = 16;
+                            final int scCaption = 17;
 
-                            String filename = sc.getString(2);
-                            String caption = sc.getString(17);
+                            HashSet<String> seen = new HashSet<>();
+                            for (MediaItem it : items) seen.add(it.dedupKey);
 
-                            // In-memory Regex matching
-                            if (fileNamePat != null) {
-                                boolean matches = fileNamePat.matcher(filename != null ? filename : "").find();
-                                if ("exclude".equals(crit.fileNameMatchType) && matches) continue;
-                                if ("include".equals(crit.fileNameMatchType) && !matches) continue;
+                            while (sc.moveToNext()) {
+                                String dKey = sc.getString(scDedupKey);
+                                if (dKey == null || seen.contains(dKey)) continue;
+
+                                String filename = sc.getString(scFilename);
+                                String caption = sc.getString(scCaption);
+
+                                // In-memory Regex matching
+                                if (fileNamePat != null) {
+                                    boolean matches = fileNamePat.matcher(filename != null ? filename : "").find();
+                                    if ("exclude".equals(crit.fileNameMatchType) && matches) continue;
+                                    if ("include".equals(crit.fileNameMatchType) && !matches) continue;
+                                }
+                                if (descPat != null) {
+                                    boolean matches = descPat.matcher(caption != null ? caption : "").find();
+                                    if ("exclude".equals(crit.descriptionMatchType) && matches) continue;
+                                    if ("include".equals(crit.descriptionMatchType) && !matches) continue;
+                                }
+
+                                items.add(new MediaItem(
+                                        dKey,
+                                        sc.getString(scMediaKey),
+                                        filename,
+                                        sc.getLong(scSizeBytes),
+                                        sc.getLong(scQuotaBytes),
+                                        sc.getLong(scCaptureTimestamp),
+                                        sc.getString(scRemoteUrl),
+                                        sc.getLong(scTrashTimestamp),
+                                        sc.getInt(scWidth),
+                                        sc.getInt(scHeight),
+                                        sc.getLong(scDuration),
+                                        sc.getInt(scIsArchived) == 1,
+                                        sc.getInt(scIsFavorite) == 1,
+                                        sc.getInt(scIsMicroVideo) == 1,
+                                        sc.getString(scMimeType),
+                                        sc.getDouble(scLatitude),
+                                        sc.getDouble(scLongitude),
+                                        caption
+                                ));
+                                seen.add(dKey);
                             }
-                            if (descPat != null) {
-                                boolean matches = descPat.matcher(caption != null ? caption : "").find();
-                                if ("exclude".equals(crit.descriptionMatchType) && matches) continue;
-                                if ("include".equals(crit.descriptionMatchType) && !matches) continue;
-                            }
-
-                            items.add(new MediaItem(
-                                    dKey,
-                                    sc.getString(1),
-                                    filename,
-                                    sc.getLong(3),
-                                    sc.getLong(4),
-                                    sc.getLong(5),
-                                    sc.getString(6),
-                                    sc.getLong(7),
-                                    sc.getInt(8),
-                                    sc.getInt(9),
-                                    sc.getLong(10),
-                                    sc.getInt(11) == 1,
-                                    sc.getInt(12) == 1,
-                                    sc.getInt(13) == 1,
-                                    sc.getString(14),
-                                    sc.getDouble(15),
-                                    sc.getDouble(16),
-                                    caption
-                            ));
-                            seen.add(dKey);
                         }
                     }
                 } catch (Throwable ignored) {}
@@ -924,103 +980,15 @@ public class StorageScanner {
      * - Heavy crops or rotations → lower similarity (expected)
      */
     public static long calculateAverageHash(Bitmap bitmap, int hashSize) {
-        if (bitmap == null || bitmap.isRecycled()) return 0;
-        try {
-            Bitmap swBitmap = bitmap;
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && bitmap.getConfig() == Bitmap.Config.HARDWARE) {
-                swBitmap = bitmap.copy(Bitmap.Config.ARGB_8888, false);
-            }
-            if (swBitmap == null || swBitmap.isRecycled()) return 0;
-
-            // dHash: 9 wide x 8 tall = 64 bits (compare adjacent pixels per row)
-            int cols = 9;
-            int rows = 8;
-            Bitmap scaled = Bitmap.createScaledBitmap(swBitmap, cols, rows, true);
-            int[] pixels = new int[cols * rows];
-            scaled.getPixels(pixels, 0, cols, 0, 0, cols, rows);
-            if (scaled != swBitmap && scaled != bitmap) scaled.recycle();
-            if (swBitmap != bitmap) swBitmap.recycle();
-
-            long hash = 0;
-            int bit = 0;
-            for (int r = 0; r < rows; r++) {
-                for (int c = 0; c < cols - 1; c++) {
-                    int left  = pixels[r * cols + c];
-                    int right = pixels[r * cols + c + 1];
-                    int gL = (Color.red(left)  * 299 + Color.green(left)  * 587 + Color.blue(left)  * 114) / 1000;
-                    int gR = (Color.red(right) * 299 + Color.green(right) * 587 + Color.blue(right) * 114) / 1000;
-                    if (gL < gR) {
-                        hash |= (1L << bit);
-                    }
-                    bit++;
-                }
-            }
-            Log.i("morphe: StorageScanner", "calculateAverageHash computed: " + Long.toHexString(hash));
-            return hash;
-        } catch (Throwable t) {
-            Log.e("morphe: StorageScanner", "calculateAverageHash error: " + t.getMessage(), t);
-            return 0;
-        }
+        return app.morphe.extension.shared.patches.toolkit.similarity.ImageSimilarityEngine.calculateDifferenceHash(bitmap, hashSize);
     }
 
     public static float calculateSimilarity(long hashA, long hashB, int hashSize) {
-        // dHash always produces 64 bits
-        int totalBits = 64;
-        int distance = Long.bitCount(hashA ^ hashB);
-        return 1.0f - ((float) distance / totalBits);
+        return app.morphe.extension.shared.patches.toolkit.similarity.ImageSimilarityEngine.calculateSimilarity(hashA, hashB, hashSize);
     }
 
     public static List<List<MediaItem>> clusterSimilarItems(List<MediaItem> items, float threshold, int hashSize) {
-        List<List<MediaItem>> clusters = new ArrayList<>();
-        if (items == null || items.isEmpty() || threshold <= 0) return clusters;
-
-        Log.i("morphe: StorageScanner", "clusterSimilarItems: running with " + items.size() + " items, threshold=" + threshold);
-
-        for (MediaItem item : items) {
-            if (item.perceptualHash == 0) {
-                Log.w("morphe: StorageScanner", "clusterSimilarItems: skip item with hash 0: " + item.filename);
-                continue;
-            }
-            float bestSim = 0f;
-            int bestClusterIdx = -1;
-
-            // Compare against ALL members in each cluster — pick best matching cluster
-            for (int ci = 0; ci < clusters.size(); ci++) {
-                List<MediaItem> cluster = clusters.get(ci);
-                float maxSim = 0f;
-                for (MediaItem member : cluster) {
-                    float sim = calculateSimilarity(item.perceptualHash, member.perceptualHash, hashSize);
-                    Log.i("morphe: StorageScanner", "Comparing [" + item.filename + "] with [" + member.filename + "] -> similarity=" + sim + " (threshold=" + threshold + ")");
-                    if (sim > maxSim) maxSim = sim;
-                }
-                if (maxSim >= threshold && maxSim > bestSim) {
-                    bestSim = maxSim;
-                    bestClusterIdx = ci;
-                }
-            }
-
-            if (bestClusterIdx >= 0) {
-                clusters.get(bestClusterIdx).add(item);
-                Log.i("morphe: StorageScanner", "Added [" + item.filename + "] to cluster " + bestClusterIdx + " with sim=" + bestSim);
-            } else {
-                List<MediaItem> newCluster = new ArrayList<>();
-                newCluster.add(item);
-                clusters.add(newCluster);
-            }
-        }
-
-        // Only return clusters with 2+ similar items
-        List<List<MediaItem>> result = new ArrayList<>();
-        int clusterIndex = 1;
-        for (List<MediaItem> c : clusters) {
-            if (c.size() > 1) {
-                for (MediaItem item : c) item.clusterId = clusterIndex;
-                result.add(c);
-                Log.i("morphe: StorageScanner", "Cluster #" + clusterIndex + " formed with " + c.size() + " items");
-                clusterIndex++;
-            }
-        }
-        return result;
+        return app.morphe.extension.shared.patches.toolkit.similarity.ImageSimilarityEngine.clusterSimilarItems(items, threshold, hashSize);
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -1768,6 +1736,16 @@ public class StorageScanner {
                 Logger.printInfo(() -> "psu.a not resolved: " + t.getMessage());
             }
 
+            // 6. Core Mars Features: ajbk.b (contains bams, Lakka, Laflw, Lrkz, Lzon, Lankt)
+            try {
+                Class<?> ajbkClass = Class.forName("ajbk");
+                Field f = ajbkClass.getField("b");
+                Object fVal = f.get(null);
+                if (fVal != null) dMethod.invoke(builder, fVal);
+            } catch (Throwable t) {
+                Logger.printInfo(() -> "ajbk.b not resolved: " + t.getMessage());
+            }
+
             Method aMethod = wqaClass.getMethod("a");
             return aMethod.invoke(builder);
         } catch (Throwable t) {
@@ -1781,48 +1759,131 @@ public class StorageScanner {
         }
     }
 
+    private static Object createMediaCollectionForIds(int accountId, List<Long> mediaIds) {
+        if (mediaIds == null || mediaIds.isEmpty()) return null;
+        try {
+            Class<?> ahnjClass = Class.forName("ahnj");
+            Constructor<?> ahnjCtor = ahnjClass.getConstructor(long.class);
+            List<Object> ahnjList = new ArrayList<>(mediaIds.size());
+            for (Long id : mediaIds) {
+                ahnjList.add(ahnjCtor.newInstance(id));
+            }
+            Class<?> nbwClass = Class.forName("nbw");
+            Constructor<?> nbwCtor = nbwClass.getConstructor(int.class, List.class);
+            return nbwCtor.newInstance(accountId, ahnjList);
+        } catch (Throwable t) {
+            Logger.printException(() -> "Error building nbw media collection for ids", t);
+            return null;
+        }
+    }
+
+    private static List<Long> resolveMediaIds(Context context, int accountId, List<MediaItem> items) {
+        List<Long> ids = new ArrayList<>();
+        if (items == null || items.isEmpty()) return ids;
+        File dbf = context != null ? context.getDatabasePath("gphotos" + accountId + ".db") : null;
+        if (dbf == null || !dbf.exists()) return ids;
+        try (SQLiteDatabase db = SQLiteDatabase.openDatabase(dbf.getAbsolutePath(), null, SQLiteDatabase.OPEN_READONLY | SQLiteDatabase.ENABLE_WRITE_AHEAD_LOGGING)) {
+            if (!hasTable(db, "media")) return ids;
+            for (MediaItem it : items) {
+                if (it.dedupKey == null || it.dedupKey.trim().isEmpty()) continue;
+                try (Cursor c = db.rawQuery("SELECT _id FROM media WHERE dedup_key = ? LIMIT 1", new String[]{it.dedupKey.trim()})) {
+                    if (c != null && c.moveToFirst()) {
+                        ids.add(c.getLong(0));
+                    }
+                } catch (Throwable ignored) {}
+            }
+        } catch (Throwable t) {
+            Log.w("morphe: StorageScanner", "Error resolving media ids from database", t);
+        }
+        return ids;
+    }
+
     private static List<?> loadCoreMediaItems(Context context, int accountId, List<MediaItem> items) {
         List<Object> result = new ArrayList<>();
         if (context == null || items == null || items.isEmpty()) return result;
+
+        // Strategy 1: Remote media keys via nul / num
         List<String> keys = resolveRemoteMediaKeys(context, accountId, items);
-        if (keys.isEmpty()) {
-            Log.w("morphe: StorageScanner", "resolveRemoteMediaKeys found 0 remote keys for account " + accountId);
-            return result;
-        }
+        if (!keys.isEmpty()) {
+            int chunkSize = 100;
+            for (int i = 0; i < keys.size(); i += chunkSize) {
+                List<String> chunkKeys = keys.subList(i, Math.min(i + chunkSize, keys.size()));
+                try {
+                    Object mediaCollection = createMediaCollectionForKeys(accountId, chunkKeys);
+                    if (mediaCollection == null) continue;
 
-        int chunkSize = 100;
-        for (int i = 0; i < keys.size(); i += chunkSize) {
-            List<String> chunkKeys = keys.subList(i, Math.min(i + chunkSize, keys.size()));
-            try {
-                Object mediaCollection = createMediaCollectionForKeys(accountId, chunkKeys);
-                if (mediaCollection == null) continue;
+                    Class<?> bwpgClass = Class.forName("bwpg");
+                    Class<?> wsgClass = Class.forName("wsg");
+                    Method aRefMethod = wsgClass.getMethod("a", bwpgClass);
+                    Object collectionRef = aRefMethod.invoke(null, mediaCollection);
 
-                Class<?> bwpgClass = Class.forName("bwpg");
-                Class<?> wsgClass = Class.forName("wsg");
-                Method aRefMethod = wsgClass.getMethod("a", bwpgClass);
-                Object collectionRef = aRefMethod.invoke(null, mediaCollection);
+                    Class<?> wrlClass = Class.forName("wrl");
+                    Class<?> wryClass = Class.forName("wry");
+                    Class<?> wqsClass = Class.forName("wqs");
+                    Class<?> wqbClass = Class.forName("wqb");
 
-                Class<?> wrlClass = Class.forName("wrl");
-                Class<?> wryClass = Class.forName("wry");
-                Class<?> wqsClass = Class.forName("wqs");
-                Class<?> wqbClass = Class.forName("wqb");
+                    Object wqsVal = wqsClass.getField("a").get(null);
+                    Object wqbVal = buildCoreFeaturesRequest(context);
+                    if (wqbVal == null) {
+                        wqbVal = wqbClass.getField("a").get(null);
+                    }
 
-                Object wqsVal = wqsClass.getField("a").get(null);
-                Object wqbVal = buildCoreFeaturesRequest(context);
-                if (wqbVal == null) {
-                    wqbVal = wqbClass.getField("a").get(null);
+                    Method hMethod = wrlClass.getMethod("H", Context.class, wryClass, wqsClass, wqbClass);
+                    List<?> loaded = (List<?>) hMethod.invoke(null, context, collectionRef, wqsVal, wqbVal);
+                    if (loaded != null) {
+                        result.addAll(loaded);
+                    }
+                } catch (Throwable t) {
+                    Log.e("morphe: StorageScanner", "Error loading core media items chunk (" + chunkKeys.size() + " keys)", t);
                 }
-
-                Method hMethod = wrlClass.getMethod("H", Context.class, wryClass, wqsClass, wqbClass);
-                List<?> loaded = (List<?>) hMethod.invoke(null, context, collectionRef, wqsVal, wqbVal);
-                if (loaded != null) {
-                    result.addAll(loaded);
-                }
-            } catch (Throwable t) {
-                Log.e("morphe: StorageScanner", "Error loading core media items chunk (" + chunkKeys.size() + " keys)", t);
             }
         }
-        Log.i("morphe: StorageScanner", "Loaded " + result.size() + " core media items for " + keys.size() + " keys");
+
+        // Strategy 2: For any local-only items or items not loaded by remote keys, load via nbw with media._id
+        if (result.size() < items.size()) {
+            List<Long> mediaIds = resolveMediaIds(context, accountId, items);
+            if (!mediaIds.isEmpty()) {
+                int chunkSize = 100;
+                for (int i = 0; i < mediaIds.size(); i += chunkSize) {
+                    List<Long> chunkIds = mediaIds.subList(i, Math.min(i + chunkSize, mediaIds.size()));
+                    try {
+                        Object idCollection = createMediaCollectionForIds(accountId, chunkIds);
+                        if (idCollection == null) continue;
+
+                        Class<?> bwpgClass = Class.forName("bwpg");
+                        Class<?> wsgClass = Class.forName("wsg");
+                        Method aRefMethod = wsgClass.getMethod("a", bwpgClass);
+                        Object collectionRef = aRefMethod.invoke(null, idCollection);
+
+                        Class<?> wrlClass = Class.forName("wrl");
+                        Class<?> wryClass = Class.forName("wry");
+                        Class<?> wqsClass = Class.forName("wqs");
+                        Class<?> wqbClass = Class.forName("wqb");
+
+                        Object wqsVal = wqsClass.getField("a").get(null);
+                        Object wqbVal = buildCoreFeaturesRequest(context);
+                        if (wqbVal == null) {
+                            wqbVal = wqbClass.getField("a").get(null);
+                        }
+
+                        Method hMethod = wrlClass.getMethod("H", Context.class, wryClass, wqsClass, wqbClass);
+                        List<?> loaded = (List<?>) hMethod.invoke(null, context, collectionRef, wqsVal, wqbVal);
+                        if (loaded != null && !loaded.isEmpty()) {
+                            if (result.isEmpty()) {
+                                result.addAll(loaded);
+                            } else {
+                                // Add if not already present
+                                result.addAll(loaded);
+                            }
+                        }
+                    } catch (Throwable t) {
+                        Log.e("morphe: StorageScanner", "Error loading core media items by ID chunk (" + chunkIds.size() + " ids)", t);
+                    }
+                }
+            }
+        }
+
+        Log.i("morphe: StorageScanner", "Loaded " + result.size() + " core media items for " + items.size() + " requested items");
         return result;
     }
 
@@ -1852,7 +1913,7 @@ public class StorageScanner {
                             healDb.execSQL("UPDATE media SET trash_timestamp = 0, is_deleted = 0 WHERE is_archived = 1 AND trash_timestamp > 0;");
                         }
                         if (hasColumn(healDb, "remote_media", "is_canonical")) {
-                            healDb.execSQL("UPDATE remote_media SET is_archived = 0 WHERE is_canonical = 0 AND is_archived = 1;");
+                            healDb.execSQL("UPDATE remote_media SET is_archived = 0 WHERE is_canonical = 0 AND is_archived = 1 AND dedup_key IN (SELECT dedup_key FROM remote_media WHERE is_canonical = 1);");
                             if (hasTable(healDb, "media")) {
                                 healDb.execSQL("UPDATE media SET is_archived = 0 WHERE is_archived = 1 AND dedup_key IN (SELECT dedup_key FROM remote_media WHERE is_canonical = 1 AND (is_archived IS NULL OR is_archived = 0));");
                             }
@@ -2019,11 +2080,11 @@ public class StorageScanner {
     private static Object getMediaFeature(Object media, Class<?> featureClass) {
         if (media == null || featureClass == null) return null;
         try {
-            Method bMethod = media.getClass().getMethod("b", Class.class);
+            Method bMethod = ReflectionCache.getMethod(media.getClass(), "b", Class.class);
             return bMethod.invoke(media, featureClass);
         } catch (Throwable t) {
             try {
-                Method cMethod = media.getClass().getMethod("c", Class.class);
+                Method cMethod = ReflectionCache.getMethod(media.getClass(), "c", Class.class);
                 return cMethod.invoke(media, featureClass);
             } catch (Throwable ignored) {}
         }
@@ -2035,16 +2096,16 @@ public class StorageScanner {
         try {
             Object feat = getMediaFeature(media, zonClass);
             if (feat != null) {
-                Field af = feat.getClass().getField("a");
+                Field af = ReflectionCache.getDeclaredField(feat.getClass(), "a");
                 Object opt = af.get(feat);
                 if (opt != null) {
                     try {
-                        Method isPresent = opt.getClass().getMethod("isPresent");
+                        Method isPresent = ReflectionCache.getMethod(opt.getClass(), "isPresent");
                         if (Boolean.TRUE.equals(isPresent.invoke(opt))) {
-                            Object val = opt.getClass().getMethod("get").invoke(opt);
+                            Object val = ReflectionCache.getMethod(opt.getClass(), "get").invoke(opt);
                             if (val != null) {
                                 try {
-                                    Field bField = val.getClass().getField("b");
+                                    Field bField = ReflectionCache.getDeclaredField(val.getClass(), "b");
                                     Object bVal = bField.get(val);
                                     if (bVal != null) return bVal.toString();
                                 } catch (Throwable ignored) {
@@ -2067,7 +2128,7 @@ public class StorageScanner {
         try {
             Object feat = getMediaFeature(media, bamsClass);
             if (feat != null) {
-                Field af = feat.getClass().getField("a");
+                Field af = ReflectionCache.getDeclaredField(feat.getClass(), "a");
                 List<?> keys = (List<?>) af.get(feat);
                 if (keys != null) {
                     for (Object k : keys) {
@@ -2574,6 +2635,7 @@ public class StorageScanner {
         int chunkSize = 5;
         int totalChunks = (items.size() + chunkSize - 1) / chunkSize;
         int successCount = 0;
+        int totalMovedCount = 0;
 
         for (int i = 0; i < items.size(); i += chunkSize) {
             int chunkIndex = (i / chunkSize) + 1;
@@ -2596,13 +2658,53 @@ public class StorageScanner {
                         Object res = runMethod.invoke(null, context, task);
                         if (res != null) {
                             try {
-                                int statusCode = res.getClass().getField("d").getInt(res);
-                                if (statusCode == 200) chunkSuccess = true;
-                            } catch (Throwable ignored) {
-                                chunkSuccess = true;
+                                Method bMethod = res.getClass().getMethod("b");
+                                Bundle bundle = (Bundle) bMethod.invoke(res);
+                                if (bundle != null) {
+                                    bundle.setClassLoader(context.getClassLoader());
+                                    Object moveResult = bundle.getParcelable("mars_move_result");
+                                    if (moveResult != null) {
+                                        Field fieldA = moveResult.getClass().getField("a");
+                                        Object movedObj = fieldA.get(moveResult);
+                                        int moved = (movedObj instanceof Collection) ? ((Collection<?>) movedObj).size() : 0;
+
+                                        Field fieldB = moveResult.getClass().getField("b");
+                                        Object failedObj = fieldB.get(moveResult);
+                                        int failed = (failedObj instanceof Collection) ? ((Collection<?>) failedObj).size() : 0;
+
+                                        Field fieldC = moveResult.getClass().getField("c");
+                                        Object cancelledObj = fieldC.get(moveResult);
+                                        int cancelled = (cancelledObj instanceof Collection) ? ((Collection<?>) cancelledObj).size() : 0;
+
+                                        int rCode = 0;
+                                        try {
+                                            rCode = moveResult.getClass().getField("d").getInt(moveResult);
+                                        } catch (Throwable ignored) {}
+
+                                        Log.i("morphe: StorageScanner", "MarsMoveTask chunk " + chunkIndex + ": moved=" + moved + ", failed=" + failed + ", cancelled=" + cancelled + ", code=" + rCode);
+                                        if (moved > 0) {
+                                            chunkSuccess = true;
+                                            totalMovedCount += moved;
+                                        }
+                                    }
+                                }
+                            } catch (Throwable tBundle) {
+                                Log.w("morphe: StorageScanner", "Error reading mars_move_result bundle: " + tBundle.getMessage());
+                            }
+                            if (!chunkSuccess && totalMovedCount == 0) {
+                                try {
+                                    int statusCode = res.getClass().getField("d").getInt(res);
+                                    if (statusCode == 200) {
+                                        Log.i("morphe: StorageScanner", "MarsMoveTask returned statusCode 200 (fallback check)");
+                                    }
+                                } catch (Throwable ignored) {}
                             }
                         }
+                    } else {
+                        Log.w("morphe: StorageScanner", "createMarsMoveTask returned null for chunk " + chunkIndex);
                     }
+                } else {
+                    Log.w("morphe: StorageScanner", "loadCoreMediaItems returned 0 items for chunk " + chunkIndex);
                 }
             } catch (Throwable t) {
                 Log.w("morphe: StorageScanner", "Error invoking MarsMoveTask chunk " + chunkIndex, t);
@@ -2611,8 +2713,8 @@ public class StorageScanner {
             if (chunkSuccess) successCount++;
         }
 
-        Log.i("morphe: StorageScanner", "executeOnlineMarsMoveTask finished: " + successCount + "/" + totalChunks + " chunks successful");
-        return successCount > 0;
+        Log.i("morphe: StorageScanner", "executeOnlineMarsMoveTask finished: " + successCount + "/" + totalChunks + " chunks successful, moved " + totalMovedCount + " items");
+        return totalMovedCount > 0;
     }
 
     public static volatile List<MediaItem> sPendingUnlockItems = null;
@@ -2921,24 +3023,69 @@ public class StorageScanner {
         }
     }
 
-    private static Object createAlbumCollection(int accountId, String albumMediaKey) {
-        String[] factoryClasses = new String[]{"nyt", "bfvn", "dyu", "bfqd"};
-        for (String cls : factoryClasses) {
+    private static Object createAlbumCollection(Context context, int accountId, String albumMediaKey) {
+        if (albumMediaKey == null || albumMediaKey.isEmpty()) return null;
+        long envelopeId = 0L;
+        long collectionId = 0L;
+        if (context != null) {
             try {
-                Class<?> c = Class.forName(cls);
-                for (Method m : c.getDeclaredMethods()) {
-                    if (java.lang.reflect.Modifier.isStatic(m.getModifiers())
-                            && m.getParameterTypes().length == 2
-                            && m.getParameterTypes()[0] == int.class
-                            && m.getParameterTypes()[1] == String.class
-                            && "bwpg".equals(m.getReturnType().getSimpleName())) {
-                        m.setAccessible(true);
-                        Object res = m.invoke(null, accountId, albumMediaKey);
-                        if (res != null) return res;
+                File dbf = context.getDatabasePath("gphotos" + accountId + ".db");
+                if (dbf != null && dbf.exists()) {
+                    try (SQLiteDatabase db = SQLiteDatabase.openDatabase(dbf.getAbsolutePath(), null, SQLiteDatabase.OPEN_READONLY | SQLiteDatabase.ENABLE_WRITE_AHEAD_LOGGING)) {
+                        if (hasTable(db, "envelopes")) {
+                            try (Cursor c = db.rawQuery("SELECT _id FROM envelopes WHERE media_key = ? LIMIT 1", new String[]{albumMediaKey})) {
+                                if (c != null && c.moveToFirst()) {
+                                    envelopeId = c.getLong(0);
+                                }
+                            }
+                        }
+                        if (hasTable(db, "collections")) {
+                            try (Cursor c = db.rawQuery("SELECT _id FROM collections WHERE collection_media_key = ? LIMIT 1", new String[]{albumMediaKey})) {
+                                if (c != null && c.moveToFirst()) {
+                                    collectionId = c.getLong(0);
+                                }
+                            }
+                        }
                     }
                 }
             } catch (Throwable ignored) {}
         }
+
+        // 1. If it exists in envelopes table, it is a shared album (bfqo)
+        if (envelopeId != 0L) {
+            try {
+                Class<?> bfqoClass = Class.forName("bfqo");
+                Class<?> ahnrClass = Class.forName("ahnr");
+                Class<?> wrrClass = Class.forName("wrr");
+                Object ahnrInst = ahnrClass.getMethod("a", String.class).invoke(null, albumMediaKey);
+                Object emptyFeatures = wrrClass.getField("a").get(null);
+                Constructor<?> ctor = bfqoClass.getConstructor(int.class, long.class, ahnrClass, wrrClass);
+                ctor.setAccessible(true);
+                Object res = ctor.newInstance(accountId, envelopeId, ahnrInst, emptyFeatures);
+                if (res != null) return res;
+            } catch (Throwable tShared) {
+                Log.w("morphe: StorageScanner", "bfqo reflection failed: " + tShared.getMessage());
+            }
+        }
+
+        // 2. Otherwise (or in collections table), it is a private personal album (nrx via dyu.x)
+        try {
+            Class<?> dyuClass = Class.forName("dyu");
+            Method xMethod = dyuClass.getMethod("x", int.class, String.class);
+            Object res = xMethod.invoke(null, accountId, albumMediaKey);
+            if (res != null) return res;
+        } catch (Throwable tDyuX) {
+            Log.w("morphe: StorageScanner", "dyu.x reflection failed: " + tDyuX.getMessage());
+        }
+
+        // 3. Fallback: dyu.w
+        try {
+            Class<?> dyuClass = Class.forName("dyu");
+            Method wMethod = dyuClass.getMethod("w", int.class, String.class);
+            Object res = wMethod.invoke(null, accountId, albumMediaKey);
+            if (res != null) return res;
+        } catch (Throwable ignored) {}
+
         return null;
     }
 
@@ -2958,21 +3105,97 @@ public class StorageScanner {
             try {
                 List<?> coreItems = loadCoreMediaItems(context, accountId, chunk);
                 if (!coreItems.isEmpty()) {
-                    Object collection = createAlbumCollection(accountId, albumMediaKey);
+                    Object collection = createAlbumCollection(context, accountId, albumMediaKey);
                     Object task = null;
-                    if (collection != null) {
-                        try {
-                            Class<?> iyoClass = Class.forName("iyo");
-                            Method rMethod = iyoClass.getMethod("r", int.class, Class.forName("bwpg"), List.class);
-                            task = rMethod.invoke(null, accountId, collection, coreItems);
-                        } catch (Throwable ignored) {}
 
-                        if (task == null) {
+                    boolean isShared = false;
+                    try {
+                        File dbf = context.getDatabasePath("gphotos" + accountId + ".db");
+                        if (dbf != null && dbf.exists()) {
+                            try (SQLiteDatabase db = SQLiteDatabase.openDatabase(dbf.getAbsolutePath(), null, SQLiteDatabase.OPEN_READONLY | SQLiteDatabase.ENABLE_WRITE_AHEAD_LOGGING)) {
+                                if (hasTable(db, "envelopes")) {
+                                    try (Cursor c = db.rawQuery("SELECT 1 FROM envelopes WHERE media_key = ? LIMIT 1", new String[]{albumMediaKey})) {
+                                        if (c != null && c.moveToFirst()) {
+                                            isShared = true;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    } catch (Throwable ignored) {}
+
+                    if (!isShared && collection != null) {
+                        try {
+                            Class<?> bfwsClass = Class.forName("bfws");
+                            Class<?> bwpgClass = Class.forName("bwpg");
+                            Method aMethod = bfwsClass.getMethod("a", bwpgClass);
+                            Object res = aMethod.invoke(null, collection);
+                            if (res instanceof Boolean) isShared = (Boolean) res;
+                        } catch (Throwable ignored) {}
+                    }
+
+                    if (!isShared) {
+                        // Private personal album: use RemoveMediaFromPrivateAlbumTask with mom(cid=1)
+                        // This supplies ahnr directly so moj bypasses looking for bamr on collection.
+                        try {
+                            Class<?> ahnrClass = Class.forName("ahnr");
+                            Object ahnrInst = ahnrClass.getMethod("a", String.class).invoke(null, albumMediaKey);
+
+                            Class<?> momClass = Class.forName("mom");
+                            Constructor<?> momCtor = momClass.getConstructor(int.class, Object.class, Object.class, int.class);
+                            momCtor.setAccessible(true);
+                            Object momWorker = momCtor.newInstance(accountId, ahnrInst, coreItems, 1);
+
+                            Class<?> lazlkClass = Class.forName("azlk");
+                            Object yK = lazlkClass.getField("yK").get(null);
+
+                            Class<?> rgaClass = Class.forName("rga");
+                            Method hMethod = null;
+                            for (Method m : rgaClass.getMethods()) {
+                                if ("h".equals(m.getName()) && m.getParameterTypes().length == 3) {
+                                    hMethod = m;
+                                    break;
+                                }
+                            }
+                            if (hMethod != null) {
+                                Object qdpInst = hMethod.invoke(null, "RemoveMediaFromPrivateAlbumTask", yK, momWorker);
+                                Method bMethod = qdpInst.getClass().getMethod("b");
+                                Object qdnInst = bMethod.invoke(qdpInst);
+
+                                Method aMethod = qdnInst.getClass().getMethod("a");
+                                task = aMethod.invoke(qdnInst);
+                                Log.i("morphe: StorageScanner", "Created RemoveMediaFromPrivateAlbumTask via mom(cid=1): " + task);
+                            } else {
+                                Log.w("morphe: StorageScanner", "Could not find rga.h method with 3 parameters");
+                            }
+                        } catch (Throwable tMom) {
+                            Log.w("morphe: StorageScanner", "mom(cid=1) task creation failed: " + tMom.getMessage(), tMom);
+                        }
+
+                        // Fallback to iyo.r
+                        if (task == null && collection != null) {
                             try {
-                                Class<?> taskClass = Class.forName("com.google.android.apps.photos.album.removefromalbum.RemoveFromCollectionTask");
-                                Constructor<?> ctor = taskClass.getConstructor(int.class, Collection.class, Class.forName("bwpg"));
-                                task = ctor.newInstance(accountId, coreItems, collection);
-                            } catch (Throwable ignored) {}
+                                Class<?> iyoClass = Class.forName("iyo");
+                                Class<?> bwpgClass = Class.forName("bwpg");
+                                Method rMethod = iyoClass.getMethod("r", int.class, bwpgClass, List.class);
+                                task = rMethod.invoke(null, accountId, collection, coreItems);
+                                Log.i("morphe: StorageScanner", "Created RemoveMediaFromPrivateAlbumTask via iyo.r: " + task);
+                            } catch (Throwable tIyo) {
+                                Log.w("morphe: StorageScanner", "iyo.r reflection failed: " + tIyo.getMessage());
+                            }
+                        }
+                    }
+
+                    if (task == null && collection != null) {
+                        // Shared album or fallback: RemoveFromCollectionTask
+                        try {
+                            Class<?> taskClass = Class.forName("com.google.android.apps.photos.album.removefromalbum.RemoveFromCollectionTask");
+                            Class<?> bwpgClass = Class.forName("bwpg");
+                            Constructor<?> ctor = taskClass.getConstructor(int.class, Collection.class, bwpgClass);
+                            task = ctor.newInstance(accountId, coreItems, collection);
+                            Log.i("morphe: StorageScanner", "Created RemoveFromCollectionTask: " + task);
+                        } catch (Throwable tTask) {
+                            Log.w("morphe: StorageScanner", "RemoveFromCollectionTask reflection failed: " + tTask.getMessage());
                         }
                     }
 
@@ -2984,29 +3207,46 @@ public class StorageScanner {
                         if (res != null) {
                             try {
                                 int statusCode = res.getClass().getField("d").getInt(res);
-                                if (statusCode == 200) chunkSuccess = true;
+                                Log.i("morphe: StorageScanner", "Remove task chunk " + chunkIndex + " status: " + statusCode);
+                                if (statusCode == 200) {
+                                    chunkSuccess = true;
+                                } else {
+                                    Object exc = res.getClass().getField("e").get(res);
+                                    Log.w("morphe: StorageScanner", "Remove task returned error status " + statusCode, (Throwable) exc);
+                                }
                             } catch (Throwable ignored) {
                                 chunkSuccess = true;
                             }
                         }
                     }
+                } else {
+                    Log.w("morphe: StorageScanner", "loadCoreMediaItems returned 0 items for chunk " + chunkIndex);
                 }
             } catch (Throwable t) {
-                Log.w("morphe: StorageScanner", "Error invoking RemoveFromCollectionTask chunk " + chunkIndex, t);
+                Log.w("morphe: StorageScanner", "Error invoking Remove task chunk " + chunkIndex, t);
             }
 
             if (chunkSuccess) successCount++;
         }
 
-        // Optimistic purge in local shared_media table
+        // Optimistic purge in local tables (remote_media, shared_media, item_collection_data) with WAL enabled
         try {
             File dbf = context.getDatabasePath("gphotos" + accountId + ".db");
             if (dbf != null && dbf.exists()) {
-                try (SQLiteDatabase db = SQLiteDatabase.openDatabase(dbf.getAbsolutePath(), null, SQLiteDatabase.OPEN_READWRITE)) {
+                try (SQLiteDatabase db = SQLiteDatabase.openDatabase(dbf.getAbsolutePath(), null, SQLiteDatabase.OPEN_READWRITE | SQLiteDatabase.ENABLE_WRITE_AHEAD_LOGGING)) {
                     for (MediaItem it : items) {
+                        if (hasTable(db, "remote_media")) {
+                            db.delete("remote_media", "(dedup_key = ? OR media_key = ?) AND collection_id = ?", new String[]{it.dedupKey, it.dedupKey, albumMediaKey});
+                        }
                         if (hasTable(db, "shared_media")) {
                             db.delete("shared_media", "dedup_key = ? AND collection_id = ?", new String[]{it.dedupKey, albumMediaKey});
                         }
+                        if (hasTable(db, "item_collection_data")) {
+                            db.delete("item_collection_data", "(canonical_id = ? OR icd_id LIKE ?) AND collection_id = ?", new String[]{it.dedupKey, "%" + it.dedupKey + "%", albumMediaKey});
+                        }
+                    }
+                    if (hasTable(db, "collections")) {
+                        db.execSQL("UPDATE collections SET total_items = MAX(0, total_items - " + items.size() + ") WHERE collection_media_key = ?", new Object[]{albumMediaKey});
                     }
                 }
             }
@@ -3210,15 +3450,15 @@ public class StorageScanner {
         if ("toNewAlbum".equals(actionId)) {
             String newAlbumName = param != null && !param.trim().isEmpty() ? param.trim() : "New Album";
             List<String> mediaKeys = resolveRemoteMediaKeys(account, items);
-            if (mediaKeys.isEmpty()) {
-                return new ActionResult(false, 0, "None of the selected items have a cloud media key. Albums require backed-up photos.");
-            }
             int[] outAdded = new int[1];
             String cloudAlbumKey = createNativeCloudAlbum(context, account.accountId, newAlbumName, mediaKeys, outAdded);
             if (cloudAlbumKey == null) {
                 return new ActionResult(false, 0, "Failed to create cloud album on Google Photos servers. Please check your internet connection.");
             }
             int count = outAdded[0];
+            if (mediaKeys.isEmpty() && items != null && !items.isEmpty()) {
+                return new ActionResult(true, count, "Created album '" + newAlbumName + "'. Note: Selected local item(s) must be backed up to cloud before adding to album.");
+            }
             return new ActionResult(true, count, "Successfully created album '" + newAlbumName + "' with " + count + " items");
         }
 
@@ -3229,7 +3469,7 @@ public class StorageScanner {
             String existingColKey = param.trim();
             List<String> mediaKeys = resolveRemoteMediaKeys(account, items);
             if (mediaKeys.isEmpty()) {
-                return new ActionResult(false, 0, "None of the selected items have a cloud media key. Albums require backed-up photos.");
+                return new ActionResult(false, 0, "None of the selected items are backed up to cloud yet. Google Photos albums require backed-up photos.");
             }
             int added = addMediaToCloudAlbum(context, account.accountId, existingColKey, mediaKeys);
             if (added <= 0) {
@@ -3239,6 +3479,23 @@ public class StorageScanner {
         }
 
         if ("lock".equals(actionId)) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && !Environment.isExternalStorageManager()) {
+                try {
+                    Intent intent = new Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION);
+                    intent.setData(Uri.parse("package:" + context.getPackageName()));
+                    intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                    context.startActivity(intent);
+                    return new ActionResult(false, 0, "All files access is required to move local camera media to Locked Folder. Please allow access in Settings.");
+                } catch (Throwable tSettings) {
+                    try {
+                        Intent intent = new Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION);
+                        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                        context.startActivity(intent);
+                        return new ActionResult(false, 0, "All files access is required to move local camera media to Locked Folder. Please allow access in Settings.");
+                    } catch (Throwable ignored) {}
+                }
+            }
+
             boolean dispatched = executeOnlineMarsMoveTask(context, account.accountId, items);
             Logger.printInfo(() -> "executeOnlineMarsMoveTask result: " + dispatched);
             triggerOnlineSync(context, account.accountId);
@@ -3428,10 +3685,10 @@ public class StorageScanner {
                         cv.put("trash_timestamp", 0);
                         if (hasColumn(db, "remote_media", "state")) cv.put("state", 0);
                         if (hasColumn(db, "remote_media", "is_canonical")) {
-                            db.update("remote_media", cv, "dedup_key = ? AND (is_canonical = 1 OR is_canonical IS NULL)", new String[]{it.dedupKey});
+                            db.update("remote_media", cv, "dedup_key = ? AND (is_canonical = 1 OR is_canonical IS NULL OR NOT EXISTS (SELECT 1 FROM remote_media rm2 WHERE rm2.dedup_key = remote_media.dedup_key AND rm2.is_canonical = 1))", new String[]{it.dedupKey});
                             ContentValues nonCanonCv = new ContentValues();
                             nonCanonCv.put("is_archived", 0);
-                            db.update("remote_media", nonCanonCv, "dedup_key = ? AND is_canonical = 0", new String[]{it.dedupKey});
+                            db.update("remote_media", nonCanonCv, "dedup_key = ? AND is_canonical = 0 AND EXISTS (SELECT 1 FROM remote_media rm2 WHERE rm2.dedup_key = remote_media.dedup_key AND rm2.is_canonical = 1)", new String[]{it.dedupKey});
                         } else {
                             db.update("remote_media", cv, "dedup_key = ?", new String[]{it.dedupKey});
                         }
@@ -3585,10 +3842,37 @@ public class StorageScanner {
         return val;
     }
 
+    private static final Map<String, Boolean> TABLE_EXISTS_CACHE = new ConcurrentHashMap<>();
+    private static final Map<String, Set<String>> TABLE_COLUMN_CACHE = new ConcurrentHashMap<>();
+    private static final Map<String, Pattern> PATTERN_CACHE = new ConcurrentHashMap<>();
+
+    public static void clearSchemaCache() {
+        TABLE_EXISTS_CACHE.clear();
+        TABLE_COLUMN_CACHE.clear();
+    }
+
+    public static Pattern getCachedPattern(String regex) {
+        if (regex == null || regex.isEmpty()) return null;
+        return PATTERN_CACHE.computeIfAbsent(regex, r -> {
+            try {
+                return Pattern.compile(r, Pattern.CASE_INSENSITIVE);
+            } catch (Throwable t) {
+                return null;
+            }
+        });
+    }
+
     private static boolean hasTable(SQLiteDatabase db, String tableName) {
+        if (db == null || tableName == null) return false;
+        String key = db.getPath() + ":" + tableName.toLowerCase();
+        Boolean cached = TABLE_EXISTS_CACHE.get(key);
+        if (cached != null) return cached;
+
         try (Cursor c = db.rawQuery(
                 "SELECT 1 FROM sqlite_master WHERE type IN ('table','view') AND name=?", new String[]{tableName})) {
-            return c != null && c.moveToFirst();
+            boolean exists = (c != null && c.moveToFirst());
+            TABLE_EXISTS_CACHE.put(key, exists);
+            return exists;
         } catch (Throwable ignored) {
             return false;
         }
@@ -3604,12 +3888,22 @@ public class StorageScanner {
     }
 
     private static boolean hasColumn(SQLiteDatabase db, String table, String col) {
-        try (Cursor c = db.rawQuery("PRAGMA table_info(" + table + ")", null)) {
-            while (c != null && c.moveToNext()) {
-                if (col.equalsIgnoreCase(c.getString(1))) return true;
-            }
-        } catch (Throwable ignored) {}
-        return false;
+        if (db == null || table == null || col == null) return false;
+        String key = db.getPath() + ":" + table.toLowerCase();
+        Set<String> columns = TABLE_COLUMN_CACHE.get(key);
+        if (columns == null) {
+            columns = new HashSet<>();
+            try (Cursor c = db.rawQuery("PRAGMA table_info(" + table + ")", null)) {
+                while (c != null && c.moveToNext()) {
+                    String colName = c.getString(1);
+                    if (colName != null) {
+                        columns.add(colName.toLowerCase());
+                    }
+                }
+            } catch (Throwable ignored) {}
+            TABLE_COLUMN_CACHE.put(key, columns);
+        }
+        return columns.contains(col.toLowerCase());
     }
 
     public static byte[] buildCollectionProtobuf(String colKey, String title, String albumId, String gaiaId) {

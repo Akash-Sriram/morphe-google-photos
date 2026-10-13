@@ -150,7 +150,14 @@ val amoledDarkThemePatch = resourcePatch(
         var changedStyles = 0
 
         resDirectory.walkTopDown()
-            .filter(File::isValuesXml)
+            .filter { file ->
+                file.isValuesXml() && (
+                    file.isNightValuesXml() ||
+                    file.name.startsWith("color", ignoreCase = true) ||
+                    file.name.startsWith("style", ignoreCase = true) ||
+                    file.name.startsWith("theme", ignoreCase = true)
+                )
+            }
             .forEach { file ->
                 val source = file.readText()
                 if (!source.contains("<color") && !source.contains("<style")) return@forEach

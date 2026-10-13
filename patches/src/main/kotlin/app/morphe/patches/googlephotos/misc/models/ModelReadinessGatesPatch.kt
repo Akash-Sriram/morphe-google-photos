@@ -36,38 +36,36 @@ val modelReadinessGatesPatch = bytecodePatch(
             """.trimIndent(),
         )
 
-        classDefForEach { classDef ->
-            val clinit = classDef.methods.find { it.name == "<clinit>" }
-            if (clinit != null && clinit.containsStringConstant("ModelDownloadManager")) {
-                val mutableClass = mutableClassDefBy(classDef)
-                
-                // Find method that returns the State Enum (taking 1 Model Enum param)
-                val methodC = classDef.methods.find {
-                    it.parameterTypes.size == 1 && 
-                    it.parameterTypes[0].startsWith("L") && 
-                    it.returnType.startsWith("L") &&
-                    it.returnType != it.parameterTypes[0] &&
-                    !it.returnType.startsWith("Ljava/") // not returning String or Object
-                }
-                
-                if (methodC != null) {
-                    val returnTypeObj = methodC.returnType
-                    mutableClass.findMutableMethodOf(methodC).addInstructions(0, """
-                        sget-object v0, $returnTypeObj->e:$returnTypeObj
-                        return-object v0
-                    """.trimIndent())
-                }
+        val clinit = ModelDownloadManagerClinitFingerprint.methodOrNull
+        if (clinit != null) {
+            val classDef = mutableClassDefBy(clinit.definingClass)
+            
+            // Find method that returns the State Enum (taking 1 Model Enum param)
+            val methodC = classDef.methods.firstOrNull {
+                it.parameterTypes.size == 1 && 
+                it.parameterTypes[0].startsWith("L") && 
+                it.returnType.startsWith("L") &&
+                it.returnType != it.parameterTypes[0] &&
+                !it.returnType.startsWith("Ljava/") // not returning String or Object
+            }
+            
+            if (methodC != null) {
+                val returnTypeObj = methodC.returnType
+                classDef.findMutableMethodOf(methodC).addInstructions(0, """
+                    sget-object v0, $returnTypeObj->e:$returnTypeObj
+                    return-object v0
+                """.trimIndent())
+            }
 
-                // Find method that returns boolean (taking 1 Model Enum param)
-                val methodQ = classDef.methods.find {
-                    it.parameterTypes.size == 1 && 
-                    it.parameterTypes[0].startsWith("L") && 
-                    it.returnType == "Z"
-                }
-                
-                if (methodQ != null) {
-                    mutableClass.findMutableMethodOf(methodQ).returnEarly(true)
-                }
+            // Find method that returns boolean (taking 1 Model Enum param)
+            val methodQ = classDef.methods.firstOrNull {
+                it.returnType == "Z" &&
+                it.parameterTypes.size == 1 && 
+                it.parameterTypes[0].startsWith("L")
+            }
+            
+            if (methodQ != null) {
+                classDef.findMutableMethodOf(methodQ).returnEarly(true)
             }
         }
     }

@@ -77,6 +77,12 @@ import app.morphe.extension.shared.patches.PhenotypeFlagManager;
 import app.morphe.extension.shared.patches.PhenotypeFlagManager.MaterialVectorDrawable;
 import app.morphe.extension.shared.patches.PhenotypeFlagManager.Theme;
 
+import android.util.LruCache;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.ThreadFactory;
+import java.util.concurrent.atomic.AtomicInteger;
+
 /**
  * 1:1 Complete Native Google Photos Toolkit Dialog.
  * Follows the authoritative 3-step workflow from google_photos_toolkit.user.js:
@@ -87,8 +93,23 @@ import app.morphe.extension.shared.patches.PhenotypeFlagManager.Theme;
  */
 public class NativeToolkitDialog {
 
-    private static final ExecutorService THREAD_POOL = Executors.newFixedThreadPool(4);
-    private static final ConcurrentHashMap<String, Bitmap> THUMB_CACHE = new ConcurrentHashMap<>();
+    private static final ExecutorService THREAD_POOL = Executors.newFixedThreadPool(4, new ThreadFactory() {
+        private final AtomicInteger threadNumber = new AtomicInteger(1);
+        @Override
+        public Thread newThread(Runnable r) {
+            Thread t = new Thread(r, "ToolkitWorker-" + threadNumber.getAndIncrement());
+            t.setPriority(Thread.NORM_PRIORITY - 1);
+            return t;
+        }
+    });
+
+    private static final int MAX_CACHE_SIZE_BYTES = (int) Math.min(25 * 1024 * 1024, Runtime.getRuntime().maxMemory() / 8);
+    private static final LruCache<String, Bitmap> THUMB_CACHE = new LruCache<String, Bitmap>(MAX_CACHE_SIZE_BYTES) {
+        @Override
+        protected int sizeOf(String key, Bitmap bitmap) {
+            return bitmap != null ? bitmap.getByteCount() : 0;
+        }
+    };
     private static final Handler MAIN_HANDLER = new Handler(Looper.getMainLooper());
     private static final SimpleDateFormat DATE_FORMAT = new SimpleDateFormat("MMM d, yyyy • h:mm a", Locale.getDefault());
     private static final SimpleDateFormat FILE_DATE_FORMAT = new SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault());
@@ -2169,18 +2190,18 @@ public class NativeToolkitDialog {
         if (context == null) return null;
 
         try {
-            Class<?> khcClass = Class.forName("khc");
-            Method withMethod = khcClass.getMethod("e", Context.class);
+            Class<?> khcClass = ReflectionCache.findClass("khc");
+            Method withMethod = ReflectionCache.getMethod(khcClass, "e", Context.class);
             Object requestManager = withMethod.invoke(null, context);
 
-            Class<?> kiiClass = Class.forName("kii");
+            Class<?> kiiClass = ReflectionCache.findClass("kii");
             Object model = null;
             if (urlStr.startsWith("http://") || urlStr.startsWith("https://")) {
                 try {
-                    Class<?> akioClass = Class.forName("akio");
-                    Object defaultOptions = akioClass.getField("a").get(null);
-                    Class<?> akinClass = Class.forName("akin");
-                    Constructor<?> akinCtor = akinClass.getConstructor(String.class, int.class, akioClass);
+                    Class<?> akioClass = ReflectionCache.findClass("akio");
+                    Object defaultOptions = ReflectionCache.getDeclaredField(akioClass, "a").get(null);
+                    Class<?> akinClass = ReflectionCache.findClass("akin");
+                    Constructor<?> akinCtor = ReflectionCache.getConstructor(akinClass, String.class, int.class, akioClass);
                     model = akinCtor.newInstance(urlStr, accountId, defaultOptions);
                 } catch (Throwable t) {
                     Logger.printInfo(() -> "fetchThumbSync RemoteMediaModel error: " + t.getMessage());
@@ -2189,19 +2210,19 @@ public class NativeToolkitDialog {
 
             Object requestBuilder = null;
             if (model != null) {
-                Method loadMethod = kiiClass.getMethod("l", Object.class);
+                Method loadMethod = ReflectionCache.getMethod(kiiClass, "l", Object.class);
                 requestBuilder = loadMethod.invoke(requestManager, model);
             } else if (urlStr.startsWith("content://") || urlStr.startsWith("file://")) {
-                Method loadUriMethod = kiiClass.getMethod("j", Uri.class);
+                Method loadUriMethod = ReflectionCache.getMethod(kiiClass, "j", Uri.class);
                 requestBuilder = loadUriMethod.invoke(requestManager, Uri.parse(urlStr));
             } else {
-                Method loadStrMethod = kiiClass.getMethod("m", String.class);
+                Method loadStrMethod = ReflectionCache.getMethod(kiiClass, "m", String.class);
                 requestBuilder = loadStrMethod.invoke(requestManager, urlStr);
             }
 
             if (requestBuilder != null) {
-                Class<?> kifClass = Class.forName("kif");
-                Method submitMethod = kifClass.getMethod("u", int.class, int.class);
+                Class<?> kifClass = ReflectionCache.findClass("kif");
+                Method submitMethod = ReflectionCache.getMethod(kifClass, "u", int.class, int.class);
                 java.util.concurrent.Future<?> future = (java.util.concurrent.Future<?>) submitMethod.invoke(requestBuilder, 128, 128);
                 if (future != null) {
                     Object result = future.get(8, java.util.concurrent.TimeUnit.SECONDS);
@@ -2236,7 +2257,9 @@ public class NativeToolkitDialog {
             conn.setConnectTimeout(2000);
             conn.setReadTimeout(2000);
             try (InputStream is = conn.getInputStream()) {
-                return BitmapFactory.decodeStream(is);
+                BitmapFactory.Options opts = new BitmapFactory.Options();
+                opts.inPreferredConfig = Bitmap.Config.RGB_565;
+                return BitmapFactory.decodeStream(is, null, opts);
             }
         } catch (Throwable ignored) {
             return null;
@@ -2245,6 +2268,7 @@ public class NativeToolkitDialog {
 
     private static void loadThumbAsync(Activity activity, ImageView iv, String urlStr, int accountId) {
         iv.setImageDrawable(null);
+        iv.setTag(urlStr);
         if (activity == null || activity.isFinishing() || activity.isDestroyed()) return;
         if (urlStr == null || urlStr.trim().isEmpty()) return;
 
@@ -2293,7 +2317,9 @@ public class NativeToolkitDialog {
         // 2. Secondary fallback: in-memory cache + authenticated fetch
         Bitmap cached = THUMB_CACHE.get(urlStr);
         if (cached != null) {
-            iv.setImageBitmap(cached);
+            if (urlStr.equals(iv.getTag())) {
+                iv.setImageBitmap(cached);
+            }
             return;
         }
 
@@ -2301,7 +2327,11 @@ public class NativeToolkitDialog {
             Bitmap bm = fetchThumbSync(activity, urlStr, accountId);
             if (bm != null) {
                 THUMB_CACHE.put(urlStr, bm);
-                MAIN_HANDLER.post(() -> iv.setImageBitmap(bm));
+                MAIN_HANDLER.post(() -> {
+                    if (urlStr.equals(iv.getTag())) {
+                        iv.setImageBitmap(bm);
+                    }
+                });
             }
         });
     }
