@@ -1006,6 +1006,26 @@ public class StorageScanner {
         }
     }
 
+    private static Class<?> resolveAddMediaToAlbumBuilderClass() {
+        try {
+            Class<?> taskClass = Class.forName("com.google.android.apps.photos.album.tasks.AddMediaToAlbumTask");
+            for (Constructor<?> c : taskClass.getDeclaredConstructors()) {
+                Class<?>[] p = c.getParameterTypes();
+                if (p.length == 1 && !p[0].equals(Object.class)) {
+                    return p[0];
+                }
+            }
+        } catch (Throwable t) {
+            Logger.printInfo(() -> "Could not resolve builder from AddMediaToAlbumTask: " + t.getMessage());
+        }
+        for (String name : new String[]{"mtl", "mqw"}) {
+            try {
+                return Class.forName(name);
+            } catch (Throwable ignored) {}
+        }
+        return null;
+    }
+
     public static String createNativeCloudAlbum(Context context, int accountId, String title, List<String> mediaKeys) {
         return createNativeCloudAlbum(context, accountId, title, mediaKeys, null);
     }
@@ -1019,19 +1039,58 @@ public class StorageScanner {
             // Method 1 (Primary): Create private personal album with title & media items via AddMediaToAlbumTask (single RPC!)
             try {
                 Logger.printInfo(() -> "Attempting Method 1: AddMediaToAlbumTask for private album '" + title + "' with " + (mediaKeys != null ? mediaKeys.size() : 0) + " items");
-                Class<?> mqwClass = Class.forName("mqw");
-                Constructor<?> mqwCtor = mqwClass.getConstructor(int.class);
+                Class<?> builderClass = resolveAddMediaToAlbumBuilderClass();
+                if (builderClass == null) {
+                    throw new ClassNotFoundException("Could not find AddMediaToAlbumTask builder class");
+                }
+                Constructor<?> mqwCtor = null;
+                for (Constructor<?> c : builderClass.getDeclaredConstructors()) {
+                    Class<?>[] p = c.getParameterTypes();
+                    if (p.length == 1 && (p[0] == int.class || p[0] == Integer.class || p[0] == Integer.TYPE)) {
+                        mqwCtor = c;
+                        break;
+                    }
+                }
+                if (mqwCtor == null && builderClass.getDeclaredConstructors().length > 0) {
+                    mqwCtor = builderClass.getDeclaredConstructors()[0];
+                }
+                if (mqwCtor == null) {
+                    throw new NoSuchMethodException("No constructor found for builder " + builderClass.getName());
+                }
+                mqwCtor.setAccessible(true);
                 Object builder = mqwCtor.newInstance(accountId);
 
-                Field fC = mqwClass.getField("c"); // newAlbumTitle
+                Field fC = null;
+                try {
+                    fC = builderClass.getField("c");
+                } catch (Throwable t) {
+                    fC = builderClass.getDeclaredField("c");
+                }
+                fC.setAccessible(true);
                 fC.set(builder, title);
 
                 if (mediaKeys != null && !mediaKeys.isEmpty()) {
-                    Field fD = mqwClass.getField("d"); // List<String> of mediaKeys
+                    Field fD = null;
+                    try {
+                        fD = builderClass.getField("d");
+                    } catch (Throwable t) {
+                        fD = builderClass.getDeclaredField("d");
+                    }
+                    fD.setAccessible(true);
                     fD.set(builder, mediaKeys);
                 }
 
-                Method aMethod = mqwClass.getMethod("a"); // a() -> AddMediaToAlbumTask
+                Method aMethod = null;
+                for (Method m : builderClass.getDeclaredMethods()) {
+                    if (m.getReturnType().getName().contains("AddMediaToAlbumTask") && m.getParameterTypes().length == 0) {
+                        aMethod = m;
+                        break;
+                    }
+                }
+                if (aMethod == null) {
+                    aMethod = builderClass.getMethod("a");
+                }
+                aMethod.setAccessible(true);
                 Object task = aMethod.invoke(builder);
 
                 if (task != null) {
@@ -1300,17 +1359,56 @@ public class StorageScanner {
         if (isPrivateCollection) {
             try {
                 Logger.printInfo(() -> "Adding " + mediaKeys.size() + " items to private collection " + envelopeMediaKey + " via AddMediaToAlbumTask");
-                Class<?> mqwClass = Class.forName("mqw");
-                Constructor<?> mqwCtor = mqwClass.getConstructor(int.class);
+                Class<?> builderClass = resolveAddMediaToAlbumBuilderClass();
+                if (builderClass == null) {
+                    throw new ClassNotFoundException("Could not find AddMediaToAlbumTask builder class");
+                }
+                Constructor<?> mqwCtor = null;
+                for (Constructor<?> c : builderClass.getDeclaredConstructors()) {
+                    Class<?>[] p = c.getParameterTypes();
+                    if (p.length == 1 && (p[0] == int.class || p[0] == Integer.class || p[0] == Integer.TYPE)) {
+                        mqwCtor = c;
+                        break;
+                    }
+                }
+                if (mqwCtor == null && builderClass.getDeclaredConstructors().length > 0) {
+                    mqwCtor = builderClass.getDeclaredConstructors()[0];
+                }
+                if (mqwCtor == null) {
+                    throw new NoSuchMethodException("No constructor found for builder " + builderClass.getName());
+                }
+                mqwCtor.setAccessible(true);
                 Object builder = mqwCtor.newInstance(accountId);
 
-                Field fB = mqwClass.getField("b"); // albumMediaId
+                Field fB = null;
+                try {
+                    fB = builderClass.getField("b");
+                } catch (Throwable t) {
+                    fB = builderClass.getDeclaredField("b");
+                }
+                fB.setAccessible(true);
                 fB.set(builder, envelopeMediaKey);
 
-                Field fD = mqwClass.getField("d"); // List<String> of mediaKeys
+                Field fD = null;
+                try {
+                    fD = builderClass.getField("d");
+                } catch (Throwable t) {
+                    fD = builderClass.getDeclaredField("d");
+                }
+                fD.setAccessible(true);
                 fD.set(builder, mediaKeys);
 
-                Method aMethod = mqwClass.getMethod("a"); // a() -> AddMediaToAlbumTask
+                Method aMethod = null;
+                for (Method m : builderClass.getDeclaredMethods()) {
+                    if (m.getReturnType().getName().contains("AddMediaToAlbumTask") && m.getParameterTypes().length == 0) {
+                        aMethod = m;
+                        break;
+                    }
+                }
+                if (aMethod == null) {
+                    aMethod = builderClass.getMethod("a");
+                }
+                aMethod.setAccessible(true);
                 Object task = aMethod.invoke(builder);
 
                 if (task != null) {
