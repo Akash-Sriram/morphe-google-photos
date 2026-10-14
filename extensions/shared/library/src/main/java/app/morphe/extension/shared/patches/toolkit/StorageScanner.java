@@ -3160,49 +3160,51 @@ public class StorageScanner {
     private static List<?> loadDirectMarsMedia(Context context, int accountId, List<MediaItem> items) {
         List<Object> matched = new ArrayList<>();
         try {
-            Class<?> lajhxClass;
-            try {
-                lajhxClass = Class.forName("ajhx");
-            } catch (Throwable t1) {
-                lajhxClass = Class.forName("lajhx");
-            }
-            Object marsColl = lajhxClass.getConstructor(int.class).newInstance(accountId);
-            Class<?> bwpgClass = Class.forName("bwpg");
-            Class<?> wsgClass = Class.forName("wsg");
-            Object collRef = wsgClass.getMethod("a", bwpgClass).invoke(null, marsColl);
-
-            Class<?> wrlClass = Class.forName("wrl");
-            Class<?> wryClass = Class.forName("wry");
-            Class<?> wqsClass = Class.forName("wqs");
-            Class<?> wqbClass = Class.forName("wqb");
-
-            Object wqsVal = wqsClass.getField("a").get(null);
-            Object wqbVal = buildCoreFeaturesRequest(context);
-            if (wqbVal == null) {
-                wqbVal = wqbClass.getField("a").get(null);
+            String[] marsCollClasses = new String[] {
+                "alsd", // 7.97.0 (52547221 arm64)
+                "alqt", // 7.97.0 (52547203 univ)
+                "alww", // 7.97.0 (52547233 univ)
+                "ajhx"  // 7.96.0 (52511175 nodpi)
+            };
+            Object marsColl = null;
+            for (String cn : marsCollClasses) {
+                try {
+                    Class<?> clazz = Class.forName(cn);
+                    Constructor<?> ctor = clazz.getConstructor(int.class);
+                    ctor.setAccessible(true);
+                    marsColl = ctor.newInstance(accountId);
+                    if (marsColl != null) {
+                        Logger.printInfo(() -> "Resolved MarsCollection via: " + cn);
+                        break;
+                    }
+                } catch (Throwable ignored) {}
             }
 
-            Method hMethod = wrlClass.getMethod("H", Context.class, wryClass, wqsClass, wqbClass);
-            List<?> allLoaded = (List<?>) hMethod.invoke(null, context, collRef, wqsVal, wqbVal);
-            if (allLoaded != null && !allLoaded.isEmpty()) {
-                if (items == null || items.isEmpty() || items.size() == allLoaded.size()) {
-                    matched.addAll(allLoaded);
-                } else {
-                    Set<String> targetKeys = new HashSet<>();
-                    for (MediaItem mi : items) {
-                        if (mi.dedupKey != null && !mi.dedupKey.isEmpty()) targetKeys.add(mi.dedupKey);
-                        if (mi.mediaKey != null && !mi.mediaKey.isEmpty()) targetKeys.add(mi.mediaKey);
-                    }
-                    Class<?> zonClass = null;
-                    try { zonClass = Class.forName("zon"); } catch (Throwable ignored) {}
-                    for (Object media : allLoaded) {
-                        String dKey = (zonClass != null) ? extractDedupKey(media, zonClass) : null;
-                        if (dKey != null && targetKeys.contains(dKey)) {
-                            matched.add(media);
-                        }
-                    }
-                    if (matched.isEmpty()) {
+            if (marsColl != null) {
+                List<?> allLoaded = loadMediaCollection(context, marsColl);
+                if (allLoaded != null && !allLoaded.isEmpty()) {
+                    if (items == null || items.isEmpty() || items.size() == allLoaded.size()) {
                         matched.addAll(allLoaded);
+                    } else {
+                        Set<String> targetKeys = new HashSet<>();
+                        for (MediaItem mi : items) {
+                            if (mi.dedupKey != null && !mi.dedupKey.isEmpty()) targetKeys.add(mi.dedupKey);
+                            if (mi.mediaKey != null && !mi.mediaKey.isEmpty()) targetKeys.add(mi.mediaKey);
+                        }
+                        String[] zonCandidates = new String[] {"zon", "zoi", "zog", "zkr"};
+                        Class<?> zonClass = null;
+                        for (String zc : zonCandidates) {
+                            try { zonClass = Class.forName(zc); break; } catch (Throwable ignored) {}
+                        }
+                        for (Object media : allLoaded) {
+                            String dKey = (zonClass != null) ? extractDedupKey(media, zonClass) : null;
+                            if (dKey != null && targetKeys.contains(dKey)) {
+                                matched.add(media);
+                            }
+                        }
+                        if (matched.isEmpty()) {
+                            matched.addAll(allLoaded);
+                        }
                     }
                 }
             }
@@ -3246,25 +3248,80 @@ public class StorageScanner {
             }
 
             try {
-                Class<?> ccrgClass = Class.forName("ccrg");
-                Method copyOfMethod = ccrgClass.getMethod("h", Collection.class);
-                Object immutableList = copyOfMethod.invoke(null, chunkCore);
-
-                Class<?> mbjClass = Class.forName("mbj");
-                Constructor<?> mbjCtor = mbjClass.getConstructor(Object.class, int.class, int.class);
-                Object mbjInstance = mbjCtor.newInstance(immutableList, accountId, 7);
-
-                Object azlkMu = Class.forName("azlk").getField("mu").get(null);
+                Object immutableList = null;
+                try {
+                    Class<?> ccrgClass = Class.forName("ccrg");
+                    Method copyOfMethod = ccrgClass.getMethod("h", Collection.class);
+                    immutableList = copyOfMethod.invoke(null, chunkCore);
+                } catch (Throwable tCcrg) {
+                    try {
+                        Class<?> ccrgClass = Class.forName("com.google.common.collect.ImmutableList");
+                        Method copyOfMethod = ccrgClass.getMethod("copyOf", Collection.class);
+                        immutableList = copyOfMethod.invoke(null, chunkCore);
+                    } catch (Throwable ignored) {}
+                }
+                if (immutableList == null) immutableList = chunkCore;
 
                 String taskName = "com.google." + "android.apps.photos.mars.actionhandler.impl.MarsMoveHandlerImpl.MarsRemoveTask";
-                Class<?> rgaClass = Class.forName("rga");
-                Method lMethod = rgaClass.getMethod("l", String.class, Class.forName("azll"), String.class, Class.forName("qdr"));
-                Object qdp = lMethod.invoke(null, taskName, azlkMu, "mars_remove_result", mbjInstance);
 
-                if (qdp != null) {
-                    Object qdn = qdp.getClass().getMethod("b").invoke(qdp);
-                    Object task = qdn.getClass().getMethod("a").invoke(qdn);
+                Object task = null;
+                String[][] configs = new String[][] {
+                    {"odi", "bdft", "ms", "stk", "s"}, // 7.97.0 arm64 (52547221)
+                    {"oax", "bbzi", "ms", "sgz", "n"}, // 7.97.0 univ (52547203)
+                    {"ofl", "bcdu", "ms", "tfb", "p"}, // 7.97.0 univ (52547233)
+                    {"mbj", "azlk", "mu", "rga", "l"}  // 7.96.0 nodpi (52511175)
+                };
 
+                for (String[] cfg : configs) {
+                    try {
+                        Class<?> argClass = Class.forName(cfg[0]);
+                        Constructor<?> argCtor = null;
+                        try {
+                            argCtor = argClass.getConstructor(Object.class, int.class, int.class);
+                        } catch (Throwable t1) {
+                            for (Constructor<?> c : argClass.getDeclaredConstructors()) {
+                                if (c.getParameterTypes().length == 3) {
+                                    argCtor = c;
+                                    break;
+                                }
+                            }
+                        }
+                        if (argCtor == null) continue;
+                        argCtor.setAccessible(true);
+                        Object argInstance = null;
+                        Class<?>[] ctorParams = argCtor.getParameterTypes();
+                        if (ctorParams[0] == int.class) {
+                            argInstance = argCtor.newInstance(accountId, immutableList, 7);
+                        } else {
+                            argInstance = argCtor.newInstance(immutableList, accountId, 7);
+                        }
+
+                        Class<?> enumClass = Class.forName(cfg[1]);
+                        Object enumVal = enumClass.getField(cfg[2]).get(null);
+
+                        Class<?> builderClass = Class.forName(cfg[3]);
+                        Method builderMethod = null;
+                        for (Method m : builderClass.getMethods()) {
+                            if (m.getName().equals(cfg[4]) && m.getParameterTypes().length == 4) {
+                                builderMethod = m;
+                                break;
+                            }
+                        }
+                        if (builderMethod == null) continue;
+                        builderMethod.setAccessible(true);
+                        Object qdp = builderMethod.invoke(null, taskName, enumVal, "mars_remove_result", argInstance);
+                        if (qdp != null) {
+                            Object qdn = qdp.getClass().getMethod("b").invoke(qdp);
+                            task = qdn.getClass().getMethod("a").invoke(qdn);
+                            if (task != null) {
+                                Logger.printInfo(() -> "Created MarsRemoveTask via: " + cfg[0] + " / " + cfg[3]);
+                                break;
+                            }
+                        }
+                    } catch (Throwable ignored) {}
+                }
+
+                if (task != null) {
                     Object res = runTaskSync(context, task);
 
                     if (res != null) {

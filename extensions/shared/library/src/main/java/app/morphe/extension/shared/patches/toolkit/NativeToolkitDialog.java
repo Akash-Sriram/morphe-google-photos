@@ -3220,10 +3220,17 @@ public class NativeToolkitDialog {
 
             if (model != null) {
                 for (Method m : rmClass.getMethods()) {
+                    if (m.getName().equals("equals")) continue;
+                    Class<?> rt = m.getReturnType();
+                    if (rt == void.class || rt.isPrimitive() || rt == Boolean.class || rt == boolean.class || rt == Object.class) continue;
                     Class<?>[] pt = m.getParameterTypes();
-                    if (pt.length == 1 && pt[0] == Object.class && m.getReturnType() != void.class) {
+                    if (pt.length == 1 && (pt[0] == Object.class || pt[0].isInstance(model))) {
                         try {
-                            return m.invoke(requestManager, model);
+                            m.setAccessible(true);
+                            Object res = m.invoke(requestManager, model);
+                            if (res != null && hasIntoImageViewMethod(res)) {
+                                return res;
+                            }
                         } catch (Throwable ignored) {}
                     }
                 }
@@ -3232,10 +3239,17 @@ public class NativeToolkitDialog {
             if (urlStr.startsWith("content://") || urlStr.startsWith("file://")) {
                 Uri uri = Uri.parse(urlStr);
                 for (Method m : rmClass.getMethods()) {
+                    if (m.getName().equals("equals")) continue;
+                    Class<?> rt = m.getReturnType();
+                    if (rt == void.class || rt.isPrimitive() || rt == Boolean.class || rt == boolean.class || rt == Object.class) continue;
                     Class<?>[] pt = m.getParameterTypes();
-                    if (pt.length == 1 && pt[0] == Uri.class && m.getReturnType() != void.class) {
+                    if (pt.length == 1 && pt[0] == Uri.class) {
                         try {
-                            return m.invoke(requestManager, uri);
+                            m.setAccessible(true);
+                            Object res = m.invoke(requestManager, uri);
+                            if (res != null && hasIntoImageViewMethod(res)) {
+                                return res;
+                            }
                         } catch (Throwable ignored) {}
                     }
                 }
@@ -3243,25 +3257,38 @@ public class NativeToolkitDialog {
 
             // Fallback load(String) or load(Object)
             for (Method m : rmClass.getMethods()) {
+                if (m.getName().equals("equals")) continue;
+                Class<?> rt = m.getReturnType();
+                if (rt == void.class || rt.isPrimitive() || rt == Boolean.class || rt == boolean.class || rt == Object.class) continue;
                 Class<?>[] pt = m.getParameterTypes();
-                if (pt.length == 1 && pt[0] == String.class && m.getReturnType() != void.class) {
+                if (pt.length == 1 && (pt[0] == String.class || pt[0] == Object.class)) {
                     try {
-                        return m.invoke(requestManager, urlStr);
-                    } catch (Throwable ignored) {}
-                }
-            }
-            for (Method m : rmClass.getMethods()) {
-                Class<?>[] pt = m.getParameterTypes();
-                if (pt.length == 1 && pt[0] == Object.class && m.getReturnType() != void.class) {
-                    try {
-                        return m.invoke(requestManager, urlStr);
+                        m.setAccessible(true);
+                        Object res = m.invoke(requestManager, urlStr);
+                        if (res != null && hasIntoImageViewMethod(res)) {
+                            return res;
+                        }
                     } catch (Throwable ignored) {}
                 }
             }
         } catch (Throwable t) {
-            Logger.printInfo(() -> "loadGlideRequestBuilder error: " + t.getMessage());
+            Throwable cause = t.getCause() != null ? t.getCause() : t;
+            Logger.printInfo(() -> "loadGlideRequestBuilder error: " + cause.getClass().getSimpleName() + ": " + cause.getMessage());
         }
         return null;
+    }
+
+    private static boolean hasIntoImageViewMethod(Object requestBuilder) {
+        if (requestBuilder == null) return false;
+        try {
+            for (Method m : requestBuilder.getClass().getMethods()) {
+                Class<?>[] pt = m.getParameterTypes();
+                if (pt.length == 1 && ImageView.class.isAssignableFrom(pt[0])) {
+                    return true;
+                }
+            }
+        } catch (Throwable ignored) {}
+        return false;
     }
 
     private static boolean applyGlideInto(Object requestBuilder, ImageView iv) {
@@ -3269,13 +3296,15 @@ public class NativeToolkitDialog {
         try {
             for (Method m : requestBuilder.getClass().getMethods()) {
                 Class<?>[] pt = m.getParameterTypes();
-                if (pt.length == 1 && pt[0] == ImageView.class) {
+                if (pt.length == 1 && ImageView.class.isAssignableFrom(pt[0])) {
+                    m.setAccessible(true);
                     m.invoke(requestBuilder, iv);
                     return true;
                 }
             }
         } catch (Throwable t) {
-            Logger.printInfo(() -> "applyGlideInto error: " + t.getMessage());
+            Throwable cause = t.getCause() != null ? t.getCause() : t;
+            Logger.printInfo(() -> "applyGlideInto error: " + cause.getClass().getSimpleName() + ": " + cause.getMessage());
         }
         return false;
     }
@@ -3286,6 +3315,7 @@ public class NativeToolkitDialog {
             for (Method m : requestBuilder.getClass().getMethods()) {
                 Class<?>[] pt = m.getParameterTypes();
                 if (pt.length == 2 && pt[0] == int.class && pt[1] == int.class && java.util.concurrent.Future.class.isAssignableFrom(m.getReturnType())) {
+                    m.setAccessible(true);
                     java.util.concurrent.Future<?> future = (java.util.concurrent.Future<?>) m.invoke(requestBuilder, w, h);
                     if (future != null) {
                         Object result = future.get(8, java.util.concurrent.TimeUnit.SECONDS);
