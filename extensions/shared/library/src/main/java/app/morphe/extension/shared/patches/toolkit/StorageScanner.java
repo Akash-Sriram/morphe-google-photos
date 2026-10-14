@@ -375,72 +375,74 @@ public class StorageScanner {
     public static void ensureArchiveSyncTriggers(SQLiteDatabase db) {
         if (db == null || !hasTable(db, "remote_media") || !hasTable(db, "media") || !hasTable(db, "collections")) return;
         try {
-            db.execSQL("CREATE TRIGGER IF NOT EXISTS trg_main_archive " +
+            db.execSQL("DROP TRIGGER IF EXISTS trg_main_archive;");
+            db.execSQL("DROP TRIGGER IF EXISTS trg_album_insert_archive;");
+            db.execSQL("DROP TRIGGER IF EXISTS trg_album_update_archive;");
+            db.execSQL("DROP TRIGGER IF EXISTS trg_main_unarchive;");
+
+            // 1. When the main library collection changes archive state, cascade to sibling album rows and media table
+            db.execSQL("CREATE TRIGGER IF NOT EXISTS trg_main_library_sync " +
                     "AFTER UPDATE OF is_archived ON remote_media " +
-                    "WHEN NEW.is_archived = 1 AND NEW.collection_id NOT IN (SELECT collection_media_key FROM collections) " +
+                    "WHEN NEW.collection_id NOT IN (SELECT collection_media_key FROM collections) " +
                     "BEGIN " +
-                    "    UPDATE remote_media SET is_archived = 1 WHERE dedup_key = NEW.dedup_key AND is_archived = 0; " +
-                    "    UPDATE media SET is_archived = 1 WHERE dedup_key = NEW.dedup_key AND (is_archived IS NULL OR is_archived = 0); " +
+                    "    UPDATE remote_media SET is_archived = NEW.is_archived WHERE dedup_key = NEW.dedup_key AND is_archived != NEW.is_archived; " +
+                    "    UPDATE media SET is_archived = NEW.is_archived WHERE dedup_key = NEW.dedup_key AND is_archived != NEW.is_archived; " +
                     "END;");
 
-            db.execSQL("CREATE TRIGGER IF NOT EXISTS trg_album_insert_archive " +
+            db.execSQL("CREATE TRIGGER IF NOT EXISTS trg_main_library_insert_sync " +
                     "AFTER INSERT ON remote_media " +
-                    "WHEN NEW.is_archived = 0 AND EXISTS ( " +
-                    "    SELECT 1 FROM remote_media " +
-                    "    WHERE dedup_key = NEW.dedup_key " +
-                    "      AND is_archived = 1 " +
-                    "      AND collection_id NOT IN (SELECT collection_media_key FROM collections) " +
-                    ") " +
+                    "WHEN NEW.collection_id NOT IN (SELECT collection_media_key FROM collections) " +
                     "BEGIN " +
-                    "    UPDATE remote_media SET is_archived = 1 WHERE _id = NEW._id; " +
-                    "    UPDATE media SET is_archived = 1 WHERE dedup_key = NEW.dedup_key AND (is_archived IS NULL OR is_archived = 0); " +
+                    "    UPDATE remote_media SET is_archived = NEW.is_archived WHERE dedup_key = NEW.dedup_key AND is_archived != NEW.is_archived; " +
+                    "    UPDATE media SET is_archived = NEW.is_archived WHERE dedup_key = NEW.dedup_key AND is_archived != NEW.is_archived; " +
                     "END;");
 
-            db.execSQL("CREATE TRIGGER IF NOT EXISTS trg_album_update_archive " +
-                    "AFTER UPDATE OF is_archived ON remote_media " +
-                    "WHEN NEW.is_archived = 0 " +
-                    "  AND NEW.collection_id IN (SELECT collection_media_key FROM collections) " +
-                    "  AND EXISTS ( " +
-                    "    SELECT 1 FROM remote_media " +
-                    "    WHERE dedup_key = NEW.dedup_key " +
-                    "      AND is_archived = 1 " +
-                    "      AND collection_id NOT IN (SELECT collection_media_key FROM collections) " +
-                    ") " +
+            // 2. When an album row is inserted by delta sync, inherit the main library's archive state
+            db.execSQL("CREATE TRIGGER IF NOT EXISTS trg_album_insert_sync " +
+                    "AFTER INSERT ON remote_media " +
+                    "WHEN NEW.collection_id IN (SELECT collection_media_key FROM collections) " +
                     "BEGIN " +
-                    "    UPDATE remote_media SET is_archived = 1 WHERE _id = NEW._id; " +
-                    "    UPDATE media SET is_archived = 1 WHERE dedup_key = NEW.dedup_key AND (is_archived IS NULL OR is_archived = 0); " +
+                    "    UPDATE remote_media SET is_archived = COALESCE(( " +
+                    "        SELECT is_archived FROM remote_media " +
+                    "        WHERE dedup_key = NEW.dedup_key " +
+                    "          AND collection_id NOT IN (SELECT collection_media_key FROM collections) " +
+                    "        LIMIT 1 " +
+                    "    ), 0) WHERE _id = NEW._id; " +
                     "END;");
 
-            db.execSQL("CREATE TRIGGER IF NOT EXISTS trg_main_unarchive " +
-                    "AFTER UPDATE OF is_archived ON remote_media " +
-                    "WHEN NEW.is_archived = 0 AND NEW.collection_id NOT IN (SELECT collection_media_key FROM collections) " +
-                    "BEGIN " +
-                    "    UPDATE remote_media SET is_archived = 0 WHERE dedup_key = NEW.dedup_key AND is_archived = 1; " +
-                    "    UPDATE media SET is_archived = 0 WHERE dedup_key = NEW.dedup_key AND is_archived = 1; " +
-                    "END;");
-
+            // 3. When media table is updated or inserted, guard it against desynchronizing from the main library row
             db.execSQL("CREATE TRIGGER IF NOT EXISTS trg_media_sync_guard " +
                     "AFTER UPDATE OF is_archived ON media " +
-                    "WHEN NEW.is_archived = 0 AND EXISTS ( " +
+                    "WHEN EXISTS ( " +
                     "    SELECT 1 FROM remote_media " +
                     "    WHERE dedup_key = NEW.dedup_key " +
-                    "      AND is_archived = 1 " +
                     "      AND collection_id NOT IN (SELECT collection_media_key FROM collections) " +
+                    "      AND is_archived != NEW.is_archived " +
                     ") " +
                     "BEGIN " +
-                    "    UPDATE media SET is_archived = 1 WHERE _id = NEW._id; " +
+                    "    UPDATE media SET is_archived = ( " +
+                    "        SELECT is_archived FROM remote_media " +
+                    "        WHERE dedup_key = NEW.dedup_key " +
+                    "          AND collection_id NOT IN (SELECT collection_media_key FROM collections) " +
+                    "        LIMIT 1 " +
+                    "    ) WHERE _id = NEW._id; " +
                     "END;");
 
             db.execSQL("CREATE TRIGGER IF NOT EXISTS trg_media_insert_guard " +
                     "AFTER INSERT ON media " +
-                    "WHEN NEW.is_archived = 0 AND EXISTS ( " +
+                    "WHEN EXISTS ( " +
                     "    SELECT 1 FROM remote_media " +
                     "    WHERE dedup_key = NEW.dedup_key " +
-                    "      AND is_archived = 1 " +
                     "      AND collection_id NOT IN (SELECT collection_media_key FROM collections) " +
+                    "      AND is_archived != NEW.is_archived " +
                     ") " +
                     "BEGIN " +
-                    "    UPDATE media SET is_archived = 1 WHERE _id = NEW._id; " +
+                    "    UPDATE media SET is_archived = ( " +
+                    "        SELECT is_archived FROM remote_media " +
+                    "        WHERE dedup_key = NEW.dedup_key " +
+                    "          AND collection_id NOT IN (SELECT collection_media_key FROM collections) " +
+                    "        LIMIT 1 " +
+                    "    ) WHERE _id = NEW._id; " +
                     "END;");
         } catch (Throwable t) {
             Logger.printException(() -> "Error ensuring archive sync triggers", t);
@@ -457,8 +459,32 @@ public class StorageScanner {
                 db = SQLiteDatabase.openDatabase(dbFile.getAbsolutePath(), null, SQLiteDatabase.OPEN_READWRITE | SQLiteDatabase.ENABLE_WRITE_AHEAD_LOGGING);
                 ensureArchiveSyncTriggers(db);
                 if (hasTable(db, "remote_media") && hasTable(db, "media") && hasTable(db, "collections")) {
-                    db.execSQL("UPDATE remote_media SET is_archived = 1 WHERE is_archived = 0 AND dedup_key IN (SELECT dedup_key FROM remote_media WHERE is_archived = 1 AND collection_id NOT IN (SELECT collection_media_key FROM collections));");
-                    db.execSQL("UPDATE media SET is_archived = 1 WHERE (is_archived IS NULL OR is_archived = 0) AND dedup_key IN (SELECT dedup_key FROM remote_media WHERE is_archived = 1 AND collection_id NOT IN (SELECT collection_media_key FROM collections));");
+                    db.execSQL("UPDATE remote_media SET is_archived = ( " +
+                            "    SELECT is_archived FROM remote_media rm2 " +
+                            "    WHERE rm2.dedup_key = remote_media.dedup_key " +
+                            "      AND rm2.collection_id NOT IN (SELECT collection_media_key FROM collections) " +
+                            "    LIMIT 1 " +
+                            ") " +
+                            "WHERE collection_id IN (SELECT collection_media_key FROM collections) " +
+                            "  AND EXISTS ( " +
+                            "    SELECT 1 FROM remote_media rm2 " +
+                            "    WHERE rm2.dedup_key = remote_media.dedup_key " +
+                            "      AND rm2.collection_id NOT IN (SELECT collection_media_key FROM collections) " +
+                            "      AND rm2.is_archived != remote_media.is_archived " +
+                            ");");
+
+                    db.execSQL("UPDATE media SET is_archived = ( " +
+                            "    SELECT is_archived FROM remote_media " +
+                            "    WHERE remote_media.dedup_key = media.dedup_key " +
+                            "      AND remote_media.collection_id NOT IN (SELECT collection_media_key FROM collections) " +
+                            "    LIMIT 1 " +
+                            ") " +
+                            "WHERE EXISTS ( " +
+                            "    SELECT 1 FROM remote_media " +
+                            "    WHERE remote_media.dedup_key = media.dedup_key " +
+                            "      AND remote_media.collection_id NOT IN (SELECT collection_media_key FROM collections) " +
+                            "      AND remote_media.is_archived != media.is_archived " +
+                            ");");
                 }
             } catch (Throwable ignored) {
             } finally {
