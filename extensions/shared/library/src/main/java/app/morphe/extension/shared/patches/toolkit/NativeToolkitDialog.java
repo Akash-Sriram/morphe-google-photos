@@ -185,6 +185,9 @@ public class NativeToolkitDialog {
         if (currentAccount == null) {
             currentAccount = StorageScanner.getActiveAccount(activity);
         }
+        if (currentAccount != null) {
+            StorageScanner.ensureArchiveConsistency(currentAccount);
+        }
 
         TextView tvSub = new TextView(activity);
         String accLabel = currentAccount != null ? currentAccount.accountName : "No Account";

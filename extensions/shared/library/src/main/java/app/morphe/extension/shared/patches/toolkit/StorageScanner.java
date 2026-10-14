@@ -372,6 +372,103 @@ public class StorageScanner {
         try (Cursor c = db.rawQuery("PRAGMA temp_store = MEMORY", null)) { if (c != null) c.moveToFirst(); } catch (Throwable ignored) {}
     }
 
+    public static void ensureArchiveSyncTriggers(SQLiteDatabase db) {
+        if (db == null || !hasTable(db, "remote_media") || !hasTable(db, "media") || !hasTable(db, "collections")) return;
+        try {
+            db.execSQL("CREATE TRIGGER IF NOT EXISTS trg_main_archive " +
+                    "AFTER UPDATE OF is_archived ON remote_media " +
+                    "WHEN NEW.is_archived = 1 AND NEW.collection_id NOT IN (SELECT collection_media_key FROM collections) " +
+                    "BEGIN " +
+                    "    UPDATE remote_media SET is_archived = 1 WHERE dedup_key = NEW.dedup_key AND is_archived = 0; " +
+                    "    UPDATE media SET is_archived = 1 WHERE dedup_key = NEW.dedup_key AND (is_archived IS NULL OR is_archived = 0); " +
+                    "END;");
+
+            db.execSQL("CREATE TRIGGER IF NOT EXISTS trg_album_insert_archive " +
+                    "AFTER INSERT ON remote_media " +
+                    "WHEN NEW.is_archived = 0 AND EXISTS ( " +
+                    "    SELECT 1 FROM remote_media " +
+                    "    WHERE dedup_key = NEW.dedup_key " +
+                    "      AND is_archived = 1 " +
+                    "      AND collection_id NOT IN (SELECT collection_media_key FROM collections) " +
+                    ") " +
+                    "BEGIN " +
+                    "    UPDATE remote_media SET is_archived = 1 WHERE _id = NEW._id; " +
+                    "    UPDATE media SET is_archived = 1 WHERE dedup_key = NEW.dedup_key AND (is_archived IS NULL OR is_archived = 0); " +
+                    "END;");
+
+            db.execSQL("CREATE TRIGGER IF NOT EXISTS trg_album_update_archive " +
+                    "AFTER UPDATE OF is_archived ON remote_media " +
+                    "WHEN NEW.is_archived = 0 " +
+                    "  AND NEW.collection_id IN (SELECT collection_media_key FROM collections) " +
+                    "  AND EXISTS ( " +
+                    "    SELECT 1 FROM remote_media " +
+                    "    WHERE dedup_key = NEW.dedup_key " +
+                    "      AND is_archived = 1 " +
+                    "      AND collection_id NOT IN (SELECT collection_media_key FROM collections) " +
+                    ") " +
+                    "BEGIN " +
+                    "    UPDATE remote_media SET is_archived = 1 WHERE _id = NEW._id; " +
+                    "    UPDATE media SET is_archived = 1 WHERE dedup_key = NEW.dedup_key AND (is_archived IS NULL OR is_archived = 0); " +
+                    "END;");
+
+            db.execSQL("CREATE TRIGGER IF NOT EXISTS trg_main_unarchive " +
+                    "AFTER UPDATE OF is_archived ON remote_media " +
+                    "WHEN NEW.is_archived = 0 AND NEW.collection_id NOT IN (SELECT collection_media_key FROM collections) " +
+                    "BEGIN " +
+                    "    UPDATE remote_media SET is_archived = 0 WHERE dedup_key = NEW.dedup_key AND is_archived = 1; " +
+                    "    UPDATE media SET is_archived = 0 WHERE dedup_key = NEW.dedup_key AND is_archived = 1; " +
+                    "END;");
+
+            db.execSQL("CREATE TRIGGER IF NOT EXISTS trg_media_sync_guard " +
+                    "AFTER UPDATE OF is_archived ON media " +
+                    "WHEN NEW.is_archived = 0 AND EXISTS ( " +
+                    "    SELECT 1 FROM remote_media " +
+                    "    WHERE dedup_key = NEW.dedup_key " +
+                    "      AND is_archived = 1 " +
+                    "      AND collection_id NOT IN (SELECT collection_media_key FROM collections) " +
+                    ") " +
+                    "BEGIN " +
+                    "    UPDATE media SET is_archived = 1 WHERE _id = NEW._id; " +
+                    "END;");
+
+            db.execSQL("CREATE TRIGGER IF NOT EXISTS trg_media_insert_guard " +
+                    "AFTER INSERT ON media " +
+                    "WHEN NEW.is_archived = 0 AND EXISTS ( " +
+                    "    SELECT 1 FROM remote_media " +
+                    "    WHERE dedup_key = NEW.dedup_key " +
+                    "      AND is_archived = 1 " +
+                    "      AND collection_id NOT IN (SELECT collection_media_key FROM collections) " +
+                    ") " +
+                    "BEGIN " +
+                    "    UPDATE media SET is_archived = 1 WHERE _id = NEW._id; " +
+                    "END;");
+        } catch (Throwable t) {
+            Logger.printException(() -> "Error ensuring archive sync triggers", t);
+        }
+    }
+
+    public static void ensureArchiveConsistency(AccountInfo account) {
+        if (account == null || account.dbPath == null) return;
+        File dbFile = new File(account.dbPath);
+        if (!dbFile.exists()) return;
+        new Thread(() -> {
+            SQLiteDatabase db = null;
+            try {
+                db = SQLiteDatabase.openDatabase(dbFile.getAbsolutePath(), null, SQLiteDatabase.OPEN_READWRITE | SQLiteDatabase.ENABLE_WRITE_AHEAD_LOGGING);
+                ensureArchiveSyncTriggers(db);
+                if (hasTable(db, "remote_media") && hasTable(db, "media") && hasTable(db, "collections")) {
+                    db.execSQL("UPDATE remote_media SET is_archived = 1 WHERE is_archived = 0 AND dedup_key IN (SELECT dedup_key FROM remote_media WHERE is_archived = 1 AND collection_id NOT IN (SELECT collection_media_key FROM collections));");
+                    db.execSQL("UPDATE media SET is_archived = 1 WHERE (is_archived IS NULL OR is_archived = 0) AND dedup_key IN (SELECT dedup_key FROM remote_media WHERE is_archived = 1 AND collection_id NOT IN (SELECT collection_media_key FROM collections));");
+                }
+            } catch (Throwable ignored) {
+            } finally {
+                if (db != null) {
+                    try { db.close(); } catch (Throwable ignored) {}
+                }
+            }
+        }, "morphe-archive-consistency").start();
+    }
+
     public static List<AlbumInfo> getAvailableAlbums(AccountInfo account) {
         List<AlbumInfo> albums = new ArrayList<>();
         if (account == null) return albums;
@@ -1689,7 +1786,10 @@ public class StorageScanner {
 
             // 1. Look up remote_media table first by dedupKey (guaranteed backed-up cloud photos)
             if (db != null && it.dedupKey != null && !it.dedupKey.trim().isEmpty() && hasTable(db, "remote_media")) {
-                try (Cursor c = db.rawQuery("SELECT COALESCE(NULLIF(remote_media_key, ''), media_key) FROM remote_media WHERE dedup_key = ? ORDER BY is_canonical DESC LIMIT 1", new String[]{it.dedupKey})) {
+                String orderClause = hasTable(db, "collections")
+                        ? "ORDER BY (collection_id IN (SELECT collection_media_key FROM collections)) ASC, is_canonical DESC LIMIT 1"
+                        : "ORDER BY is_canonical DESC LIMIT 1";
+                try (Cursor c = db.rawQuery("SELECT COALESCE(NULLIF(remote_media_key, ''), media_key) FROM remote_media WHERE dedup_key = ? " + orderClause, new String[]{it.dedupKey})) {
                     if (c != null && c.moveToFirst()) {
                         String rk = c.getString(0);
                         if (rk != null && !rk.trim().isEmpty() && !rk.startsWith("local:")) {
@@ -2025,9 +2125,17 @@ public class StorageScanner {
                             healDb.execSQL("UPDATE media SET trash_timestamp = 0, is_deleted = 0 WHERE is_archived = 1 AND trash_timestamp > 0;");
                         }
                         // Keep all rows sharing the same dedup_key consistent with archived state
-                        healDb.execSQL("UPDATE remote_media SET is_archived = 1 WHERE is_archived = 0 AND dedup_key IN (SELECT dedup_key FROM remote_media WHERE is_archived = 1);");
-                        if (hasTable(healDb, "media")) {
-                            healDb.execSQL("UPDATE media SET is_archived = 1 WHERE (is_archived IS NULL OR is_archived = 0) AND dedup_key IN (SELECT dedup_key FROM remote_media WHERE is_archived = 1);");
+                        ensureArchiveSyncTriggers(healDb);
+                        if (hasTable(healDb, "collections")) {
+                            healDb.execSQL("UPDATE remote_media SET is_archived = 1 WHERE is_archived = 0 AND dedup_key IN (SELECT dedup_key FROM remote_media WHERE is_archived = 1 AND collection_id NOT IN (SELECT collection_media_key FROM collections));");
+                            if (hasTable(healDb, "media")) {
+                                healDb.execSQL("UPDATE media SET is_archived = 1 WHERE (is_archived IS NULL OR is_archived = 0) AND dedup_key IN (SELECT dedup_key FROM remote_media WHERE is_archived = 1 AND collection_id NOT IN (SELECT collection_media_key FROM collections));");
+                            }
+                        } else {
+                            healDb.execSQL("UPDATE remote_media SET is_archived = 1 WHERE is_archived = 0 AND dedup_key IN (SELECT dedup_key FROM remote_media WHERE is_archived = 1);");
+                            if (hasTable(healDb, "media")) {
+                                healDb.execSQL("UPDATE media SET is_archived = 1 WHERE (is_archived IS NULL OR is_archived = 0) AND dedup_key IN (SELECT dedup_key FROM remote_media WHERE is_archived = 1);");
+                            }
                         }
                     } finally {
                         healDb.close();
@@ -3929,6 +4037,12 @@ public class StorageScanner {
                         }
                     }
 
+                    ensureArchiveSyncTriggers(db);
+                    if (hasTable(db, "remote_media") && hasTable(db, "media") && hasTable(db, "collections")) {
+                        db.execSQL("UPDATE remote_media SET is_archived = 1 WHERE is_archived = 0 AND dedup_key IN (SELECT dedup_key FROM remote_media WHERE is_archived = 1 AND collection_id NOT IN (SELECT collection_media_key FROM collections));");
+                        db.execSQL("UPDATE media SET is_archived = 1 WHERE (is_archived IS NULL OR is_archived = 0) AND dedup_key IN (SELECT dedup_key FROM remote_media WHERE is_archived = 1 AND collection_id NOT IN (SELECT collection_media_key FROM collections));");
+                    }
+
                     db.setTransactionSuccessful();
                     db.endTransaction();
                     try { db.close(); db = null; } catch (Throwable ignored) {}
@@ -4033,6 +4147,12 @@ public class StorageScanner {
                             if (hasColumn(db, "local_media", "desired_state")) lCv.put("desired_state", 0);
                             db.update("local_media", lCv, "dedup_key = ?", new String[]{it.dedupKey});
                         }
+                    }
+
+                    ensureArchiveSyncTriggers(db);
+                    if (hasTable(db, "remote_media") && hasTable(db, "media") && hasTable(db, "collections")) {
+                        db.execSQL("UPDATE remote_media SET is_archived = 0 WHERE is_archived = 1 AND dedup_key IN (SELECT dedup_key FROM remote_media WHERE is_archived = 0 AND collection_id NOT IN (SELECT collection_media_key FROM collections));");
+                        db.execSQL("UPDATE media SET is_archived = 0 WHERE is_archived = 1 AND dedup_key IN (SELECT dedup_key FROM remote_media WHERE is_archived = 0 AND collection_id NOT IN (SELECT collection_media_key FROM collections));");
                     }
 
                     db.setTransactionSuccessful();
