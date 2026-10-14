@@ -3196,13 +3196,26 @@ public class NativeToolkitDialog {
             // 1. Try RemoteMediaModel for HTTP/HTTPS
             Object model = null;
             if (urlStr.startsWith("http://") || urlStr.startsWith("https://")) {
-                try {
-                    Class<?> akioClass = Class.forName("akio");
-                    Object defaultOptions = akioClass.getField("a").get(null);
-                    Class<?> akinClass = Class.forName("akin");
-                    Constructor<?> akinCtor = akinClass.getConstructor(String.class, int.class, akioClass);
-                    model = akinCtor.newInstance(urlStr, accountId, defaultOptions);
-                } catch (Throwable ignored) {}
+                String[][] modelPairs = new String[][]{
+                    {"amsr", "amss"}, // 7.97.0 (52547221 arm64-v8a)
+                    {"amri", "amrj"}, // 7.97.0 (52547203 universal)
+                    {"amxw", "amxx"}, // 7.97.0 (52547233 universal)
+                    {"akin", "akio"}, // 7.96.0 (52511175 nodpi)
+                    {"aklr", "akls"}  // 7.96.0 (52511193 Samsung)
+                };
+                for (String[] pair : modelPairs) {
+                    try {
+                        Class<?> mClass = Class.forName(pair[0]);
+                        Class<?> oClass = Class.forName(pair[1]);
+                        Object defaultOptions = oClass.getField("a").get(null);
+                        Constructor<?> ctor = mClass.getConstructor(String.class, int.class, oClass);
+                        model = ctor.newInstance(urlStr, accountId, defaultOptions);
+                        if (model != null) {
+                            Logger.printInfo(() -> "Loaded RemoteMediaModel via: " + pair[0]);
+                            break;
+                        }
+                    } catch (Throwable ignored) {}
+                }
             }
 
             if (model != null) {

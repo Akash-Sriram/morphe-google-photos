@@ -1162,11 +1162,149 @@ public class StorageScanner {
         } catch (Throwable t) {
             Logger.printInfo(() -> "Could not resolve builder from AddMediaToAlbumTask: " + t.getMessage());
         }
-        for (String name : new String[]{"mtl", "mqw"}) {
+        for (String name : new String[]{"otz", "orn", "ovo", "mtl", "mqw"}) {
             Class<?> found = ReflectionCache.findClassOrNull(name);
             if (found != null) {
                 sAddMediaToAlbumBuilderClass = found;
                 return found;
+            }
+        }
+        return null;
+    }
+
+    private static volatile Method sTaskRunnerSyncMethod = null;
+    private static volatile Method sTaskRunnerAsyncMethod = null;
+    private static volatile boolean sTaskRunnerResolved = false;
+
+    public static synchronized void resolveTaskRunner() {
+        if (sTaskRunnerResolved) return;
+        sTaskRunnerResolved = true;
+        try {
+            Class<?> taskBase = null;
+            try {
+                taskBase = ReflectionCache.findClass("com.google.android.apps.photos.actionqueue.ActionWrapper").getSuperclass();
+            } catch (Throwable ignored) {}
+
+            String[] candidateRunners = new String[]{
+                "cbsq", // 7.97.0 (52547221 arm64)
+                "cagl", // 7.97.0 (52547203 universal)
+                "cant", // 7.97.0 (52547233 universal)
+                "bxue"  // 7.96.0
+            };
+
+            for (String name : candidateRunners) {
+                Class<?> clazz = ReflectionCache.findClassOrNull(name);
+                if (clazz != null) {
+                    for (Method m : clazz.getMethods()) {
+                        if (java.lang.reflect.Modifier.isStatic(m.getModifiers())) {
+                            Class<?>[] p = m.getParameterTypes();
+                            if (p.length == 2 && Context.class.isAssignableFrom(p[0]) &&
+                                (taskBase == null || p[1].isAssignableFrom(taskBase) || taskBase.isAssignableFrom(p[1]))) {
+                                if (m.getReturnType() != void.class && sTaskRunnerSyncMethod == null) {
+                                    m.setAccessible(true);
+                                    sTaskRunnerSyncMethod = m;
+                                } else if (m.getReturnType() == void.class && sTaskRunnerAsyncMethod == null) {
+                                    m.setAccessible(true);
+                                    sTaskRunnerAsyncMethod = m;
+                                }
+                            }
+                        }
+                    }
+                    if (sTaskRunnerSyncMethod != null) {
+                        final String resolvedName = name;
+                        Logger.printInfo(() -> "Resolved TaskRunner via: " + resolvedName);
+                        break;
+                    }
+                }
+            }
+        } catch (Throwable t) {
+            Logger.printException(() -> "Error resolving TaskRunner", t);
+        }
+    }
+
+    public static Object runTaskSync(Context context, Object task) {
+        if (context == null || task == null) return null;
+        resolveTaskRunner();
+        if (sTaskRunnerSyncMethod != null) {
+            try {
+                return sTaskRunnerSyncMethod.invoke(null, context, task);
+            } catch (Throwable t) {
+                Logger.printInfo(() -> "runTaskSync invoke error: " + t.getMessage());
+            }
+        }
+        return null;
+    }
+
+    public static void runTaskAsync(Context context, Object task) {
+        if (context == null || task == null) return;
+        resolveTaskRunner();
+        if (sTaskRunnerAsyncMethod != null) {
+            try {
+                sTaskRunnerAsyncMethod.invoke(null, context, task);
+                return;
+            } catch (Throwable t) {
+                Logger.printInfo(() -> "runTaskAsync invoke error: " + t.getMessage());
+            }
+        }
+        new Thread(() -> runTaskSync(context, task)).start();
+    }
+
+    public static int getTaskStatusCode(Object result) {
+        if (result == null) return -1;
+        try {
+            Field f = result.getClass().getField("d");
+            return f.getInt(result);
+        } catch (Throwable t) {
+            try {
+                Method m = result.getClass().getMethod("e");
+                boolean ok = (Boolean) m.invoke(result);
+                return ok ? 200 : 500;
+            } catch (Throwable ignored) {}
+        }
+        return -1;
+    }
+
+    public static Bundle getTaskResultBundle(Object result) {
+        if (result == null) return null;
+        try {
+            Method m = result.getClass().getMethod("b");
+            return (Bundle) m.invoke(result);
+        } catch (Throwable ignored) {}
+        return null;
+    }
+
+    public static Object resolveMediaKey(String key) {
+        if (key == null) return null;
+        try {
+            Class<?> delTaskClass = ReflectionCache.findClass("com.google.android.apps.photos.album.removealbum.DeleteSharedCollectionTask");
+            for (Constructor<?> c : delTaskClass.getConstructors()) {
+                Class<?>[] pt = c.getParameterTypes();
+                if (pt.length >= 2 && pt[0] == int.class) {
+                    Class<?> keyClass = pt[1];
+                    try {
+                        Method aM = keyClass.getMethod("a", String.class);
+                        return aM.invoke(null, key);
+                    } catch (Throwable t) {
+                        Constructor<?> keyCtor = keyClass.getConstructor(String.class);
+                        return keyCtor.newInstance(key);
+                    }
+                }
+            }
+        } catch (Throwable t) {
+            Logger.printInfo(() -> "resolveMediaKey error: " + t.getMessage());
+        }
+        for (String cName : new String[]{"ajzv", "ajxa", "akch", "ahnr"}) {
+            Class<?> clazz = ReflectionCache.findClassOrNull(cName);
+            if (clazz != null) {
+                try {
+                    Method aM = clazz.getMethod("a", String.class);
+                    return aM.invoke(null, key);
+                } catch (Throwable t) {
+                    try {
+                        Constructor<?> keyCtor = clazz.getConstructor(String.class);
+                        return keyCtor.newInstance(key);
+                    } catch (Throwable ignored) {}
+                }
             }
         }
         return null;
@@ -1240,18 +1378,13 @@ public class StorageScanner {
                 Object task = aMethod.invoke(builder);
 
                 if (task != null) {
-                    Class<?> bxtyClass = Class.forName("bxty");
-                    Class<?> bxueClass = Class.forName("bxue");
-                    Method fMethod = bxueClass.getMethod("f", Context.class, bxtyClass);
-                    Object result = fMethod.invoke(null, context, task);
+                    Object result = runTaskSync(context, task);
 
                     if (result != null) {
-                        Class<?> bxuzClass = Class.forName("bxuz");
-                        int statusCode = bxuzClass.getField("d").getInt(result);
+                        int statusCode = getTaskStatusCode(result);
                         Logger.printInfo(() -> "Method 1 AddMediaToAlbumTask status: " + statusCode);
                         if (statusCode == 200) {
-                            Method getBundleMethod = bxuzClass.getMethod("b");
-                            Bundle bundle = (Bundle) getBundleMethod.invoke(result);
+                            Bundle bundle = getTaskResultBundle(result);
                             if (bundle != null) {
                                 createdKey = bundle.getString("album_media_key");
                                 int added = bundle.getInt("num_added", mediaKeys != null ? mediaKeys.size() : 0);
@@ -1269,9 +1402,11 @@ public class StorageScanner {
                                 return createdKey;
                             }
                         } else {
-                            Object exc = bxuzClass.getField("e").get(result);
-                            String msg = (String) bxuzClass.getField("f").get(result);
-                            Logger.printInfo(() -> "Method 1 AddMediaToAlbumTask error: status=" + statusCode + ", msg=" + msg + ", exc=" + exc);
+                            try {
+                                Object exc = result.getClass().getField("e").get(result);
+                                String msg = (String) result.getClass().getField("f").get(result);
+                                Logger.printInfo(() -> "Method 1 AddMediaToAlbumTask error: status=" + statusCode + ", msg=" + msg + ", exc=" + exc);
+                            } catch (Throwable ignored) {}
                         }
                     }
                 }
@@ -1283,71 +1418,59 @@ public class StorageScanner {
 
             // Method B (Fallback): Create empty envelope, then add items via AddMediaToEnvelopeTask
             if (createdKey == null || createdKey.isEmpty()) {
-                Class<?> bemfClass = Class.forName("bemf");
-                Constructor<?> bemfCtor = bemfClass.getConstructor(long.class);
-                Object builder = bemfCtor.newInstance(System.currentTimeMillis());
-
-                Field fX = bemfClass.getField("x");
-                fX.setInt(builder, 4); // 4 = ENVELOPE_TYPE_ALBUM_EMPTY (required by adwr.e)
-
-                Field fG = bemfClass.getField("g");
-                fG.set(builder, title);
                 try {
-                    Field fR = bemfClass.getField("r");
-                    fR.setBoolean(builder, title != null && !title.isEmpty());
-                } catch (Throwable ignored) {}
+                    Class<?> bemfClass = ReflectionCache.findClassOrNull("bemf");
+                    if (bemfClass != null) {
+                        Constructor<?> bemfCtor = bemfClass.getConstructor(long.class);
+                        Object builder = bemfCtor.newInstance(System.currentTimeMillis());
 
-                Class<?> bemgClass = Class.forName("bemg");
-                Constructor<?> bemgCtor = bemgClass.getConstructor(bemfClass);
-                Object bemgObj = bemgCtor.newInstance(builder);
+                        Field fX = bemfClass.getField("x");
+                        fX.setInt(builder, 4); // 4 = ENVELOPE_TYPE_ALBUM_EMPTY (required by adwr.e)
 
-                Class<?> ladwrClass = Class.forName("adwr");
-                Method dMethod = ladwrClass.getMethod("d", int.class, bemgClass);
-                Object task = dMethod.invoke(null, accountId, bemgObj);
+                        Field fG = bemfClass.getField("g");
+                        fG.set(builder, title);
+                        try {
+                            Field fR = bemfClass.getField("r");
+                            fR.setBoolean(builder, title != null && !title.isEmpty());
+                        } catch (Throwable ignored) {}
 
-                if (task != null) {
-                    Object result = null;
-                    try {
-                        Class<?> bxtyClass = Class.forName("bxty");
-                        Class<?> bxueClass = Class.forName("bxue");
-                        Method fMethod = bxueClass.getMethod("f", Context.class, bxtyClass);
-                        result = fMethod.invoke(null, context, task);
-                    } catch (Throwable tSync) {
-                        Class<?> bzoqClass = Class.forName("bzoq");
-                        Class<?> qcxClass = Class.forName("qcx");
-                        Method getServiceMethod = bzoqClass.getMethod("e", Context.class, Class.class);
-                        Object taskRunner = getServiceMethod.invoke(null, context, qcxClass);
-                        if (taskRunner != null) {
-                            Class<?> bxtyClass = Class.forName("bxty");
-                            Method executeMethod = qcxClass.getMethod("a", bxtyClass);
-                            result = executeMethod.invoke(taskRunner, task);
-                        }
-                    }
+                        Class<?> bemgClass = Class.forName("bemg");
+                        Constructor<?> bemgCtor = bemgClass.getConstructor(bemfClass);
+                        Object bemgObj = bemgCtor.newInstance(builder);
 
-                    if (result != null) {
-                        Class<?> bxuzClass = Class.forName("bxuz");
-                        int statusCode = bxuzClass.getField("d").getInt(result);
-                        Logger.printInfo(() -> "Method B CreateEnvelopeTask status: " + statusCode);
-                        Method getBundleMethod = bxuzClass.getMethod("b");
-                        Bundle bundle = (Bundle) getBundleMethod.invoke(result);
-                        if (bundle != null) {
-                            createdKey = bundle.getString("envelope_media_key");
-                            if (createdKey == null || createdKey.isEmpty()) {
-                                Parcelable shareDetails = bundle.getParcelable("envelope_share_details");
-                                if (shareDetails != null) {
-                                    createdKey = (String) Class.forName("bemk").getField("a").get(shareDetails);
+                        Class<?> ladwrClass = Class.forName("adwr");
+                        Method dMethod = ladwrClass.getMethod("d", int.class, bemgClass);
+                        Object task = dMethod.invoke(null, accountId, bemgObj);
+
+                        if (task != null) {
+                            Object result = runTaskSync(context, task);
+
+                            if (result != null) {
+                                int statusCode = getTaskStatusCode(result);
+                                Logger.printInfo(() -> "Method B CreateEnvelopeTask status: " + statusCode);
+                                Bundle bundle = getTaskResultBundle(result);
+                                if (bundle != null) {
+                                    createdKey = bundle.getString("envelope_media_key");
+                                    if (createdKey == null || createdKey.isEmpty()) {
+                                        Parcelable shareDetails = bundle.getParcelable("envelope_share_details");
+                                        if (shareDetails != null) {
+                                            createdKey = (String) Class.forName("bemk").getField("a").get(shareDetails);
+                                        }
+                                    }
                                 }
                             }
                         }
-                    }
-                }
 
-                if (createdKey != null && !createdKey.isEmpty()) {
-                    final String keyB = createdKey;
-                    Logger.printInfo(() -> "Method B created empty album. Key: " + keyB);
-                    if (mediaKeys != null && !mediaKeys.isEmpty()) {
-                        totalAdded = addMediaToCloudAlbum(context, accountId, createdKey, mediaKeys);
+                        if (createdKey != null && !createdKey.isEmpty()) {
+                            final String keyB = createdKey;
+                            Logger.printInfo(() -> "Method B created empty album. Key: " + keyB);
+                            if (mediaKeys != null && !mediaKeys.isEmpty()) {
+                                totalAdded = addMediaToCloudAlbum(context, accountId, createdKey, mediaKeys);
+                            }
+                        }
                     }
+                } catch (Throwable tMethodB) {
+                    Logger.printInfo(() -> "Method B CreateEnvelopeTask failed: " + tMethodB.getMessage());
                 }
             }
 
@@ -1405,13 +1528,10 @@ public class StorageScanner {
                 Constructor<?> wrapperCtor = wrapperClass.getConstructor(int.class, ltyClass);
                 Object actionWrapper = wrapperCtor.newInstance(accountId, mbsAction);
 
-                Class<?> bxtyClass = Class.forName("bxty");
-                Class<?> bxueClass = Class.forName("bxue");
-                Method runMethod = bxueClass.getMethod("f", Context.class, bxtyClass);
-                Object res = runMethod.invoke(null, context, actionWrapper);
+                Object res = runTaskSync(context, actionWrapper);
 
                 if (res != null) {
-                    Bundle bundle = (Bundle) res.getClass().getMethod("b").invoke(res);
+                    Bundle bundle = getTaskResultBundle(res);
                     long actionId = bundle != null ? bundle.getLong("LocalResult__action_id", -1L) : -1L;
                     if (actionId != -1L) {
                         Class<?> aokqClass = Class.forName("aokq");
@@ -1558,18 +1678,13 @@ public class StorageScanner {
                 Object task = aMethod.invoke(builder);
 
                 if (task != null) {
-                    Class<?> bxtyClass = Class.forName("bxty");
-                    Class<?> bxueClass = Class.forName("bxue");
-                    Method fMethod = bxueClass.getMethod("f", Context.class, bxtyClass);
-                    Object result = fMethod.invoke(null, context, task);
+                    Object result = runTaskSync(context, task);
 
                     if (result != null) {
-                        Class<?> bxuzClass = Class.forName("bxuz");
-                        int statusCode = bxuzClass.getField("d").getInt(result);
+                        int statusCode = getTaskStatusCode(result);
                         Logger.printInfo(() -> "AddMediaToAlbumTask status: " + statusCode);
                         if (statusCode == 200) {
-                            Method getBundleMethod = bxuzClass.getMethod("b");
-                            Bundle bundle = (Bundle) getBundleMethod.invoke(result);
+                            Bundle bundle = getTaskResultBundle(result);
                             int added = bundle != null ? bundle.getInt("num_added", mediaKeys.size()) : mediaKeys.size();
                             return added;
                         }
@@ -1588,7 +1703,14 @@ public class StorageScanner {
             try {
                 Logger.printInfo(() -> "Adding chunk of " + chunk.size() + " items to cloud album " + envelopeMediaKey + " for account " + accountId);
 
-                Class<?> lamwaClass = Class.forName("amwa");
+                Class<?> lamwaClass = null;
+                for (String name : new String[]{"aphh", "apfz", "apjt", "amwa"}) {
+                    lamwaClass = ReflectionCache.findClassOrNull(name);
+                    if (lamwaClass != null) break;
+                }
+                if (lamwaClass == null) {
+                    throw new ClassNotFoundException("AddMediaToEnvelopeTask builder not found");
+                }
                 Constructor<?> lamwaCtor = null;
                 for (Constructor<?> c : lamwaClass.getDeclaredConstructors()) {
                     if (c.getParameterTypes().length == 1) {
@@ -1620,38 +1742,21 @@ public class StorageScanner {
                 Object task = dMethod.invoke(builder);
 
                 if (task != null) {
-                    Object result = null;
-                    try {
-                        Class<?> bxtyClass = Class.forName("bxty");
-                        Class<?> bxueClass = Class.forName("bxue");
-                        Method fMethod = bxueClass.getMethod("f", Context.class, bxtyClass);
-                        result = fMethod.invoke(null, context, task);
-                    } catch (Throwable tSync) {
-                        Logger.printInfo(() -> "bxue.f failed for AddMedia, trying TaskRunner: " + tSync.getMessage());
-                        Class<?> bzoqClass = Class.forName("bzoq");
-                        Class<?> qcxClass = Class.forName("qcx");
-                        Method getServiceMethod = bzoqClass.getMethod("e", Context.class, Class.class);
-                        Object taskRunner = getServiceMethod.invoke(null, context, qcxClass);
-                        if (taskRunner != null) {
-                            Class<?> bxtyClass = Class.forName("bxty");
-                            Method executeMethod = qcxClass.getMethod("a", bxtyClass);
-                            result = executeMethod.invoke(taskRunner, task);
-                        }
-                    }
+                    Object result = runTaskSync(context, task);
 
                     if (result != null) {
-                        Class<?> bxuzClass = Class.forName("bxuz");
-                        int statusCode = bxuzClass.getField("d").getInt(result);
+                        int statusCode = getTaskStatusCode(result);
                         Logger.printInfo(() -> "AddMediaToEnvelopeTask chunk status code: " + statusCode);
                         if (statusCode == 200) {
-                            Method getBundleMethod = bxuzClass.getMethod("b");
-                            Bundle bundle = (Bundle) getBundleMethod.invoke(result);
+                            Bundle bundle = getTaskResultBundle(result);
                             int added = bundle != null ? bundle.getInt("added_media_count", chunk.size()) : chunk.size();
                             totalAdded += added;
                         } else {
-                            Object exc = bxuzClass.getField("e").get(result);
-                            String msg = (String) bxuzClass.getField("f").get(result);
-                            Logger.printInfo(() -> "AddMediaToEnvelopeTask error status: " + statusCode + ", msg: " + msg + ", exc: " + exc);
+                            try {
+                                Object exc = result.getClass().getField("e").get(result);
+                                String msg = (String) result.getClass().getField("f").get(result);
+                                Logger.printInfo(() -> "AddMediaToEnvelopeTask error status: " + statusCode + ", msg: " + msg + ", exc: " + exc);
+                            } catch (Throwable ignored) {}
                             if (chunk.size() > 1) {
                                 Logger.printInfo(() -> "Chunk of " + chunk.size() + " items failed, splitting into halves...");
                                 int mid = chunk.size() / 2;
@@ -1675,19 +1780,7 @@ public class StorageScanner {
         try {
             Logger.printInfo(() -> "Deleting cloud album: " + albumMediaKey + " for account " + accountId);
 
-            Class<?> ahnrClass = Class.forName("ahnr");
-            Object optionalKey = null;
-            try {
-                Method aMethod = ahnrClass.getMethod("a", String.class);
-                optionalKey = aMethod.invoke(null, albumMediaKey);
-            } catch (Throwable t) {
-                Constructor<?> ahnrCtor = ahnrClass.getConstructor(String.class);
-                optionalKey = ahnrCtor.newInstance(albumMediaKey);
-            }
-
-            Class<?> bxtyClass = Class.forName("bxty");
-            Class<?> bxueClass = Class.forName("bxue");
-            Method fMethod = bxueClass.getMethod("f", Context.class, bxtyClass);
+            Object optionalKey = resolveMediaKey(albumMediaKey);
 
             // Determine whether album is a shared envelope (envelopes table) or private album (collections table)
             boolean isSharedEnvelope = false;
@@ -1711,22 +1804,20 @@ public class StorageScanner {
             } catch (Throwable ignored) {}
 
             boolean success = false;
-            if (isSharedEnvelope) {
+            if (isSharedEnvelope && optionalKey != null) {
                 // 1. Shared Envelope: invoke official DeleteSharedCollectionTask synchronously
-                // Constructor: DeleteSharedCollectionTask(int accountId, ahnr collectionMediaKey, boolean isLeave, boolean isDelete)
+                // Constructor: DeleteSharedCollectionTask(int accountId, collectionMediaKey, boolean isLeave, boolean isDelete)
                 try {
                     boolean isLeave = !isOwner;
                     boolean isDelete = isOwner;
                     Class<?> delTaskClass = Class.forName("com.google.android.apps.photos.album.removealbum.DeleteSharedCollectionTask");
-                    Constructor<?> delCtor = delTaskClass.getConstructor(int.class, ahnrClass, boolean.class, boolean.class);
+                    Constructor<?> delCtor = delTaskClass.getConstructors()[0];
                     Object delTask = delCtor.newInstance(accountId, optionalKey, isLeave, isDelete);
-                    Object res = fMethod.invoke(null, context, delTask);
+                    Object res = runTaskSync(context, delTask);
                     if (res != null) {
-                        try {
-                            int statusCode = res.getClass().getField("d").getInt(res);
-                            Logger.printInfo(() -> "DeleteSharedCollectionTask synchronous result status: " + statusCode);
-                            if (statusCode == 200) success = true;
-                        } catch (Throwable ignored) {}
+                        int statusCode = getTaskStatusCode(res);
+                        Logger.printInfo(() -> "DeleteSharedCollectionTask synchronous result status: " + statusCode);
+                        if (statusCode == 200) success = true;
                     }
                     final boolean fSuccess = success;
                     Logger.printInfo(() -> "Dispatched DeleteSharedCollectionTask for " + albumMediaKey + " (isLeave=" + isLeave + ", isDelete=" + isDelete + "), success=" + fSuccess);
@@ -1734,45 +1825,19 @@ public class StorageScanner {
                     Logger.printException(() -> "Error calling DeleteSharedCollectionTask", tDel);
                 }
             } else {
-                // 2. Private Album: invoke RemoveCollectionProvider$RemoveCollectionTask synchronously
+                // 2. Private Album: invoke RemoteOptimisticallyDeleteCollectionTask synchronously
                 try {
-                    Class<?> wrrClass = Class.forName("wrr");
-                    Object emptyFeatures = wrrClass.getField("a").get(null);
-                    Class<?> nysClass = Class.forName("nys");
-                    Constructor<?> nysCtor = nysClass.getConstructor(int.class, ahnrClass, wrrClass);
-                    Object collection = nysCtor.newInstance(accountId, optionalKey, emptyFeatures);
-
-                    Class<?> bwpgClass = Class.forName("bwpg");
-                    Class<?> removeTaskClass = Class.forName("com.google.android.apps.photos.album.removealbum.RemoveCollectionProvider$RemoveCollectionTask");
-                    Constructor<?> removeCtor = removeTaskClass.getConstructor(int.class, bwpgClass);
-                    Object removeTask = removeCtor.newInstance(accountId, collection);
-
-                    Object res = fMethod.invoke(null, context, removeTask);
+                    Class<?> removeTaskClass = Class.forName("com.google.android.apps.photos.album.removealbum.RemoteOptimisticallyDeleteCollectionTask");
+                    Constructor<?> removeCtor = removeTaskClass.getConstructor(int.class, String.class);
+                    Object removeTask = removeCtor.newInstance(accountId, albumMediaKey);
+                    Object res = runTaskSync(context, removeTask);
                     if (res != null) {
-                        try {
-                            int statusCode = res.getClass().getField("d").getInt(res);
-                            Logger.printInfo(() -> "RemoveCollectionTask synchronous result status: " + statusCode);
-                            if (statusCode == 200) success = true;
-                        } catch (Throwable ignored) {}
+                        int statusCode = getTaskStatusCode(res);
+                        Logger.printInfo(() -> "RemoteOptimisticallyDeleteCollectionTask status: " + statusCode);
+                        if (statusCode == 200) success = true;
                     }
                 } catch (Throwable tRemove) {
-                    Logger.printException(() -> "Error calling RemoveCollectionProvider$RemoveCollectionTask", tRemove);
-                }
-
-                // Fallback to mne.a
-                if (!success) {
-                    try {
-                        Class<?> bzoqClass = Class.forName("bzoq");
-                        Method eMethod = bzoqClass.getMethod("e", Context.class, Class.class);
-                        Class<?> mneClass = Class.forName("mne");
-                        Object mneInstance = eMethod.invoke(null, context, mneClass);
-                        Method aMethod = mneClass.getMethod("a", int.class, ahnrClass);
-                        aMethod.invoke(mneInstance, accountId, optionalKey);
-                        Logger.printInfo(() -> "Successfully invoked mne.a fallback for private album " + albumMediaKey);
-                        success = true;
-                    } catch (Throwable tMne) {
-                        Logger.printException(() -> "Error calling mne.a fallback", tMne);
-                    }
+                    Logger.printException(() -> "Error calling RemoteOptimisticallyDeleteCollectionTask", tRemove);
                 }
             }
 
@@ -1908,19 +1973,128 @@ public class StorageScanner {
     }
 
     private static Object createMediaCollectionForKeys(int accountId, List<String> mediaKeys) {
-        try {
-            Class<?> nulClass = Class.forName("nul");
-            Object builder = nulClass.getConstructor().newInstance();
-            nulClass.getField("a").setInt(builder, accountId);
-            nulClass.getField("b").set(builder, mediaKeys);
-            nulClass.getField("d").setBoolean(builder, true);
-            nulClass.getField("e").setBoolean(builder, true);
-            Method buildMethod = nulClass.getMethod("a");
-            return buildMethod.invoke(builder);
-        } catch (Throwable t) {
-            Logger.printException(() -> "Error building media collection for keys", t);
-            return null;
+        if (mediaKeys == null || mediaKeys.isEmpty()) return null;
+        // 1. Static factory f(int accountId, List mediaKeys)
+        String[][] factoryClasses = new String[][]{
+            {"pyk", "f"},    // 7.97.0 (52547221 arm64)
+            {"pvv", "f"},    // 7.97.0 (52547203 univ)
+            {"pzv", "f"},    // 7.97.0 (52547233 univ)
+            {"num", "f"}     // 7.96.0
+        };
+        for (String[] pair : factoryClasses) {
+            try {
+                Class<?> clazz = ReflectionCache.findClassOrNull(pair[0]);
+                if (clazz != null) {
+                    Method m = ReflectionCache.getMethodOrNull(clazz, pair[1], int.class, List.class);
+                    if (m != null) {
+                        return m.invoke(null, accountId, mediaKeys);
+                    }
+                }
+            } catch (Throwable ignored) {}
         }
+
+        // 2. Builder classes (pyj, pvu, pzu, nul)
+        String[] builderClasses = new String[]{"pyj", "pvu", "pzu", "nul"};
+        for (String bName : builderClasses) {
+            try {
+                Class<?> bClass = ReflectionCache.findClassOrNull(bName);
+                if (bClass != null) {
+                    Object builder = bClass.getConstructor().newInstance();
+                    bClass.getField("a").setInt(builder, accountId);
+                    bClass.getField("b").set(builder, mediaKeys);
+                    bClass.getField("d").setBoolean(builder, true);
+                    bClass.getField("e").setBoolean(builder, true);
+                    Method buildMethod = bClass.getMethod("a");
+                    return buildMethod.invoke(builder);
+                }
+            } catch (Throwable ignored) {}
+        }
+        return null;
+    }
+
+    private static volatile Class<?> sCoreMediaLoaderClass = null;
+    private static volatile Object sDefaultFeaturesRequest = null;
+    private static volatile boolean sCoreLoaderResolved = false;
+
+    private static synchronized void resolveCoreLoader() {
+        if (sCoreLoaderResolved) return;
+        for (String name : new String[]{"yxq", "yul", "zap", "wrl"}) {
+            Class<?> c = ReflectionCache.findClassOrNull(name);
+            if (c != null) {
+                sCoreMediaLoaderClass = c;
+                break;
+            }
+        }
+        for (String name : new String[]{"yvp", "ytc", "yyr", "wqb"}) {
+            Class<?> c = ReflectionCache.findClassOrNull(name);
+            if (c != null) {
+                try {
+                    Field f = c.getField("a");
+                    Object val = f.get(null);
+                    if (val != null) {
+                        sDefaultFeaturesRequest = val;
+                        break;
+                    }
+                } catch (Throwable ignored) {}
+            }
+        }
+        sCoreLoaderResolved = true;
+    }
+
+    private static List<?> loadMediaCollection(Context context, Object mediaCollection) {
+        if (context == null || mediaCollection == null) return Collections.emptyList();
+        resolveCoreLoader();
+        Class<?> loaderClass = sCoreMediaLoaderClass;
+        Object featuresRequest = sDefaultFeaturesRequest;
+
+        if (loaderClass != null) {
+            // 1. Try 3-arg static method: (Context, MediaCollection, FeaturesRequest) -> List
+            if (featuresRequest != null) {
+                for (Method m : loaderClass.getMethods()) {
+                    if (java.lang.reflect.Modifier.isStatic(m.getModifiers()) &&
+                        List.class.isAssignableFrom(m.getReturnType()) &&
+                        m.getParameterCount() == 3 &&
+                        m.getParameterTypes()[0] == Context.class &&
+                        m.getParameterTypes()[1].isAssignableFrom(mediaCollection.getClass()) &&
+                        m.getParameterTypes()[2].isAssignableFrom(featuresRequest.getClass())) {
+                        try {
+                            List<?> res = (List<?>) m.invoke(null, context, mediaCollection, featuresRequest);
+                            if (res != null) return res;
+                        } catch (Throwable t) {
+                            Logger.printInfo(() -> "3-arg loader invocation error: " + t.getMessage());
+                        }
+                    }
+                }
+            }
+            // 2. Try any static method on loader taking (Context, MediaCollection, ...)
+            for (Method m : loaderClass.getMethods()) {
+                if (java.lang.reflect.Modifier.isStatic(m.getModifiers()) &&
+                    List.class.isAssignableFrom(m.getReturnType()) &&
+                    m.getParameterCount() >= 2 &&
+                    m.getParameterTypes()[0] == Context.class &&
+                    m.getParameterTypes()[1].isAssignableFrom(mediaCollection.getClass())) {
+                    try {
+                        Object[] args = new Object[m.getParameterCount()];
+                        args[0] = context;
+                        args[1] = mediaCollection;
+                        for (int i = 2; i < args.length; i++) {
+                            Class<?> pClass = m.getParameterTypes()[i];
+                            if (featuresRequest != null && pClass.isAssignableFrom(featuresRequest.getClass())) {
+                                args[i] = featuresRequest;
+                            } else {
+                                try {
+                                    Field fa = pClass.getField("a");
+                                    args[i] = fa.get(null);
+                                } catch (Throwable ignored) {}
+                            }
+                        }
+                        List<?> res = (List<?>) m.invoke(null, args);
+                        if (res != null) return res;
+                    } catch (Throwable ignored) {}
+                }
+            }
+        }
+        return Collections.emptyList();
     }
 
     private static Object buildCoreFeaturesRequest(Context context) {
@@ -2009,19 +2183,33 @@ public class StorageScanner {
     private static Object createMediaCollectionForIds(int accountId, List<Long> mediaIds) {
         if (mediaIds == null || mediaIds.isEmpty()) return null;
         try {
-            Class<?> ahnjClass = Class.forName("ahnj");
-            Constructor<?> ahnjCtor = ahnjClass.getConstructor(long.class);
-            List<Object> ahnjList = new ArrayList<>(mediaIds.size());
-            for (Long id : mediaIds) {
-                ahnjList.add(ahnjCtor.newInstance(id));
+            Class<?> ahnjClass = null;
+            for (String name : new String[]{"ahnj", "ahed", "ahdy"}) {
+                ahnjClass = ReflectionCache.findClassOrNull(name);
+                if (ahnjClass != null) break;
             }
-            Class<?> nbwClass = Class.forName("nbw");
-            Constructor<?> nbwCtor = nbwClass.getConstructor(int.class, List.class);
-            return nbwCtor.newInstance(accountId, ahnjList);
+            List<Object> idList = new ArrayList<>(mediaIds.size());
+            if (ahnjClass != null) {
+                Constructor<?> ctor = ahnjClass.getConstructor(long.class);
+                for (Long id : mediaIds) {
+                    idList.add(ctor.newInstance(id));
+                }
+            } else {
+                idList.addAll(mediaIds);
+            }
+            for (String name : new String[]{"pfr", "pda", "pgw", "nbw"}) {
+                Class<?> collClass = ReflectionCache.findClassOrNull(name);
+                if (collClass != null) {
+                    try {
+                        Constructor<?> ctor = collClass.getConstructor(int.class, List.class);
+                        return ctor.newInstance(accountId, idList);
+                    } catch (Throwable ignored) {}
+                }
+            }
         } catch (Throwable t) {
-            Logger.printException(() -> "Error building nbw media collection for ids", t);
-            return null;
+            Logger.printInfo(() -> "Error building media collection for ids: " + t.getMessage());
         }
+        return null;
     }
 
     private static List<Long> resolveMediaIds(Context context, int accountId, List<MediaItem> items) {
@@ -2049,7 +2237,7 @@ public class StorageScanner {
         List<Object> result = new ArrayList<>();
         if (context == null || items == null || items.isEmpty()) return result;
 
-        // Strategy 1: Remote media keys via nul / num
+        // Strategy 1: Remote media keys via dynamic KeysMediaCollection
         List<String> keys = resolveRemoteMediaKeys(context, accountId, items);
         if (!keys.isEmpty()) {
             int chunkSize = 100;
@@ -2058,26 +2246,8 @@ public class StorageScanner {
                 try {
                     Object mediaCollection = createMediaCollectionForKeys(accountId, chunkKeys);
                     if (mediaCollection == null) continue;
-
-                    Class<?> bwpgClass = ReflectionCache.findClass("bwpg");
-                    Class<?> wsgClass = ReflectionCache.findClass("wsg");
-                    Method aRefMethod = ReflectionCache.getMethod(wsgClass, "a", bwpgClass);
-                    Object collectionRef = aRefMethod.invoke(null, mediaCollection);
-
-                    Class<?> wrlClass = ReflectionCache.findClass("wrl");
-                    Class<?> wryClass = ReflectionCache.findClass("wry");
-                    Class<?> wqsClass = ReflectionCache.findClass("wqs");
-                    Class<?> wqbClass = ReflectionCache.findClass("wqb");
-
-                    Object wqsVal = ReflectionCache.getDeclaredField(wqsClass, "a").get(null);
-                    Object wqbVal = buildCoreFeaturesRequest(context);
-                    if (wqbVal == null) {
-                        wqbVal = ReflectionCache.getDeclaredField(wqbClass, "a").get(null);
-                    }
-
-                    Method hMethod = ReflectionCache.getMethod(wrlClass, "H", Context.class, wryClass, wqsClass, wqbClass);
-                    List<?> loaded = (List<?>) hMethod.invoke(null, context, collectionRef, wqsVal, wqbVal);
-                    if (loaded != null) {
+                    List<?> loaded = loadMediaCollection(context, mediaCollection);
+                    if (loaded != null && !loaded.isEmpty()) {
                         result.addAll(loaded);
                     }
                 } catch (Throwable t) {
@@ -2086,7 +2256,7 @@ public class StorageScanner {
             }
         }
 
-        // Strategy 2: For any local-only items or items not loaded by remote keys, load via nbw with media._id
+        // Strategy 2: For any local-only items or items not loaded by remote keys, load via MediaIdCollection
         if (result.size() < items.size()) {
             List<Long> mediaIds = resolveMediaIds(context, accountId, items);
             if (!mediaIds.isEmpty()) {
@@ -2096,32 +2266,9 @@ public class StorageScanner {
                     try {
                         Object idCollection = createMediaCollectionForIds(accountId, chunkIds);
                         if (idCollection == null) continue;
-
-                        Class<?> bwpgClass = ReflectionCache.findClass("bwpg");
-                        Class<?> wsgClass = ReflectionCache.findClass("wsg");
-                        Method aRefMethod = ReflectionCache.getMethod(wsgClass, "a", bwpgClass);
-                        Object collectionRef = aRefMethod.invoke(null, idCollection);
-
-                        Class<?> wrlClass = ReflectionCache.findClass("wrl");
-                        Class<?> wryClass = ReflectionCache.findClass("wry");
-                        Class<?> wqsClass = ReflectionCache.findClass("wqs");
-                        Class<?> wqbClass = ReflectionCache.findClass("wqb");
-
-                        Object wqsVal = ReflectionCache.getDeclaredField(wqsClass, "a").get(null);
-                        Object wqbVal = buildCoreFeaturesRequest(context);
-                        if (wqbVal == null) {
-                            wqbVal = ReflectionCache.getDeclaredField(wqbClass, "a").get(null);
-                        }
-
-                        Method hMethod = ReflectionCache.getMethod(wrlClass, "H", Context.class, wryClass, wqsClass, wqbClass);
-                        List<?> loaded = (List<?>) hMethod.invoke(null, context, collectionRef, wqsVal, wqbVal);
+                        List<?> loaded = loadMediaCollection(context, idCollection);
                         if (loaded != null && !loaded.isEmpty()) {
-                            if (result.isEmpty()) {
-                                result.addAll(loaded);
-                            } else {
-                                // Add if not already present
-                                result.addAll(loaded);
-                            }
+                            result.addAll(loaded);
                         }
                     } catch (Throwable t) {
                         Log.e("morphe: StorageScanner", "Error loading core media items by ID chunk (" + chunkIds.size() + " ids)", t);
@@ -2231,38 +2378,37 @@ public class StorageScanner {
             try {
                 List<?> coreItems = loadCoreMediaItems(context, accountId, chunk);
                 if (!coreItems.isEmpty()) {
-                    Class<?> bdkqClass = Class.forName("bdkq");
-                    Constructor<?> bdkqCtor = bdkqClass.getConstructor(Collection.class);
-                    Object mediaGroup = bdkqCtor.newInstance(coreItems);
-
-                    Class<?> lakjzClass = Class.forName("akjz");
-                    Object targetMode = lakjzClass.getField("b").get(null);
-
-                    Class<?> romClass = Class.forName("rom");
-                    Method romMethod = romClass.getMethod("b", Context.class);
-                    Object cjizSource = romMethod.invoke(null, context);
-
                     Class<?> wrapperClass = Class.forName("com.google.android.apps.photos.trash.MoveToTrashActionWrapper");
-                    Class<?> cjizClass = Class.forName("cjiz");
-                    Constructor<?> wrapperCtor = wrapperClass.getConstructor(int.class, bdkqClass, lakjzClass, cjizClass);
+                    Constructor<?> wrapperCtor = wrapperClass.getConstructors()[0];
+                    Class<?>[] pTypes = wrapperCtor.getParameterTypes();
+                    Class<?> mediaGroupClass = pTypes[1];
+                    Object mediaGroup = mediaGroupClass.getConstructor(Collection.class).newInstance(coreItems);
+
+                    Class<?> targetModeClass = pTypes[2];
+                    Object targetMode = targetModeClass.getField("b").get(null);
+
+                    Class<?> sourceClass = pTypes[3];
+                    Object cjizSource = null;
+                    for (String helperName : new String[]{"ttk", "trf", "two", "rom", "tpk", "trn"}) {
+                        Class<?> helper = ReflectionCache.findClassOrNull(helperName);
+                        if (helper != null) {
+                            for (Method m : helper.getMethods()) {
+                                if (java.lang.reflect.Modifier.isStatic(m.getModifiers()) && m.getParameterTypes().length == 1 &&
+                                    Context.class.isAssignableFrom(m.getParameterTypes()[0]) &&
+                                    m.getReturnType().equals(sourceClass)) {
+                                    cjizSource = m.invoke(null, context);
+                                    break;
+                                }
+                            }
+                        }
+                        if (cjizSource != null) break;
+                    }
+
                     Object task = wrapperCtor.newInstance(accountId, mediaGroup, targetMode, cjizSource);
-
-                    try {
-                        Bundle taskBundle = new Bundle();
-                        taskBundle.putParcelable("mediagroup", (Parcelable) mediaGroup);
-                        Field sField = Class.forName("bxty").getField("s");
-                        sField.set(task, taskBundle);
-                    } catch (Throwable ignored) {}
-
-                    Class<?> bxtyClass = Class.forName("bxty");
-                    Class<?> bxueClass = Class.forName("bxue");
-                    Method runMethod = bxueClass.getMethod("f", Context.class, bxtyClass);
-                    Object res = runMethod.invoke(null, context, task);
+                    Object res = runTaskSync(context, task);
                     if (res != null) {
-                        try {
-                            int statusCode = res.getClass().getField("d").getInt(res);
-                            if (statusCode == 200) chunkSuccess = true;
-                        } catch (Throwable ignored) {}
+                        int statusCode = getTaskStatusCode(res);
+                        if (statusCode == 200) chunkSuccess = true;
                     }
                     if (chunkSuccess) {
                         Log.i("morphe: StorageScanner", "MoveToTrashActionWrapper succeeded for chunk " + chunkIndex + "/" + totalChunks);
@@ -2589,31 +2735,26 @@ public class StorageScanner {
                 }
 
                 if (!coreItems.isEmpty()) {
-                    Class<?> bdkqClass = Class.forName("bdkq");
-                    Constructor<?> bdkqCtor = bdkqClass.getConstructor(Collection.class);
-                    Object mediaGroup = bdkqCtor.newInstance(coreItems);
+                    Class<?> restoreClass = Class.forName("com.google.android.apps.photos.trash.restore.RestoreActionTask");
+                    Constructor<?> restoreCtor = restoreClass.getConstructors()[0];
+                    Class<?> mediaGroupClass = restoreCtor.getParameterTypes()[1];
+                    Object mediaGroup = mediaGroupClass.getConstructor(Collection.class).newInstance(coreItems);
 
-                    // Strategy 1: RestoreActionTask via bxue.f
+                    // Strategy 1: RestoreActionTask via runTaskSync
                     try {
-                        Class<?> restoreClass = Class.forName("com.google.android.apps.photos.trash.restore.RestoreActionTask");
-                        Constructor<?> restoreCtor = restoreClass.getConstructor(int.class, bdkqClass, boolean.class);
                         Object task = restoreCtor.newInstance(accountId, mediaGroup, true);
-
-                        Class<?> bxtyClass = Class.forName("bxty");
-                        Class<?> bxueClass = Class.forName("bxue");
-                        Method runMethod = bxueClass.getMethod("f", Context.class, bxtyClass);
-                        Object res = runMethod.invoke(null, context, task);
+                        Object res = runTaskSync(context, task);
                         if (res != null) {
-                            try {
-                                int statusCode = res.getClass().getField("d").getInt(res);
-                                if (statusCode == 200) {
-                                    chunkSuccess = true;
-                                } else {
+                            int statusCode = getTaskStatusCode(res);
+                            if (statusCode == 200) {
+                                chunkSuccess = true;
+                            } else {
+                                try {
                                     Object exc = res.getClass().getField("e").get(res);
                                     String msg = (String) res.getClass().getField("f").get(res);
                                     Log.w("morphe: StorageScanner", "RestoreActionTask returned status " + statusCode + ", msg: " + msg, (Throwable) exc);
-                                }
-                            } catch (Throwable ignored) {}
+                                } catch (Throwable ignored) {}
+                            }
                         }
                     } catch (Throwable tTask) {
                         Log.w("morphe: StorageScanner", "RestoreActionTask failed for chunk " + chunkIndex, tTask);
@@ -2679,28 +2820,35 @@ public class StorageScanner {
                 List<String> chunkRemoteKeys = resolveRemoteMediaKeys(context, accountId, chunk);
                 List<?> coreItems = loadCoreMediaItems(context, accountId, chunk);
 
-                // 1. Dispatch official TaskRunner MediaUndoActionTask with ptf
+                // 1. Dispatch official TaskRunner MediaUndoActionTask
                 if (!coreItems.isEmpty()) {
                     try {
-                        Class<?> bdkqClass = Class.forName("bdkq");
-                        Constructor<?> bdkqCtor = bdkqClass.getConstructor(Collection.class);
-                        Object mediaGroup = bdkqCtor.newInstance(coreItems);
-
-                        Class<?> ptfClass = Class.forName("ptf");
-                        Constructor<?> ptfCtor = ptfClass.getConstructor(int.class, boolean.class, int.class, bdkqClass, String.class);
-                        Object ptfInst = ptfCtor.newInstance(accountId, archive, 2, mediaGroup, "UndoableActionManager-Act");
-
                         Class<?> taskClass = Class.forName("com.google.android.apps.photos.undoaction.MediaUndoActionTask");
-                        Class<?> bjrdClass = Class.forName("bjrd");
-                        Constructor<?> taskCtor = taskClass.getConstructor(String.class, bjrdClass, boolean.class, boolean.class);
-                        Object undoTask = taskCtor.newInstance("UndoableActionManager-Act", ptfInst, false, true);
+                        Constructor<?> taskCtor = taskClass.getConstructors()[0];
+                        Class<?> actionInterface = taskCtor.getParameterTypes()[1];
 
-                        Class<?> bxtyClass = Class.forName("bxty");
-                        Class<?> bxueClass = Class.forName("bxue");
-                        Method fMethod = bxueClass.getMethod("f", Context.class, bxtyClass);
-                        fMethod.invoke(null, context, undoTask);
-                        chunkSuccess = true;
-                        Log.i("morphe: StorageScanner", "Dispatched MediaUndoActionTask chunk " + chunkIndex + "/" + totalChunks);
+                        Constructor<?> archiveActionCtor = null;
+                        for (String name : new String[]{"rxq", "rvh", "rzl", "ptf"}) {
+                            Class<?> c = ReflectionCache.findClassOrNull(name);
+                            if (c != null && actionInterface.isAssignableFrom(c) && c.getConstructors().length > 0) {
+                                archiveActionCtor = c.getConstructors()[0];
+                                break;
+                            }
+                        }
+                        if (archiveActionCtor != null) {
+                            Class<?> mediaGroupClass = archiveActionCtor.getParameterTypes()[3];
+                            Object mediaGroup = mediaGroupClass.getConstructor(Collection.class).newInstance(coreItems);
+                            Object ptfInst = archiveActionCtor.newInstance(accountId, archive, 2, mediaGroup, "UndoableActionManager-Act");
+                            Object undoTask = taskCtor.newInstance("UndoableActionManager-Act", ptfInst, false, true);
+                            Object res = runTaskSync(context, undoTask);
+                            if (res != null) {
+                                int statusCode = getTaskStatusCode(res);
+                                if (statusCode == 200) chunkSuccess = true;
+                            } else {
+                                chunkSuccess = true;
+                            }
+                            Log.i("morphe: StorageScanner", "Dispatched MediaUndoActionTask chunk " + chunkIndex + "/" + totalChunks);
+                        }
                     } catch (Throwable tTask) {
                         Log.w("morphe: StorageScanner", "Error running MediaUndoActionTask chunk " + chunkIndex + ": " + tTask.getMessage());
                         // Fallback: direct psu.a invocation
@@ -2758,13 +2906,10 @@ public class StorageScanner {
                             Constructor<?> wrapperCtor = wrapperClass.getConstructor(int.class, ltyClass);
                             Object actionWrapper = wrapperCtor.newInstance(accountId, pszInst);
 
-                            Class<?> bxtyClass = Class.forName("bxty");
-                            Class<?> bxueClass = Class.forName("bxue");
-                            Method runMethod = bxueClass.getMethod("f", Context.class, bxtyClass);
-                            Object res = runMethod.invoke(null, context, actionWrapper);
+                            Object res = runTaskSync(context, actionWrapper);
 
                             if (res != null) {
-                                Bundle bundle = (Bundle) res.getClass().getMethod("b").invoke(res);
+                                Bundle bundle = getTaskResultBundle(res);
                                 long actionId = bundle != null ? bundle.getLong("LocalResult__action_id", -1L) : -1L;
                                 if (actionId != -1L) {
                                     Class<?> aokqClass = Class.forName("aokq");
@@ -2810,22 +2955,23 @@ public class StorageScanner {
             try {
                 List<?> coreItems = loadCoreMediaItems(context, accountId, chunk);
                 if (!coreItems.isEmpty()) {
-                    Class<?> swhClass = Class.forName("swh");
-                    Object reason = swhClass.getField("a").get(null);
-
                     Class<?> favClass = Class.forName("com.google.android.apps.photos.favorites.FavoritesTask");
-                    Constructor<?> favCtor = favClass.getConstructor(int.class, Collection.class, boolean.class, swhClass);
-                    Object task = favCtor.newInstance(accountId, coreItems, favorite, reason);
+                    Constructor<?> favCtor = favClass.getConstructors()[0];
+                    Class<?> reasonClass = favCtor.getParameterTypes()[3];
+                    Object reason = null;
+                    try {
+                        reason = reasonClass.getField("a").get(null);
+                    } catch (Throwable t) {
+                        if (reasonClass.getEnumConstants() != null && reasonClass.getEnumConstants().length > 0) {
+                            reason = reasonClass.getEnumConstants()[0];
+                        }
+                    }
 
-                    Class<?> bxtyClass = Class.forName("bxty");
-                    Class<?> bxueClass = Class.forName("bxue");
-                    Method runMethod = bxueClass.getMethod("f", Context.class, bxtyClass);
-                    Object res = runMethod.invoke(null, context, task);
+                    Object task = favCtor.newInstance(accountId, coreItems, favorite, reason);
+                    Object res = runTaskSync(context, task);
                     if (res != null) {
-                        try {
-                            int statusCode = res.getClass().getField("d").getInt(res);
-                            if (statusCode == 200) chunkSuccess = true;
-                        } catch (Throwable ignored) {}
+                        int statusCode = getTaskStatusCode(res);
+                        if (statusCode == 200) chunkSuccess = true;
                     }
                     if (chunkSuccess) {
                         Log.i("morphe: StorageScanner", "FavoritesTask chunk " + chunkIndex + "/" + totalChunks + " succeeded");
@@ -2906,14 +3052,10 @@ public class StorageScanner {
                 if (!coreItems.isEmpty()) {
                     Object task = createMarsMoveTask(context, accountId, coreItems);
                     if (task != null) {
-                        Class<?> bxtyClass = Class.forName("bxty");
-                        Class<?> bxueClass = Class.forName("bxue");
-                        Method runMethod = bxueClass.getMethod("f", Context.class, bxtyClass);
-                        Object res = runMethod.invoke(null, context, task);
+                        Object res = runTaskSync(context, task);
                         if (res != null) {
                             try {
-                                Method bMethod = res.getClass().getMethod("b");
-                                Bundle bundle = (Bundle) bMethod.invoke(res);
+                                Bundle bundle = getTaskResultBundle(res);
                                 if (bundle != null) {
                                     bundle.setClassLoader(context.getClassLoader());
                                     Object moveResult = bundle.getParcelable("mars_move_result");
@@ -3123,15 +3265,11 @@ public class StorageScanner {
                     Object qdn = qdp.getClass().getMethod("b").invoke(qdp);
                     Object task = qdn.getClass().getMethod("a").invoke(qdn);
 
-                    Class<?> bxtyClass = Class.forName("bxty");
-                    Class<?> bxueClass = Class.forName("bxue");
-                    Method runMethod = bxueClass.getMethod("f", Context.class, bxtyClass);
-                    Object res = runMethod.invoke(null, context, task);
+                    Object res = runTaskSync(context, task);
 
                     if (res != null) {
                         try {
-                            Method bMethod = res.getClass().getMethod("b");
-                            Bundle bundle = (Bundle) bMethod.invoke(res);
+                            Bundle bundle = getTaskResultBundle(res);
                             if (bundle != null) {
                                 bundle.setClassLoader(context.getClassLoader());
                                 Object removeResult = bundle.getParcelable("mars_remove_result");
@@ -3490,19 +3628,18 @@ public class StorageScanner {
                     }
 
                     if (task != null) {
-                        Class<?> bxtyClass = Class.forName("bxty");
-                        Class<?> bxueClass = Class.forName("bxue");
-                        Method runMethod = bxueClass.getMethod("f", Context.class, bxtyClass);
-                        Object res = runMethod.invoke(null, context, task);
+                        Object res = runTaskSync(context, task);
                         if (res != null) {
                             try {
-                                int statusCode = res.getClass().getField("d").getInt(res);
+                                int statusCode = getTaskStatusCode(res);
                                 Log.i("morphe: StorageScanner", "Remove task chunk " + chunkIndex + " status: " + statusCode);
                                 if (statusCode == 200) {
                                     chunkSuccess = true;
                                 } else {
-                                    Object exc = res.getClass().getField("e").get(res);
-                                    Log.w("morphe: StorageScanner", "Remove task returned error status " + statusCode, (Throwable) exc);
+                                    try {
+                                        Object exc = res.getClass().getField("e").get(res);
+                                        Log.w("morphe: StorageScanner", "Remove task returned error status " + statusCode, (Throwable) exc);
+                                    } catch (Throwable ignored) {}
                                 }
                             } catch (Throwable ignored) {
                                 chunkSuccess = true;
@@ -3626,10 +3763,6 @@ public class StorageScanner {
             Class<?> qdoClass = ReflectionCache.findClassOrNull("qdo");
             Method gMethod = (rgaClass != null && azllClass != null && qdoClass != null)
                     ? ReflectionCache.getMethodOrNull(rgaClass, "g", String.class, azllClass, qdoClass) : null;
-            Class<?> bxtyClass = ReflectionCache.findClassOrNull("bxty");
-            Class<?> bxueClass = ReflectionCache.findClassOrNull("bxue");
-            Method fMethod = (bxueClass != null && bxtyClass != null)
-                    ? ReflectionCache.getMethodOrNull(bxueClass, "f", Context.class, bxtyClass) : null;
 
             for (MediaItem item : items) {
                 Long parsedDate = parseDateFromFilename(item.filename);
@@ -3644,7 +3777,7 @@ public class StorageScanner {
                 // 1. Dispatch EditDateTimeTask
                 try {
                     List<?> coreItems = loadCoreMediaItems(context, account.accountId, Collections.singletonList(item));
-                    if (!coreItems.isEmpty() && bwzeCtor != null && copyOfMethod != null && ajwaCtor != null && gMethod != null && fMethod != null) {
+                    if (!coreItems.isEmpty() && bwzeCtor != null && copyOfMethod != null && ajwaCtor != null && gMethod != null) {
                         Object oldBwze = bwzeCtor.newInstance(oldUtc, 0L);
                         Object newBwze = bwzeCtor.newInstance(newUtc, 0L);
                         Object immutableList = copyOfMethod.invoke(null, coreItems);
@@ -3653,7 +3786,7 @@ public class StorageScanner {
                         if (qdp != null) {
                             Object qdn = ReflectionCache.getMethod(qdp.getClass(), "b").invoke(qdp);
                             Object task = ReflectionCache.getMethod(qdn.getClass(), "a").invoke(qdn);
-                            fMethod.invoke(null, context, task);
+                            runTaskSync(context, task);
                         }
                     }
                 } catch (Throwable tTask) {
@@ -3702,16 +3835,11 @@ public class StorageScanner {
             Class<?> syncTaskClass = Class.forName("com.google.android.apps.photos.metasync.actionqueue.block.SyncActionQueueBlock$SyncBackgroundTask");
             Constructor<?> syncCtor = syncTaskClass.getConstructor(int.class);
             Object syncTask = syncCtor.newInstance(accountId);
-
-            Class<?> bxtyClass = Class.forName("bxty");
-            Class<?> bxueClass = Class.forName("bxue");
             try {
-                Method fMethod = bxueClass.getMethod("f", Context.class, bxtyClass);
-                fMethod.invoke(null, context, syncTask);
+                runTaskSync(context, syncTask);
                 Logger.printInfo(() -> "Successfully executed SyncActionQueueBlock synchronously for account " + accountId);
             } catch (Throwable tSync) {
-                Method runMethod = bxueClass.getMethod("n", Context.class, bxtyClass);
-                runMethod.invoke(null, context, syncTask);
+                runTaskAsync(context, syncTask);
                 Logger.printInfo(() -> "Scheduled SyncActionQueueBlock asynchronously for account " + accountId);
             }
         } catch (Throwable t) {
