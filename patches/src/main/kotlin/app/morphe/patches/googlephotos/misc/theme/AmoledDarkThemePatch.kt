@@ -175,8 +175,6 @@ val amoledDarkThemePatch = resourcePatch(
         if (changed == 0) {
             throw PatchException("No Google Photos AMOLED theme resources were patched.")
         }
-
-        println("AMOLED dark theme: patched $changedColors color(s), $changedStyles style item(s).")
     }
 }
 
