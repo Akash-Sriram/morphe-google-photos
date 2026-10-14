@@ -3556,12 +3556,14 @@ public class StorageScanner {
             bybjClass.getMethod("a").invoke(bybjInst);
             Log.i("morphe: StorageScanner", "Notified bybj MediaMonitor for account " + accountId);
         } catch (Throwable t) {
-            try {
-                Intent fireAlarm = new Intent("com.google.android.libraries.social.mediamonitor.FIRE_ALARM");
-                fireAlarm.setPackage(context.getPackageName());
-                context.sendBroadcast(fireAlarm);
-            } catch (Throwable ignored) {}
+            Log.w("morphe: StorageScanner", "Error in bybj MediaMonitor: " + t.getMessage());
         }
+
+        try {
+            Intent fireAlarm = new Intent("com.google.android.libraries.social.mediamonitor.FIRE_ALARM");
+            fireAlarm.setPackage(context.getPackageName());
+            context.sendBroadcast(fireAlarm);
+        } catch (Throwable ignored) {}
 
         try {
             ContentResolver cr = context.getContentResolver();
@@ -3829,8 +3831,8 @@ public class StorageScanner {
                     boolean hasRemoteArchiveOrigin = hasColumn(db, "remote_media", "last_archive_origin");
                     boolean hasMediaArchiveOrigin = hasTable(db, "media") && hasColumn(db, "media", "last_archive_origin");
                     boolean hasLocalArchiveOrigin = hasTable(db, "local_media") && hasColumn(db, "local_media", "last_archive_origin");
-                    boolean hasRemoteCanonical = hasColumn(db, "remote_media", "is_canonical");
                     boolean hasRemoteMediaKey = hasColumn(db, "remote_media", "media_key");
+                    boolean hasRemoteRemoteMediaKey = hasColumn(db, "remote_media", "remote_media_key");
                     boolean hasMediaCanonical = hasTable(db, "media") && hasColumn(db, "media", "canonical_media_key");
 
                     for (MediaItem it : items) {
@@ -3840,23 +3842,48 @@ public class StorageScanner {
                         if (hasRemoteArchiveOrigin) cv.put("last_archive_origin", 1);
                         if (hasColumn(db, "remote_media", "state")) cv.put("state", 0);
 
-                        String whereRemote = "dedup_key = ?";
+                        String whereRemote;
                         List<String> argsRemote = new ArrayList<>();
-                        argsRemote.add(it.dedupKey);
-                        if (hasRemoteMediaKey && it.mediaKey != null && !it.mediaKey.isEmpty() && !it.mediaKey.equals(it.dedupKey)) {
-                            whereRemote = "(dedup_key = ? OR media_key = ?)";
-                            argsRemote.add(it.mediaKey);
+                        if (it.dedupKey != null && !it.dedupKey.isEmpty()) {
+                            if (it.mediaKey != null && !it.mediaKey.isEmpty() && !it.mediaKey.equals(it.dedupKey)) {
+                                if (hasRemoteRemoteMediaKey && hasRemoteMediaKey) {
+                                    whereRemote = "(dedup_key = ? OR media_key = ? OR remote_media_key = ?)";
+                                    argsRemote.add(it.dedupKey);
+                                    argsRemote.add(it.mediaKey);
+                                    argsRemote.add(it.mediaKey);
+                                } else if (hasRemoteRemoteMediaKey) {
+                                    whereRemote = "(dedup_key = ? OR remote_media_key = ?)";
+                                    argsRemote.add(it.dedupKey);
+                                    argsRemote.add(it.mediaKey);
+                                } else if (hasRemoteMediaKey) {
+                                    whereRemote = "(dedup_key = ? OR media_key = ?)";
+                                    argsRemote.add(it.dedupKey);
+                                    argsRemote.add(it.mediaKey);
+                                } else {
+                                    whereRemote = "dedup_key = ?";
+                                    argsRemote.add(it.dedupKey);
+                                }
+                            } else {
+                                whereRemote = "dedup_key = ?";
+                                argsRemote.add(it.dedupKey);
+                            }
+                        } else if (it.mediaKey != null && !it.mediaKey.isEmpty()) {
+                            if (hasRemoteRemoteMediaKey && hasRemoteMediaKey) {
+                                whereRemote = "(media_key = ? OR remote_media_key = ?)";
+                                argsRemote.add(it.mediaKey);
+                                argsRemote.add(it.mediaKey);
+                            } else if (hasRemoteRemoteMediaKey) {
+                                whereRemote = "remote_media_key = ?";
+                                argsRemote.add(it.mediaKey);
+                            } else {
+                                whereRemote = "media_key = ?";
+                                argsRemote.add(it.mediaKey);
+                            }
+                        } else {
+                            continue;
                         }
 
-                        if (hasRemoteCanonical) {
-                            db.update("remote_media", cv, whereRemote + " AND (is_canonical = 1 OR is_canonical IS NULL OR NOT EXISTS (SELECT 1 FROM remote_media rm2 WHERE rm2.dedup_key = remote_media.dedup_key AND rm2.is_canonical = 1))", argsRemote.toArray(new String[0]));
-                            ContentValues nonCanonCv = new ContentValues();
-                            nonCanonCv.put("is_archived", 0);
-                            if (hasRemoteArchiveOrigin) nonCanonCv.put("last_archive_origin", 0);
-                            db.update("remote_media", nonCanonCv, whereRemote + " AND is_canonical = 0 AND EXISTS (SELECT 1 FROM remote_media rm2 WHERE rm2.dedup_key = remote_media.dedup_key AND rm2.is_canonical = 1)", argsRemote.toArray(new String[0]));
-                        } else {
-                            db.update("remote_media", cv, whereRemote, argsRemote.toArray(new String[0]));
-                        }
+                        db.update("remote_media", cv, whereRemote, argsRemote.toArray(new String[0]));
 
                         if (hasTable(db, "media")) {
                             ContentValues mCv = new ContentValues();
@@ -3865,16 +3892,28 @@ public class StorageScanner {
                             mCv.put("is_deleted", 0);
                             if (hasMediaArchiveOrigin) mCv.put("last_archive_origin", 1);
 
-                            String whereMedia = "dedup_key = ?";
+                            String whereMedia;
                             List<String> argsMedia = new ArrayList<>();
-                            argsMedia.add(it.dedupKey);
-                            if (hasMediaCanonical && it.mediaKey != null && !it.mediaKey.isEmpty() && !it.mediaKey.equals(it.dedupKey)) {
-                                whereMedia = "(dedup_key = ? OR canonical_media_key = ?)";
+                            if (it.dedupKey != null && !it.dedupKey.isEmpty()) {
+                                if (hasMediaCanonical && it.mediaKey != null && !it.mediaKey.isEmpty() && !it.mediaKey.equals(it.dedupKey)) {
+                                    whereMedia = "(dedup_key = ? OR canonical_media_key = ?)";
+                                    argsMedia.add(it.dedupKey);
+                                    argsMedia.add(it.mediaKey);
+                                } else {
+                                    whereMedia = "dedup_key = ?";
+                                    argsMedia.add(it.dedupKey);
+                                }
+                            } else if (hasMediaCanonical && it.mediaKey != null && !it.mediaKey.isEmpty()) {
+                                whereMedia = "canonical_media_key = ?";
                                 argsMedia.add(it.mediaKey);
+                            } else {
+                                whereMedia = null;
                             }
-                            db.update("media", mCv, whereMedia, argsMedia.toArray(new String[0]));
+                            if (whereMedia != null) {
+                                db.update("media", mCv, whereMedia, argsMedia.toArray(new String[0]));
+                            }
                         }
-                        if (hasTable(db, "local_media")) {
+                        if (hasTable(db, "local_media") && it.dedupKey != null && !it.dedupKey.isEmpty()) {
                             ContentValues lCv = new ContentValues();
                             lCv.put("is_archived", 1);
                             lCv.put("trash_timestamp", 0);
@@ -3899,6 +3938,7 @@ public class StorageScanner {
                     boolean hasMediaUnarchiveOrigin = hasTable(db, "media") && hasColumn(db, "media", "last_archive_origin");
                     boolean hasLocalUnarchiveOrigin = hasTable(db, "local_media") && hasColumn(db, "local_media", "last_archive_origin");
                     boolean hasRemoteUnarchiveMediaKey = hasColumn(db, "remote_media", "media_key");
+                    boolean hasRemoteUnarchiveRemoteMediaKey = hasColumn(db, "remote_media", "remote_media_key");
                     boolean hasMediaUnarchiveCanonical = hasTable(db, "media") && hasColumn(db, "media", "canonical_media_key");
 
                     for (MediaItem it : items) {
@@ -3908,12 +3948,45 @@ public class StorageScanner {
                         if (hasRemoteUnarchiveOrigin) cv.put("last_archive_origin", 0);
                         if (hasColumn(db, "remote_media", "state")) cv.put("state", 0);
 
-                        String whereRemote = "dedup_key = ?";
+                        String whereRemote;
                         List<String> argsRemote = new ArrayList<>();
-                        argsRemote.add(it.dedupKey);
-                        if (hasRemoteUnarchiveMediaKey && it.mediaKey != null && !it.mediaKey.isEmpty() && !it.mediaKey.equals(it.dedupKey)) {
-                            whereRemote = "(dedup_key = ? OR media_key = ?)";
-                            argsRemote.add(it.mediaKey);
+                        if (it.dedupKey != null && !it.dedupKey.isEmpty()) {
+                            if (it.mediaKey != null && !it.mediaKey.isEmpty() && !it.mediaKey.equals(it.dedupKey)) {
+                                if (hasRemoteUnarchiveRemoteMediaKey && hasRemoteUnarchiveMediaKey) {
+                                    whereRemote = "(dedup_key = ? OR media_key = ? OR remote_media_key = ?)";
+                                    argsRemote.add(it.dedupKey);
+                                    argsRemote.add(it.mediaKey);
+                                    argsRemote.add(it.mediaKey);
+                                } else if (hasRemoteUnarchiveRemoteMediaKey) {
+                                    whereRemote = "(dedup_key = ? OR remote_media_key = ?)";
+                                    argsRemote.add(it.dedupKey);
+                                    argsRemote.add(it.mediaKey);
+                                } else if (hasRemoteUnarchiveMediaKey) {
+                                    whereRemote = "(dedup_key = ? OR media_key = ?)";
+                                    argsRemote.add(it.dedupKey);
+                                    argsRemote.add(it.mediaKey);
+                                } else {
+                                    whereRemote = "dedup_key = ?";
+                                    argsRemote.add(it.dedupKey);
+                                }
+                            } else {
+                                whereRemote = "dedup_key = ?";
+                                argsRemote.add(it.dedupKey);
+                            }
+                        } else if (it.mediaKey != null && !it.mediaKey.isEmpty()) {
+                            if (hasRemoteUnarchiveRemoteMediaKey && hasRemoteUnarchiveMediaKey) {
+                                whereRemote = "(media_key = ? OR remote_media_key = ?)";
+                                argsRemote.add(it.mediaKey);
+                                argsRemote.add(it.mediaKey);
+                            } else if (hasRemoteUnarchiveRemoteMediaKey) {
+                                whereRemote = "remote_media_key = ?";
+                                argsRemote.add(it.mediaKey);
+                            } else {
+                                whereRemote = "media_key = ?";
+                                argsRemote.add(it.mediaKey);
+                            }
+                        } else {
+                            continue;
                         }
 
                         db.update("remote_media", cv, whereRemote, argsRemote.toArray(new String[0]));
@@ -3925,16 +3998,28 @@ public class StorageScanner {
                             mCv.put("is_deleted", 0);
                             if (hasMediaUnarchiveOrigin) mCv.put("last_archive_origin", 0);
 
-                            String whereMedia = "dedup_key = ?";
+                            String whereMedia;
                             List<String> argsMedia = new ArrayList<>();
-                            argsMedia.add(it.dedupKey);
-                            if (hasMediaUnarchiveCanonical && it.mediaKey != null && !it.mediaKey.isEmpty() && !it.mediaKey.equals(it.dedupKey)) {
-                                whereMedia = "(dedup_key = ? OR canonical_media_key = ?)";
+                            if (it.dedupKey != null && !it.dedupKey.isEmpty()) {
+                                if (hasMediaUnarchiveCanonical && it.mediaKey != null && !it.mediaKey.isEmpty() && !it.mediaKey.equals(it.dedupKey)) {
+                                    whereMedia = "(dedup_key = ? OR canonical_media_key = ?)";
+                                    argsMedia.add(it.dedupKey);
+                                    argsMedia.add(it.mediaKey);
+                                } else {
+                                    whereMedia = "dedup_key = ?";
+                                    argsMedia.add(it.dedupKey);
+                                }
+                            } else if (hasMediaUnarchiveCanonical && it.mediaKey != null && !it.mediaKey.isEmpty()) {
+                                whereMedia = "canonical_media_key = ?";
                                 argsMedia.add(it.mediaKey);
+                            } else {
+                                whereMedia = null;
                             }
-                            db.update("media", mCv, whereMedia, argsMedia.toArray(new String[0]));
+                            if (whereMedia != null) {
+                                db.update("media", mCv, whereMedia, argsMedia.toArray(new String[0]));
+                            }
                         }
-                        if (hasTable(db, "local_media")) {
+                        if (hasTable(db, "local_media") && it.dedupKey != null && !it.dedupKey.isEmpty()) {
                             ContentValues lCv = new ContentValues();
                             lCv.put("is_archived", 0);
                             lCv.put("trash_timestamp", 0);
@@ -3955,12 +4040,45 @@ public class StorageScanner {
                     return new ActionResult(true, count, "Successfully un-archived " + count + " items");
 
                 case "toFavorite":
+                    boolean hasRemoteFavMediaKey = hasColumn(db, "remote_media", "media_key");
+                    boolean hasRemoteFavRemoteMediaKey = hasColumn(db, "remote_media", "remote_media_key");
+                    boolean hasMediaFavCanonical = hasTable(db, "media") && hasColumn(db, "media", "canonical_media_key");
+
                     for (MediaItem it : items) {
                         ContentValues cv = new ContentValues();
                         cv.put("is_favorite", 1);
-                        db.update("remote_media", cv, "dedup_key = ?", new String[]{it.dedupKey});
-                        if (hasTable(db, "media")) db.update("media", cv, "dedup_key = ?", new String[]{it.dedupKey});
-                        if (hasTable(db, "local_media")) db.update("local_media", cv, "dedup_key = ?", new String[]{it.dedupKey});
+
+                        String whereRemote = "dedup_key = ?";
+                        List<String> argsRemote = new ArrayList<>();
+                        argsRemote.add(it.dedupKey);
+                        if (it.mediaKey != null && !it.mediaKey.isEmpty() && !it.mediaKey.equals(it.dedupKey)) {
+                            if (hasRemoteFavRemoteMediaKey && hasRemoteFavMediaKey) {
+                                whereRemote = "(dedup_key = ? OR media_key = ? OR remote_media_key = ?)";
+                                argsRemote.add(it.mediaKey);
+                                argsRemote.add(it.mediaKey);
+                            } else if (hasRemoteFavRemoteMediaKey) {
+                                whereRemote = "(dedup_key = ? OR remote_media_key = ?)";
+                                argsRemote.add(it.mediaKey);
+                            } else if (hasRemoteFavMediaKey) {
+                                whereRemote = "(dedup_key = ? OR media_key = ?)";
+                                argsRemote.add(it.mediaKey);
+                            }
+                        }
+                        db.update("remote_media", cv, whereRemote, argsRemote.toArray(new String[0]));
+
+                        if (hasTable(db, "media")) {
+                            String whereMedia = "dedup_key = ?";
+                            List<String> argsMedia = new ArrayList<>();
+                            argsMedia.add(it.dedupKey);
+                            if (hasMediaFavCanonical && it.mediaKey != null && !it.mediaKey.isEmpty() && !it.mediaKey.equals(it.dedupKey)) {
+                                whereMedia = "(dedup_key = ? OR canonical_media_key = ?)";
+                                argsMedia.add(it.mediaKey);
+                            }
+                            db.update("media", cv, whereMedia, argsMedia.toArray(new String[0]));
+                        }
+                        if (hasTable(db, "local_media") && it.dedupKey != null && !it.dedupKey.isEmpty()) {
+                            db.update("local_media", cv, "dedup_key = ?", new String[]{it.dedupKey});
+                        }
                     }
 
                     db.setTransactionSuccessful();
@@ -3973,12 +4091,45 @@ public class StorageScanner {
                     return new ActionResult(true, count, "Successfully added " + count + " items to favorites");
 
                 case "unFavorite":
+                    boolean hasRemoteUnfavMediaKey = hasColumn(db, "remote_media", "media_key");
+                    boolean hasRemoteUnfavRemoteMediaKey = hasColumn(db, "remote_media", "remote_media_key");
+                    boolean hasMediaUnfavCanonical = hasTable(db, "media") && hasColumn(db, "media", "canonical_media_key");
+
                     for (MediaItem it : items) {
                         ContentValues cv = new ContentValues();
                         cv.put("is_favorite", 0);
-                        db.update("remote_media", cv, "dedup_key = ?", new String[]{it.dedupKey});
-                        if (hasTable(db, "media")) db.update("media", cv, "dedup_key = ?", new String[]{it.dedupKey});
-                        if (hasTable(db, "local_media")) db.update("local_media", cv, "dedup_key = ?", new String[]{it.dedupKey});
+
+                        String whereRemote = "dedup_key = ?";
+                        List<String> argsRemote = new ArrayList<>();
+                        argsRemote.add(it.dedupKey);
+                        if (it.mediaKey != null && !it.mediaKey.isEmpty() && !it.mediaKey.equals(it.dedupKey)) {
+                            if (hasRemoteUnfavRemoteMediaKey && hasRemoteUnfavMediaKey) {
+                                whereRemote = "(dedup_key = ? OR media_key = ? OR remote_media_key = ?)";
+                                argsRemote.add(it.mediaKey);
+                                argsRemote.add(it.mediaKey);
+                            } else if (hasRemoteUnfavRemoteMediaKey) {
+                                whereRemote = "(dedup_key = ? OR remote_media_key = ?)";
+                                argsRemote.add(it.mediaKey);
+                            } else if (hasRemoteUnfavMediaKey) {
+                                whereRemote = "(dedup_key = ? OR media_key = ?)";
+                                argsRemote.add(it.mediaKey);
+                            }
+                        }
+                        db.update("remote_media", cv, whereRemote, argsRemote.toArray(new String[0]));
+
+                        if (hasTable(db, "media")) {
+                            String whereMedia = "dedup_key = ?";
+                            List<String> argsMedia = new ArrayList<>();
+                            argsMedia.add(it.dedupKey);
+                            if (hasMediaUnfavCanonical && it.mediaKey != null && !it.mediaKey.isEmpty() && !it.mediaKey.equals(it.dedupKey)) {
+                                whereMedia = "(dedup_key = ? OR canonical_media_key = ?)";
+                                argsMedia.add(it.mediaKey);
+                            }
+                            db.update("media", cv, whereMedia, argsMedia.toArray(new String[0]));
+                        }
+                        if (hasTable(db, "local_media") && it.dedupKey != null && !it.dedupKey.isEmpty()) {
+                            db.update("local_media", cv, "dedup_key = ?", new String[]{it.dedupKey});
+                        }
                     }
 
                     db.setTransactionSuccessful();
