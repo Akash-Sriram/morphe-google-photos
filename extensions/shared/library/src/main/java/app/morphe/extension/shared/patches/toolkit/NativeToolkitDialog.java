@@ -115,6 +115,10 @@ public class NativeToolkitDialog {
         }
     };
     private static final Handler MAIN_HANDLER = new Handler(Looper.getMainLooper());
+
+    public static void clearCache() {
+        THUMB_CACHE.evictAll();
+    }
     private static final SimpleDateFormat DATE_FORMAT = new SimpleDateFormat("MMM d, yyyy • h:mm a", Locale.getDefault());
     private static final SimpleDateFormat FILE_DATE_FORMAT = new SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault());
 
@@ -933,6 +937,13 @@ public class NativeToolkitDialog {
 
         // Window size - popup-friendly (94% width, 88% height)
         dialog.setContentView(root);
+        dialog.setOnDismissListener(d -> {
+            sProgressBar = null;
+            sTvProgressInfo = null;
+            allQueriedItems.clear();
+            availableAlbums.clear();
+            clearCache();
+        });
         dialog.show();
 
         Window window = dialog.getWindow();
@@ -2682,6 +2693,9 @@ public class NativeToolkitDialog {
 
         scroll.addView(root);
         dialog.setContentView(scroll);
+        dialog.setOnDismissListener(d -> {
+            previewIv.setImageDrawable(null);
+        });
         dialog.show();
 
         Window w = dialog.getWindow();
