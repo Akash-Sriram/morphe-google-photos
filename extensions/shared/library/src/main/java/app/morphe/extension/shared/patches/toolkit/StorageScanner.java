@@ -2988,76 +2988,20 @@ public class StorageScanner {
             Toast.makeText(activity, "Unlocking " + itemsToUnlock.size() + " item(s) from Locked Folder...", Toast.LENGTH_SHORT).show();
 
             new Thread(() -> {
+                boolean ok = false;
                 try {
-                    List<?> coreMedia = loadDirectMarsMedia(activity, accountId, itemsToUnlock);
-                    if (coreMedia == null || coreMedia.isEmpty()) {
-                        coreMedia = loadCoreMediaItems(activity, accountId, itemsToUnlock);
-                    }
-
-                    if (coreMedia != null && !coreMedia.isEmpty()) {
-                        final List<?> finalCoreMedia = coreMedia;
-                        activity.runOnUiThread(() -> {
-                            boolean invoked = false;
-                            try {
-                                Class<?> bzoqClass = Class.forName("bzoq");
-                                Class<?> lajaeClass;
-                                try {
-                                    lajaeClass = Class.forName("ajae");
-                                } catch (Throwable t1) {
-                                    lajaeClass = Class.forName("lajae");
-                                }
-                                Object lajae = bzoqClass.getMethod("e", Context.class, Class.class).invoke(null, activity, lajaeClass);
-                                if (lajae != null) {
-                                    Class<?> ccrgClass = Class.forName("ccrg");
-                                    Method copyOf = ccrgClass.getMethod("h", Collection.class);
-                                    Object immutableList = copyOf.invoke(null, finalCoreMedia);
-                                    try {
-                                        Method jMethod = lajae.getClass().getMethod("j", Collection.class);
-                                        jMethod.invoke(lajae, immutableList);
-                                        invoked = true;
-                                        Log.i("morphe: StorageScanner", "Successfully invoked direct ajae.j for " + finalCoreMedia.size() + " items");
-                                    } catch (Throwable tJ) {
-                                        Log.w("morphe: StorageScanner", "ajae.j reflection failed, falling back to executeOnlineMarsRemoveTask", tJ);
-                                    }
-                                }
-                            } catch (Throwable t) {
-                                Log.w("morphe: StorageScanner", "Error resolving ajae handler", t);
-                            }
-
-                            if (!invoked) {
-                                new Thread(() -> {
-                                    boolean ok = executeOnlineMarsRemoveTask(activity, accountId, itemsToUnlock);
-                                    activity.runOnUiThread(() -> {
-                                        Toast.makeText(activity, ok ? "Successfully unlocked " + itemsToUnlock.size() + " item(s)!" : "Failed to unlock items.", Toast.LENGTH_SHORT).show();
-                                        triggerOnlineSync(activity, accountId);
-                                        notifyUiChanges(activity, accountId);
-                                        if (onDoneCallback != null) onDoneCallback.run();
-                                        activity.finish();
-                                    });
-                                }).start();
-                            } else {
-                                Toast.makeText(activity, "Successfully unlocked " + itemsToUnlock.size() + " item(s)!", Toast.LENGTH_SHORT).show();
-                                triggerOnlineSync(activity, accountId);
-                                notifyUiChanges(activity, accountId);
-                                if (onDoneCallback != null) onDoneCallback.run();
-                                activity.finish();
-                            }
-                        });
-                    } else {
-                        new Thread(() -> {
-                            boolean ok = executeOnlineMarsRemoveTask(activity, accountId, itemsToUnlock);
-                            activity.runOnUiThread(() -> {
-                                Toast.makeText(activity, ok ? "Successfully unlocked " + itemsToUnlock.size() + " item(s)!" : "Failed to unlock items.", Toast.LENGTH_SHORT).show();
-                                triggerOnlineSync(activity, accountId);
-                                notifyUiChanges(activity, accountId);
-                                if (onDoneCallback != null) onDoneCallback.run();
-                                activity.finish();
-                            });
-                        }).start();
-                    }
+                    ok = executeOnlineMarsRemoveTask(activity, accountId, itemsToUnlock);
                 } catch (Throwable t) {
                     Log.e("morphe: StorageScanner", "Error in auto-unlock thread", t);
                 }
+                final boolean finalOk = ok;
+                activity.runOnUiThread(() -> {
+                    Toast.makeText(activity, finalOk ? "Successfully unlocked " + itemsToUnlock.size() + " item(s)!" : "Failed to unlock items.", Toast.LENGTH_SHORT).show();
+                    triggerOnlineSync(activity, accountId);
+                    notifyUiChanges(activity, accountId);
+                    if (onDoneCallback != null) onDoneCallback.run();
+                    activity.finish();
+                });
             }).start();
         }, 600);
     }
@@ -3101,21 +3045,8 @@ public class StorageScanner {
                     Class<?> zonClass = null;
                     try { zonClass = Class.forName("zon"); } catch (Throwable ignored) {}
                     for (Object media : allLoaded) {
-                        boolean match = false;
-                        if (zonClass != null) {
-                            try {
-                                Object zon = media.getClass().getMethod("b", Class.class).invoke(media, zonClass);
-                                if (zon != null) {
-                                    Field aField = zon.getClass().getField("a");
-                                    Object opt = aField.get(zon);
-                                    if (opt instanceof java.util.Optional && ((java.util.Optional<?>) opt).isPresent()) {
-                                        Object lahnp = ((java.util.Optional<?>) opt).get();
-                                        if (lahnp != null && targetKeys.contains(lahnp.toString())) match = true;
-                                    }
-                                }
-                            } catch (Throwable ignored) {}
-                        }
-                        if (match || targetKeys.isEmpty()) {
+                        String dKey = (zonClass != null) ? extractDedupKey(media, zonClass) : null;
+                        if (dKey != null && targetKeys.contains(dKey)) {
                             matched.add(media);
                         }
                     }
@@ -3134,78 +3065,183 @@ public class StorageScanner {
         if (context == null || items == null || items.isEmpty()) return false;
         Log.i("morphe: StorageScanner", "executeOnlineMarsRemoveTask: starting for " + items.size() + " items");
 
-        int chunkSize = 5;
-        int totalChunks = (items.size() + chunkSize - 1) / chunkSize;
-        int successCount = 0;
+        List<?> allCoreMedia = loadDirectMarsMedia(context, accountId, items);
+        if (allCoreMedia == null || allCoreMedia.isEmpty()) {
+            allCoreMedia = loadCoreMediaItems(context, accountId, items);
+        }
 
-        for (int i = 0; i < items.size(); i += chunkSize) {
+        if (allCoreMedia == null || allCoreMedia.isEmpty()) {
+            Log.w("morphe: StorageScanner", "executeOnlineMarsRemoveTask: could not load core media for " + items.size() + " items");
+            return false;
+        }
+
+        int chunkSize = 25;
+        int totalItems = allCoreMedia.size();
+        int totalChunks = (totalItems + chunkSize - 1) / chunkSize;
+        int successCount = 0;
+        int totalRemovedCount = 0;
+
+        for (int i = 0; i < totalItems; i += chunkSize) {
             int chunkIndex = (i / chunkSize) + 1;
-            List<MediaItem> chunk = items.subList(i, Math.min(i + chunkSize, items.size()));
+            List<?> chunkCore = allCoreMedia.subList(i, Math.min(i + chunkSize, totalItems));
+            List<MediaItem> chunkItems = (i < items.size())
+                    ? items.subList(i, Math.min(i + chunkSize, items.size()))
+                    : Collections.emptyList();
             boolean chunkSuccess = false;
 
             java.util.function.Consumer<String> cb = sActionProgressCallback;
             if (cb != null) {
-                cb.accept("Decrypting & moving items (" + (i + 1) + "–" + Math.min(i + chunkSize, items.size()) + " of " + items.size() + ")...");
+                cb.accept("Decrypting & moving items (" + (i + 1) + "–" + Math.min(i + chunkSize, totalItems) + " of " + totalItems + ")...");
             }
 
             try {
-                List<?> coreItems = loadCoreMediaItems(context, accountId, chunk);
-                if (coreItems.isEmpty()) {
-                    coreItems = loadDirectMarsMedia(context, accountId, chunk);
-                }
-                if (!coreItems.isEmpty()) {
-                    Class<?> ccrgClass = Class.forName("ccrg");
-                    Method copyOfMethod = ccrgClass.getMethod("h", Collection.class);
-                    Object immutableList = copyOfMethod.invoke(null, coreItems);
+                Class<?> ccrgClass = Class.forName("ccrg");
+                Method copyOfMethod = ccrgClass.getMethod("h", Collection.class);
+                Object immutableList = copyOfMethod.invoke(null, chunkCore);
 
-                    Class<?> mbjClass = Class.forName("mbj");
-                    Constructor<?> mbjCtor = mbjClass.getConstructor(Object.class, int.class, int.class);
-                    Object mbjInstance = mbjCtor.newInstance(immutableList, accountId, 7);
+                Class<?> mbjClass = Class.forName("mbj");
+                Constructor<?> mbjCtor = mbjClass.getConstructor(Object.class, int.class, int.class);
+                Object mbjInstance = mbjCtor.newInstance(immutableList, accountId, 7);
 
-                    Object azlkMu = Class.forName("azlk").getField("mu").get(null);
+                Object azlkMu = Class.forName("azlk").getField("mu").get(null);
 
-                    String taskName = "com.google." + "android.apps.photos.mars.actionhandler.impl.MarsMoveHandlerImpl.MarsRemoveTask";
-                    Class<?> rgaClass = Class.forName("rga");
-                    Method lMethod = rgaClass.getMethod("l", String.class, Class.forName("azll"), String.class, Class.forName("qdr"));
-                    Object qdp = lMethod.invoke(null, taskName, azlkMu, "mars_remove_result", mbjInstance);
+                String taskName = "com.google." + "android.apps.photos.mars.actionhandler.impl.MarsMoveHandlerImpl.MarsRemoveTask";
+                Class<?> rgaClass = Class.forName("rga");
+                Method lMethod = rgaClass.getMethod("l", String.class, Class.forName("azll"), String.class, Class.forName("qdr"));
+                Object qdp = lMethod.invoke(null, taskName, azlkMu, "mars_remove_result", mbjInstance);
 
-                    if (qdp != null) {
-                        Object qdn = qdp.getClass().getMethod("b").invoke(qdp);
-                        Object task = qdn.getClass().getMethod("a").invoke(qdn);
+                if (qdp != null) {
+                    Object qdn = qdp.getClass().getMethod("b").invoke(qdp);
+                    Object task = qdn.getClass().getMethod("a").invoke(qdn);
 
-                        Class<?> bxtyClass = Class.forName("bxty");
-                        Class<?> bxueClass = Class.forName("bxue");
-                        Class<?> bzoqClass = Class.forName("bzoq");
-                        Object taskManager = null;
+                    Class<?> bxtyClass = Class.forName("bxty");
+                    Class<?> bxueClass = Class.forName("bxue");
+                    Method runMethod = bxueClass.getMethod("f", Context.class, bxtyClass);
+                    Object res = runMethod.invoke(null, context, task);
+
+                    if (res != null) {
                         try {
-                            taskManager = bzoqClass.getMethod("e", Context.class, Class.class).invoke(null, context, bxueClass);
-                        } catch (Throwable ignored) {}
-
-                        if (taskManager != null) {
-                            try {
-                                Method rMethod = bxueClass.getMethod("r", bxtyClass);
-                                rMethod.invoke(taskManager, task);
-                                chunkSuccess = true;
-                            } catch (Throwable t) {
-                                Method runMethod = bxueClass.getMethod("f", Context.class, bxtyClass);
-                                Object res = runMethod.invoke(null, context, task);
-                                if (res != null) chunkSuccess = true;
+                            Method bMethod = res.getClass().getMethod("b");
+                            Bundle bundle = (Bundle) bMethod.invoke(res);
+                            if (bundle != null) {
+                                bundle.setClassLoader(context.getClassLoader());
+                                Object removeResult = bundle.getParcelable("mars_remove_result");
+                                if (removeResult != null) {
+                                    Field fieldA = removeResult.getClass().getField("a");
+                                    Object removedObj = fieldA.get(removeResult);
+                                    int removed = (removedObj instanceof Collection) ? ((Collection<?>) removedObj).size() : 0;
+                                    Log.i("morphe: StorageScanner", "MarsRemoveTask chunk " + chunkIndex + ": removed=" + removed);
+                                    if (removed > 0) {
+                                        chunkSuccess = true;
+                                        totalRemovedCount += removed;
+                                    }
+                                }
                             }
-                        } else {
-                            Method runMethod = bxueClass.getMethod("f", Context.class, bxtyClass);
-                            Object res = runMethod.invoke(null, context, task);
-                            if (res != null) chunkSuccess = true;
+                        } catch (Throwable tBundle) {
+                            Log.w("morphe: StorageScanner", "Error reading mars_remove_result bundle: " + tBundle.getMessage());
                         }
+                        if (!chunkSuccess) {
+                            try {
+                                int statusCode = res.getClass().getField("d").getInt(res);
+                                if (statusCode == 200) {
+                                    Log.i("morphe: StorageScanner", "MarsRemoveTask returned statusCode 200 for chunk " + chunkIndex);
+                                    chunkSuccess = true;
+                                    totalRemovedCount += chunkCore.size();
+                                }
+                            } catch (Throwable ignored) {}
+                        }
+                    }
+                }
+
+                // Fallback to direct ajac.a if rga.l did not complete
+                if (!chunkSuccess) {
+                    try {
+                        Class<?> bzoqClass = Class.forName("bzoq");
+                        Class<?> ajacClass = Class.forName("ajac");
+                        Object ajac = bzoqClass.getMethod("e", Context.class, Class.class).invoke(null, context, ajacClass);
+                        if (ajac != null) {
+                            Method aMethod = ajacClass.getMethod("a", int.class, Collection.class, java.util.concurrent.Executor.class);
+                            java.util.concurrent.Executor directExecutor = Runnable::run;
+                            Object future = aMethod.invoke(ajac, accountId, immutableList, directExecutor);
+                            if (future instanceof java.util.concurrent.Future) {
+                                Object removeResult = ((java.util.concurrent.Future<?>) future).get(15, java.util.concurrent.TimeUnit.SECONDS);
+                                if (removeResult != null) {
+                                    Log.i("morphe: StorageScanner", "MarsRemoveAction (ajac.a) returned " + removeResult + " for chunk " + chunkIndex);
+                                    chunkSuccess = true;
+                                    totalRemovedCount += chunkCore.size();
+                                }
+                            }
+                        }
+                    } catch (Throwable tAjac) {
+                        Log.w("morphe: StorageScanner", "ajac.a fallback failed for chunk " + chunkIndex, tAjac);
                     }
                 }
             } catch (Throwable t) {
                 Log.w("morphe: StorageScanner", "Error invoking MarsRemoveTask chunk " + chunkIndex, t);
             }
 
-            if (chunkSuccess) successCount++;
+            if (chunkSuccess) {
+                successCount++;
+                File dbf = context != null ? context.getDatabasePath("gphotos" + accountId + ".db") : null;
+                if (dbf != null && dbf.exists()) {
+                    try (SQLiteDatabase db = SQLiteDatabase.openDatabase(dbf.getAbsolutePath(), null, SQLiteDatabase.OPEN_READWRITE | SQLiteDatabase.ENABLE_WRITE_AHEAD_LOGGING)) {
+                        db.beginTransaction();
+                        try {
+                            for (MediaItem it : chunkItems) {
+                                if (hasTable(db, "remote_locked_media")) {
+                                    String where = "dedup_key = ?";
+                                    List<String> args = new ArrayList<>();
+                                    args.add(it.dedupKey);
+                                    if (it.mediaKey != null && !it.mediaKey.isEmpty() && !it.mediaKey.equals(it.dedupKey)) {
+                                        where = "(dedup_key = ? OR media_key = ?)";
+                                        args.add(it.mediaKey);
+                                    }
+                                    db.delete("remote_locked_media", where, args.toArray(new String[0]));
+                                }
+                                if (hasTable(db, "account_local_locked_media") && it.dedupKey != null && !it.dedupKey.isEmpty()) {
+                                    db.delete("account_local_locked_media", "dedup_key = ?", new String[]{it.dedupKey});
+                                }
+                                if (hasTable(db, "remote_media")) {
+                                    ContentValues cv = new ContentValues();
+                                    if (hasColumn(db, "remote_media", "state")) cv.put("state", 0);
+                                    if (hasColumn(db, "remote_media", "is_archived")) cv.put("is_archived", 0);
+                                    if (hasColumn(db, "remote_media", "trash_timestamp")) cv.put("trash_timestamp", 0);
+                                    String whereRemote = "dedup_key = ?";
+                                    List<String> argsRemote = new ArrayList<>();
+                                    argsRemote.add(it.dedupKey);
+                                    if (hasColumn(db, "remote_media", "media_key") && it.mediaKey != null && !it.mediaKey.isEmpty() && !it.mediaKey.equals(it.dedupKey)) {
+                                        whereRemote = "(dedup_key = ? OR media_key = ?)";
+                                        argsRemote.add(it.mediaKey);
+                                    }
+                                    db.update("remote_media", cv, whereRemote, argsRemote.toArray(new String[0]));
+                                }
+                                if (hasTable(db, "media")) {
+                                    ContentValues mCv = new ContentValues();
+                                    mCv.put("is_archived", 0);
+                                    mCv.put("trash_timestamp", 0);
+                                    mCv.put("is_deleted", 0);
+                                    String whereMedia = "dedup_key = ?";
+                                    List<String> argsMedia = new ArrayList<>();
+                                    argsMedia.add(it.dedupKey);
+                                    if (hasColumn(db, "media", "canonical_media_key") && it.mediaKey != null && !it.mediaKey.isEmpty() && !it.mediaKey.equals(it.dedupKey)) {
+                                        whereMedia = "(dedup_key = ? OR canonical_media_key = ?)";
+                                        argsMedia.add(it.mediaKey);
+                                    }
+                                    db.update("media", mCv, whereMedia, argsMedia.toArray(new String[0]));
+                                }
+                            }
+                            db.setTransactionSuccessful();
+                        } finally {
+                            db.endTransaction();
+                        }
+                    } catch (Throwable tDb) {
+                        Log.w("morphe: StorageScanner", "Error syncing local locked media DB tables", tDb);
+                    }
+                }
+            }
         }
 
-        Log.i("morphe: StorageScanner", "executeOnlineMarsRemoveTask finished: " + successCount + "/" + totalChunks + " chunks successful");
+        Log.i("morphe: StorageScanner", "executeOnlineMarsRemoveTask finished: " + successCount + "/" + totalChunks + " chunks successful, removed " + totalRemovedCount + " items");
         return successCount > 0;
     }
 
