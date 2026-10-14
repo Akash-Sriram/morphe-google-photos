@@ -160,20 +160,16 @@ rsync -u "$KEYSTORE_FILE" "$FAST_CACHE_DIR/Morphe.keystore"
     PATCH_ARGS=(
         --patches="$MPP_FILE"
         --exclusive
-        --continue-on-error
         --keystore="$FAST_CACHE_DIR/Morphe.keystore"
         --keystore-password=""
         --keystore-entry-alias="Morphe"
         --keystore-entry-password="Morphe"
-        -e "Enable DCIM folders backup control"
-        -e "Enable Phenotype flag manager"
-        -e "Fix memory style font loading"
-        -e "GmsCore support"
-        -e "Model Readiness Gates"
-        -e "Spoof features"
         -e "AMOLED dark theme"
-        -e "Google One Bento Badge"
-        -e "Local creation downloader"
+        -e "DCIM & backup control"
+        -e "Flag manager & Toolkit"
+        -e "GmsCore support"
+        -e "Media engine & AI fixes"
+        -e "Spoof features"
     )
 
     if [ "$ENABLE_BRANDING" = true ]; then
@@ -183,8 +179,7 @@ rsync -u "$KEYSTORE_FILE" "$FAST_CACHE_DIR/Morphe.keystore"
 
     if [ "$OFFICIAL_PKG" = true ]; then
         PATCH_ARGS+=(
-            -e "Change to official package name"
-            -e "Disable Play Store updates"
+            -e "Official package name"
         )
         APP_PKG="com.google.android.apps.photos"
         OUTPUT_APK="$PROJECT_DIR/photos_official_patched.apk"
