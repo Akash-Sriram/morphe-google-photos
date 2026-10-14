@@ -4512,6 +4512,35 @@ public class StorageScanner {
         os.write(body);
     }
 
+    public static String resolveLocalFilePath(AccountInfo account, String dedupKey) {
+        if (account == null || dedupKey == null || dedupKey.isEmpty()) return null;
+        File dbFile = new File(account.dbPath);
+        if (!dbFile.exists()) return null;
+        SQLiteDatabase db = null;
+        try {
+            db = SQLiteDatabase.openDatabase(dbFile.getAbsolutePath(), null, SQLiteDatabase.OPEN_READONLY);
+            if (hasTable(db, "local_media")) {
+                String pathCol = null;
+                if (hasColumn(db, "local_media", "filepath")) pathCol = "filepath";
+                else if (hasColumn(db, "local_media", "_data")) pathCol = "_data";
+                else if (hasColumn(db, "local_media", "file_path")) pathCol = "file_path";
+
+                if (pathCol != null) {
+                    try (Cursor c = db.rawQuery("SELECT " + pathCol + " FROM local_media WHERE dedup_key = ? LIMIT 1", new String[]{dedupKey})) {
+                        if (c != null && c.moveToFirst()) {
+                            String p = c.getString(0);
+                            if (p != null && !p.isEmpty()) return p;
+                        }
+                    }
+                }
+            }
+        } catch (Throwable ignored) {
+        } finally {
+            if (db != null) try { db.close(); } catch (Throwable ignored) {}
+        }
+        return null;
+    }
+
     public static String formatBytes(long bytes) {
         if (bytes <= 0) return "0 B";
         if (bytes < 1024) return bytes + " B";

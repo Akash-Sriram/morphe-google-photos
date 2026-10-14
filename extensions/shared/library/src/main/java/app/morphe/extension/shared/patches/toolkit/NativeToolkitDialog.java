@@ -47,11 +47,13 @@ import android.widget.RadioButton;
 import android.widget.RadioGroup;
 import android.util.Pair;
 import android.widget.HorizontalScrollView;
+import android.media.MediaScannerConnection;
 import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.Toast;
 
 import java.io.File;
+import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.InputStream;
 import java.net.HttpURLConnection;
@@ -120,6 +122,23 @@ public class NativeToolkitDialog {
     private static StorageScanner.FilterCriteria currentCriteria = new StorageScanner.FilterCriteria();
     private static List<StorageScanner.MediaItem> allQueriedItems = new ArrayList<>();
     private static List<StorageScanner.AlbumInfo> availableAlbums = new ArrayList<>();
+    public enum SortOrder {
+        DATE_DESC("Date (Newest first)", "Newest"),
+        DATE_ASC("Date (Oldest first)", "Oldest"),
+        SIZE_DESC("File Size (Largest first)", "Largest"),
+        SIZE_ASC("File Size (Smallest first)", "Smallest"),
+        QUOTA_DESC("Cloud Quota Impact", "Quota"),
+        NAME_ASC("File Name (A → Z)", "Name");
+
+        public final String fullLabel;
+        public final String shortLabel;
+        SortOrder(String fullLabel, String shortLabel) {
+            this.fullLabel = fullLabel;
+            this.shortLabel = shortLabel;
+        }
+    }
+
+    private static SortOrder currentSortOrder = SortOrder.DATE_DESC;
     private static ProgressBar sProgressBar = null;
     private static TextView sTvProgressInfo = null;
 
@@ -719,11 +738,25 @@ public class NativeToolkitDialog {
         btnClearSelect.setBackground(createActionPillDrawable(theme.surfaceContainer, 10 * density));
         btnClearSelect.setPadding((int) (8 * density), (int) (3 * density), (int) (8 * density), (int) (3 * density));
         LinearLayout.LayoutParams noneLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        noneLp.rightMargin = (int) (8 * density);
+        noneLp.rightMargin = (int) (6 * density);
         btnClearSelect.setLayoutParams(noneLp);
         btnClearSelect.setClickable(true);
         btnClearSelect.setFocusable(true);
         resTitleRow.addView(btnClearSelect);
+
+        TextView btnSort = new TextView(activity);
+        btnSort.setText("↕ " + currentSortOrder.shortLabel);
+        btnSort.setTextSize(11f);
+        btnSort.setTypeface(null, Typeface.BOLD);
+        btnSort.setTextColor(theme.textPrimary);
+        btnSort.setBackground(createActionPillDrawable(theme.surfaceContainer, 10 * density));
+        btnSort.setPadding((int) (8 * density), (int) (3 * density), (int) (8 * density), (int) (3 * density));
+        LinearLayout.LayoutParams sortLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        sortLp.rightMargin = (int) (6 * density);
+        btnSort.setLayoutParams(sortLp);
+        btnSort.setClickable(true);
+        btnSort.setFocusable(true);
+        resTitleRow.addView(btnSort);
 
         TextView btnToggleView = new TextView(activity);
         btnToggleView.setText(isGridViewRef[0] ? "⊞ Grid" : "☰ List");
@@ -753,6 +786,15 @@ public class NativeToolkitDialog {
             int selCount = selectedMediaKeys.size();
             tvActionsActiveBadge.setText(selCount + " selected");
         };
+
+        btnSort.setOnClickListener(v -> {
+            showSortPickerDialog(activity, () -> {
+                btnSort.setText("↕ " + currentSortOrder.shortLabel);
+                sortMediaItems(allQueriedItems, currentSortOrder);
+                currentPageRef[0] = 0;
+                renderResults(activity, resultsListContainer, allQueriedItems, selectedMediaKeys, isGridViewRef[0], updateSelectionSummaryRef[0], density, theme, currentPageRef);
+            }, density, theme);
+        });
 
         btnSelectAll.setOnClickListener(v -> {
             for (StorageScanner.MediaItem it : allQueriedItems) {
@@ -848,6 +890,10 @@ public class NativeToolkitDialog {
                             for (List<StorageScanner.MediaItem> cl : clusters) clusteredItems.addAll(cl);
                             allQueriedItems.addAll(clusteredItems);
                         }
+                    }
+
+                    if (currentCriteria.similarityThreshold <= 0) {
+                        sortMediaItems(allQueriedItems, currentSortOrder);
                     }
 
                     selectedMediaKeys.clear();
@@ -1536,6 +1582,7 @@ public class NativeToolkitDialog {
                 {"unLock", "Unlock"},
                 {"toTrash", "Trash"},
                 {"restoreTrash", "Restore"},
+                {"exportDcim", "Export to DCIM"},
                 {"exportMetadata", "Export Metadata (CSV)"}
         };
 
@@ -1543,9 +1590,9 @@ public class NativeToolkitDialog {
         for (int i = 0; i < actions.length; i++) {
             final String actionId = actions[i][0];
             final String actionLabel = actions[i][1];
-            boolean isSingleFullWidth = (i == actions.length - 1);
+            boolean isSingleFullWidth = false;
 
-            if (isSingleFullWidth || i % 2 == 0) {
+            if (i % 2 == 0) {
                 currentRow = new LinearLayout(activity);
                 currentRow.setOrientation(LinearLayout.HORIZONTAL);
                 currentRow.setLayoutParams(new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
@@ -1566,7 +1613,7 @@ public class NativeToolkitDialog {
 
             LinearLayout.LayoutParams bLp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
             bLp.bottomMargin = (int) (6 * density);
-            if (!isSingleFullWidth && i % 2 == 0) bLp.rightMargin = (int) (6 * density);
+            if (i % 2 == 0) bLp.rightMargin = (int) (6 * density);
             btn.setLayoutParams(bLp);
 
             btn.setOnClickListener(v -> {
@@ -1590,7 +1637,9 @@ public class NativeToolkitDialog {
                     return;
                 }
 
-                if ("exportMetadata".equals(actionId)) {
+                if ("exportDcim".equals(actionId)) {
+                    exportItemsToDcim(activity, items, density, theme);
+                } else if ("exportMetadata".equals(actionId)) {
                     exportCsvFile(activity, items);
                 } else if ("toNewAlbum".equals(actionId)) {
                     showNewAlbumDialog(activity, items, refreshRunner, density, theme);
@@ -1953,6 +2002,606 @@ public class NativeToolkitDialog {
         });
     }
 
+    private static void sortMediaItems(List<StorageScanner.MediaItem> items, SortOrder order) {
+        if (items == null || items.size() <= 1) return;
+        items.sort((a, b) -> {
+            switch (order) {
+                case DATE_ASC:
+                    return Long.compare(a.captureTimestamp, b.captureTimestamp);
+                case SIZE_DESC:
+                    return Long.compare(b.sizeBytes, a.sizeBytes);
+                case SIZE_ASC:
+                    return Long.compare(a.sizeBytes, b.sizeBytes);
+                case QUOTA_DESC:
+                    int qComp = Long.compare(b.quotaBytes > 0 ? 1 : 0, a.quotaBytes > 0 ? 1 : 0);
+                    if (qComp != 0) return qComp;
+                    return Long.compare(b.quotaBytes, a.quotaBytes);
+                case NAME_ASC:
+                    String na = a.filename != null ? a.filename : "";
+                    String nb = b.filename != null ? b.filename : "";
+                    return na.compareToIgnoreCase(nb);
+                case DATE_DESC:
+                default:
+                    return Long.compare(b.captureTimestamp, a.captureTimestamp);
+            }
+        });
+    }
+
+    private static void showSortPickerDialog(Activity activity, Runnable onSortChanged, float density, Theme theme) {
+        Dialog d = new Dialog(activity);
+        d.requestWindowFeature(Window.FEATURE_NO_TITLE);
+
+        LinearLayout box = new LinearLayout(activity);
+        box.setOrientation(LinearLayout.VERTICAL);
+        box.setBackground(createRoundedDrawable(theme.surface, 20 * density));
+        int p = (int) (18 * density);
+        box.setPadding(p, p, p, (int) (14 * density));
+
+        TextView tv = new TextView(activity);
+        tv.setText("Sort Results By");
+        tv.setTextSize(15f);
+        tv.setTextColor(theme.textPrimary);
+        tv.setTypeface(null, Typeface.BOLD);
+        box.addView(tv);
+
+        TextView sub = new TextView(activity);
+        sub.setText("Choose sorting criteria for matched items:");
+        sub.setTextSize(11.5f);
+        sub.setTextColor(theme.textSecondary);
+        sub.setPadding(0, (int) (4 * density), 0, (int) (10 * density));
+        box.addView(sub);
+
+        for (SortOrder order : SortOrder.values()) {
+            boolean isCur = (order == currentSortOrder);
+
+            LinearLayout optRow = new LinearLayout(activity);
+            optRow.setOrientation(LinearLayout.HORIZONTAL);
+            optRow.setGravity(Gravity.CENTER_VERTICAL);
+            optRow.setPadding((int) (12 * density), (int) (10 * density), (int) (12 * density), (int) (10 * density));
+            optRow.setBackground(createActionPillDrawable(isCur ? theme.primaryContainer : theme.surfaceContainer, 10 * density));
+            LinearLayout.LayoutParams oLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            oLp.bottomMargin = (int) (6 * density);
+            optRow.setLayoutParams(oLp);
+
+            TextView optTv = new TextView(activity);
+            optTv.setText(order.fullLabel);
+            optTv.setTextSize(12.5f);
+            optTv.setTypeface(null, isCur ? Typeface.BOLD : Typeface.NORMAL);
+            optTv.setTextColor(isCur ? theme.onPrimaryContainer : theme.textPrimary);
+            optRow.addView(optTv, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+
+            if (isCur) {
+                TextView check = new TextView(activity);
+                check.setText("✓");
+                check.setTextSize(13f);
+                check.setTypeface(null, Typeface.BOLD);
+                check.setTextColor(theme.primary);
+                optRow.addView(check);
+            }
+
+            optRow.setClickable(true);
+            optRow.setFocusable(true);
+            optRow.setOnClickListener(v -> {
+                currentSortOrder = order;
+                d.dismiss();
+                if (onSortChanged != null) onSortChanged.run();
+            });
+            box.addView(optRow);
+        }
+
+        d.setContentView(box);
+        d.show();
+
+        Window w = d.getWindow();
+        if (w != null) {
+            w.setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
+            int sw = activity.getResources().getDisplayMetrics().widthPixels;
+            w.setLayout(Math.min((int) (sw * 0.88f), (int) (380 * density)), ViewGroup.LayoutParams.WRAP_CONTENT);
+        }
+    }
+
+    private static void copyFile(File src, File dst) throws Exception {
+        try (InputStream in = new FileInputStream(src);
+             FileOutputStream out = new FileOutputStream(dst)) {
+            byte[] buf = new byte[65536];
+            int len;
+            while ((len = in.read(buf)) > 0) {
+                out.write(buf, 0, len);
+            }
+            out.flush();
+        }
+    }
+
+    private static void downloadRemoteFile(String urlStr, File dst) throws Exception {
+        URL u = new URL(urlStr);
+        HttpURLConnection conn = (HttpURLConnection) u.openConnection();
+        conn.setConnectTimeout(10000);
+        conn.setReadTimeout(15000);
+        conn.setInstanceFollowRedirects(true);
+        try (InputStream in = conn.getInputStream();
+             FileOutputStream out = new FileOutputStream(dst)) {
+            byte[] buf = new byte[65536];
+            int len;
+            while ((len = in.read(buf)) > 0) {
+                out.write(buf, 0, len);
+            }
+            out.flush();
+        }
+    }
+
+    private static void exportItemsToDcim(Activity activity, List<StorageScanner.MediaItem> items, float density, Theme theme) {
+        if (items == null || items.isEmpty()) return;
+
+        Dialog progressDialog = new Dialog(activity);
+        progressDialog.requestWindowFeature(Window.FEATURE_NO_TITLE);
+        progressDialog.setCancelable(false);
+
+        LinearLayout pRoot = new LinearLayout(activity);
+        pRoot.setOrientation(LinearLayout.VERTICAL);
+        pRoot.setPadding((int) (20 * density), (int) (18 * density), (int) (20 * density), (int) (18 * density));
+        pRoot.setBackground(createRoundedDrawable(theme.surface, 20 * density));
+
+        TextView tvTitle = new TextView(activity);
+        tvTitle.setText("Exporting to DCIM");
+        tvTitle.setTextSize(16f);
+        tvTitle.setTypeface(null, Typeface.BOLD);
+        tvTitle.setTextColor(theme.textPrimary);
+        pRoot.addView(tvTitle);
+
+        TextView tvStatus = new TextView(activity);
+        tvStatus.setText("Preparing 0 / " + items.size() + "...");
+        tvStatus.setTextSize(12f);
+        tvStatus.setTextColor(theme.textSecondary);
+        tvStatus.setPadding(0, (int) (6 * density), 0, (int) (12 * density));
+        pRoot.addView(tvStatus);
+
+        ProgressBar pBar = new ProgressBar(activity, null, android.R.attr.progressBarStyleHorizontal);
+        pBar.setMax(items.size());
+        pBar.setProgress(0);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+            pBar.setProgressTintList(ColorStateList.valueOf(theme.primary));
+        }
+        LinearLayout.LayoutParams pLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, (int) (6 * density));
+        pRoot.addView(pBar, pLp);
+
+        TextView btnCancel = new TextView(activity);
+        btnCancel.setText("Cancel");
+        btnCancel.setTextSize(12f);
+        btnCancel.setTypeface(null, Typeface.BOLD);
+        btnCancel.setTextColor(theme.primary);
+        btnCancel.setGravity(Gravity.END);
+        btnCancel.setPadding(0, (int) (12 * density), 0, 0);
+        final boolean[] isCancelled = new boolean[]{false};
+        btnCancel.setOnClickListener(v -> {
+            isCancelled[0] = true;
+            btnCancel.setText("Cancelling...");
+        });
+        pRoot.addView(btnCancel);
+
+        progressDialog.setContentView(pRoot);
+        progressDialog.show();
+        Window pw = progressDialog.getWindow();
+        if (pw != null) {
+            pw.setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
+            int sw = activity.getResources().getDisplayMetrics().widthPixels;
+            pw.setLayout(Math.min((int) (sw * 0.88f), (int) (400 * density)), ViewGroup.LayoutParams.WRAP_CONTENT);
+        }
+
+        THREAD_POOL.execute(() -> {
+            int successCount = 0;
+            int skippedCount = 0;
+            List<String> exportedPaths = new ArrayList<>();
+            File dcimDir = new File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DCIM), "GooglePhotos_Export");
+            if (!dcimDir.exists()) dcimDir.mkdirs();
+
+            for (int i = 0; i < items.size(); i++) {
+                if (isCancelled[0]) break;
+                StorageScanner.MediaItem item = items.get(i);
+                final int currentIdx = i + 1;
+                MAIN_HANDLER.post(() -> {
+                    tvStatus.setText("Exporting " + currentIdx + " of " + items.size() + "\n" + (item.filename != null ? item.filename : "item"));
+                    pBar.setProgress(currentIdx);
+                });
+
+                try {
+                    String baseName = (item.filename != null && !item.filename.trim().isEmpty())
+                            ? item.filename.trim()
+                            : ("photo_" + item.captureTimestamp + (item.mimeType != null && item.mimeType.contains("video") ? ".mp4" : ".jpg"));
+
+                    File destFile = new File(dcimDir, baseName);
+                    int count = 1;
+                    while (destFile.exists()) {
+                        int dot = baseName.lastIndexOf('.');
+                        if (dot > 0) {
+                            destFile = new File(dcimDir, baseName.substring(0, dot) + "_" + count + baseName.substring(dot));
+                        } else {
+                            destFile = new File(dcimDir, baseName + "_" + count);
+                        }
+                        count++;
+                    }
+
+                    boolean copied = false;
+                    if (item.remoteUrl != null && (item.remoteUrl.startsWith("/") || item.remoteUrl.startsWith("file://"))) {
+                        String localP = item.remoteUrl.startsWith("file://") ? item.remoteUrl.substring(7) : item.remoteUrl;
+                        File localFile = new File(localP);
+                        if (localFile.exists() && localFile.canRead()) {
+                            copyFile(localFile, destFile);
+                            copied = destFile.exists() && destFile.length() > 0;
+                        }
+                    }
+
+                    if (!copied && currentAccount != null) {
+                        String localDbPath = StorageScanner.resolveLocalFilePath(currentAccount, item.dedupKey);
+                        if (localDbPath != null) {
+                            File lf = new File(localDbPath);
+                            if (lf.exists() && lf.canRead()) {
+                                copyFile(lf, destFile);
+                                copied = destFile.exists() && destFile.length() > 0;
+                            }
+                        }
+                    }
+
+                    if (!copied && item.remoteUrl != null && (item.remoteUrl.startsWith("http://") || item.remoteUrl.startsWith("https://"))) {
+                        String dlUrl = item.remoteUrl;
+                        if (dlUrl.contains("=")) {
+                            dlUrl = dlUrl.replaceAll("=.*$", "=d");
+                        } else {
+                            dlUrl = dlUrl + "=d";
+                        }
+                        downloadRemoteFile(dlUrl, destFile);
+                        copied = destFile.exists() && destFile.length() > 0;
+                    }
+
+                    if (copied) {
+                        successCount++;
+                        exportedPaths.add(destFile.getAbsolutePath());
+                    } else {
+                        skippedCount++;
+                    }
+                } catch (Throwable t) {
+                    Logger.printException(() -> "Error exporting item " + item.filename, t);
+                    skippedCount++;
+                }
+            }
+
+            final int finalSuccess = successCount;
+            final int finalSkipped = skippedCount;
+            if (!exportedPaths.isEmpty()) {
+                String[] pathsArray = exportedPaths.toArray(new String[0]);
+                try {
+                    MediaScannerConnection.scanFile(activity, pathsArray, null, (path, uri) -> {
+                        Logger.printInfo(() -> "Exported & indexed in DCIM: " + path);
+                    });
+                } catch (Throwable t) {
+                    Logger.printException(() -> "Error calling MediaScannerConnection", t);
+                }
+            }
+
+            MAIN_HANDLER.post(() -> {
+                if (progressDialog.isShowing()) progressDialog.dismiss();
+                String msg = "Exported " + finalSuccess + " item(s) to DCIM/GooglePhotos_Export";
+                if (finalSkipped > 0) msg += " (" + finalSkipped + " skipped/failed)";
+                Toast.makeText(activity, msg, Toast.LENGTH_LONG).show();
+            });
+        });
+    }
+
+    private static void showPhotoInspectorDialog(Activity activity, StorageScanner.MediaItem currentItem,
+                                                 List<StorageScanner.MediaItem> allItems,
+                                                 Set<String> selectedKeys,
+                                                 Runnable onSelectionChanged,
+                                                 float density, Theme theme) {
+        if (activity == null || activity.isFinishing() || activity.isDestroyed() || currentItem == null) return;
+
+        Dialog dialog = new Dialog(activity);
+        dialog.requestWindowFeature(Window.FEATURE_NO_TITLE);
+
+        ScrollView scroll = new ScrollView(activity);
+        scroll.setVerticalScrollBarEnabled(false);
+
+        LinearLayout root = new LinearLayout(activity);
+        root.setOrientation(LinearLayout.VERTICAL);
+        root.setBackground(createRoundedDrawable(theme.surface, 24 * density));
+        int p = (int) (18 * density);
+        root.setPadding(p, p, p, (int) (16 * density));
+
+        // 1. Header (Title + Close)
+        LinearLayout header = new LinearLayout(activity);
+        header.setOrientation(LinearLayout.HORIZONTAL);
+        header.setGravity(Gravity.CENTER_VERTICAL);
+
+        TextView tvTitle = new TextView(activity);
+        tvTitle.setText("📷 Media Inspector");
+        tvTitle.setTextSize(16f);
+        tvTitle.setTypeface(null, Typeface.BOLD);
+        tvTitle.setTextColor(theme.textPrimary);
+        header.addView(tvTitle, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+
+        View btnClose = createHeaderIconButton(activity, theme.textSecondary, (int) (32 * density));
+        btnClose.setOnClickListener(v -> dialog.dismiss());
+        header.addView(btnClose);
+        root.addView(header);
+
+        // 2. High-Res Preview Image
+        FrameLayout previewFrame = new FrameLayout(activity);
+        LinearLayout.LayoutParams pfLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, (int) (240 * density));
+        pfLp.topMargin = (int) (12 * density);
+        pfLp.bottomMargin = (int) (12 * density);
+        previewFrame.setLayoutParams(pfLp);
+        previewFrame.setBackground(createRoundedDrawable(theme.surfaceContainer, 14 * density));
+        previewFrame.setClipToOutline(true);
+
+        ImageView previewIv = new ImageView(activity);
+        previewIv.setLayoutParams(new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        previewIv.setScaleType(ImageView.ScaleType.FIT_CENTER);
+        previewFrame.addView(previewIv);
+
+        int accId = currentAccount != null ? currentAccount.accountId : 0;
+        loadThumbAsync(activity, previewIv, currentItem.remoteUrl, accId);
+
+        if (currentItem.duration > 0 || (currentItem.mimeType != null && currentItem.mimeType.contains("video"))) {
+            TextView tvVid = new TextView(activity);
+            tvVid.setText("▶ " + (currentItem.duration > 0 ? (int) currentItem.duration + "s" : "Video"));
+            tvVid.setTextSize(11f);
+            tvVid.setTypeface(null, Typeface.BOLD);
+            tvVid.setTextColor(Color.WHITE);
+            tvVid.setBackground(createRoundedDrawable(0xAA000000, 6 * density));
+            tvVid.setPadding((int) (8 * density), (int) (4 * density), (int) (8 * density), (int) (4 * density));
+            FrameLayout.LayoutParams vLp = new FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM | Gravity.START);
+            vLp.setMargins((int) (8 * density), 0, 0, (int) (8 * density));
+            previewFrame.addView(tvVid, vLp);
+        }
+        root.addView(previewFrame);
+
+        // 3. Technical Metadata Breakdown Card
+        LinearLayout metaCard = new LinearLayout(activity);
+        metaCard.setOrientation(LinearLayout.VERTICAL);
+        metaCard.setBackground(createRoundedDrawable(theme.surfaceContainer, 12 * density));
+        metaCard.setPadding((int) (14 * density), (int) (12 * density), (int) (14 * density), (int) (12 * density));
+
+        TextView tvFilename = new TextView(activity);
+        tvFilename.setText(currentItem.filename != null ? currentItem.filename : "Unknown");
+        tvFilename.setTextSize(13.5f);
+        tvFilename.setTypeface(null, Typeface.BOLD);
+        tvFilename.setTextColor(theme.textPrimary);
+        metaCard.addView(tvFilename);
+
+        String resStr = (currentItem.width > 0 && currentItem.height > 0)
+                ? (currentItem.width + " × " + currentItem.height) : "Standard resolution";
+        String quotaStr = currentItem.quotaBytes > 0
+                ? ("-" + currentItem.getFormattedQuota() + " (Consumes storage)")
+                : "Free (0 B • Storage saver / Pixel perk)";
+        String stateStr = (currentItem.isArchived ? "Archived • " : "")
+                + (currentItem.isFavorite ? "Favorite • " : "")
+                + (currentItem.trashTimestamp > 0 ? "In Trash" : "Active in Library");
+
+        String[][] metaRows = new String[][]{
+                {"📐 Resolution", resStr},
+                {"📦 File Size", currentItem.getFormattedSize()},
+                {"☁️ Quota Impact", quotaStr},
+                {"📅 Date Captured", currentItem.captureTimestamp > 0 ? DATE_FORMAT.format(new Date(currentItem.captureTimestamp)) : "Unknown"},
+                {"🏷️ MIME Type", currentItem.mimeType != null && !currentItem.mimeType.isEmpty() ? currentItem.mimeType : "image/jpeg"},
+                {"📂 Media State", stateStr}
+        };
+
+        for (String[] row : metaRows) {
+            LinearLayout r = new LinearLayout(activity);
+            r.setOrientation(LinearLayout.HORIZONTAL);
+            LinearLayout.LayoutParams rLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            rLp.topMargin = (int) (5 * density);
+            r.setLayoutParams(rLp);
+
+            TextView k = new TextView(activity);
+            k.setText(row[0]);
+            k.setTextSize(11.5f);
+            k.setTextColor(theme.textSecondary);
+            k.setLayoutParams(new LinearLayout.LayoutParams((int) (110 * density), ViewGroup.LayoutParams.WRAP_CONTENT));
+            r.addView(k);
+
+            TextView v = new TextView(activity);
+            v.setText(row[1]);
+            v.setTextSize(11.5f);
+            v.setTypeface(null, Typeface.BOLD);
+            v.setTextColor(theme.textPrimary);
+            v.setLayoutParams(new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+            r.addView(v);
+
+            metaCard.addView(r);
+        }
+
+        if (currentItem.caption != null && !currentItem.caption.trim().isEmpty()) {
+            TextView tvCap = new TextView(activity);
+            tvCap.setText("💬 " + currentItem.caption.trim());
+            tvCap.setTextSize(11.5f);
+            tvCap.setTextColor(theme.primary);
+            tvCap.setPadding(0, (int) (6 * density), 0, 0);
+            metaCard.addView(tvCap);
+        }
+
+        root.addView(metaCard);
+
+        // 4. Duplicate / Visual Similarity Cluster Comparison (if clusterId > 0)
+        if (currentItem.clusterId > 0 && allItems != null) {
+            List<StorageScanner.MediaItem> clusterMembers = new ArrayList<>();
+            for (StorageScanner.MediaItem it : allItems) {
+                if (it.clusterId == currentItem.clusterId) clusterMembers.add(it);
+            }
+
+            if (clusterMembers.size() > 1) {
+                LinearLayout clusterBox = new LinearLayout(activity);
+                clusterBox.setOrientation(LinearLayout.VERTICAL);
+                clusterBox.setBackground(createRoundedDrawable(theme.surfaceContainer, 12 * density));
+                clusterBox.setPadding((int) (12 * density), (int) (10 * density), (int) (12 * density), (int) (10 * density));
+                LinearLayout.LayoutParams cbLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+                cbLp.topMargin = (int) (10 * density);
+                clusterBox.setLayoutParams(cbLp);
+
+                TextView tvClustTitle = new TextView(activity);
+                tvClustTitle.setText("Visual Similarity Cluster #" + currentItem.clusterId + " (" + clusterMembers.size() + " items)");
+                tvClustTitle.setTextSize(12.5f);
+                tvClustTitle.setTypeface(null, Typeface.BOLD);
+                tvClustTitle.setTextColor(theme.primary);
+                clusterBox.addView(tvClustTitle);
+
+                TextView tvClustDesc = new TextView(activity);
+                tvClustDesc.setText("Tap any candidate to inspect details. Keep the best quality photo and delete the rest.");
+                tvClustDesc.setTextSize(11f);
+                tvClustDesc.setTextColor(theme.textSecondary);
+                tvClustDesc.setPadding(0, (int) (2 * density), 0, (int) (8 * density));
+                clusterBox.addView(tvClustDesc);
+
+                HorizontalScrollView hsv = new HorizontalScrollView(activity);
+                hsv.setHorizontalScrollBarEnabled(false);
+                LinearLayout hRow = new LinearLayout(activity);
+                hRow.setOrientation(LinearLayout.HORIZONTAL);
+
+                for (StorageScanner.MediaItem cand : clusterMembers) {
+                    boolean isCur = cand.dedupKey != null && cand.dedupKey.equals(currentItem.dedupKey);
+
+                    LinearLayout cCol = new LinearLayout(activity);
+                    cCol.setOrientation(LinearLayout.VERTICAL);
+                    cCol.setGravity(Gravity.CENTER_HORIZONTAL);
+                    int m = (int) (4 * density);
+                    LinearLayout.LayoutParams ccLp = new LinearLayout.LayoutParams((int) (90 * density), ViewGroup.LayoutParams.WRAP_CONTENT);
+                    ccLp.setMargins(m, m, m, m);
+                    cCol.setLayoutParams(ccLp);
+                    cCol.setBackground(createRoundedDrawable(isCur ? theme.primaryContainer : theme.surfaceContainer, 8 * density));
+                    cCol.setPadding((int) (4 * density), (int) (4 * density), (int) (4 * density), (int) (6 * density));
+
+                    ImageView cThumb = new ImageView(activity);
+                    cThumb.setLayoutParams(new LinearLayout.LayoutParams((int) (82 * density), (int) (82 * density)));
+                    cThumb.setScaleType(ImageView.ScaleType.CENTER_CROP);
+                    cThumb.setBackground(createRoundedDrawable(theme.surfaceContainer, 6 * density));
+                    cThumb.setClipToOutline(true);
+                    loadThumbAsync(activity, cThumb, cand.remoteUrl, accId);
+                    cCol.addView(cThumb);
+
+                    TextView tvCandSize = new TextView(activity);
+                    tvCandSize.setText(cand.getFormattedSize());
+                    tvCandSize.setTextSize(10f);
+                    tvCandSize.setTypeface(null, Typeface.BOLD);
+                    tvCandSize.setTextColor(theme.textPrimary);
+                    tvCandSize.setPadding(0, (int) (3 * density), 0, 0);
+                    cCol.addView(tvCandSize);
+
+                    TextView tvCandTag = new TextView(activity);
+                    tvCandTag.setText(isCur ? "Viewing" : "Candidate");
+                    tvCandTag.setTextSize(9f);
+                    tvCandTag.setTextColor(isCur ? theme.primary : theme.textSecondary);
+                    cCol.addView(tvCandTag);
+
+                    cCol.setClickable(true);
+                    cCol.setFocusable(true);
+                    cCol.setOnClickListener(v -> {
+                        dialog.dismiss();
+                        showPhotoInspectorDialog(activity, cand, allItems, selectedKeys, onSelectionChanged, density, theme);
+                    });
+                    hRow.addView(cCol);
+                }
+                hsv.addView(hRow);
+                clusterBox.addView(hsv);
+
+                // Smart action: Keep this photo
+                TextView btnKeepThis = new TextView(activity);
+                btnKeepThis.setText("🌟 Keep This Photo (Select " + (clusterMembers.size() - 1) + " Others for Deletion)");
+                btnKeepThis.setTextSize(11.5f);
+                btnKeepThis.setTypeface(null, Typeface.BOLD);
+                btnKeepThis.setTextColor(theme.onPrimary);
+                btnKeepThis.setGravity(Gravity.CENTER);
+                btnKeepThis.setBackground(createActionPillDrawable(theme.primary, 10 * density));
+                btnKeepThis.setPadding((int) (12 * density), (int) (8 * density), (int) (12 * density), (int) (8 * density));
+                LinearLayout.LayoutParams ktLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+                ktLp.topMargin = (int) (10 * density);
+                btnKeepThis.setLayoutParams(ktLp);
+                btnKeepThis.setClickable(true);
+                btnKeepThis.setFocusable(true);
+                btnKeepThis.setOnClickListener(v -> {
+                    String curKey = getItemKey(currentItem);
+                    selectedKeys.remove(curKey);
+                    int count = 0;
+                    for (StorageScanner.MediaItem other : clusterMembers) {
+                        String oKey = getItemKey(other);
+                        if (!oKey.equals(curKey)) {
+                            selectedKeys.add(oKey);
+                            count++;
+                        }
+                    }
+                    if (onSelectionChanged != null) onSelectionChanged.run();
+                    Toast.makeText(activity, "Selected " + count + " duplicates for deletion/archive", Toast.LENGTH_SHORT).show();
+                    dialog.dismiss();
+                });
+                clusterBox.addView(btnKeepThis);
+
+                root.addView(clusterBox);
+            }
+        }
+
+        // 5. Footer Row (Toggle Selection & Close)
+        LinearLayout footer = new LinearLayout(activity);
+        footer.setOrientation(LinearLayout.HORIZONTAL);
+        footer.setGravity(Gravity.END);
+        LinearLayout.LayoutParams fLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        fLp.topMargin = (int) (16 * density);
+        footer.setLayoutParams(fLp);
+
+        String itemKey = getItemKey(currentItem);
+        TextView btnToggleSelect = new TextView(activity);
+        btnToggleSelect.setTextSize(12f);
+        btnToggleSelect.setTypeface(null, Typeface.BOLD);
+        btnToggleSelect.setPadding((int) (14 * density), (int) (8 * density), (int) (14 * density), (int) (8 * density));
+
+        Runnable updateBtnSelectVisual = () -> {
+            boolean isSel = selectedKeys.contains(itemKey);
+            if (isSel) {
+                btnToggleSelect.setText("✓ Selected (Tap to Deselect)");
+                btnToggleSelect.setTextColor(theme.onPrimary);
+                btnToggleSelect.setBackground(createActionPillDrawable(theme.primary, 10 * density));
+            } else {
+                btnToggleSelect.setText("＋ Select for Batch Action");
+                btnToggleSelect.setTextColor(theme.textPrimary);
+                btnToggleSelect.setBackground(createActionPillDrawable(theme.surfaceContainer, 10 * density));
+            }
+        };
+        updateBtnSelectVisual.run();
+
+        btnToggleSelect.setClickable(true);
+        btnToggleSelect.setFocusable(true);
+        btnToggleSelect.setOnClickListener(v -> {
+            if (selectedKeys.contains(itemKey)) {
+                selectedKeys.remove(itemKey);
+            } else {
+                selectedKeys.add(itemKey);
+            }
+            updateBtnSelectVisual.run();
+            if (onSelectionChanged != null) onSelectionChanged.run();
+        });
+        footer.addView(btnToggleSelect);
+
+        TextView btnDone = new TextView(activity);
+        btnDone.setText("Close");
+        btnDone.setTextSize(12f);
+        btnDone.setTypeface(null, Typeface.BOLD);
+        btnDone.setTextColor(theme.primary);
+        btnDone.setPadding((int) (14 * density), (int) (8 * density), (int) (14 * density), (int) (8 * density));
+        btnDone.setClickable(true);
+        btnDone.setFocusable(true);
+        btnDone.setOnClickListener(v -> dialog.dismiss());
+        footer.addView(btnDone);
+
+        root.addView(footer);
+
+        scroll.addView(root);
+        dialog.setContentView(scroll);
+        dialog.show();
+
+        Window w = dialog.getWindow();
+        if (w != null) {
+            w.setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
+            int sw = activity.getResources().getDisplayMetrics().widthPixels;
+            w.setLayout(Math.min((int) (sw * 0.94f), (int) (520 * density)), ViewGroup.LayoutParams.WRAP_CONTENT);
+        }
+    }
+
     // ─────────────────────────────────────────────────────────────────────────
     // Results List Renderer
     // ─────────────────────────────────────────────────────────────────────────
@@ -2206,35 +2855,40 @@ public class NativeToolkitDialog {
                 bLp.setMargins(0, 0, (int) (4 * density), (int) (4 * density));
                 tile.addView(badge, bLp);
 
-                // Checkbox
+                // Checkbox touch target container
+                FrameLayout checkContainer = new FrameLayout(activity);
+                int ccSize = (int) (38 * density);
+                FrameLayout.LayoutParams ccLp = new FrameLayout.LayoutParams(ccSize, ccSize, Gravity.TOP | Gravity.START);
+                checkContainer.setLayoutParams(ccLp);
+
                 TextView check = new TextView(activity);
-                int chSize = (int) (20 * density);
+                int chSize = (int) (22 * density);
                 FrameLayout.LayoutParams chLp = new FrameLayout.LayoutParams(chSize, chSize, Gravity.TOP | Gravity.START);
                 chLp.setMargins((int) (5 * density), (int) (5 * density), 0, 0);
                 check.setLayoutParams(chLp);
                 check.setGravity(Gravity.CENTER);
-                check.setTextSize(10.5f);
+                check.setTextSize(11f);
                 check.setTypeface(null, Typeface.BOLD);
+                checkContainer.addView(check);
 
                 Runnable updateCheckVisual = () -> {
                     boolean sel = selectedKeys.contains(itemKey);
                     if (sel) {
                         check.setText("✓");
                         check.setTextColor(theme.onPrimary);
-                        check.setBackground(createRoundedDrawable(theme.primary, 10 * density));
+                        check.setBackground(createRoundedDrawable(theme.primary, 11 * density));
                     } else {
                         check.setText("");
-                        GradientDrawable uncheckGd = createRoundedDrawable(0x55000000, 10 * density);
+                        GradientDrawable uncheckGd = createRoundedDrawable(0x55000000, 11 * density);
                         uncheckGd.setStroke((int) (1.5f * density), 0xDDFFFFFF);
                         check.setBackground(uncheckGd);
                     }
                 };
                 updateCheckVisual.run();
-                tile.addView(check);
 
-                tile.setClickable(true);
-                tile.setFocusable(true);
-                tile.setOnClickListener(v -> {
+                checkContainer.setClickable(true);
+                checkContainer.setFocusable(true);
+                checkContainer.setOnClickListener(v -> {
                     if (selectedKeys.contains(itemKey)) {
                         selectedKeys.remove(itemKey);
                     } else {
@@ -2242,6 +2896,17 @@ public class NativeToolkitDialog {
                     }
                     updateCheckVisual.run();
                     if (onSelectionChanged != null) onSelectionChanged.run();
+                });
+                tile.addView(checkContainer);
+
+                tile.setClickable(true);
+                tile.setFocusable(true);
+                tile.setOnClickListener(v -> {
+                    showPhotoInspectorDialog(activity, item, items, selectedKeys, onSelectionChanged, density, theme);
+                });
+                tile.setOnLongClickListener(v -> {
+                    showPhotoInspectorDialog(activity, item, items, selectedKeys, onSelectionChanged, density, theme);
+                    return true;
                 });
 
                 loadThumbAsync(activity, thumb, item.remoteUrl, accId);
@@ -2274,12 +2939,12 @@ public class NativeToolkitDialog {
 
                 // Checkbox
                 TextView check = new TextView(activity);
-                int chSize = (int) (20 * density);
+                int chSize = (int) (22 * density);
                 LinearLayout.LayoutParams chLp = new LinearLayout.LayoutParams(chSize, chSize);
                 chLp.rightMargin = (int) (10 * density);
                 check.setLayoutParams(chLp);
                 check.setGravity(Gravity.CENTER);
-                check.setTextSize(10.5f);
+                check.setTextSize(11f);
                 check.setTypeface(null, Typeface.BOLD);
 
                 Runnable updateCheckVisual = () -> {
@@ -2287,15 +2952,27 @@ public class NativeToolkitDialog {
                     if (sel) {
                         check.setText("✓");
                         check.setTextColor(theme.onPrimary);
-                        check.setBackground(createRoundedDrawable(theme.primary, 10 * density));
+                        check.setBackground(createRoundedDrawable(theme.primary, 11 * density));
                     } else {
                         check.setText("");
-                        GradientDrawable uncheckGd = createRoundedDrawable(theme.surfaceContainer, 10 * density);
+                        GradientDrawable uncheckGd = createRoundedDrawable(theme.surfaceContainer, 11 * density);
                         uncheckGd.setStroke((int) (1.5f * density), theme.outline);
                         check.setBackground(uncheckGd);
                     }
                 };
                 updateCheckVisual.run();
+
+                check.setClickable(true);
+                check.setFocusable(true);
+                check.setOnClickListener(v -> {
+                    if (selectedKeys.contains(itemKey)) {
+                        selectedKeys.remove(itemKey);
+                    } else {
+                        selectedKeys.add(itemKey);
+                    }
+                    updateCheckVisual.run();
+                    if (onSelectionChanged != null) onSelectionChanged.run();
+                });
                 card.addView(check);
 
                 ImageView thumb = new ImageView(activity);
@@ -2353,13 +3030,11 @@ public class NativeToolkitDialog {
                 card.setClickable(true);
                 card.setFocusable(true);
                 card.setOnClickListener(v -> {
-                    if (selectedKeys.contains(itemKey)) {
-                        selectedKeys.remove(itemKey);
-                    } else {
-                        selectedKeys.add(itemKey);
-                    }
-                    updateCheckVisual.run();
-                    if (onSelectionChanged != null) onSelectionChanged.run();
+                    showPhotoInspectorDialog(activity, item, items, selectedKeys, onSelectionChanged, density, theme);
+                });
+                card.setOnLongClickListener(v -> {
+                    showPhotoInspectorDialog(activity, item, items, selectedKeys, onSelectionChanged, density, theme);
+                    return true;
                 });
 
                 loadThumbAsync(activity, thumb, item.remoteUrl, accId);

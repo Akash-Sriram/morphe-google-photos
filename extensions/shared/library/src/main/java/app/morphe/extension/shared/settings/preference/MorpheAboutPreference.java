@@ -20,6 +20,7 @@ import android.util.AttributeSet;
 import android.view.Gravity;
 import android.view.View;
 import android.view.Window;
+import android.webkit.JavascriptInterface;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
 import android.widget.LinearLayout;
@@ -233,13 +234,23 @@ public class MorpheAboutPreference extends Preference {
 
         String appPatchesVersion = Utils.getPatchesReleaseVersion();
 
-        // Description.
-        html.append("<p>").append(
+        // Description with version long-press hook
+        html.append("<p id=\"version-text\" style=\"cursor: pointer; -webkit-user-select: none; user-select: none; padding: 4px; border-radius: 8px;\">").append(
                 useNonBreakingHyphens(currentVersion == null || appPatchesVersion.equalsIgnoreCase(currentVersion)
                         ? getString("morphe_settings_about_links_body_version_current", appPatchesVersion)
                         : getString("morphe_settings_about_links_body_version_outdated", appPatchesVersion, currentVersion)
                 )
         ).append("</p>");
+        html.append("<script>"
+                + "let pTimer; const el = document.getElementById('version-text');"
+                + "if (el) {"
+                + "  const trigger = function() { if (window.morpheBridge) window.morpheBridge.onVersionLongPress(); };"
+                + "  el.addEventListener('touchstart', function() { pTimer = setTimeout(trigger, 650); });"
+                + "  el.addEventListener('touchend', function() { clearTimeout(pTimer); });"
+                + "  el.addEventListener('touchmove', function() { clearTimeout(pTimer); });"
+                + "  el.addEventListener('contextmenu', function(e) { e.preventDefault(); trigger(); return false; });"
+                + "}"
+                + "</script>");
 
         // Dev note banner.
         if (Utils.isPreReleasePatches()) {
@@ -336,6 +347,23 @@ public class MorpheAboutPreference extends Preference {
         });
     }
 
+    @Override
+    protected void onBindView(View view) {
+        super.onBindView(view);
+        view.setOnLongClickListener(v -> {
+            Context ctx = getContext();
+            if (ctx instanceof Activity activity) {
+                try {
+                    Class<?> seederClass = Class.forName("app.morphe.extension.shared.patches.PhotosModelSeeder");
+                    seederClass.getMethod("showModelManagerDialog", Activity.class).invoke(null, activity);
+                    return true;
+                } catch (Throwable ignored) {
+                }
+            }
+            return false;
+        });
+    }
+
     public MorpheAboutPreference(Context context, AttributeSet attrs, int defStyleAttr, int defStyleRes) {
         super(context, attrs, defStyleAttr, defStyleRes);
     }
@@ -385,6 +413,22 @@ class WebViewDialog extends Dialog {
         webView.setVerticalScrollBarEnabled(false); // Disable the vertical scrollbar.
         webView.setOverScrollMode(View.OVER_SCROLL_NEVER);
         webView.getSettings().setJavaScriptEnabled(true);
+        webView.addJavascriptInterface(new Object() {
+            @JavascriptInterface
+            public void onVersionLongPress() {
+                Utils.runOnMainThreadNowOrLater(() -> {
+                    Context ctx = getContext();
+                    if (ctx instanceof Activity activity) {
+                        try {
+                            Class<?> seederClass = Class.forName("app.morphe.extension.shared.patches.PhotosModelSeeder");
+                            seederClass.getMethod("showModelManagerDialog", Activity.class).invoke(null, activity);
+                        } catch (Throwable t) {
+                            Logger.printException(() -> "Failed to open Model Manager dialog", t);
+                        }
+                    }
+                });
+            }
+        }, "morpheBridge");
         webView.setWebViewClient(new OpenLinksExternallyWebClient());
         webView.loadDataWithBaseURL(null, htmlContent, "text/html", "utf-8", null);
 
