@@ -117,10 +117,10 @@
           "description": "Choose which components to show: Flag Manager, Morphe Toolkit, or Both.",
           "required": false,
           "type": "kotlin.String",
-          "default": "both",
+          "default": "flags",
           "values": {
-            "both": "Both (Flag manager & Toolkit)",
             "flags": "Flag manager only",
+            "both": "Both (Flag manager & Toolkit)",
             "toolkit": "Toolkit only"
           }
         }

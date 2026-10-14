@@ -16,10 +16,10 @@ val phenotypeFlagManagerPatch = bytecodePatch(
 
     val componentsOption = stringOption(
         key = "components",
-        default = "both",
+        default = "flags",
         values = mapOf(
-            "both" to "Both (Flag manager & Toolkit)",
             "flags" to "Flag manager only",
+            "both" to "Both (Flag manager & Toolkit)",
             "toolkit" to "Toolkit only",
         ),
         title = "Enabled components",
@@ -40,7 +40,7 @@ val phenotypeFlagManagerPatch = bytecodePatch(
     }
 
     finalize {
-        val selected = componentsOption.value ?: componentsOption.default ?: "both"
+        val selected = componentsOption.value ?: componentsOption.default ?: "flags"
         PhenotypeComponentsModeFingerprint.method.returnEarly(selected)
     }
 }

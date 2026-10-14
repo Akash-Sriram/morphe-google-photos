@@ -562,7 +562,7 @@ public final class PhenotypeFlagManager {
     }
 
     public static String getComponentsMode() {
-        return "both";
+        return "flags";
     }
 
     public static String getEffectiveComponentsMode(Context context) {
@@ -2382,9 +2382,9 @@ public final class PhenotypeFlagManager {
         String currentMode = getEffectiveComponentsMode(activity);
 
         String[][] options = new String[][] {
+            {"flags", "Flag manager only", "Show only Phenotype Flag Manager in the dock"},
             {"both", "Both (Flag manager & Toolkit)", "Show both Flag manager and Morphe Toolkit in the dock"},
-            {"flags", "Flag manager only", "Show only Phenotype Flag Manager"},
-            {"toolkit", "Toolkit only", "Show only Morphe Toolkit"}
+            {"toolkit", "Toolkit only", "Show only Morphe Toolkit in the dock"}
         };
 
         for (String[] opt : options) {
