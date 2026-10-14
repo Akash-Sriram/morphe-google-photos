@@ -3548,14 +3548,42 @@ public class StorageScanner {
             Log.w("morphe: StorageScanner", "Error in bbph UI notification: " + t.getMessage());
         }
 
+        // Notify Google Photos native MediaMonitor to reload photo feeds and archive screens
+        try {
+            Class<?> bybjClass = Class.forName("bybj");
+            Constructor<?> bybjCtor = bybjClass.getConstructor(Context.class);
+            Object bybjInst = bybjCtor.newInstance(context);
+            bybjClass.getMethod("a").invoke(bybjInst);
+            Log.i("morphe: StorageScanner", "Notified bybj MediaMonitor for account " + accountId);
+        } catch (Throwable t) {
+            try {
+                Intent fireAlarm = new Intent("com.google.android.libraries.social.mediamonitor.FIRE_ALARM");
+                fireAlarm.setPackage(context.getPackageName());
+                context.sendBroadcast(fireAlarm);
+            } catch (Throwable ignored) {}
+        }
+
         try {
             ContentResolver cr = context.getContentResolver();
             cr.notifyChange(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, null);
             cr.notifyChange(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, null);
-            cr.notifyChange(Uri.parse("content://GPhotos/all_photos"), null);
-            cr.notifyChange(Uri.parse("content://GPhotos/archive"), null);
-            cr.notifyChange(Uri.parse("content://GPhotos/trash"), null);
-            cr.notifyChange(Uri.parse("content://GPhotos/collections"), null);
+
+            String pkg = context.getPackageName();
+            String[] authorities = new String[]{
+                pkg + ".contentprovider",
+                "com.google.android.apps.photos.contentprovider",
+                "GPhotos"
+            };
+            for (String auth : authorities) {
+                try {
+                    cr.notifyChange(Uri.parse("content://" + auth + "/media"), null);
+                    cr.notifyChange(Uri.parse("content://" + auth + "/all_media"), null);
+                    cr.notifyChange(Uri.parse("content://" + auth + "/remote_media"), null);
+                    cr.notifyChange(Uri.parse("content://" + auth + "/archive"), null);
+                    cr.notifyChange(Uri.parse("content://" + auth + "/trash"), null);
+                    cr.notifyChange(Uri.parse("content://" + auth + "/collections"), null);
+                } catch (Throwable ignored) {}
+            }
         } catch (Throwable ignored) {}
     }
 
@@ -3798,30 +3826,50 @@ public class StorageScanner {
                     return new ActionResult(true, count, "Successfully restored " + count + " items from Trash");
 
                 case "toArchive":
+                    boolean hasRemoteArchiveOrigin = hasColumn(db, "remote_media", "last_archive_origin");
+                    boolean hasMediaArchiveOrigin = hasTable(db, "media") && hasColumn(db, "media", "last_archive_origin");
+                    boolean hasLocalArchiveOrigin = hasTable(db, "local_media") && hasColumn(db, "local_media", "last_archive_origin");
+                    boolean hasRemoteCanonical = hasColumn(db, "remote_media", "is_canonical");
+
                     for (MediaItem it : items) {
                         ContentValues cv = new ContentValues();
                         cv.put("is_archived", 1);
                         cv.put("trash_timestamp", 0);
+                        if (hasRemoteArchiveOrigin) cv.put("last_archive_origin", 1);
                         if (hasColumn(db, "remote_media", "state")) cv.put("state", 0);
-                        if (hasColumn(db, "remote_media", "is_canonical")) {
-                            db.update("remote_media", cv, "dedup_key = ? AND (is_canonical = 1 OR is_canonical IS NULL OR NOT EXISTS (SELECT 1 FROM remote_media rm2 WHERE rm2.dedup_key = remote_media.dedup_key AND rm2.is_canonical = 1))", new String[]{it.dedupKey});
+
+                        String whereRemote = "(dedup_key = ?";
+                        List<String> argsRemote = new ArrayList<>();
+                        argsRemote.add(it.dedupKey);
+                        if (it.mediaKey != null && !it.mediaKey.isEmpty() && !it.mediaKey.equals(it.dedupKey)) {
+                            whereRemote += " OR media_key = ?";
+                            argsRemote.add(it.mediaKey);
+                        }
+                        whereRemote += ")";
+
+                        if (hasRemoteCanonical) {
+                            db.update("remote_media", cv, whereRemote + " AND (is_canonical = 1 OR is_canonical IS NULL OR NOT EXISTS (SELECT 1 FROM remote_media rm2 WHERE rm2.dedup_key = remote_media.dedup_key AND rm2.is_canonical = 1))", argsRemote.toArray(new String[0]));
                             ContentValues nonCanonCv = new ContentValues();
                             nonCanonCv.put("is_archived", 0);
-                            db.update("remote_media", nonCanonCv, "dedup_key = ? AND is_canonical = 0 AND EXISTS (SELECT 1 FROM remote_media rm2 WHERE rm2.dedup_key = remote_media.dedup_key AND rm2.is_canonical = 1)", new String[]{it.dedupKey});
+                            if (hasRemoteArchiveOrigin) nonCanonCv.put("last_archive_origin", 0);
+                            db.update("remote_media", nonCanonCv, whereRemote + " AND is_canonical = 0 AND EXISTS (SELECT 1 FROM remote_media rm2 WHERE rm2.dedup_key = remote_media.dedup_key AND rm2.is_canonical = 1)", argsRemote.toArray(new String[0]));
                         } else {
-                            db.update("remote_media", cv, "dedup_key = ?", new String[]{it.dedupKey});
+                            db.update("remote_media", cv, whereRemote, argsRemote.toArray(new String[0]));
                         }
+
                         if (hasTable(db, "media")) {
                             ContentValues mCv = new ContentValues();
                             mCv.put("is_archived", 1);
                             mCv.put("trash_timestamp", 0);
                             mCv.put("is_deleted", 0);
-                            db.update("media", mCv, "dedup_key = ?", new String[]{it.dedupKey});
+                            if (hasMediaArchiveOrigin) mCv.put("last_archive_origin", 1);
+                            db.update("media", mCv, whereRemote, argsRemote.toArray(new String[0]));
                         }
                         if (hasTable(db, "local_media")) {
                             ContentValues lCv = new ContentValues();
                             lCv.put("is_archived", 1);
                             lCv.put("trash_timestamp", 0);
+                            if (hasLocalArchiveOrigin) lCv.put("last_archive_origin", 1);
                             if (hasColumn(db, "local_media", "state")) lCv.put("state", 0);
                             if (hasColumn(db, "local_media", "desired_state")) lCv.put("desired_state", 0);
                             db.update("local_media", lCv, "dedup_key = ?", new String[]{it.dedupKey});
@@ -3838,23 +3886,41 @@ public class StorageScanner {
                     return new ActionResult(true, count, "Successfully archived " + count + " items");
 
                 case "unArchive":
+                    boolean hasRemoteUnarchiveOrigin = hasColumn(db, "remote_media", "last_archive_origin");
+                    boolean hasMediaUnarchiveOrigin = hasTable(db, "media") && hasColumn(db, "media", "last_archive_origin");
+                    boolean hasLocalUnarchiveOrigin = hasTable(db, "local_media") && hasColumn(db, "local_media", "last_archive_origin");
+
                     for (MediaItem it : items) {
                         ContentValues cv = new ContentValues();
                         cv.put("is_archived", 0);
                         cv.put("trash_timestamp", 0);
+                        if (hasRemoteUnarchiveOrigin) cv.put("last_archive_origin", 0);
                         if (hasColumn(db, "remote_media", "state")) cv.put("state", 0);
-                        db.update("remote_media", cv, "dedup_key = ?", new String[]{it.dedupKey});
+
+                        String whereRemote = "(dedup_key = ?";
+                        List<String> argsRemote = new ArrayList<>();
+                        argsRemote.add(it.dedupKey);
+                        if (it.mediaKey != null && !it.mediaKey.isEmpty() && !it.mediaKey.equals(it.dedupKey)) {
+                            whereRemote += " OR media_key = ?";
+                            argsRemote.add(it.mediaKey);
+                        }
+                        whereRemote += ")";
+
+                        db.update("remote_media", cv, whereRemote, argsRemote.toArray(new String[0]));
+
                         if (hasTable(db, "media")) {
                             ContentValues mCv = new ContentValues();
                             mCv.put("is_archived", 0);
                             mCv.put("trash_timestamp", 0);
                             mCv.put("is_deleted", 0);
-                            db.update("media", mCv, "dedup_key = ?", new String[]{it.dedupKey});
+                            if (hasMediaUnarchiveOrigin) mCv.put("last_archive_origin", 0);
+                            db.update("media", mCv, whereRemote, argsRemote.toArray(new String[0]));
                         }
                         if (hasTable(db, "local_media")) {
                             ContentValues lCv = new ContentValues();
                             lCv.put("is_archived", 0);
                             lCv.put("trash_timestamp", 0);
+                            if (hasLocalUnarchiveOrigin) lCv.put("last_archive_origin", 0);
                             if (hasColumn(db, "local_media", "state")) lCv.put("state", 0);
                             if (hasColumn(db, "local_media", "desired_state")) lCv.put("desired_state", 0);
                             db.update("local_media", lCv, "dedup_key = ?", new String[]{it.dedupKey});
