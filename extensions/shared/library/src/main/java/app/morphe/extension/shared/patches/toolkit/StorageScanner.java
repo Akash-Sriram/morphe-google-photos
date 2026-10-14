@@ -3830,6 +3830,8 @@ public class StorageScanner {
                     boolean hasMediaArchiveOrigin = hasTable(db, "media") && hasColumn(db, "media", "last_archive_origin");
                     boolean hasLocalArchiveOrigin = hasTable(db, "local_media") && hasColumn(db, "local_media", "last_archive_origin");
                     boolean hasRemoteCanonical = hasColumn(db, "remote_media", "is_canonical");
+                    boolean hasRemoteMediaKey = hasColumn(db, "remote_media", "media_key");
+                    boolean hasMediaCanonical = hasTable(db, "media") && hasColumn(db, "media", "canonical_media_key");
 
                     for (MediaItem it : items) {
                         ContentValues cv = new ContentValues();
@@ -3838,14 +3840,13 @@ public class StorageScanner {
                         if (hasRemoteArchiveOrigin) cv.put("last_archive_origin", 1);
                         if (hasColumn(db, "remote_media", "state")) cv.put("state", 0);
 
-                        String whereRemote = "(dedup_key = ?";
+                        String whereRemote = "dedup_key = ?";
                         List<String> argsRemote = new ArrayList<>();
                         argsRemote.add(it.dedupKey);
-                        if (it.mediaKey != null && !it.mediaKey.isEmpty() && !it.mediaKey.equals(it.dedupKey)) {
-                            whereRemote += " OR media_key = ?";
+                        if (hasRemoteMediaKey && it.mediaKey != null && !it.mediaKey.isEmpty() && !it.mediaKey.equals(it.dedupKey)) {
+                            whereRemote = "(dedup_key = ? OR media_key = ?)";
                             argsRemote.add(it.mediaKey);
                         }
-                        whereRemote += ")";
 
                         if (hasRemoteCanonical) {
                             db.update("remote_media", cv, whereRemote + " AND (is_canonical = 1 OR is_canonical IS NULL OR NOT EXISTS (SELECT 1 FROM remote_media rm2 WHERE rm2.dedup_key = remote_media.dedup_key AND rm2.is_canonical = 1))", argsRemote.toArray(new String[0]));
@@ -3863,7 +3864,15 @@ public class StorageScanner {
                             mCv.put("trash_timestamp", 0);
                             mCv.put("is_deleted", 0);
                             if (hasMediaArchiveOrigin) mCv.put("last_archive_origin", 1);
-                            db.update("media", mCv, whereRemote, argsRemote.toArray(new String[0]));
+
+                            String whereMedia = "dedup_key = ?";
+                            List<String> argsMedia = new ArrayList<>();
+                            argsMedia.add(it.dedupKey);
+                            if (hasMediaCanonical && it.mediaKey != null && !it.mediaKey.isEmpty() && !it.mediaKey.equals(it.dedupKey)) {
+                                whereMedia = "(dedup_key = ? OR canonical_media_key = ?)";
+                                argsMedia.add(it.mediaKey);
+                            }
+                            db.update("media", mCv, whereMedia, argsMedia.toArray(new String[0]));
                         }
                         if (hasTable(db, "local_media")) {
                             ContentValues lCv = new ContentValues();
@@ -3889,6 +3898,8 @@ public class StorageScanner {
                     boolean hasRemoteUnarchiveOrigin = hasColumn(db, "remote_media", "last_archive_origin");
                     boolean hasMediaUnarchiveOrigin = hasTable(db, "media") && hasColumn(db, "media", "last_archive_origin");
                     boolean hasLocalUnarchiveOrigin = hasTable(db, "local_media") && hasColumn(db, "local_media", "last_archive_origin");
+                    boolean hasRemoteUnarchiveMediaKey = hasColumn(db, "remote_media", "media_key");
+                    boolean hasMediaUnarchiveCanonical = hasTable(db, "media") && hasColumn(db, "media", "canonical_media_key");
 
                     for (MediaItem it : items) {
                         ContentValues cv = new ContentValues();
@@ -3897,14 +3908,13 @@ public class StorageScanner {
                         if (hasRemoteUnarchiveOrigin) cv.put("last_archive_origin", 0);
                         if (hasColumn(db, "remote_media", "state")) cv.put("state", 0);
 
-                        String whereRemote = "(dedup_key = ?";
+                        String whereRemote = "dedup_key = ?";
                         List<String> argsRemote = new ArrayList<>();
                         argsRemote.add(it.dedupKey);
-                        if (it.mediaKey != null && !it.mediaKey.isEmpty() && !it.mediaKey.equals(it.dedupKey)) {
-                            whereRemote += " OR media_key = ?";
+                        if (hasRemoteUnarchiveMediaKey && it.mediaKey != null && !it.mediaKey.isEmpty() && !it.mediaKey.equals(it.dedupKey)) {
+                            whereRemote = "(dedup_key = ? OR media_key = ?)";
                             argsRemote.add(it.mediaKey);
                         }
-                        whereRemote += ")";
 
                         db.update("remote_media", cv, whereRemote, argsRemote.toArray(new String[0]));
 
@@ -3914,7 +3924,15 @@ public class StorageScanner {
                             mCv.put("trash_timestamp", 0);
                             mCv.put("is_deleted", 0);
                             if (hasMediaUnarchiveOrigin) mCv.put("last_archive_origin", 0);
-                            db.update("media", mCv, whereRemote, argsRemote.toArray(new String[0]));
+
+                            String whereMedia = "dedup_key = ?";
+                            List<String> argsMedia = new ArrayList<>();
+                            argsMedia.add(it.dedupKey);
+                            if (hasMediaUnarchiveCanonical && it.mediaKey != null && !it.mediaKey.isEmpty() && !it.mediaKey.equals(it.dedupKey)) {
+                                whereMedia = "(dedup_key = ? OR canonical_media_key = ?)";
+                                argsMedia.add(it.mediaKey);
+                            }
+                            db.update("media", mCv, whereMedia, argsMedia.toArray(new String[0]));
                         }
                         if (hasTable(db, "local_media")) {
                             ContentValues lCv = new ContentValues();
