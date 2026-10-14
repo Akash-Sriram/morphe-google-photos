@@ -1,0 +1,114 @@
+name: Dev Build & Release
+
+on:
+  push:
+    branches:
+      - dev
+    paths-ignore:
+      - '**.md'
+      - '.all-contributorsrc'
+  workflow_dispatch:
+    inputs:
+      publish_release:
+        description: 'Publish/update dev-build release for Morphe Manager'
+        required: true
+        type: boolean
+        default: true
+      mark_as_latest:
+        description: 'Mark dev-build as latest release in GitHub (recommended for Morphe Manager)'
+        required: true
+        type: boolean
+        default: true
+
+jobs:
+  build:
+    name: Build Dev MPP & Release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      actions: write
+      packages: read
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Java 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+
+      - name: Cache Gradle
+        uses: burrunan/gradle-cache-action@v3
+
+      - name: Compile Extension & Patches
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          chmod +x gradlew
+          ./gradlew :extensions:shared:syncExtension :patches:buildAndroid generatePatchesList \
+            -Pgpr.user=${{ github.actor }} \
+            -Pgpr.key=${{ secrets.GITHUB_TOKEN }}
+
+      - name: Locate Generated Artifacts
+        id: locate
+        run: |
+          MPP_FILE=$(find patches/build/libs -name "*.mpp" ! -name "*-sources.mpp" ! -name "*-javadoc.mpp" | sort -V | tail -n 1)
+          if [ -z "$MPP_FILE" ] || [ ! -f "$MPP_FILE" ]; then
+            echo "::error::Failed to find compiled .mpp file in patches/build/libs"
+            exit 1
+          fi
+          echo "Found MPP: $MPP_FILE"
+          echo "mpp_file=$MPP_FILE" >> $GITHUB_OUTPUT
+          echo "mpp_name=$(basename "$MPP_FILE")" >> $GITHUB_OUTPUT
+
+      - name: Upload Actions Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: morphe-google-photos-dev
+          path: |
+            ${{ steps.locate.outputs.mpp_file }}
+            patches-list.json
+          retention-days: 30
+
+      - name: Publish Dev Release for Morphe Manager
+        if: github.event_name == 'push' || inputs.publish_release == true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="dev-build"
+          MPP_FILE="${{ steps.locate.outputs.mpp_file }}"
+          IS_LATEST="${{ inputs.mark_as_latest != false }}"
+
+          LATEST_FLAG="--latest=true"
+          if [ "$IS_LATEST" = "false" ]; then
+            LATEST_FLAG="--latest=false"
+          fi
+
+          echo "Tagging $TAG at ${{ github.sha }}..."
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -f "$TAG" "${{ github.sha }}"
+          git push -f origin "$TAG"
+
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Updating existing release $TAG..."
+            gh release edit "$TAG" \
+              --title "Morphe Google Photos (Dev Build)" \
+              --notes "Automated development build from commit [${{ github.sha }}](https://github.com/${{ github.repository }}/commit/${{ github.sha }}) on branch \`${{ github.ref_name }}\`." \
+              --prerelease \
+              $LATEST_FLAG
+            gh release upload "$TAG" "$MPP_FILE" patches-list.json --clobber
+          else
+            echo "Creating fresh release $TAG..."
+            gh release create "$TAG" "$MPP_FILE" patches-list.json \
+              --target "${{ github.ref_name }}" \
+              --title "Morphe Google Photos (Dev Build)" \
+              --notes "Automated development build from commit [${{ github.sha }}](https://github.com/${{ github.repository }}/commit/${{ github.sha }}) on branch \`${{ github.ref_name }}\`." \
+              --prerelease \
+              $LATEST_FLAG
+          fi
+          echo "Dev release published successfully!"
