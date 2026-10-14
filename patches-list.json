@@ -18,13 +18,6 @@
           "signatures": null,
           "targets": [
             {
-              "version": "7.96.0.993165104",
-              "versionCodes": null,
-              "isExperimental": false,
-              "minSdk": null,
-              "description": null
-            },
-            {
               "version": "7.97.0.997578476",
               "versionCodes": null,
               "isExperimental": false,
@@ -51,13 +44,6 @@
           "appIconColor": "#FC3F3C",
           "signatures": null,
           "targets": [
-            {
-              "version": "7.96.0.993165104",
-              "versionCodes": null,
-              "isExperimental": false,
-              "minSdk": null,
-              "description": null
-            },
             {
               "version": "7.97.0.997578476",
               "versionCodes": null,
@@ -88,13 +74,6 @@
           "signatures": null,
           "targets": [
             {
-              "version": "7.96.0.993165104",
-              "versionCodes": null,
-              "isExperimental": false,
-              "minSdk": null,
-              "description": null
-            },
-            {
               "version": "7.97.0.997578476",
               "versionCodes": null,
               "isExperimental": false,
@@ -121,13 +100,6 @@
           "appIconColor": "#FC3F3C",
           "signatures": null,
           "targets": [
-            {
-              "version": "7.96.0.993165104",
-              "versionCodes": null,
-              "isExperimental": false,
-              "minSdk": null,
-              "description": null
-            },
             {
               "version": "7.97.0.997578476",
               "versionCodes": null,
@@ -174,13 +146,6 @@
           "signatures": null,
           "targets": [
             {
-              "version": "7.96.0.993165104",
-              "versionCodes": null,
-              "isExperimental": false,
-              "minSdk": null,
-              "description": null
-            },
-            {
               "version": "7.97.0.997578476",
               "versionCodes": null,
               "isExperimental": false,
@@ -209,13 +174,6 @@
           "appIconColor": "#FC3F3C",
           "signatures": null,
           "targets": [
-            {
-              "version": "7.96.0.993165104",
-              "versionCodes": null,
-              "isExperimental": false,
-              "minSdk": null,
-              "description": null
-            },
             {
               "version": "7.97.0.997578476",
               "versionCodes": null,
@@ -247,13 +205,6 @@
           "signatures": null,
           "targets": [
             {
-              "version": "7.96.0.993165104",
-              "versionCodes": null,
-              "isExperimental": false,
-              "minSdk": null,
-              "description": null
-            },
-            {
               "version": "7.97.0.997578476",
               "versionCodes": null,
               "isExperimental": false,
@@ -284,13 +235,6 @@
           "appIconColor": "#FC3F3C",
           "signatures": null,
           "targets": [
-            {
-              "version": "7.96.0.993165104",
-              "versionCodes": null,
-              "isExperimental": false,
-              "minSdk": null,
-              "description": null
-            },
             {
               "version": "7.97.0.997578476",
               "versionCodes": null,

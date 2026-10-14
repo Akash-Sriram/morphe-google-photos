@@ -9,11 +9,11 @@ PROJECT_DIR="/mnt/WindowsDrive/Users/akash/Downloads/Project/Morphe"
 FAST_CACHE_DIR="$HOME/.cache/morphe-fast-build"
 CLI_JAR="$PROJECT_DIR/morphe-desktop-1.15.1-dev.7-all.jar"
 KEYSTORE_FILE="$PROJECT_DIR/Morphe.keystore"
-STOCK_APK="$PROJECT_DIR/google.photos_7.96.0.apk"
-if [ ! -f "$STOCK_APK" ] && [ -f "$PROJECT_DIR/com.google.android.apps.photos_7.95.0.apk" ]; then
-    STOCK_APK="$PROJECT_DIR/com.google.android.apps.photos_7.95.0.apk"
-elif [ ! -f "$STOCK_APK" ] && [ -f "$PROJECT_DIR/com.google.android.apps.photos_7.94.0.apk" ]; then
-    STOCK_APK="$PROJECT_DIR/com.google.android.apps.photos_7.94.0.apk"
+STOCK_APK="$PROJECT_DIR/google photos apks/com.google.android.apps.photos_7.97.0.997578476-52547221_minAPI24(arm64-v8a)(nodpi)_apkmirror.com.apk"
+if [ ! -f "$STOCK_APK" ] && [ -f "$PROJECT_DIR/google photos apks/com.google.android.apps.photos_7.97.0.997578476-52547203_minAPI24(arm64-v8a,armeabi-v7a,x86,x86_64)(nodpi)_apkmirror.com.apk" ]; then
+    STOCK_APK="$PROJECT_DIR/google photos apks/com.google.android.apps.photos_7.97.0.997578476-52547203_minAPI24(arm64-v8a,armeabi-v7a,x86,x86_64)(nodpi)_apkmirror.com.apk"
+elif [ ! -f "$STOCK_APK" ] && [ -f "$PROJECT_DIR/google.photos_7.96.0.apk" ]; then
+    STOCK_APK="$PROJECT_DIR/google.photos_7.96.0.apk"
 fi
 OUTPUT_APK="$PROJECT_DIR/photos_patched.apk"
 
