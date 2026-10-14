@@ -637,7 +637,13 @@ public class StorageScanner {
 
             // Archived
             if (crit.archived != null) {
-                if (hasColumn(db, targetTable, "is_archived")) {
+                if ("remote_media".equals(targetTable)) {
+                    if (crit.archived) {
+                        where.append(" AND (is_archived = 1 OR dedup_key IN (SELECT dedup_key FROM remote_media WHERE is_archived = 1))");
+                    } else {
+                        where.append(" AND is_archived = 0 AND dedup_key NOT IN (SELECT dedup_key FROM remote_media WHERE is_archived = 1)");
+                    }
+                } else if (hasColumn(db, targetTable, "is_archived")) {
                     where.append(" AND is_archived = ").append(crit.archived ? "1" : "0");
                 } else if (hasTable(db, "media")) {
                     // shared_media has no is_archived column; resolve archive state via the media table
@@ -2018,11 +2024,10 @@ public class StorageScanner {
                         if (hasTable(healDb, "media")) {
                             healDb.execSQL("UPDATE media SET trash_timestamp = 0, is_deleted = 0 WHERE is_archived = 1 AND trash_timestamp > 0;");
                         }
-                        if (hasColumn(healDb, "remote_media", "is_canonical")) {
-                            healDb.execSQL("UPDATE remote_media SET is_archived = 0 WHERE is_canonical = 0 AND is_archived = 1 AND dedup_key IN (SELECT dedup_key FROM remote_media WHERE is_canonical = 1);");
-                            if (hasTable(healDb, "media")) {
-                                healDb.execSQL("UPDATE media SET is_archived = 0 WHERE is_archived = 1 AND dedup_key IN (SELECT dedup_key FROM remote_media WHERE is_canonical = 1 AND (is_archived IS NULL OR is_archived = 0));");
-                            }
+                        // Keep all rows sharing the same dedup_key consistent with archived state
+                        healDb.execSQL("UPDATE remote_media SET is_archived = 1 WHERE is_archived = 0 AND dedup_key IN (SELECT dedup_key FROM remote_media WHERE is_archived = 1);");
+                        if (hasTable(healDb, "media")) {
+                            healDb.execSQL("UPDATE media SET is_archived = 1 WHERE (is_archived IS NULL OR is_archived = 0) AND dedup_key IN (SELECT dedup_key FROM remote_media WHERE is_archived = 1);");
                         }
                     } finally {
                         healDb.close();
