@@ -60,6 +60,10 @@ while [[ $# -gt 0 ]]; do
             DEVICE_SERIAL="$2"
             shift 2
             ;;
+        --apk|-a)
+            STOCK_APK="$2"
+            shift 2
+            ;;
         --mpp-only)
             DO_PATCH=false
             shift

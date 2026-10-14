@@ -51,6 +51,9 @@ import android.media.MediaScannerConnection;
 import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.Toast;
+import android.util.Size;
+import android.media.ThumbnailUtils;
+import android.provider.MediaStore;
 
 import java.io.File;
 import java.io.FileInputStream;
@@ -2129,51 +2132,39 @@ public class NativeToolkitDialog {
         if (context == null) return null;
 
         try {
-            Class<?> khcClass = ReflectionCache.findClass("khc");
-            Method withMethod = ReflectionCache.getMethod(khcClass, "e", Context.class);
-            Object requestManager = withMethod.invoke(null, context);
+            Object requestManager = getGlideRequestManager(context);
+            if (requestManager == null) return null;
 
-            Class<?> kiiClass = ReflectionCache.findClass("kii");
-            Method asMethod = ReflectionCache.getMethod(kiiClass, "a", Class.class);
-            Object fileReqBuilder = asMethod.invoke(requestManager, File.class);
-
-            Object model = null;
-            if (urlStr.startsWith("http://") || urlStr.startsWith("https://")) {
-                try {
-                    Class<?> akioClass = ReflectionCache.findClass("akio");
-                    Object defaultOptions = ReflectionCache.getDeclaredField(akioClass, "a").get(null);
-                    Class<?> akinClass = ReflectionCache.findClass("akin");
-                    Constructor<?> akinCtor = ReflectionCache.getConstructor(akinClass, String.class, int.class, akioClass);
-                    model = akinCtor.newInstance(urlStr, accountId, defaultOptions);
-                } catch (Throwable t) {
-                    Logger.printInfo(() -> "downloadRemoteFileGlide RemoteMediaModel fallback: " + t.getMessage());
+            // Find as(Class) method
+            Object fileReqBuilder = null;
+            for (Method m : requestManager.getClass().getMethods()) {
+                Class<?>[] pt = m.getParameterTypes();
+                if (pt.length == 1 && pt[0] == Class.class && m.getReturnType() != void.class) {
+                    try {
+                        fileReqBuilder = m.invoke(requestManager, File.class);
+                        if (fileReqBuilder != null) break;
+                    } catch (Throwable ignored) {}
                 }
             }
 
-            Class<?> kifClass = ReflectionCache.findClass("kif");
-            Object req = null;
-            if (model != null) {
-                Method loadMethod = ReflectionCache.getMethod(kifClass, "l", Object.class);
-                req = loadMethod.invoke(fileReqBuilder, model);
-            } else if (urlStr.startsWith("content://") || urlStr.startsWith("file://")) {
-                Method loadUriMethod = ReflectionCache.getMethod(kifClass, "j", Uri.class);
-                req = loadUriMethod.invoke(fileReqBuilder, Uri.parse(urlStr));
-            } else {
-                Method loadStrMethod = ReflectionCache.getMethod(kifClass, "m", String.class);
-                req = loadStrMethod.invoke(fileReqBuilder, urlStr);
-            }
-
+            if (fileReqBuilder == null) return null;
+            Object req = loadGlideRequestBuilder(fileReqBuilder, urlStr, accountId);
             if (req != null) {
-                Method submitMethod = ReflectionCache.getMethod(kifClass, "u", int.class, int.class);
-                java.util.concurrent.Future<?> future = (java.util.concurrent.Future<?>) submitMethod.invoke(req, Integer.MIN_VALUE, Integer.MIN_VALUE);
-                if (future != null) {
-                    Object res = future.get(35, java.util.concurrent.TimeUnit.SECONDS);
-                    if (res instanceof File) {
-                        File f = (File) res;
-                        if (f.exists() && f.length() > 0) {
-                            Logger.printInfo(() -> "downloadRemoteFileGlide downloaded full-res file: " + f.length() + " bytes");
-                            return f;
+                for (Method m : req.getClass().getMethods()) {
+                    Class<?>[] pt = m.getParameterTypes();
+                    if (pt.length == 2 && pt[0] == int.class && pt[1] == int.class && java.util.concurrent.Future.class.isAssignableFrom(m.getReturnType())) {
+                        java.util.concurrent.Future<?> future = (java.util.concurrent.Future<?>) m.invoke(req, Integer.MIN_VALUE, Integer.MIN_VALUE);
+                        if (future != null) {
+                            Object res = future.get(35, java.util.concurrent.TimeUnit.SECONDS);
+                            if (res instanceof File) {
+                                File f = (File) res;
+                                if (f.exists() && f.length() > 0) {
+                                    Logger.printInfo(() -> "downloadRemoteFileGlide downloaded full-res file: " + f.length() + " bytes");
+                                    return f;
+                                }
+                            }
                         }
+                        break;
                     }
                 }
             }
@@ -3153,78 +3144,210 @@ public class NativeToolkitDialog {
         }
     }
 
+    // ─────────────────────────────────────────────────────────────────────────
+    // Universal Dynamic Glide & Thumbnail Resolvers
+    // ─────────────────────────────────────────────────────────────────────────
+    private static volatile Method sGlideWithMethod = null;
+    private static volatile boolean sGlideResolved = false;
+
+    private static Object getGlideRequestManager(Context context) {
+        if (context == null) context = app.morphe.extension.shared.Utils.getContext();
+        if (context == null) return null;
+
+        if (!sGlideResolved) {
+            synchronized (NativeToolkitDialog.class) {
+                if (!sGlideResolved) {
+                    String[] knownGlideClasses = new String[] {
+                        "khc", // 7.96.0 (52511175 nodpi)
+                        "mil", // 7.97.0 (52547221 arm64)
+                        "mgg", // 7.97.0 (52547203 nodpi)
+                        "mkp", // 7.97.0 (52547233 nodpi)
+                        "kjo"  // 7.96.0 (52511193 Samsung)
+                    };
+                    for (String name : knownGlideClasses) {
+                        try {
+                            Class<?> clazz = Class.forName(name);
+                            Method m = clazz.getMethod("e", Context.class);
+                            sGlideWithMethod = m;
+                            Logger.printInfo(() -> "Resolved Glide singleton via: " + name);
+                            break;
+                        } catch (Throwable ignored) {}
+                    }
+                    sGlideResolved = true;
+                }
+            }
+        }
+
+        if (sGlideWithMethod != null) {
+            try {
+                return sGlideWithMethod.invoke(null, context);
+            } catch (Throwable t) {
+                Logger.printInfo(() -> "getGlideRequestManager invoke failed: " + t.getMessage());
+            }
+        }
+        return null;
+    }
+
+    private static Object loadGlideRequestBuilder(Object requestManager, String urlStr, int accountId) {
+        if (requestManager == null || urlStr == null) return null;
+        try {
+            Class<?> rmClass = requestManager.getClass();
+
+            // 1. Try RemoteMediaModel for HTTP/HTTPS
+            Object model = null;
+            if (urlStr.startsWith("http://") || urlStr.startsWith("https://")) {
+                try {
+                    Class<?> akioClass = Class.forName("akio");
+                    Object defaultOptions = akioClass.getField("a").get(null);
+                    Class<?> akinClass = Class.forName("akin");
+                    Constructor<?> akinCtor = akinClass.getConstructor(String.class, int.class, akioClass);
+                    model = akinCtor.newInstance(urlStr, accountId, defaultOptions);
+                } catch (Throwable ignored) {}
+            }
+
+            if (model != null) {
+                for (Method m : rmClass.getMethods()) {
+                    Class<?>[] pt = m.getParameterTypes();
+                    if (pt.length == 1 && pt[0] == Object.class && m.getReturnType() != void.class) {
+                        try {
+                            return m.invoke(requestManager, model);
+                        } catch (Throwable ignored) {}
+                    }
+                }
+            }
+
+            if (urlStr.startsWith("content://") || urlStr.startsWith("file://")) {
+                Uri uri = Uri.parse(urlStr);
+                for (Method m : rmClass.getMethods()) {
+                    Class<?>[] pt = m.getParameterTypes();
+                    if (pt.length == 1 && pt[0] == Uri.class && m.getReturnType() != void.class) {
+                        try {
+                            return m.invoke(requestManager, uri);
+                        } catch (Throwable ignored) {}
+                    }
+                }
+            }
+
+            // Fallback load(String) or load(Object)
+            for (Method m : rmClass.getMethods()) {
+                Class<?>[] pt = m.getParameterTypes();
+                if (pt.length == 1 && pt[0] == String.class && m.getReturnType() != void.class) {
+                    try {
+                        return m.invoke(requestManager, urlStr);
+                    } catch (Throwable ignored) {}
+                }
+            }
+            for (Method m : rmClass.getMethods()) {
+                Class<?>[] pt = m.getParameterTypes();
+                if (pt.length == 1 && pt[0] == Object.class && m.getReturnType() != void.class) {
+                    try {
+                        return m.invoke(requestManager, urlStr);
+                    } catch (Throwable ignored) {}
+                }
+            }
+        } catch (Throwable t) {
+            Logger.printInfo(() -> "loadGlideRequestBuilder error: " + t.getMessage());
+        }
+        return null;
+    }
+
+    private static boolean applyGlideInto(Object requestBuilder, ImageView iv) {
+        if (requestBuilder == null || iv == null) return false;
+        try {
+            for (Method m : requestBuilder.getClass().getMethods()) {
+                Class<?>[] pt = m.getParameterTypes();
+                if (pt.length == 1 && pt[0] == ImageView.class) {
+                    m.invoke(requestBuilder, iv);
+                    return true;
+                }
+            }
+        } catch (Throwable t) {
+            Logger.printInfo(() -> "applyGlideInto error: " + t.getMessage());
+        }
+        return false;
+    }
+
+    private static Bitmap submitGlideFuture(Object requestBuilder, int w, int h) {
+        if (requestBuilder == null) return null;
+        try {
+            for (Method m : requestBuilder.getClass().getMethods()) {
+                Class<?>[] pt = m.getParameterTypes();
+                if (pt.length == 2 && pt[0] == int.class && pt[1] == int.class && java.util.concurrent.Future.class.isAssignableFrom(m.getReturnType())) {
+                    java.util.concurrent.Future<?> future = (java.util.concurrent.Future<?>) m.invoke(requestBuilder, w, h);
+                    if (future != null) {
+                        Object result = future.get(8, java.util.concurrent.TimeUnit.SECONDS);
+                        if (result instanceof Bitmap) {
+                            return (Bitmap) result;
+                        } else if (result instanceof android.graphics.drawable.BitmapDrawable) {
+                            return ((android.graphics.drawable.BitmapDrawable) result).getBitmap();
+                        } else if (result instanceof android.graphics.drawable.Drawable) {
+                            android.graphics.drawable.Drawable d = (android.graphics.drawable.Drawable) result;
+                            int dw = d.getIntrinsicWidth() > 0 ? d.getIntrinsicWidth() : w;
+                            int dh = d.getIntrinsicHeight() > 0 ? d.getIntrinsicHeight() : h;
+                            Bitmap b = Bitmap.createBitmap(dw, dh, Bitmap.Config.ARGB_8888);
+                            Canvas c = new Canvas(b);
+                            d.setBounds(0, 0, dw, dh);
+                            d.draw(c);
+                            return b;
+                        }
+                    }
+                    break;
+                }
+            }
+        } catch (Throwable t) {
+            Logger.printInfo(() -> "submitGlideFuture error: " + t.getMessage());
+        }
+        return null;
+    }
+
+    private static Bitmap loadLocalThumbnail(Context context, String urlStr) {
+        if (urlStr == null || context == null) return null;
+        try {
+            if (urlStr.startsWith("content://") || urlStr.startsWith("file://") || urlStr.startsWith("/")) {
+                if (Build.VERSION.SDK_INT >= 29) {
+                    Uri uri = urlStr.startsWith("content://") ? Uri.parse(urlStr) : Uri.fromFile(new File(urlStr));
+                    return context.getContentResolver().loadThumbnail(uri, new Size(128, 128), null);
+                } else {
+                    String path = urlStr.startsWith("file://") ? Uri.parse(urlStr).getPath() : urlStr;
+                    return ThumbnailUtils.createImageThumbnail(path, MediaStore.Images.Thumbnails.MINI_KIND);
+                }
+            }
+        } catch (Throwable ignored) {}
+        return null;
+    }
+
     private static Bitmap fetchThumbSync(Context context, String urlStr, int accountId) {
         if (urlStr == null || urlStr.trim().isEmpty()) return null;
         if (context == null) context = app.morphe.extension.shared.Utils.getContext();
         if (context == null) return null;
 
+        // 1. Primary for local media
+        if (urlStr.startsWith("content://") || urlStr.startsWith("file://") || urlStr.startsWith("/")) {
+            Bitmap local = loadLocalThumbnail(context, urlStr);
+            if (local != null) return local;
+        }
+
+        // 2. Native Google Photos Glide loading
         try {
-            Class<?> khcClass = ReflectionCache.findClass("khc");
-            Method withMethod = ReflectionCache.getMethod(khcClass, "e", Context.class);
-            Object requestManager = withMethod.invoke(null, context);
-
-            Class<?> kiiClass = ReflectionCache.findClass("kii");
-            Object model = null;
-            if (urlStr.startsWith("http://") || urlStr.startsWith("https://")) {
-                try {
-                    Class<?> akioClass = ReflectionCache.findClass("akio");
-                    Object defaultOptions = ReflectionCache.getDeclaredField(akioClass, "a").get(null);
-                    Class<?> akinClass = ReflectionCache.findClass("akin");
-                    Constructor<?> akinCtor = ReflectionCache.getConstructor(akinClass, String.class, int.class, akioClass);
-                    model = akinCtor.newInstance(urlStr, accountId, defaultOptions);
-                } catch (Throwable t) {
-                    Logger.printInfo(() -> "fetchThumbSync RemoteMediaModel error: " + t.getMessage());
-                }
-            }
-
-            Object requestBuilder = null;
-            if (model != null) {
-                Method loadMethod = ReflectionCache.getMethod(kiiClass, "l", Object.class);
-                requestBuilder = loadMethod.invoke(requestManager, model);
-            } else if (urlStr.startsWith("content://") || urlStr.startsWith("file://")) {
-                Method loadUriMethod = ReflectionCache.getMethod(kiiClass, "j", Uri.class);
-                requestBuilder = loadUriMethod.invoke(requestManager, Uri.parse(urlStr));
-            } else {
-                Method loadStrMethod = ReflectionCache.getMethod(kiiClass, "m", String.class);
-                requestBuilder = loadStrMethod.invoke(requestManager, urlStr);
-            }
-
-            if (requestBuilder != null) {
-                Class<?> kifClass = ReflectionCache.findClass("kif");
-                Method submitMethod = ReflectionCache.getMethod(kifClass, "u", int.class, int.class);
-                java.util.concurrent.Future<?> future = (java.util.concurrent.Future<?>) submitMethod.invoke(requestBuilder, 128, 128);
-                if (future != null) {
-                    Object result = future.get(8, java.util.concurrent.TimeUnit.SECONDS);
-                    if (result instanceof Bitmap) {
-                        Logger.printInfo(() -> "fetchThumbSync: Got Bitmap directly for " + urlStr);
-                        return (Bitmap) result;
-                    } else if (result instanceof android.graphics.drawable.BitmapDrawable) {
-                        Logger.printInfo(() -> "fetchThumbSync: Got BitmapDrawable for " + urlStr);
-                        return ((android.graphics.drawable.BitmapDrawable) result).getBitmap();
-                    } else if (result instanceof android.graphics.drawable.Drawable) {
-                        android.graphics.drawable.Drawable d = (android.graphics.drawable.Drawable) result;
-                        int w = d.getIntrinsicWidth() > 0 ? d.getIntrinsicWidth() : 128;
-                        int h = d.getIntrinsicHeight() > 0 ? d.getIntrinsicHeight() : 128;
-                        Bitmap b = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888);
-                        Canvas c = new Canvas(b);
-                        d.setBounds(0, 0, w, h);
-                        d.draw(c);
-                        Logger.printInfo(() -> "fetchThumbSync: Converted Drawable to Bitmap for " + urlStr);
-                        return b;
-                    }
+            Object rm = getGlideRequestManager(context);
+            if (rm != null) {
+                Object reqBuilder = loadGlideRequestBuilder(rm, urlStr, accountId);
+                if (reqBuilder != null) {
+                    Bitmap b = submitGlideFuture(reqBuilder, 128, 128);
+                    if (b != null) return b;
                 }
             }
         } catch (Throwable tGlide) {
             Logger.printInfo(() -> "fetchThumbSync Glide error: " + tGlide.getMessage());
         }
 
-        // Secondary fallback: raw HTTP connection (works for unauthenticated public URLs)
+        // 3. Secondary fallback: raw HTTP connection (works for unauthenticated public URLs)
         try {
             String thumbUrl = urlStr.replace("=s0-d", "=s140-c");
             URL u = new URL(thumbUrl);
             HttpURLConnection conn = (HttpURLConnection) u.openConnection();
-            conn.setConnectTimeout(2000);
-            conn.setReadTimeout(2000);
+            conn.setConnectTimeout(2500);
+            conn.setReadTimeout(2500);
             try (InputStream is = conn.getInputStream()) {
                 BitmapFactory.Options opts = new BitmapFactory.Options();
                 opts.inPreferredConfig = Bitmap.Config.RGB_565;
@@ -3241,57 +3364,43 @@ public class NativeToolkitDialog {
         if (activity == null || activity.isFinishing() || activity.isDestroyed()) return;
         if (urlStr == null || urlStr.trim().isEmpty()) return;
 
-        // 1. Primary: Native Google Photos Glide loading with RemoteMediaModel authentication
-        try {
-            Class<?> khcClass = Class.forName("khc");
-            Method withMethod = khcClass.getMethod("e", Context.class);
-            Object requestManager = withMethod.invoke(null, activity);
+        // 1. Memory cache check
+        Bitmap cached = THUMB_CACHE.get(urlStr);
+        if (cached != null) {
+            iv.setImageBitmap(cached);
+            return;
+        }
 
-            Object model = null;
-            if (urlStr.startsWith("http://") || urlStr.startsWith("https://")) {
-                try {
-                    Class<?> akioClass = Class.forName("akio");
-                    Object defaultOptions = akioClass.getField("a").get(null);
-                    Class<?> akinClass = Class.forName("akin");
-                    Constructor<?> akinCtor = akinClass.getConstructor(String.class, int.class, akioClass);
-                    model = akinCtor.newInstance(urlStr, accountId, defaultOptions);
-                } catch (Throwable t) {
-                    Logger.printInfo(() -> "RemoteMediaModel creation fallback: " + t.getMessage());
+        // 2. Instant local media loading for on-device photos
+        if (urlStr.startsWith("content://") || urlStr.startsWith("file://") || urlStr.startsWith("/")) {
+            THREAD_POOL.execute(() -> {
+                Bitmap bm = loadLocalThumbnail(activity, urlStr);
+                if (bm != null) {
+                    THUMB_CACHE.put(urlStr, bm);
+                    MAIN_HANDLER.post(() -> {
+                        if (urlStr.equals(iv.getTag())) {
+                            iv.setImageBitmap(bm);
+                        }
+                    });
                 }
-            }
+            });
+            return;
+        }
 
-            Class<?> kiiClass = Class.forName("kii");
-            Object requestBuilder = null;
-            if (model != null) {
-                Method loadMethod = kiiClass.getMethod("l", Object.class);
-                requestBuilder = loadMethod.invoke(requestManager, model);
-            } else if (urlStr.startsWith("content://") || urlStr.startsWith("file://")) {
-                Method loadUriMethod = kiiClass.getMethod("j", Uri.class);
-                requestBuilder = loadUriMethod.invoke(requestManager, Uri.parse(urlStr));
-            } else {
-                Method loadStrMethod = kiiClass.getMethod("m", String.class);
-                requestBuilder = loadStrMethod.invoke(requestManager, urlStr);
-            }
-
-            if (requestBuilder != null) {
-                Class<?> kifClass = Class.forName("kif");
-                Method intoMethod = kifClass.getMethod("t", ImageView.class);
-                intoMethod.invoke(requestBuilder, iv);
-                return;
+        // 3. Native Google Photos Glide loading
+        try {
+            Object rm = getGlideRequestManager(activity);
+            if (rm != null) {
+                Object reqBuilder = loadGlideRequestBuilder(rm, urlStr, accountId);
+                if (reqBuilder != null && applyGlideInto(reqBuilder, iv)) {
+                    return;
+                }
             }
         } catch (Throwable tGlide) {
             Logger.printInfo(() -> "Glide loadThumbAsync error: " + tGlide.getMessage());
         }
 
-        // 2. Secondary fallback: in-memory cache + authenticated fetch
-        Bitmap cached = THUMB_CACHE.get(urlStr);
-        if (cached != null) {
-            if (urlStr.equals(iv.getTag())) {
-                iv.setImageBitmap(cached);
-            }
-            return;
-        }
-
+        // 4. Background fetch fallback
         THREAD_POOL.execute(() -> {
             Bitmap bm = fetchThumbSync(activity, urlStr, accountId);
             if (bm != null) {

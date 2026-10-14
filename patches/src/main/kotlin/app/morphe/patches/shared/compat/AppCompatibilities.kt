@@ -13,6 +13,7 @@ internal object AppCompatibilities {
         appIconColor = 0xFC3F3C,
         targets = listOf(
             AppTarget("7.96.0.993165104"),
+            AppTarget("7.97.0.997578476"),
         ),
     )
 }
