@@ -22,7 +22,8 @@ DO_PATCH=true
 DO_INSTALL=false
 CLEAN=false
 OFFICIAL_PKG=false
-ENABLE_BRANDING=false
+COMPONENTS_MODE="both"
+DEVICE_SERIAL=""
 
 # Parse arguments
 while [[ $# -gt 0 ]]; do
@@ -43,6 +44,22 @@ while [[ $# -gt 0 ]]; do
             ENABLE_BRANDING=true
             shift
             ;;
+        --components)
+            COMPONENTS_MODE="$2"
+            shift 2
+            ;;
+        --flags-only)
+            COMPONENTS_MODE="flags"
+            shift
+            ;;
+        --toolkit|--both)
+            COMPONENTS_MODE="both"
+            shift
+            ;;
+        --device|-d)
+            DEVICE_SERIAL="$2"
+            shift 2
+            ;;
         --mpp-only)
             DO_PATCH=false
             shift
@@ -57,7 +74,7 @@ while [[ $# -gt 0 ]]; do
             ;;
         *)
             echo "Unknown argument: $1"
-            echo "Usage: $0 [--source test|main] [--official|--original|--mod] [--branding] [--mpp-only] [--install|-i] [--clean]"
+            echo "Usage: $0 [--source test|main] [--official|--original|--mod] [--branding] [--components flags|toolkit|both] [--flags-only] [--toolkit|--both] [--device|-d <serial>] [--mpp-only] [--install|-i] [--clean]"
             exit 1
             ;;
     esac
@@ -167,10 +184,13 @@ rsync -u "$KEYSTORE_FILE" "$FAST_CACHE_DIR/Morphe.keystore"
         -e "AMOLED dark theme"
         -e "DCIM & backup control"
         -e "Flag manager & Toolkit"
+        -O components="$COMPONENTS_MODE"
         -e "GmsCore support"
         -e "Media engine & AI fixes"
         -e "Spoof features"
     )
+
+    echo "🧩 Components mode: $COMPONENTS_MODE"
 
     if [ "$ENABLE_BRANDING" = true ]; then
         PATCH_ARGS+=(-e "Custom Morphe branding")
@@ -211,10 +231,16 @@ echo "🎉 Total pipeline completed in ${TOTAL_TIME}s!"
 # Step 5 (Optional): Install via ADB
 if [ "$DO_INSTALL" = true ]; then
     echo "📱 Installing to connected device via ADB..."
-    adb install -r -d "$OUTPUT_APK"
+    ADB_CMD=(adb)
+    if [ -n "$DEVICE_SERIAL" ]; then
+        ADB_CMD+=(-s "$DEVICE_SERIAL")
+    elif [ -n "$ANDROID_SERIAL" ]; then
+        ADB_CMD+=(-s "$ANDROID_SERIAL")
+    fi
+    "${ADB_CMD[@]}" install -r -d "$OUTPUT_APK"
     echo "🚀 Launching $APP_PKG..."
-    adb shell am force-stop "$APP_PKG" || true
-    adb shell am start -n "$APP_PKG/com.google.android.apps.photos.home.HomeActivity" || \
-        adb shell am start -a android.intent.action.MAIN -c android.intent.category.LAUNCHER -p "$APP_PKG" || true
+    "${ADB_CMD[@]}" shell am force-stop "$APP_PKG" || true
+    "${ADB_CMD[@]}" shell am start -n "$APP_PKG/com.google.android.apps.photos.home.HomeActivity" || \
+        "${ADB_CMD[@]}" shell am start -a android.intent.action.MAIN -c android.intent.category.LAUNCHER -p "$APP_PKG" || true
     echo "✅ App launched on device."
 fi
