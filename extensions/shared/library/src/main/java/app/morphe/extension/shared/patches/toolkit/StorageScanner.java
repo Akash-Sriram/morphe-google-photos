@@ -444,6 +444,15 @@ public class StorageScanner {
                     "        LIMIT 1 " +
                     "    ) WHERE _id = NEW._id; " +
                     "END;");
+
+            // 4. Custom SQLite Partial Indices: Accelerate archive filtering, duplicate checks, and triggers
+            db.execSQL("CREATE INDEX IF NOT EXISTS idx_remote_media_active_archive " +
+                    "ON remote_media (dedup_key, is_archived) " +
+                    "WHERE state = 0 AND trash_timestamp = 0;");
+
+            db.execSQL("CREATE INDEX IF NOT EXISTS idx_remote_media_archived_only " +
+                    "ON remote_media (dedup_key) " +
+                    "WHERE is_archived = 1;");
         } catch (Throwable t) {
             Logger.printException(() -> "Error ensuring archive sync triggers", t);
         }

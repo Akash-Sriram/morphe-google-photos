@@ -747,6 +747,8 @@ public class NativeToolkitDialog {
 
         workflowLayout.addView(resultsListContainer);
 
+        final int[] currentPageRef = new int[]{0};
+
         updateSelectionSummaryRef[0] = () -> {
             int selCount = selectedMediaKeys.size();
             tvActionsActiveBadge.setText(selCount + " selected");
@@ -757,19 +759,19 @@ public class NativeToolkitDialog {
                 selectedMediaKeys.add(getItemKey(it));
             }
             updateSelectionSummaryRef[0].run();
-            renderResults(activity, resultsListContainer, allQueriedItems, selectedMediaKeys, isGridViewRef[0], updateSelectionSummaryRef[0], density, theme);
+            renderResults(activity, resultsListContainer, allQueriedItems, selectedMediaKeys, isGridViewRef[0], updateSelectionSummaryRef[0], density, theme, currentPageRef);
         });
 
         btnClearSelect.setOnClickListener(v -> {
             selectedMediaKeys.clear();
             updateSelectionSummaryRef[0].run();
-            renderResults(activity, resultsListContainer, allQueriedItems, selectedMediaKeys, isGridViewRef[0], updateSelectionSummaryRef[0], density, theme);
+            renderResults(activity, resultsListContainer, allQueriedItems, selectedMediaKeys, isGridViewRef[0], updateSelectionSummaryRef[0], density, theme, currentPageRef);
         });
 
         btnToggleView.setOnClickListener(v -> {
             isGridViewRef[0] = !isGridViewRef[0];
             btnToggleView.setText(isGridViewRef[0] ? "⊞ Grid" : "☰ List");
-            renderResults(activity, resultsListContainer, allQueriedItems, selectedMediaKeys, isGridViewRef[0], updateSelectionSummaryRef[0], density, theme);
+            renderResults(activity, resultsListContainer, allQueriedItems, selectedMediaKeys, isGridViewRef[0], updateSelectionSummaryRef[0], density, theme, currentPageRef);
         });
 
         // ─────────────────────────────────────────────────────────────────────
@@ -865,8 +867,9 @@ public class NativeToolkitDialog {
                             }
                         }
                         tvResultsStatus.setText(allQueriedItems.size() + " matched • " + consuming + " consuming (" + StorageScanner.formatBytes(totalQuotaBytes) + ")");
+                        currentPageRef[0] = 0;
                         if (updateSelectionSummaryRef[0] != null) updateSelectionSummaryRef[0].run();
-                        renderResults(activity, resultsListContainer, allQueriedItems, selectedMediaKeys, isGridViewRef[0], updateSelectionSummaryRef[0], density, theme);
+                        renderResults(activity, resultsListContainer, allQueriedItems, selectedMediaKeys, isGridViewRef[0], updateSelectionSummaryRef[0], density, theme, currentPageRef);
                         if (updateChipsAndBadgeRef[0] != null) updateChipsAndBadgeRef[0].run();
                     });
                 } catch (Throwable t) {
@@ -1954,11 +1957,159 @@ public class NativeToolkitDialog {
     // Results List Renderer
     // ─────────────────────────────────────────────────────────────────────────
     // ─────────────────────────────────────────────────────────────────────────
-    // Results List / Grid Renderer (with Checkbox Selection)
-    // ─────────────────────────────────────────────────────────────────────────
+    private static final int PAGE_SIZE_GRID = 48;
+    private static final int PAGE_SIZE_LIST = 30;
+
+    private static TextView createNavButton(Activity activity, String text, boolean enabled, float density, Theme theme) {
+        TextView btn = new TextView(activity);
+        btn.setText(text);
+        btn.setTextSize(11f);
+        btn.setTypeface(null, Typeface.BOLD);
+        btn.setPadding((int) (10 * density), (int) (5 * density), (int) (10 * density), (int) (5 * density));
+        btn.setGravity(Gravity.CENTER);
+        if (enabled) {
+            btn.setTextColor(theme.textPrimary);
+            btn.setBackground(createActionPillDrawable(theme.surfaceContainer, 8 * density));
+            btn.setClickable(true);
+            btn.setFocusable(true);
+        } else {
+            btn.setTextColor(theme.isDark ? 0x44FFFFFF : 0x44000000);
+            btn.setBackground(createActionPillDrawable(theme.isDark ? 0x1AFFFFFF : 0x0D000000, 8 * density));
+            btn.setClickable(false);
+            btn.setFocusable(false);
+        }
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        lp.setMargins((int) (2 * density), 0, (int) (2 * density), 0);
+        btn.setLayoutParams(lp);
+        return btn;
+    }
+
+    private static View createPaginationBar(Activity activity, int[] currentPageRef, int totalPages, int start, int end, int totalItems,
+                                            List<StorageScanner.MediaItem> items, Set<String> selectedKeys,
+                                            Runnable onSelectionChanged, Runnable reRender, float density, Theme theme) {
+        LinearLayout bar = new LinearLayout(activity);
+        bar.setOrientation(LinearLayout.VERTICAL);
+        bar.setPadding(0, (int) (4 * density), 0, (int) (6 * density));
+
+        // Row 1: Item counts and "Select Page" / "Clear Page"
+        LinearLayout row1 = new LinearLayout(activity);
+        row1.setOrientation(LinearLayout.HORIZONTAL);
+        row1.setGravity(Gravity.CENTER_VERTICAL);
+        row1.setPadding((int) (2 * density), 0, (int) (2 * density), (int) (4 * density));
+
+        TextView tvInfo = new TextView(activity);
+        tvInfo.setText("Page " + (currentPageRef[0] + 1) + " of " + totalPages + " • " + (start + 1) + "–" + end + " of " + totalItems);
+        tvInfo.setTextSize(11.5f);
+        tvInfo.setTextColor(theme.textSecondary);
+        tvInfo.setTypeface(null, Typeface.BOLD);
+        LinearLayout.LayoutParams infoLp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+        row1.addView(tvInfo, infoLp);
+
+        // Count how many on this page are currently selected
+        int pageSelectedCount = 0;
+        for (int i = start; i < end; i++) {
+            if (selectedKeys.contains(getItemKey(items.get(i)))) {
+                pageSelectedCount++;
+            }
+        }
+        final boolean allPageSelected = (pageSelectedCount == (end - start)) && (end > start);
+
+        TextView btnPageSelect = new TextView(activity);
+        btnPageSelect.setText(allPageSelected ? "Clear Page (" + (end - start) + ")" : "Select Page (" + (end - start) + ")");
+        btnPageSelect.setTextSize(11f);
+        btnPageSelect.setTextColor(allPageSelected ? theme.primary : theme.textPrimary);
+        btnPageSelect.setTypeface(null, Typeface.BOLD);
+        btnPageSelect.setPadding((int) (8 * density), (int) (4 * density), (int) (8 * density), (int) (4 * density));
+        btnPageSelect.setBackground(createActionPillDrawable(theme.surfaceContainer, 8 * density));
+        btnPageSelect.setClickable(true);
+        btnPageSelect.setFocusable(true);
+        btnPageSelect.setOnClickListener(v -> {
+            for (int i = start; i < end; i++) {
+                String key = getItemKey(items.get(i));
+                if (allPageSelected) {
+                    selectedKeys.remove(key);
+                } else {
+                    selectedKeys.add(key);
+                }
+            }
+            if (onSelectionChanged != null) onSelectionChanged.run();
+            if (reRender != null) reRender.run();
+        });
+        row1.addView(btnPageSelect);
+        bar.addView(row1);
+
+        // Row 2: Navigation buttons (First, Prev, Page, Next, Last)
+        if (totalPages > 1) {
+            LinearLayout row2 = new LinearLayout(activity);
+            row2.setOrientation(LinearLayout.HORIZONTAL);
+            row2.setGravity(Gravity.CENTER);
+            row2.setPadding(0, (int) (2 * density), 0, 0);
+
+            // First button
+            TextView btnFirst = createNavButton(activity, "⇤ First", currentPageRef[0] > 0, density, theme);
+            btnFirst.setOnClickListener(v -> {
+                if (currentPageRef[0] > 0) {
+                    currentPageRef[0] = 0;
+                    if (reRender != null) reRender.run();
+                }
+            });
+            row2.addView(btnFirst);
+
+            // Prev button
+            TextView btnPrev = createNavButton(activity, "◀ Prev", currentPageRef[0] > 0, density, theme);
+            btnPrev.setOnClickListener(v -> {
+                if (currentPageRef[0] > 0) {
+                    currentPageRef[0]--;
+                    if (reRender != null) reRender.run();
+                }
+            });
+            row2.addView(btnPrev);
+
+            // Page label
+            TextView tvPageLabel = new TextView(activity);
+            tvPageLabel.setText(" " + (currentPageRef[0] + 1) + " / " + totalPages + " ");
+            tvPageLabel.setTextSize(12f);
+            tvPageLabel.setTextColor(theme.textPrimary);
+            tvPageLabel.setTypeface(null, Typeface.BOLD);
+            tvPageLabel.setGravity(Gravity.CENTER);
+            tvPageLabel.setPadding((int) (6 * density), 0, (int) (6 * density), 0);
+            row2.addView(tvPageLabel);
+
+            // Next button
+            TextView btnNext = createNavButton(activity, "Next ▶", currentPageRef[0] < totalPages - 1, density, theme);
+            btnNext.setOnClickListener(v -> {
+                if (currentPageRef[0] < totalPages - 1) {
+                    currentPageRef[0]++;
+                    if (reRender != null) reRender.run();
+                }
+            });
+            row2.addView(btnNext);
+
+            // Last button
+            TextView btnLast = createNavButton(activity, "Last ⇥", currentPageRef[0] < totalPages - 1, density, theme);
+            btnLast.setOnClickListener(v -> {
+                if (currentPageRef[0] < totalPages - 1) {
+                    currentPageRef[0] = totalPages - 1;
+                    if (reRender != null) reRender.run();
+                }
+            });
+            row2.addView(btnLast);
+
+            bar.addView(row2);
+        }
+
+        return bar;
+    }
+
     private static void renderResults(Activity activity, LinearLayout container, List<StorageScanner.MediaItem> items,
                                       Set<String> selectedKeys, boolean isGrid, Runnable onSelectionChanged,
                                       float density, Theme theme) {
+        renderResults(activity, container, items, selectedKeys, isGrid, onSelectionChanged, density, theme, new int[]{0});
+    }
+
+    private static void renderResults(Activity activity, LinearLayout container, List<StorageScanner.MediaItem> items,
+                                      Set<String> selectedKeys, boolean isGrid, Runnable onSelectionChanged,
+                                      float density, Theme theme, int[] currentPageRef) {
         container.removeAllViews();
         if (items.isEmpty()) {
             TextView tvEmpty = new TextView(activity);
@@ -1971,15 +2122,30 @@ public class NativeToolkitDialog {
             return;
         }
 
-        int maxDisplay = Math.min(items.size(), 60);
+        if (currentPageRef == null) currentPageRef = new int[]{0};
+        int pageSize = isGrid ? PAGE_SIZE_GRID : PAGE_SIZE_LIST;
+        int totalPages = Math.max(1, (int) Math.ceil((double) items.size() / pageSize));
+        if (currentPageRef[0] >= totalPages) currentPageRef[0] = totalPages - 1;
+        if (currentPageRef[0] < 0) currentPageRef[0] = 0;
+
+        int start = currentPageRef[0] * pageSize;
+        int end = Math.min(start + pageSize, items.size());
         int accId = currentAccount != null ? currentAccount.accountId : 0;
+
+        final int[] finalCurrentPageRef = currentPageRef;
+        Runnable reRender = () -> renderResults(activity, container, items, selectedKeys, isGrid, onSelectionChanged, density, theme, finalCurrentPageRef);
+
+        // Top Pagination Bar
+        View topBar = createPaginationBar(activity, finalCurrentPageRef, totalPages, start, end, items.size(), items, selectedKeys, onSelectionChanged, reRender, density, theme);
+        container.addView(topBar);
 
         if (isGrid) {
             // 3-Column Square Tile Grid
             int colCount = 3;
             LinearLayout currentRow = null;
-            for (int i = 0; i < maxDisplay; i++) {
-                if (i % colCount == 0) {
+            for (int i = start; i < end; i++) {
+                int colIndex = i - start;
+                if (colIndex % colCount == 0) {
                     currentRow = new LinearLayout(activity);
                     currentRow.setOrientation(LinearLayout.HORIZONTAL);
                     LinearLayout.LayoutParams rLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
@@ -2082,7 +2248,7 @@ public class NativeToolkitDialog {
                 currentRow.addView(tile);
             }
 
-            int remainder = maxDisplay % colCount;
+            int remainder = (end - start) % colCount;
             if (remainder != 0 && currentRow != null) {
                 for (int r = remainder; r < colCount; r++) {
                     View emptySpacer = new View(activity);
@@ -2091,7 +2257,7 @@ public class NativeToolkitDialog {
             }
         } else {
             // Detailed List View
-            for (int i = 0; i < maxDisplay; i++) {
+            for (int i = start; i < end; i++) {
                 final StorageScanner.MediaItem item = items.get(i);
                 final String itemKey = getItemKey(item);
 
@@ -2201,14 +2367,10 @@ public class NativeToolkitDialog {
             }
         }
 
-        if (items.size() > maxDisplay) {
-            TextView tvMore = new TextView(activity);
-            tvMore.setText("+ " + (items.size() - maxDisplay) + " more items (export CSV to view full dataset)");
-            tvMore.setTextSize(11.5f);
-            tvMore.setTextColor(theme.textSecondary);
-            tvMore.setGravity(Gravity.CENTER);
-            tvMore.setPadding(0, (int) (8 * density), 0, (int) (8 * density));
-            container.addView(tvMore);
+        // Bottom Pagination Bar (when items span multiple pages)
+        if (totalPages > 1) {
+            View bottomBar = createPaginationBar(activity, finalCurrentPageRef, totalPages, start, end, items.size(), items, selectedKeys, onSelectionChanged, reRender, density, theme);
+            container.addView(bottomBar);
         }
     }
 
