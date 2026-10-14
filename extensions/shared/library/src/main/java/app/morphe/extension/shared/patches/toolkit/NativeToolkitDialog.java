@@ -2112,6 +2112,66 @@ public class NativeToolkitDialog {
         }
     }
 
+    private static File downloadRemoteFileGlide(Context context, String urlStr, int accountId) {
+        if (urlStr == null || urlStr.trim().isEmpty()) return null;
+        if (context == null) context = app.morphe.extension.shared.Utils.getContext();
+        if (context == null) return null;
+
+        try {
+            Class<?> khcClass = ReflectionCache.findClass("khc");
+            Method withMethod = ReflectionCache.getMethod(khcClass, "e", Context.class);
+            Object requestManager = withMethod.invoke(null, context);
+
+            Class<?> kiiClass = ReflectionCache.findClass("kii");
+            Method asMethod = ReflectionCache.getMethod(kiiClass, "a", Class.class);
+            Object fileReqBuilder = asMethod.invoke(requestManager, File.class);
+
+            Object model = null;
+            if (urlStr.startsWith("http://") || urlStr.startsWith("https://")) {
+                try {
+                    Class<?> akioClass = ReflectionCache.findClass("akio");
+                    Object defaultOptions = ReflectionCache.getDeclaredField(akioClass, "a").get(null);
+                    Class<?> akinClass = ReflectionCache.findClass("akin");
+                    Constructor<?> akinCtor = ReflectionCache.getConstructor(akinClass, String.class, int.class, akioClass);
+                    model = akinCtor.newInstance(urlStr, accountId, defaultOptions);
+                } catch (Throwable t) {
+                    Logger.printInfo(() -> "downloadRemoteFileGlide RemoteMediaModel fallback: " + t.getMessage());
+                }
+            }
+
+            Class<?> kifClass = ReflectionCache.findClass("kif");
+            Object req = null;
+            if (model != null) {
+                Method loadMethod = ReflectionCache.getMethod(kifClass, "l", Object.class);
+                req = loadMethod.invoke(fileReqBuilder, model);
+            } else if (urlStr.startsWith("content://") || urlStr.startsWith("file://")) {
+                Method loadUriMethod = ReflectionCache.getMethod(kifClass, "j", Uri.class);
+                req = loadUriMethod.invoke(fileReqBuilder, Uri.parse(urlStr));
+            } else {
+                Method loadStrMethod = ReflectionCache.getMethod(kifClass, "m", String.class);
+                req = loadStrMethod.invoke(fileReqBuilder, urlStr);
+            }
+
+            if (req != null) {
+                Method submitMethod = ReflectionCache.getMethod(kifClass, "u", int.class, int.class);
+                java.util.concurrent.Future<?> future = (java.util.concurrent.Future<?>) submitMethod.invoke(req, Integer.MIN_VALUE, Integer.MIN_VALUE);
+                if (future != null) {
+                    Object res = future.get(35, java.util.concurrent.TimeUnit.SECONDS);
+                    if (res instanceof File) {
+                        File f = (File) res;
+                        if (f.exists() && f.length() > 0) {
+                            Logger.printInfo(() -> "downloadRemoteFileGlide downloaded full-res file: " + f.length() + " bytes");
+                            return f;
+                        }
+                    }
+                }
+            }
+        } catch (Throwable t) {
+            Logger.printInfo(() -> "downloadRemoteFileGlide error: " + t.getMessage());
+        }
+        return null;
+    }
+
     private static void downloadRemoteFile(String urlStr, File dst) throws Exception {
         URL u = new URL(urlStr);
         HttpURLConnection conn = (HttpURLConnection) u.openConnection();
@@ -2207,6 +2267,9 @@ public class NativeToolkitDialog {
                     String baseName = (item.filename != null && !item.filename.trim().isEmpty())
                             ? item.filename.trim()
                             : ("photo_" + item.captureTimestamp + (item.mimeType != null && item.mimeType.contains("video") ? ".mp4" : ".jpg"));
+                    if (!baseName.contains(".")) {
+                        baseName += (item.mimeType != null && item.mimeType.contains("video")) ? ".mp4" : ".jpg";
+                    }
 
                     File destFile = new File(dcimDir, baseName);
                     int count = 1;
@@ -2221,6 +2284,7 @@ public class NativeToolkitDialog {
                     }
 
                     boolean copied = false;
+                    // 1. Direct file path from remoteUrl
                     if (item.remoteUrl != null && (item.remoteUrl.startsWith("/") || item.remoteUrl.startsWith("file://"))) {
                         String localP = item.remoteUrl.startsWith("file://") ? item.remoteUrl.substring(7) : item.remoteUrl;
                         File localFile = new File(localP);
@@ -2230,6 +2294,7 @@ public class NativeToolkitDialog {
                         }
                     }
 
+                    // 2. Query local_media SQLite path via dedupKey
                     if (!copied && currentAccount != null) {
                         String localDbPath = StorageScanner.resolveLocalFilePath(currentAccount, item.dedupKey);
                         if (localDbPath != null) {
@@ -2241,15 +2306,40 @@ public class NativeToolkitDialog {
                         }
                     }
 
+                    // 3. Authenticated Google Photos Glide download
                     if (!copied && item.remoteUrl != null && (item.remoteUrl.startsWith("http://") || item.remoteUrl.startsWith("https://"))) {
-                        String dlUrl = item.remoteUrl;
-                        if (dlUrl.contains("=")) {
-                            dlUrl = dlUrl.replaceAll("=.*$", "=d");
-                        } else {
-                            dlUrl = dlUrl + "=d";
+                        int accountId = currentAccount != null ? currentAccount.accountId : -1;
+                        File remoteCachedFile = downloadRemoteFileGlide(activity, item.remoteUrl, accountId);
+                        if (remoteCachedFile != null && remoteCachedFile.exists() && remoteCachedFile.length() > 0) {
+                            copyFile(remoteCachedFile, destFile);
+                            copied = destFile.exists() && destFile.length() > 0;
                         }
-                        downloadRemoteFile(dlUrl, destFile);
-                        copied = destFile.exists() && destFile.length() > 0;
+
+                        // 3b. Fallback to cached bitmap from fetchThumbSync if full-res network download failed
+                        if (!copied) {
+                            Bitmap bm = fetchThumbSync(activity, item.remoteUrl, accountId);
+                            if (bm != null) {
+                                try (FileOutputStream fos = new FileOutputStream(destFile)) {
+                                    bm.compress(Bitmap.CompressFormat.JPEG, 95, fos);
+                                    fos.flush();
+                                    copied = destFile.exists() && destFile.length() > 0;
+                                } catch (Throwable ignored) {}
+                            }
+                        }
+
+                        // 3c. Fallback to direct HTTP stream
+                        if (!copied) {
+                            try {
+                                String dlUrl = item.remoteUrl;
+                                if (dlUrl.contains("=")) {
+                                    dlUrl = dlUrl.replaceAll("=.*$", "=d");
+                                } else {
+                                    dlUrl = dlUrl + "=d";
+                                }
+                                downloadRemoteFile(dlUrl, destFile);
+                                copied = destFile.exists() && destFile.length() > 0;
+                            } catch (Throwable ignored) {}
+                        }
                     }
 
                     if (copied) {

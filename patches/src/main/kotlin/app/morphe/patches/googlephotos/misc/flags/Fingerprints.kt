@@ -9,6 +9,14 @@ object SettingsActivityV2OnCreateFingerprint : Fingerprint(
     returnType = "V",
 )
 
+object PhotosAboutSettingsActivityV2OnCreateFingerprint : Fingerprint(
+    definingClass = "Lcom/google/android/apps/photos/settings/PhotosAboutSettingsActivityV2;",
+    name = "onCreate",
+    parameters = listOf("Landroid/os/Bundle;"),
+    returnType = "V",
+)
+
+
 internal object SkottieFontUriResolverFingerprint : Fingerprint(
     returnType = "Landroid/net/Uri;",
     parameters = listOf("Ljava/lang/String;", "Landroid/os/CancellationSignal;"),

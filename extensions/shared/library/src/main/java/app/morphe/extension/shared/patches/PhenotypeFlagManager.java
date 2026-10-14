@@ -562,6 +562,75 @@ public final class PhenotypeFlagManager {
     }
 
     // ─────────────────────────────────────────────────────────────────────────
+    // Photos About Settings Easter Egg (AI & On-Device ML Manager)
+    // ─────────────────────────────────────────────────────────────────────────
+
+    private static final int TAG_ABOUT_HOOKED = 0x7E3A9101;
+
+    public static void hookAboutActivity(Activity activity) {
+        if (activity == null || activity.isFinishing() || activity.isDestroyed()) return;
+
+        activity.runOnUiThread(() -> {
+            try {
+                View decor = activity.getWindow().getDecorView();
+                decor.getViewTreeObserver().addOnGlobalLayoutListener(new ViewTreeObserver.OnGlobalLayoutListener() {
+                    @Override
+                    public void onGlobalLayout() {
+                        try {
+                            attachAboutEasterEgg(activity, decor);
+                        } catch (Throwable ignored) {}
+                    }
+                });
+            } catch (Throwable t) {
+                Logger.printException(() -> "Error in hookAboutActivity", t);
+            }
+        });
+    }
+
+    private static void attachAboutEasterEgg(Activity activity, View view) {
+        if (view == null) return;
+        if (view instanceof TextView) {
+            TextView tv = (TextView) view;
+            CharSequence cs = tv.getText();
+            if (cs != null) {
+                String str = cs.toString().trim();
+                boolean isVersionText = str.equalsIgnoreCase("Version")
+                        || str.toLowerCase().startsWith("version ")
+                        || str.matches("^\\d+\\.\\d+(\\.\\d+)?.*");
+                if (isVersionText) {
+                    if (tv.getTag(TAG_ABOUT_HOOKED) == null) {
+                        tv.setTag(TAG_ABOUT_HOOKED, Boolean.TRUE);
+                        View.OnLongClickListener longClick = v -> {
+                            Logger.printInfo(() -> "Version view long-pressed! Launching Model Manager Dialog...");
+                            try {
+                                PhotosModelSeeder.showModelManagerDialog(activity);
+                            } catch (Throwable t) {
+                                Logger.printException(() -> "Error opening Model Manager dialog", t);
+                            }
+                            return true;
+                        };
+                        tv.setOnLongClickListener(longClick);
+
+                        View parent = (View) tv.getParent();
+                        if (parent != null) {
+                            parent.setOnLongClickListener(longClick);
+                            if (parent.getParent() instanceof View) {
+                                ((View) parent.getParent()).setOnLongClickListener(longClick);
+                            }
+                        }
+                        Logger.printInfo(() -> "Attached On-Device AI Model Manager easter egg to version view: " + str);
+                    }
+                }
+            }
+        } else if (view instanceof ViewGroup) {
+            ViewGroup vg = (ViewGroup) view;
+            for (int i = 0; i < vg.getChildCount(); i++) {
+                attachAboutEasterEgg(activity, vg.getChildAt(i));
+            }
+        }
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
     // Settings Activity Floating Pill Injection
     // ─────────────────────────────────────────────────────────────────────────
 
@@ -581,6 +650,7 @@ public final class PhenotypeFlagManager {
                                 content.addView(pill);
                                 Logger.printInfo(() -> "Photos Flags floating pill dock attached to SettingsActivity");
                             }
+                            attachAboutEasterEgg(activity, decor);
                         } catch (Throwable t) {
                             Logger.printException(() -> "Error attaching Photos Flags pill", t);
                         }
@@ -1680,6 +1750,12 @@ public final class PhenotypeFlagManager {
         tvTitle.setTextSize(18);
         tvTitle.setTextColor(theme.textPrimary);
         tvTitle.setTypeface(null, Typeface.BOLD);
+        View.OnLongClickListener headerEasterEgg = v -> {
+            PhotosModelSeeder.showModelManagerDialog(activity);
+            return true;
+        };
+        tvTitle.setOnLongClickListener(headerEasterEgg);
+        titleCol.setOnLongClickListener(headerEasterEgg);
         titleCol.addView(tvTitle);
 
         TextView tvSub = new TextView(activity);
@@ -2257,6 +2333,11 @@ public final class PhenotypeFlagManager {
         }
 
         List<MenuItem> items = new ArrayList<>();
+
+        // 0. AI & On-Device ML Models
+        items.add(new MenuItem(MaterialVectorDrawable.TYPE_PRESETS, "AI & On-Device ML Models", "Inspect and verify on-device Gemini, Magic Eraser, and MDD assets", () -> {
+            PhotosModelSeeder.showModelManagerDialog(activity);
+        }));
 
         // 1. Import from File (SAF)
         items.add(new MenuItem(MaterialVectorDrawable.TYPE_IMPORT, "Import from File", "Load flags from a .json or .txt backup via system file picker", () -> {

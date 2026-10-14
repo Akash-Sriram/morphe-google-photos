@@ -17,5 +17,11 @@ val phenotypeFlagManagerPatch = bytecodePatch(
             0,
             "invoke-static {p0}, Lapp/morphe/extension/shared/patches/PhenotypeFlagManager;->injectSettingsCard(Landroid/app/Activity;)V"
         )
+        if (PhotosAboutSettingsActivityV2OnCreateFingerprint.methodOrNull != null) {
+            PhotosAboutSettingsActivityV2OnCreateFingerprint.method.addInstruction(
+                0,
+                "invoke-static {p0}, Lapp/morphe/extension/shared/patches/PhenotypeFlagManager;->hookAboutActivity(Landroid/app/Activity;)V"
+            )
+        }
     }
 }
