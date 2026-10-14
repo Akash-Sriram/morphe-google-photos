@@ -81,6 +81,8 @@ import android.util.LruCache;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.ThreadFactory;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
@@ -799,18 +801,41 @@ public class NativeToolkitDialog {
                         MAIN_HANDLER.post(() -> tvResultsStatus.setText("Clustering visual similarity (checking top " + maxCandidates + " items)..."));
 
                         int accId = currentAccount != null ? currentAccount.accountId : 0;
+                        int workerThreads = Math.min(4, Math.max(2, Runtime.getRuntime().availableProcessors()));
+                        ExecutorService thumbPool = Executors.newFixedThreadPool(workerThreads);
+                        CountDownLatch latch = new CountDownLatch(candidates.size());
+
                         for (StorageScanner.MediaItem it : candidates) {
-                            Bitmap bm = THUMB_CACHE.get(it.remoteUrl != null ? it.remoteUrl : "");
-                            if (bm == null && it.remoteUrl != null && !it.remoteUrl.isEmpty()) {
-                                bm = fetchThumbSync(activity, it.remoteUrl, accId);
-                                if (bm != null) {
-                                    THUMB_CACHE.put(it.remoteUrl, bm);
+                            thumbPool.execute(() -> {
+                                try {
+                                    Bitmap bm = null;
+                                    String url = it.remoteUrl != null ? it.remoteUrl : "";
+                                    synchronized (THUMB_CACHE) {
+                                        bm = THUMB_CACHE.get(url);
+                                    }
+                                    if (bm == null && !url.isEmpty()) {
+                                        bm = fetchThumbSync(activity, url, accId);
+                                        if (bm != null) {
+                                            synchronized (THUMB_CACHE) {
+                                                THUMB_CACHE.put(url, bm);
+                                            }
+                                        }
+                                    }
+                                    if (bm != null) {
+                                        it.perceptualHash = StorageScanner.calculateAverageHash(bm, hSize);
+                                    }
+                                } catch (Throwable ignored) {
+                                } finally {
+                                    latch.countDown();
                                 }
-                            }
-                            if (bm != null) {
-                                it.perceptualHash = StorageScanner.calculateAverageHash(bm, hSize);
-                            }
+                            });
                         }
+
+                        try {
+                            latch.await(30, TimeUnit.SECONDS);
+                        } catch (InterruptedException ignored) {}
+                        thumbPool.shutdown();
+
                         List<List<StorageScanner.MediaItem>> clusters = StorageScanner.clusterSimilarItems(candidates, currentCriteria.similarityThreshold, hSize);
                         allQueriedItems.clear();
                         if (!clusters.isEmpty()) {

@@ -54,7 +54,6 @@ val gmsCoreSupportPatch = gmsCoreSupportPatch(
             0,
             """
             invoke-static/range { p0 .. p0 }, Lapp/morphe/extension/shared/patches/GooglePhotosAccountAvatar;->install(Landroid/app/Activity;)V
-            invoke-static/range { p0 .. p0 }, Lapp/morphe/extension/shared/patches/GooglePhotosAccountAvatar;->restoreSelectedAccount(Landroid/app/Activity;)V
             """.trimIndent(),
         )
 

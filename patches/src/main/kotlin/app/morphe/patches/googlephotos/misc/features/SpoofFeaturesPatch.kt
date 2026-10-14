@@ -119,8 +119,7 @@ val spoofFeaturesPatch = bytecodePatch(
                 }
 
                 // Also patch SystemProperties.get() callsites in any method that contains them.
-                val implInstructions = implementation.instructions.toList()
-                val hasSystemPropCall = implInstructions.any { instr ->
+                val hasSystemPropCall = implementation.instructions.any { instr ->
                     val ref = (instr as? ReferenceInstruction)?.reference as? MethodReference
                     ref != null && ref.isSystemPropertiesStringGetter()
                 }

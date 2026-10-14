@@ -150,6 +150,7 @@ val amoledDarkThemePatch = resourcePatch(
         var changedStyles = 0
 
         resDirectory.walkTopDown()
+            .onEnter { dir -> dir == resDirectory || dir.name.startsWith("values", ignoreCase = true) }
             .filter { file ->
                 file.isValuesXml() && (
                     file.isNightValuesXml() ||

@@ -1006,12 +1006,18 @@ public class StorageScanner {
         }
     }
 
+    private static volatile Class<?> sAddMediaToAlbumBuilderClass = null;
+
     private static Class<?> resolveAddMediaToAlbumBuilderClass() {
+        if (sAddMediaToAlbumBuilderClass != null) {
+            return sAddMediaToAlbumBuilderClass;
+        }
         try {
-            Class<?> taskClass = Class.forName("com.google.android.apps.photos.album.tasks.AddMediaToAlbumTask");
+            Class<?> taskClass = ReflectionCache.findClass("com.google.android.apps.photos.album.tasks.AddMediaToAlbumTask");
             for (Constructor<?> c : taskClass.getDeclaredConstructors()) {
                 Class<?>[] p = c.getParameterTypes();
                 if (p.length == 1 && !p[0].equals(Object.class)) {
+                    sAddMediaToAlbumBuilderClass = p[0];
                     return p[0];
                 }
             }
@@ -1019,9 +1025,11 @@ public class StorageScanner {
             Logger.printInfo(() -> "Could not resolve builder from AddMediaToAlbumTask: " + t.getMessage());
         }
         for (String name : new String[]{"mtl", "mqw"}) {
-            try {
-                return Class.forName(name);
-            } catch (Throwable ignored) {}
+            Class<?> found = ReflectionCache.findClassOrNull(name);
+            if (found != null) {
+                sAddMediaToAlbumBuilderClass = found;
+                return found;
+            }
         }
         return null;
     }
@@ -1910,23 +1918,23 @@ public class StorageScanner {
                     Object mediaCollection = createMediaCollectionForKeys(accountId, chunkKeys);
                     if (mediaCollection == null) continue;
 
-                    Class<?> bwpgClass = Class.forName("bwpg");
-                    Class<?> wsgClass = Class.forName("wsg");
-                    Method aRefMethod = wsgClass.getMethod("a", bwpgClass);
+                    Class<?> bwpgClass = ReflectionCache.findClass("bwpg");
+                    Class<?> wsgClass = ReflectionCache.findClass("wsg");
+                    Method aRefMethod = ReflectionCache.getMethod(wsgClass, "a", bwpgClass);
                     Object collectionRef = aRefMethod.invoke(null, mediaCollection);
 
-                    Class<?> wrlClass = Class.forName("wrl");
-                    Class<?> wryClass = Class.forName("wry");
-                    Class<?> wqsClass = Class.forName("wqs");
-                    Class<?> wqbClass = Class.forName("wqb");
+                    Class<?> wrlClass = ReflectionCache.findClass("wrl");
+                    Class<?> wryClass = ReflectionCache.findClass("wry");
+                    Class<?> wqsClass = ReflectionCache.findClass("wqs");
+                    Class<?> wqbClass = ReflectionCache.findClass("wqb");
 
-                    Object wqsVal = wqsClass.getField("a").get(null);
+                    Object wqsVal = ReflectionCache.getDeclaredField(wqsClass, "a").get(null);
                     Object wqbVal = buildCoreFeaturesRequest(context);
                     if (wqbVal == null) {
-                        wqbVal = wqbClass.getField("a").get(null);
+                        wqbVal = ReflectionCache.getDeclaredField(wqbClass, "a").get(null);
                     }
 
-                    Method hMethod = wrlClass.getMethod("H", Context.class, wryClass, wqsClass, wqbClass);
+                    Method hMethod = ReflectionCache.getMethod(wrlClass, "H", Context.class, wryClass, wqsClass, wqbClass);
                     List<?> loaded = (List<?>) hMethod.invoke(null, context, collectionRef, wqsVal, wqbVal);
                     if (loaded != null) {
                         result.addAll(loaded);
@@ -1948,23 +1956,23 @@ public class StorageScanner {
                         Object idCollection = createMediaCollectionForIds(accountId, chunkIds);
                         if (idCollection == null) continue;
 
-                        Class<?> bwpgClass = Class.forName("bwpg");
-                        Class<?> wsgClass = Class.forName("wsg");
-                        Method aRefMethod = wsgClass.getMethod("a", bwpgClass);
+                        Class<?> bwpgClass = ReflectionCache.findClass("bwpg");
+                        Class<?> wsgClass = ReflectionCache.findClass("wsg");
+                        Method aRefMethod = ReflectionCache.getMethod(wsgClass, "a", bwpgClass);
                         Object collectionRef = aRefMethod.invoke(null, idCollection);
 
-                        Class<?> wrlClass = Class.forName("wrl");
-                        Class<?> wryClass = Class.forName("wry");
-                        Class<?> wqsClass = Class.forName("wqs");
-                        Class<?> wqbClass = Class.forName("wqb");
+                        Class<?> wrlClass = ReflectionCache.findClass("wrl");
+                        Class<?> wryClass = ReflectionCache.findClass("wry");
+                        Class<?> wqsClass = ReflectionCache.findClass("wqs");
+                        Class<?> wqbClass = ReflectionCache.findClass("wqb");
 
-                        Object wqsVal = wqsClass.getField("a").get(null);
+                        Object wqsVal = ReflectionCache.getDeclaredField(wqsClass, "a").get(null);
                         Object wqbVal = buildCoreFeaturesRequest(context);
                         if (wqbVal == null) {
-                            wqbVal = wqbClass.getField("a").get(null);
+                            wqbVal = ReflectionCache.getDeclaredField(wqbClass, "a").get(null);
                         }
 
-                        Method hMethod = wrlClass.getMethod("H", Context.class, wryClass, wqsClass, wqbClass);
+                        Method hMethod = ReflectionCache.getMethod(wrlClass, "H", Context.class, wryClass, wqsClass, wqbClass);
                         List<?> loaded = (List<?>) hMethod.invoke(null, context, collectionRef, wqsVal, wqbVal);
                         if (loaded != null && !loaded.isEmpty()) {
                             if (result.isEmpty()) {
@@ -3413,7 +3421,31 @@ public class StorageScanner {
         try {
             if (dbFile.exists()) {
                 db = SQLiteDatabase.openDatabase(dbFile.getAbsolutePath(), null, SQLiteDatabase.OPEN_READWRITE | SQLiteDatabase.ENABLE_WRITE_AHEAD_LOGGING);
+                db.beginTransaction();
             }
+
+            Class<?> bwzeClass = ReflectionCache.findClassOrNull("bwze");
+            Constructor<?> bwzeCtor = (bwzeClass != null) ? ReflectionCache.getConstructorOrNull(bwzeClass, long.class, long.class) : null;
+            Class<?> ccrgClass = ReflectionCache.findClassOrNull("ccrg");
+            Method copyOfMethod = (ccrgClass != null) ? ReflectionCache.getMethodOrNull(ccrgClass, "h", Collection.class) : null;
+            Class<?> ajwaClass = ReflectionCache.findClassOrNull("ajwa");
+            Constructor<?> ajwaCtor = (ajwaClass != null && bwzeClass != null && ccrgClass != null)
+                    ? ReflectionCache.getConstructorOrNull(ajwaClass, int.class, ccrgClass, bwzeClass, bwzeClass, int.class) : null;
+            Class<?> azlkClass = ReflectionCache.findClassOrNull("azlk");
+            Field muField = (azlkClass != null) ? ReflectionCache.getDeclaredFieldOrNull(azlkClass, "mu") : null;
+            Object azlkMu = null;
+            try {
+                if (muField != null) azlkMu = muField.get(null);
+            } catch (Throwable ignored) {}
+            Class<?> rgaClass = ReflectionCache.findClassOrNull("rga");
+            Class<?> azllClass = ReflectionCache.findClassOrNull("azll");
+            Class<?> qdoClass = ReflectionCache.findClassOrNull("qdo");
+            Method gMethod = (rgaClass != null && azllClass != null && qdoClass != null)
+                    ? ReflectionCache.getMethodOrNull(rgaClass, "g", String.class, azllClass, qdoClass) : null;
+            Class<?> bxtyClass = ReflectionCache.findClassOrNull("bxty");
+            Class<?> bxueClass = ReflectionCache.findClassOrNull("bxue");
+            Method fMethod = (bxueClass != null && bxtyClass != null)
+                    ? ReflectionCache.getMethodOrNull(bxueClass, "f", Context.class, bxtyClass) : null;
 
             for (MediaItem item : items) {
                 Long parsedDate = parseDateFromFilename(item.filename);
@@ -3428,32 +3460,16 @@ public class StorageScanner {
                 // 1. Dispatch EditDateTimeTask
                 try {
                     List<?> coreItems = loadCoreMediaItems(context, account.accountId, Collections.singletonList(item));
-                    if (!coreItems.isEmpty()) {
-                        Constructor<?> bwzeCtor = Class.forName("bwze").getConstructor(long.class, long.class);
+                    if (!coreItems.isEmpty() && bwzeCtor != null && copyOfMethod != null && ajwaCtor != null && gMethod != null && fMethod != null) {
                         Object oldBwze = bwzeCtor.newInstance(oldUtc, 0L);
                         Object newBwze = bwzeCtor.newInstance(newUtc, 0L);
-
-                        Class<?> ccrgClass = Class.forName("ccrg");
-                        Method copyOfMethod = ccrgClass.getMethod("h", Collection.class);
                         Object immutableList = copyOfMethod.invoke(null, coreItems);
-
-                        Class<?> ajwaClass = Class.forName("ajwa");
-                        Constructor<?> ajwaCtor = ajwaClass.getConstructor(int.class, ccrgClass, Class.forName("bwze"), Class.forName("bwze"), int.class);
                         Object ajwaInstance = ajwaCtor.newInstance(account.accountId, immutableList, oldBwze, newBwze, 1);
-
-                        Object azlkMu = Class.forName("azlk").getField("mu").get(null);
-
-                        Class<?> rgaClass = Class.forName("rga");
-                        Method gMethod = rgaClass.getMethod("g", String.class, Class.forName("azll"), Class.forName("qdo"));
                         Object qdp = gMethod.invoke(null, "com.google.android.photos.mediadetails.datetime.EditDateTimeTask", azlkMu, ajwaInstance);
-
                         if (qdp != null) {
-                            Object qdn = qdp.getClass().getMethod("b").invoke(qdp);
-                            Object task = qdn.getClass().getMethod("a").invoke(qdn);
-
-                            Class<?> bxtyClass = Class.forName("bxty");
-                            Class<?> bxueClass = Class.forName("bxue");
-                            bxueClass.getMethod("f", Context.class, bxtyClass).invoke(null, context, task);
+                            Object qdn = ReflectionCache.getMethod(qdp.getClass(), "b").invoke(qdp);
+                            Object task = ReflectionCache.getMethod(qdn.getClass(), "a").invoke(qdn);
+                            fMethod.invoke(null, context, task);
                         }
                     }
                 } catch (Throwable tTask) {
@@ -3476,8 +3492,13 @@ public class StorageScanner {
 
                 updatedCount++;
             }
+
+            if (db != null) {
+                db.setTransactionSuccessful();
+            }
         } finally {
             if (db != null) {
+                try { db.endTransaction(); } catch (Throwable ignored) {}
                 try { db.close(); } catch (Throwable ignored) {}
             }
         }
