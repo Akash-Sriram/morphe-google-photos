@@ -16,6 +16,14 @@ object PhotosAboutSettingsActivityV2OnCreateFingerprint : Fingerprint(
     returnType = "V",
 )
 
+object PhenotypeComponentsModeFingerprint : Fingerprint(
+    definingClass = "Lapp/morphe/extension/shared/patches/PhenotypeFlagManager;",
+    name = "getComponentsMode",
+    returnType = "Ljava/lang/String;",
+    parameters = listOf(),
+)
+
+
 
 internal object SkottieFontUriResolverFingerprint : Fingerprint(
     returnType = "Landroid/net/Uri;",

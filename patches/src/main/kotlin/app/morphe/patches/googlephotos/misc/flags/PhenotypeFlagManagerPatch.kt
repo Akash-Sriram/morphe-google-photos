@@ -2,7 +2,9 @@ package app.morphe.patches.googlephotos.misc.flags
 
 import app.morphe.patcher.extensions.InstructionExtensions.addInstruction
 import app.morphe.patcher.patch.bytecodePatch
+import app.morphe.patcher.patch.stringOption
 import app.morphe.patches.shared.compat.AppCompatibilities
+import app.morphe.util.returnEarly
 
 @Suppress("unused")
 val phenotypeFlagManagerPatch = bytecodePatch(
@@ -11,6 +13,18 @@ val phenotypeFlagManagerPatch = bytecodePatch(
     default = true,
 ) {
     compatibleWith(AppCompatibilities.GOOGLE_PHOTOS)
+
+    val componentsOption = stringOption(
+        key = "components",
+        default = "both",
+        values = mapOf(
+            "both" to "Both (Flag manager & Toolkit)",
+            "flags" to "Flag manager only",
+            "toolkit" to "Toolkit only",
+        ),
+        title = "Enabled components",
+        description = "Choose which components to show: Flag Manager, Morphe Toolkit, or Both.",
+    )
 
     execute {
         SettingsActivityV2OnCreateFingerprint.method.addInstruction(
@@ -23,5 +37,10 @@ val phenotypeFlagManagerPatch = bytecodePatch(
                 "invoke-static {p0}, Lapp/morphe/extension/shared/patches/PhenotypeFlagManager;->hookAboutActivity(Landroid/app/Activity;)V"
             )
         }
+    }
+
+    finalize {
+        val selected = componentsOption.value ?: componentsOption.default ?: "both"
+        PhenotypeComponentsModeFingerprint.method.returnEarly(selected)
     }
 }

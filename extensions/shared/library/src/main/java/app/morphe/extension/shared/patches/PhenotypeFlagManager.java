@@ -561,6 +561,42 @@ public final class PhenotypeFlagManager {
         return context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE);
     }
 
+    public static String getComponentsMode() {
+        return "both";
+    }
+
+    public static String getEffectiveComponentsMode(Context context) {
+        try {
+            if (context != null) {
+                SharedPreferences prefs = getPrefs(context);
+                String saved = prefs.getString("_components_mode", null);
+                if (saved != null && !saved.trim().isEmpty()) {
+                    return saved.trim().toLowerCase();
+                }
+            }
+        } catch (Throwable ignored) {}
+        return getComponentsMode();
+    }
+
+    public static void refreshFloatingPill(Activity activity) {
+        if (activity == null || activity.isFinishing() || activity.isDestroyed()) return;
+        activity.runOnUiThread(() -> {
+            try {
+                FrameLayout content = activity.findViewById(android.R.id.content);
+                if (content != null) {
+                    View existing = content.findViewWithTag(SETTINGS_PILL_TAG);
+                    if (existing != null) {
+                        content.removeView(existing);
+                        LinearLayout newPill = createFloatingPill(activity);
+                        content.addView(newPill);
+                    }
+                }
+            } catch (Throwable t) {
+                Logger.printException(() -> "Error refreshing floating pill", t);
+            }
+        });
+    }
+
     // ─────────────────────────────────────────────────────────────────────────
     // Photos About Settings Easter Egg (AI & On-Device ML Manager)
     // ─────────────────────────────────────────────────────────────────────────
@@ -724,7 +760,6 @@ public final class PhenotypeFlagManager {
         labelFlags.setTypeface(null, Typeface.BOLD);
         itemFlags.addView(labelFlags);
         itemFlags.setOnClickListener(v -> showFlagManagerDialog(activity));
-        dock.addView(itemFlags);
 
         // Divider 1
         View divider1 = new View(activity);
@@ -732,7 +767,6 @@ public final class PhenotypeFlagManager {
         LinearLayout.LayoutParams divLp1 = new LinearLayout.LayoutParams((int) (1 * density), (int) (20 * density));
         divLp1.setMargins((int) (2 * density), 0, (int) (2 * density), 0);
         divider1.setLayoutParams(divLp1);
-        dock.addView(divider1);
 
         // Segment 2: Toolkit (in between Flags and Logs)
         LinearLayout itemToolkit = new LinearLayout(activity);
@@ -768,7 +802,6 @@ public final class PhenotypeFlagManager {
         itemToolkit.setOnClickListener(v -> {
             app.morphe.extension.shared.patches.toolkit.NativeToolkitDialog.show(activity);
         });
-        dock.addView(itemToolkit);
 
         // Divider 2
         View divider2 = new View(activity);
@@ -776,7 +809,31 @@ public final class PhenotypeFlagManager {
         LinearLayout.LayoutParams divLp2 = new LinearLayout.LayoutParams((int) (1 * density), (int) (20 * density));
         divLp2.setMargins((int) (2 * density), 0, (int) (2 * density), 0);
         divider2.setLayoutParams(divLp2);
-        dock.addView(divider2);
+
+        String mode = getEffectiveComponentsMode(activity);
+        boolean showFlags = !"toolkit".equalsIgnoreCase(mode);
+        boolean showToolkit = !"flags".equalsIgnoreCase(mode);
+
+        if (showFlags) {
+            dock.addView(itemFlags);
+        }
+
+        if (showFlags && showToolkit) {
+            dock.addView(divider1);
+        }
+
+        if (showToolkit) {
+            if (!showFlags) {
+                bgToolkit.setColor(theme.primaryContainer);
+                iconToolkit.setImageDrawable(new MaterialVectorDrawable(MaterialVectorDrawable.TYPE_TOOLKIT, theme.onPrimaryContainer));
+                labelToolkit.setTextColor(theme.onPrimaryContainer);
+            }
+            dock.addView(itemToolkit);
+        }
+
+        if (showFlags || showToolkit) {
+            dock.addView(divider2);
+        }
 
         // Segment 3: Logs
         LinearLayout itemLogs = new LinearLayout(activity);
@@ -2312,6 +2369,71 @@ public final class PhenotypeFlagManager {
     // Options Menu
     // ─────────────────────────────────────────────────────────────────────────
 
+    private static void showDockComponentsDialog(Activity activity) {
+        float density = activity.getResources().getDisplayMetrics().density;
+        Theme theme = Theme.get(activity);
+
+        LinearLayout list = new LinearLayout(activity);
+        list.setOrientation(LinearLayout.VERTICAL);
+        list.setPadding((int) (16 * density), (int) (4 * density), (int) (16 * density), (int) (16 * density));
+
+        Dialog d = createM3Dialog(activity, "Dock Components", list);
+
+        String currentMode = getEffectiveComponentsMode(activity);
+
+        String[][] options = new String[][] {
+            {"both", "Both (Flag manager & Toolkit)", "Show both Flag manager and Morphe Toolkit in the dock"},
+            {"flags", "Flag manager only", "Show only Phenotype Flag Manager"},
+            {"toolkit", "Toolkit only", "Show only Morphe Toolkit"}
+        };
+
+        for (String[] opt : options) {
+            String modeKey = opt[0];
+            String title = opt[1];
+            String subtitle = opt[2];
+            boolean isSelected = modeKey.equalsIgnoreCase(currentMode);
+
+            LinearLayout row = new LinearLayout(activity);
+            row.setOrientation(LinearLayout.VERTICAL);
+            row.setClickable(true);
+            row.setFocusable(true);
+            int padH = (int) (16 * density);
+            int padV = (int) (12 * density);
+            row.setPadding(padH, padV, padH, padV);
+            row.setBackground(createCardDrawable(isSelected, density, theme));
+            LinearLayout.LayoutParams rLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            rLp.bottomMargin = (int) (8 * density);
+            row.setLayoutParams(rLp);
+
+            TextView tvTitle = new TextView(activity);
+            tvTitle.setText(title);
+            tvTitle.setTextSize(14.5f);
+            tvTitle.setTextColor(isSelected ? theme.primary : theme.textPrimary);
+            tvTitle.setTypeface(null, Typeface.BOLD);
+            row.addView(tvTitle);
+
+            TextView tvSub = new TextView(activity);
+            tvSub.setText(subtitle);
+            tvSub.setTextSize(12f);
+            tvSub.setTextColor(theme.textSecondary);
+            LinearLayout.LayoutParams sLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            sLp.topMargin = (int) (2 * density);
+            tvSub.setLayoutParams(sLp);
+            row.addView(tvSub);
+
+            row.setOnClickListener(v -> {
+                getPrefs(activity).edit().putString("_components_mode", modeKey).apply();
+                refreshFloatingPill(activity);
+                d.dismiss();
+                Toast.makeText(activity, "Dock mode set to: " + title, Toast.LENGTH_SHORT).show();
+            });
+
+            list.addView(row);
+        }
+
+        d.show();
+    }
+
     private static void showProperOptionsMenu(Activity activity, SharedPreferences prefs, FlagAdapter adapter, Runnable onRefresh) {
         float density = activity.getResources().getDisplayMetrics().density;
         Theme theme = Theme.get(activity);
@@ -2337,6 +2459,11 @@ public final class PhenotypeFlagManager {
         // 0. AI & On-Device ML Models
         items.add(new MenuItem(MaterialVectorDrawable.TYPE_PRESETS, "AI & On-Device ML Models", "Inspect and verify on-device Gemini, Magic Eraser, and MDD assets", () -> {
             PhotosModelSeeder.showModelManagerDialog(activity);
+        }));
+
+        // Dock Components
+        items.add(new MenuItem(MaterialVectorDrawable.TYPE_TOOLKIT, "Dock Components", "Choose between Flags, Toolkit, or Both in the settings dock", () -> {
+            showDockComponentsDialog(activity);
         }));
 
         // 1. Import from File (SAF)
