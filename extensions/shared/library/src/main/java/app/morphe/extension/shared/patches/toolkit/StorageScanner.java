@@ -2542,26 +2542,44 @@ public class StorageScanner {
         return res;
     }
 
+    private static Object createTrashMediaCollection(int accountId) {
+        String[] trashClasses = new String[]{
+            "bnew", // 7.97.0 (52547221 arm64)
+            "blvo", // 7.97.0 (52547203 univ)
+            "bmcu", // 7.97.0 (52547233 univ)
+            "bjjo", // 7.97.0 alternate
+            "bjjq"  // 7.96.0 fallback
+        };
+        for (String tName : trashClasses) {
+            try {
+                Class<?> tClass = ReflectionCache.findClassOrNull(tName);
+                if (tClass != null) {
+                    try {
+                        Constructor<?> ctor = tClass.getConstructor(int.class);
+                        Object coll = ctor.newInstance(accountId);
+                        if (coll != null) return coll;
+                    } catch (Throwable ignored) {}
+                    try {
+                        Method m = tClass.getMethod("a", int.class);
+                        Object coll = m.invoke(null, accountId);
+                        if (coll != null) return coll;
+                    } catch (Throwable ignored) {}
+                }
+            } catch (Throwable ignored) {}
+        }
+        return null;
+    }
+
     private static void syncCloudTrashToLocalDb(Context context, AccountInfo account) {
         if (context == null || account == null) return;
         try {
-            Class<?> bjjqClass = Class.forName("bjjq");
-            Method aMethod = bjjqClass.getMethod("a", int.class);
-            Object trashCollectionRef = aMethod.invoke(null, account.accountId);
-
-            Class<?> wrlClass = Class.forName("wrl");
-            Class<?> wryClass = Class.forName("wry");
-            Class<?> wqsClass = Class.forName("wqs");
-            Class<?> wqbClass = Class.forName("wqb");
-
-            Object wqsVal = wqsClass.getField("a").get(null);
-            Object wqbVal = buildCoreFeaturesRequest(context);
-            if (wqbVal == null) {
-                wqbVal = wqbClass.getField("a").get(null);
+            Object trashCollectionRef = createTrashMediaCollection(account.accountId);
+            if (trashCollectionRef == null) {
+                Log.w("morphe: StorageScanner", "syncCloudTrashToLocalDb: Trash collection ref not found");
+                return;
             }
 
-            Method hMethod = wrlClass.getMethod("H", Context.class, wryClass, wqsClass, wqbClass);
-            List<?> allTrashMedia = (List<?>) hMethod.invoke(null, context, trashCollectionRef, wqsVal, wqbVal);
+            List<?> allTrashMedia = loadMediaCollection(context, trashCollectionRef);
             if (allTrashMedia == null || allTrashMedia.isEmpty()) {
                 Log.i("morphe: StorageScanner", "syncCloudTrashToLocalDb: Trash collection returned 0 items");
                 return;
@@ -2569,18 +2587,26 @@ public class StorageScanner {
 
             Log.i("morphe: StorageScanner", "syncCloudTrashToLocalDb: Loaded " + allTrashMedia.size() + " items from trash collection");
 
+            String[] zonCandidates = new String[] {"zon", "zoi", "zog", "zkr"};
             Class<?> zonClass = null;
-            try { zonClass = Class.forName("zon"); } catch (Throwable ignored) {}
+            for (String zc : zonCandidates) {
+                try { zonClass = Class.forName(zc); break; } catch (Throwable ignored) {}
+            }
+            String[] bamsCandidates = new String[] {"bams", "bamo", "bamk", "azxs"};
             Class<?> bamsClass = null;
-            try { bamsClass = Class.forName("bams"); } catch (Throwable ignored) {}
+            for (String bc : bamsCandidates) {
+                try { bamsClass = Class.forName(bc); break; } catch (Throwable ignored) {}
+            }
 
             List<String> dedupKeys = new ArrayList<>();
             List<String> mediaKeys = new ArrayList<>();
             for (Object m : allTrashMedia) {
-                String d = extractDedupKey(m, zonClass);
+                String d = (zonClass != null) ? extractDedupKey(m, zonClass) : null;
                 if (d != null && !d.isEmpty()) dedupKeys.add(d);
-                List<String> mks = extractMediaKeys(m, bamsClass);
-                mediaKeys.addAll(mks);
+                if (bamsClass != null) {
+                    List<String> mks = extractMediaKeys(m, bamsClass);
+                    mediaKeys.addAll(mks);
+                }
             }
 
             File dbf = new File(account.dbPath);
@@ -2625,23 +2651,13 @@ public class StorageScanner {
         if (context == null || items == null || items.isEmpty()) return result;
 
         try {
-            Class<?> bjjqClass = Class.forName("bjjq");
-            Method aMethod = bjjqClass.getMethod("a", int.class);
-            Object trashCollectionRef = aMethod.invoke(null, accountId);
-
-            Class<?> wrlClass = Class.forName("wrl");
-            Class<?> wryClass = Class.forName("wry");
-            Class<?> wqsClass = Class.forName("wqs");
-            Class<?> wqbClass = Class.forName("wqb");
-
-            Object wqsVal = wqsClass.getField("a").get(null);
-            Object wqbVal = buildCoreFeaturesRequest(context);
-            if (wqbVal == null) {
-                wqbVal = wqbClass.getField("a").get(null);
+            Object trashCollectionRef = createTrashMediaCollection(accountId);
+            if (trashCollectionRef == null) {
+                Log.w("morphe: StorageScanner", "loadTrashMediaItems: Failed to create TrashMediaCollection");
+                return result;
             }
 
-            Method hMethod = wrlClass.getMethod("H", Context.class, wryClass, wqsClass, wqbClass);
-            List<?> allTrashMedia = (List<?>) hMethod.invoke(null, context, trashCollectionRef, wqsVal, wqbVal);
+            List<?> allTrashMedia = loadMediaCollection(context, trashCollectionRef);
             if (allTrashMedia == null || allTrashMedia.isEmpty()) {
                 Log.w("morphe: StorageScanner", "loadTrashMediaItems: Trash collection returned 0 items");
                 return result;
@@ -2661,16 +2677,22 @@ public class StorageScanner {
                 }
             }
 
+            String[] zonCandidates = new String[] {"zon", "zoi", "zog", "zkr"};
             Class<?> zonClass = null;
-            try { zonClass = Class.forName("zon"); } catch (Throwable ignored) {}
+            for (String zc : zonCandidates) {
+                try { zonClass = Class.forName(zc); break; } catch (Throwable ignored) {}
+            }
+            String[] bamsCandidates = new String[] {"bams", "bamo", "bamk", "azxs"};
             Class<?> bamsClass = null;
-            try { bamsClass = Class.forName("bams"); } catch (Throwable ignored) {}
+            for (String bc : bamsCandidates) {
+                try { bamsClass = Class.forName(bc); break; } catch (Throwable ignored) {}
+            }
 
             for (Object media : allTrashMedia) {
                 if (media == null) continue;
                 boolean match = false;
 
-                String dKey = extractDedupKey(media, zonClass);
+                String dKey = (zonClass != null) ? extractDedupKey(media, zonClass) : null;
                 if (dKey != null && !dKey.isEmpty()) {
                     String lower = dKey.toLowerCase();
                     for (String target : targetDedupKeys) {
@@ -2681,7 +2703,7 @@ public class StorageScanner {
                     }
                 }
 
-                if (!match) {
+                if (!match && bamsClass != null) {
                     List<String> mKeys = extractMediaKeys(media, bamsClass);
                     for (String k : mKeys) {
                         String lower = k.toLowerCase();
@@ -2700,8 +2722,8 @@ public class StorageScanner {
                 }
             }
 
-            // Fallback: If feature matching returned 0 but total trash count is <= requested items
-            if (result.isEmpty() && allTrashMedia.size() <= items.size()) {
+            // Fallback: If feature matching returned 0 but trash collection has items, take all items
+            if (result.isEmpty() && !allTrashMedia.isEmpty()) {
                 Log.i("morphe: StorageScanner", "loadTrashMediaItems: feature matching empty, using all " + allTrashMedia.size() + " trash collection items");
                 result.addAll(allTrashMedia);
             }

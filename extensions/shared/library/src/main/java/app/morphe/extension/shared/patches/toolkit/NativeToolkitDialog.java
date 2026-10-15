@@ -3218,6 +3218,25 @@ public class NativeToolkitDialog {
                 }
             }
 
+            // Primary strategy: request RequestBuilder<Bitmap> or RequestBuilder<Drawable> directly, then call .load(targetModel)
+            Object targetModel = (model != null) ? model : (urlStr.startsWith("content://") || urlStr.startsWith("file://") ? Uri.parse(urlStr) : urlStr);
+            Object baseRb = createBitmapOrDrawableRequestBuilder(requestManager);
+            if (baseRb != null) {
+                for (Method lm : baseRb.getClass().getMethods()) {
+                    if (lm.getName().equals("equals")) continue;
+                    Class<?>[] pt = lm.getParameterTypes();
+                    if (pt.length == 1 && (pt[0] == Object.class || pt[0].isInstance(targetModel))) {
+                        try {
+                            lm.setAccessible(true);
+                            Object finalRb = lm.invoke(baseRb, targetModel);
+                            if (finalRb != null && hasIntoImageViewMethod(finalRb)) {
+                                return finalRb;
+                            }
+                        } catch (Throwable ignored) {}
+                    }
+                }
+            }
+
             if (model != null) {
                 for (Method m : rmClass.getMethods()) {
                     if (m.getName().equals("equals")) continue;
@@ -3278,8 +3297,66 @@ public class NativeToolkitDialog {
         return null;
     }
 
+    private static boolean isValidTranscodeTarget(Object requestBuilder) {
+        if (requestBuilder == null) return false;
+        try {
+            for (Class<?> c = requestBuilder.getClass(); c != null && c != Object.class; c = c.getSuperclass()) {
+                for (java.lang.reflect.Field f : c.getDeclaredFields()) {
+                    if (f.getType() == Class.class) {
+                        f.setAccessible(true);
+                        Class<?> target = (Class<?>) f.get(requestBuilder);
+                        if (target != null) {
+                            if (File.class.isAssignableFrom(target)) {
+                                return false;
+                            }
+                            if (Bitmap.class.isAssignableFrom(target) || Drawable.class.isAssignableFrom(target)) {
+                                return true;
+                            }
+                        }
+                    }
+                }
+            }
+        } catch (Throwable ignored) {}
+        return true;
+    }
+
+    private static Object createBitmapOrDrawableRequestBuilder(Object requestManager) {
+        if (requestManager == null) return null;
+        Class<?> rmClass = requestManager.getClass();
+        // 1. Try as(Bitmap.class) or as(Drawable.class)
+        for (Method m : rmClass.getMethods()) {
+            if (m.getParameterTypes().length == 1 && m.getParameterTypes()[0] == Class.class && !m.getReturnType().isPrimitive()) {
+                try {
+                    m.setAccessible(true);
+                    Object rb = m.invoke(requestManager, Bitmap.class);
+                    if (rb != null && hasIntoImageViewMethod(rb)) {
+                        return rb;
+                    }
+                    rb = m.invoke(requestManager, Drawable.class);
+                    if (rb != null && hasIntoImageViewMethod(rb)) {
+                        return rb;
+                    }
+                } catch (Throwable ignored) {}
+            }
+        }
+        // 2. Try zero-arg asBitmap() / asDrawable()
+        for (Method m : rmClass.getMethods()) {
+            if (m.getParameterTypes().length == 0 && !m.getReturnType().isPrimitive() && !m.getReturnType().equals(Object.class) && !m.getReturnType().equals(void.class)) {
+                try {
+                    m.setAccessible(true);
+                    Object rb = m.invoke(requestManager);
+                    if (rb != null && hasIntoImageViewMethod(rb)) {
+                        return rb;
+                    }
+                } catch (Throwable ignored) {}
+            }
+        }
+        return null;
+    }
+
     private static boolean hasIntoImageViewMethod(Object requestBuilder) {
         if (requestBuilder == null) return false;
+        if (!isValidTranscodeTarget(requestBuilder)) return false;
         try {
             for (Method m : requestBuilder.getClass().getMethods()) {
                 Class<?>[] pt = m.getParameterTypes();
