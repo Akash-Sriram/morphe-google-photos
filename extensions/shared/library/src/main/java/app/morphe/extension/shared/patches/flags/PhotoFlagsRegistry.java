@@ -67,7 +67,7 @@ public final class PhotoFlagsRegistry {
         CATEGORY_TRIGGERS.put("🤖 Gemini & Ask Photos Search", "⚡ Triggers: Natural language photo search, conversational query engine & Gemini sparkle");
         CATEGORY_TRIGGERS.put("🪄 AI Photo & Video Editor Tools", "⚡ Triggers: Magic Editor lasso selection, AI Enhance V2 & Varenyky timeline");
         CATEGORY_TRIGGERS.put("🎞️ Create Tab: Motion & Animation", "⚡ Triggers: Animation tool card, burst loop generator & motion photo stabilizer pill");
-        CATEGORY_TRIGGERS.put("🧭 Modern Navigation & Filters", "⚡ Triggers: Reels full-screen video feed tab & \"On this device\" media filter");
+        CATEGORY_TRIGGERS.put("🧭 Modern Navigation & Filters", "⚡ Triggers: \"On this device\" media filter pill & local photo isolation");
         CATEGORY_TRIGGERS.put("👗 Create Tab: Outfits & Apparel (My Fits)", "⚡ Triggers: Outfit try-on card, virtual wardrobe & flatlay generator");
         CATEGORY_TRIGGERS.put("⭕ OneGoogle: Subscriber Avatar Rings", "⚡ Triggers: Multi-color metallic Google One subscriber ring around avatar");
         initFlags();
@@ -76,7 +76,7 @@ public final class PhotoFlagsRegistry {
     private static void initFlags() {
         // ✨ Stories & Memories Hub (7 Flags)
         register("3023", "Story Player Navigation Gestures", "Enhanced swipe gestures, tap-to-pause, and story navigation controls.", "✨ Stories & Memories Hub", "Story Player Navigation Engine", FlagType.BOOLEAN, Boolean.TRUE);
-        register("3026", "Redesigned Memories Carousel", "Header carousel layout and transition effects for active memory reels.", "✨ Stories & Memories Hub", "Memories Carousel Engine", FlagType.BOOLEAN, Boolean.TRUE);
+        register("3026", "Redesigned Memories Carousel", "Header carousel layout and transition effects for active memory stories.", "✨ Stories & Memories Hub", "Memories Carousel Engine", FlagType.BOOLEAN, Boolean.TRUE);
         register("45764779", "Flying Memories Carousel (FMC) Physics", "Ultra-fluid spring physics and inertia when swiping through the memories header.", "✨ Stories & Memories Hub", "Flying Memories Physics", FlagType.BOOLEAN, Boolean.TRUE);
         register("45735093", "Memories 3D Subject Pop-Out", "Subject foreground segmentation breaking out of memory frames via Lcoei.", "✨ Stories & Memories Hub", "3D Pop-Out & Cutout Engine", FlagType.BOOLEAN, Boolean.TRUE);
         register("45742883", "3D Story Card Elevation & Multi-up", "Elevates cutout subjects with realistic drop shadows and enables multi-photo collage cards.", "✨ Stories & Memories Hub", "3D Card Elevation Shadows", FlagType.BOOLEAN, Boolean.TRUE);
@@ -119,9 +119,7 @@ public final class PhotoFlagsRegistry {
         register("45353606", "Motion & Document Optimizer", "Keystone correction and frame stabilization for animated sequences.", "🎞️ Create Tab: Motion & Animation", "Tool 7: Sequence Optimizer", FlagType.BOOLEAN, Boolean.TRUE);
         register("45694311", "Motion Photo Frame Extractor", "Extracts stabilized frames from motion photos for animated GIF loops.", "🎞️ Create Tab: Motion & Animation", "Tool 7: Animation Card", FlagType.BOOLEAN, Boolean.TRUE);
 
-        // 🧭 Modern Navigation & Filters (3 Flags)
-        register("45752831", "Reels Video Tab (V1)", "Full-screen vertical swipe video feed tab in the main navigation bar.", "🧭 Modern Navigation & Filters", "Reels Video Feed Tab", FlagType.BOOLEAN, Boolean.TRUE);
-        register("45754546", "Reels Video Tab (V2)", "Gesture navigation transition and fluid swipe gestures into full-screen video feed.", "🧭 Modern Navigation & Filters", "Reels Gesture Navigation", FlagType.BOOLEAN, Boolean.TRUE);
+        // 🧭 Modern Navigation & Filters (1 Flag)
         register("45753590", "On This Device Filter Pill", "Adds top-bar filter button to isolate and display only photos physically stored on the device.", "🧭 Modern Navigation & Filters", "Local Media Filter", FlagType.BOOLEAN, Boolean.TRUE);
 
         // 👗 Create Tab: Outfits & Apparel (1 Flag)
