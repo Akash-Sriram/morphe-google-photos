@@ -83,7 +83,7 @@ public final class PhotoFlagsRegistry {
         register("45662994", "MemoryCard Layout Templates", "Graphic scrapbooking frames, background textures, and dynamic card pacing.", "✨ Stories & Memories Hub", "Dynamic Story Pacing & Templates", FlagType.BOOLEAN, Boolean.TRUE);
         register("45737826", "Over the Years Scrapbook Theme", "Unlocks Over the Years commemorative memory layout and fluid edge-to-edge transitions.", "✨ Stories & Memories Hub", "Edge-to-Edge Navigation & Themes", FlagType.BOOLEAN, Boolean.TRUE);
 
-        // 📑 Create Tab: Collage & Scrapbook (11 Flags)
+        // 📑 Create Tab: Collage & Scrapbook (10 Flags)
         register("3756", "Collage Grid Layout Engine (Base)", "Controls multi-photo collage layout grids, cutout borders, and scrapbook art styles via Lcnzc.", "📑 Create Tab: Collage & Scrapbook (Stamp M2)", "Collage Template & Grid Engine", FlagType.BOOLEAN, Boolean.TRUE);
         register("45398451", "Collage Grid Layout 45398451", "Controls multi-photo collage layout grids, cutout borders, and scrapbook art styles via Lcnzc.", "📑 Create Tab: Collage & Scrapbook (Stamp M2)", "Collage Template & Grid Engine", FlagType.BOOLEAN, Boolean.TRUE);
         register("45623041", "Collage Grid Layout 45623041", "Controls multi-photo collage layout grids, cutout borders, and scrapbook art styles via Lcnzc.", "📑 Create Tab: Collage & Scrapbook (Stamp M2)", "Collage Template & Grid Engine", FlagType.BOOLEAN, Boolean.TRUE);
@@ -94,7 +94,6 @@ public final class PhotoFlagsRegistry {
         register("45835544", "Collage Grid Layout 45835544", "Controls multi-photo collage layout grids, cutout borders, and scrapbook art styles via Lcnzc.", "📑 Create Tab: Collage & Scrapbook (Stamp M2)", "Collage Template & Grid Engine", FlagType.BOOLEAN, Boolean.TRUE);
         register("45835545", "Collage Grid Layout 45835545", "Controls multi-photo collage layout grids, cutout borders, and scrapbook art styles via Lcnzc.", "📑 Create Tab: Collage & Scrapbook (Stamp M2)", "Collage Template & Grid Engine", FlagType.BOOLEAN, Boolean.TRUE);
         register("45836696", "Collage Grid Layout 45836696", "Controls multi-photo collage layout grids, cutout borders, and scrapbook art styles via Lcnzc.", "📑 Create Tab: Collage & Scrapbook (Stamp M2)", "Collage Template & Grid Engine", FlagType.BOOLEAN, Boolean.TRUE);
-        register("45839387", "Collage Grid Layout 45839387", "Controls multi-photo collage layout grids, cutout borders, and scrapbook art styles via Lcnzc.", "📑 Create Tab: Collage & Scrapbook (Stamp M2)", "Collage Template & Grid Engine", FlagType.BOOLEAN, Boolean.TRUE);
 
         // 📁 Collections V2 & Shelves (7 Flags)
         register("45762698", "Collections V2 Shelves Layout", "Reorganizes the Library tab into modern categorized Collections V2 horizontal shelves (0=Off, 1=Legacy, 2=Full V2).", "📁 Collections V2 & Shelves", "Collections Shelves Structure", FlagType.LONG, 2L);
