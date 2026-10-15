@@ -667,6 +667,7 @@ fun gmsCoreSupportResourcePatch(
                 transformations["android:authorities=\"$fromPackageName"] = "android:authorities=\"$packageName"
                 transformations["$fromPackageName.permission.C2D_MESSAGE"] = "$packageName.permission.C2D_MESSAGE"
                 transformations["$fromPackageName.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION"] = "$packageName.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION"
+                transformations["$fromPackageName.permission.SEARCH_IN_PHOTOS"] = "$packageName.permission.SEARCH_IN_PHOTOS"
             }
 
             val manifest = get("AndroidManifest.xml")

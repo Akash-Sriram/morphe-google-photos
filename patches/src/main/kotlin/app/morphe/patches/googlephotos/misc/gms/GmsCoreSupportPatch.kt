@@ -441,12 +441,29 @@ private fun gmsCoreSupportResourcePatch() =
 
                     val permissions = manifest.getElementsByTagName("permission").asSequence()
                     val usesPermissions = manifest.getElementsByTagName("uses-permission").asSequence()
-                    val receiverNotExported = "DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION"
 
                     (permissions + usesPermissions)
                         .map { it as Element }
-                        .filter { it.getAttribute("android:name") == "$originalPackageName.$receiverNotExported" }
-                        .forEach { it.setAttribute("android:name", "$targetPackageName.$receiverNotExported") }
+                        .forEach { elem ->
+                            val name = elem.getAttribute("android:name")
+                            if (name.startsWith("$originalPackageName.")) {
+                                elem.setAttribute("android:name", name.replace(originalPackageName, targetPackageName))
+                            }
+                        }
+
+                    val components = (
+                        manifest.getElementsByTagName("activity").asSequence() +
+                        manifest.getElementsByTagName("service").asSequence() +
+                        manifest.getElementsByTagName("provider").asSequence() +
+                        manifest.getElementsByTagName("receiver").asSequence()
+                    ).map { it as Element }
+
+                    for (comp in components) {
+                        val perm = comp.getAttribute("android:permission")
+                        if (perm.startsWith("$originalPackageName.")) {
+                            comp.setAttribute("android:permission", perm.replace(originalPackageName, targetPackageName))
+                        }
+                    }
 
                     val existingPerms = manifest.getElementsByTagName("uses-permission").asSequence()
                         .map { (it as Element).getAttribute("android:name") }
