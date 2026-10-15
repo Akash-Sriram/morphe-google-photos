@@ -3220,74 +3220,98 @@ public class NativeToolkitDialog {
 
             // Primary strategy: request RequestBuilder<Bitmap> or RequestBuilder<Drawable> directly, then call .load(targetModel)
             Object targetModel = (model != null) ? model : (urlStr.startsWith("content://") || urlStr.startsWith("file://") ? Uri.parse(urlStr) : urlStr);
+
+            // Strategy 1: Direct RequestManager load methods (mju.l for Object, mju.m for String, mju.j for Uri in 7.97.0)
+            String[] rmCandidateNames = (model != null) ? new String[]{"l", "load"} : new String[]{"l", "m", "j", "load"};
+            for (String mName : rmCandidateNames) {
+                for (Method m : rmClass.getMethods()) {
+                    if (m.getName().equals(mName)) {
+                        Class<?>[] pt = m.getParameterTypes();
+                        if (pt.length == 1) {
+                            Object arg = null;
+                            if (pt[0].isInstance(targetModel) || pt[0] == Object.class) {
+                                arg = targetModel;
+                            } else if (pt[0] == String.class && targetModel instanceof String) {
+                                arg = targetModel;
+                            } else if (pt[0] == Uri.class && targetModel instanceof Uri) {
+                                arg = targetModel;
+                            }
+                            if (arg != null) {
+                                final Object finalArg = arg;
+                                try {
+                                    m.setAccessible(true);
+                                    Object rb = m.invoke(requestManager, finalArg);
+                                    if (rb != null && isValidTranscodeTarget(rb) && isModelSet(rb) && hasIntoImageViewMethod(rb)) {
+                                        Logger.printInfo(() -> "Loaded RequestBuilder via rm." + mName + "(" + finalArg.getClass().getSimpleName() + ")");
+                                        return rb;
+                                    }
+                                } catch (Throwable ignored) {}
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Strategy 2: Pre-create RequestBuilder<Bitmap> or RequestBuilder<Drawable>, then invoke .load() (.k / .l / .m / .load)
             Object baseRb = createBitmapOrDrawableRequestBuilder(requestManager);
             if (baseRb != null) {
-                for (Method lm : baseRb.getClass().getMethods()) {
-                    if (lm.getName().equals("equals")) continue;
-                    Class<?>[] pt = lm.getParameterTypes();
-                    if (pt.length == 1 && (pt[0] == Object.class || pt[0].isInstance(targetModel))) {
-                        try {
-                            lm.setAccessible(true);
-                            Object finalRb = lm.invoke(baseRb, targetModel);
-                            if (finalRb != null && hasIntoImageViewMethod(finalRb)) {
-                                return finalRb;
+                String[] rbCandidateNames = new String[]{"k", "l", "m", "load"};
+                for (String mName : rbCandidateNames) {
+                    for (Method lm : baseRb.getClass().getMethods()) {
+                        if (lm.getName().equals(mName)) {
+                            Class<?>[] pt = lm.getParameterTypes();
+                            if (pt.length == 1) {
+                                Object arg = null;
+                                if (pt[0].isInstance(targetModel) || pt[0] == Object.class) {
+                                    arg = targetModel;
+                                } else if (pt[0] == String.class && targetModel instanceof String) {
+                                    arg = targetModel;
+                                } else if (pt[0] == Uri.class && targetModel instanceof Uri) {
+                                    arg = targetModel;
+                                }
+                                if (arg != null) {
+                                    final Object finalArg = arg;
+                                    try {
+                                        lm.setAccessible(true);
+                                        Object finalRb = lm.invoke(baseRb, finalArg);
+                                        if (finalRb != null && isValidTranscodeTarget(finalRb) && isModelSet(finalRb) && hasIntoImageViewMethod(finalRb)) {
+                                            Logger.printInfo(() -> "Loaded RequestBuilder via baseRb." + mName + "(" + finalArg.getClass().getSimpleName() + ")");
+                                            return finalRb;
+                                        }
+                                    } catch (Throwable ignored) {}
+                                }
                             }
-                        } catch (Throwable ignored) {}
+                        }
                     }
                 }
             }
 
-            if (model != null) {
-                for (Method m : rmClass.getMethods()) {
-                    if (m.getName().equals("equals")) continue;
-                    Class<?> rt = m.getReturnType();
-                    if (rt == void.class || rt.isPrimitive() || rt == Boolean.class || rt == boolean.class || rt == Object.class) continue;
-                    Class<?>[] pt = m.getParameterTypes();
-                    if (pt.length == 1 && (pt[0] == Object.class || pt[0].isInstance(model))) {
-                        try {
-                            m.setAccessible(true);
-                            Object res = m.invoke(requestManager, model);
-                            if (res != null && hasIntoImageViewMethod(res)) {
-                                return res;
-                            }
-                        } catch (Throwable ignored) {}
-                    }
-                }
-            }
-
-            if (urlStr.startsWith("content://") || urlStr.startsWith("file://")) {
-                Uri uri = Uri.parse(urlStr);
-                for (Method m : rmClass.getMethods()) {
-                    if (m.getName().equals("equals")) continue;
-                    Class<?> rt = m.getReturnType();
-                    if (rt == void.class || rt.isPrimitive() || rt == Boolean.class || rt == boolean.class || rt == Object.class) continue;
-                    Class<?>[] pt = m.getParameterTypes();
-                    if (pt.length == 1 && pt[0] == Uri.class) {
-                        try {
-                            m.setAccessible(true);
-                            Object res = m.invoke(requestManager, uri);
-                            if (res != null && hasIntoImageViewMethod(res)) {
-                                return res;
-                            }
-                        } catch (Throwable ignored) {}
-                    }
-                }
-            }
-
-            // Fallback load(String) or load(Object)
+            // Strategy 3: Dynamic scan across all methods on RequestManager EXCLUDING known non-load methods
             for (Method m : rmClass.getMethods()) {
-                if (m.getName().equals("equals")) continue;
+                String mn = m.getName();
+                if (mn.equals("equals") || mn.equals("e") || mn.equals("d") || mn.equals("a") || mn.equals("c") || mn.equals("b")) continue;
                 Class<?> rt = m.getReturnType();
                 if (rt == void.class || rt.isPrimitive() || rt == Boolean.class || rt == boolean.class || rt == Object.class) continue;
                 Class<?>[] pt = m.getParameterTypes();
-                if (pt.length == 1 && (pt[0] == String.class || pt[0] == Object.class)) {
-                    try {
-                        m.setAccessible(true);
-                        Object res = m.invoke(requestManager, urlStr);
-                        if (res != null && hasIntoImageViewMethod(res)) {
-                            return res;
-                        }
-                    } catch (Throwable ignored) {}
+                if (pt.length == 1) {
+                    Object arg = null;
+                    if (pt[0].isInstance(targetModel) || pt[0] == Object.class) {
+                        arg = targetModel;
+                    } else if (pt[0] == String.class && targetModel instanceof String) {
+                        arg = targetModel;
+                    } else if (pt[0] == Uri.class && targetModel instanceof Uri) {
+                        arg = targetModel;
+                    }
+                    if (arg != null) {
+                        try {
+                            m.setAccessible(true);
+                            Object res = m.invoke(requestManager, arg);
+                            if (res != null && isValidTranscodeTarget(res) && isModelSet(res) && hasIntoImageViewMethod(res)) {
+                                Logger.printInfo(() -> "Loaded RequestBuilder via fallback rm." + mn);
+                                return res;
+                            }
+                        } catch (Throwable ignored) {}
+                    }
                 }
             }
         } catch (Throwable t) {
@@ -3295,6 +3319,33 @@ public class NativeToolkitDialog {
             Logger.printInfo(() -> "loadGlideRequestBuilder error: " + cause.getClass().getSimpleName() + ": " + cause.getMessage());
         }
         return null;
+    }
+
+    private static boolean isModelSet(Object requestBuilder) {
+        if (requestBuilder == null) return false;
+        try {
+            for (Class<?> c = requestBuilder.getClass(); c != null && c != Object.class; c = c.getSuperclass()) {
+                try {
+                    java.lang.reflect.Field f = c.getDeclaredField("H");
+                    if (f.getType() == boolean.class) {
+                        f.setAccessible(true);
+                        return f.getBoolean(requestBuilder);
+                    }
+                } catch (NoSuchFieldException ignored) {}
+            }
+            // Fallback: check any boolean field that is true on the RequestBuilder
+            for (Class<?> c = requestBuilder.getClass(); c != null && c != Object.class; c = c.getSuperclass()) {
+                for (java.lang.reflect.Field f : c.getDeclaredFields()) {
+                    if (f.getType() == boolean.class) {
+                        f.setAccessible(true);
+                        if (f.getBoolean(requestBuilder)) {
+                            return true;
+                        }
+                    }
+                }
+            }
+        } catch (Throwable ignored) {}
+        return false;
     }
 
     private static boolean isValidTranscodeTarget(Object requestBuilder) {
@@ -3415,7 +3466,8 @@ public class NativeToolkitDialog {
                 }
             }
         } catch (Throwable t) {
-            Logger.printInfo(() -> "submitGlideFuture error: " + t.getMessage());
+            Throwable cause = t.getCause() != null ? t.getCause() : t;
+            Logger.printInfo(() -> "submitGlideFuture error: " + cause.getClass().getSimpleName() + ": " + cause.getMessage());
         }
         return null;
     }
