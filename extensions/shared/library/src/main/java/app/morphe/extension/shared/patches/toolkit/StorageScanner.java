@@ -3531,20 +3531,58 @@ public class StorageScanner {
     public static boolean isLockedFolderBackupEnabled(Context context, int accountId) {
         if (context == null) return false;
         try {
-            // 1. Check SharedPreferences for Mars backup onboarding completion
-            SharedPreferences sp = context.getSharedPreferences("com.google.android.apps.photos.mars.auth", Context.MODE_PRIVATE);
-            if (sp != null && sp.contains("has_finished_mars_backup_onboarding")) {
-                boolean on = sp.getBoolean("has_finished_mars_backup_onboarding", false);
-                if (on) return true;
+            // 1. Check photos.backup.backup_prefs for photos.backup.back_up_mars
+            SharedPreferences backupSp = context.getSharedPreferences("photos.backup.backup_prefs", Context.MODE_PRIVATE);
+            if (backupSp != null && backupSp.contains("photos.backup.back_up_mars")) {
+                if (backupSp.getBoolean("photos.backup.back_up_mars", false)) return true;
             }
         } catch (Throwable ignored) {}
 
         try {
-            // 2. Check remote_locked_media table presence and items
+            // 2. Check accounts shared preferences for mars backup onboarding
+            SharedPreferences accountsSp = context.getSharedPreferences("accounts", Context.MODE_PRIVATE);
+            if (accountsSp != null) {
+                Map<String, ?> all = accountsSp.getAll();
+                if (all != null) {
+                    for (Map.Entry<String, ?> entry : all.entrySet()) {
+                        String k = entry.getKey();
+                        if (k != null && k.contains("mars") && (k.endsWith("has_finished_mars_backup_onboarding") || k.endsWith("has_sent_start_cloud_rpc"))) {
+                            Object val = entry.getValue();
+                            if (val instanceof Boolean && (Boolean) val) {
+                                if (accountId >= 0) {
+                                    if (k.startsWith(accountId + ".")) return true;
+                                } else {
+                                    return true;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        } catch (Throwable ignored) {}
+
+        try {
+            // 3. Check standalone mars preferences
+            String[] prefNames = new String[]{"com.google.android.apps.photos.mars.auth", "app.morphe.android.apps.photos.mars.auth", "mars"};
+            for (String pName : prefNames) {
+                SharedPreferences sp = context.getSharedPreferences(pName, Context.MODE_PRIVATE);
+                if (sp != null) {
+                    if (sp.getBoolean("has_finished_mars_backup_onboarding", false) || sp.getBoolean("has_sent_start_cloud_rpc", false)) {
+                        return true;
+                    }
+                }
+            }
+        } catch (Throwable ignored) {}
+
+        try {
+            // 4. Check database tables (remote_locked_media, account_locked_folder_metadata)
             File dbf = context.getDatabasePath("gphotos" + accountId + ".db");
             if (dbf != null && dbf.exists()) {
                 try (SQLiteDatabase db = SQLiteDatabase.openDatabase(dbf.getAbsolutePath(), null, SQLiteDatabase.OPEN_READONLY | SQLiteDatabase.ENABLE_WRITE_AHEAD_LOGGING)) {
                     if (hasTable(db, "remote_locked_media") && getTableRowCount(db, "remote_locked_media") > 0) {
+                        return true;
+                    }
+                    if (hasTable(db, "account_locked_folder_metadata") && getTableRowCount(db, "account_locked_folder_metadata") > 0) {
                         return true;
                     }
                 }
@@ -3613,6 +3651,33 @@ public class StorageScanner {
         }
     }
 
+    private static Object createLocalId(String key) {
+        if (key == null || key.isEmpty()) return null;
+        String[] candidates = new String[]{"ajzv", "ahnr", "ahnl", "aijl"};
+        for (String cName : candidates) {
+            try {
+                Class<?> clazz = Class.forName(cName);
+                Method m = clazz.getMethod("a", String.class);
+                Object res = m.invoke(null, key);
+                if (res != null) return res;
+            } catch (Throwable ignored) {}
+        }
+        return null;
+    }
+
+    private static Object getEmptyFeatureSet() {
+        String[] candidates = new String[]{"yxd", "wrr"};
+        for (String cName : candidates) {
+            try {
+                Class<?> clazz = Class.forName(cName);
+                Field f = clazz.getField("a");
+                Object res = f.get(null);
+                if (res != null) return res;
+            } catch (Throwable ignored) {}
+        }
+        return null;
+    }
+
     private static Object createAlbumCollection(Context context, int accountId, String albumMediaKey) {
         if (albumMediaKey == null || albumMediaKey.isEmpty()) return null;
         long envelopeId = 0L;
@@ -3641,34 +3706,50 @@ public class StorageScanner {
             } catch (Throwable ignored) {}
         }
 
-        // 1. If it exists in envelopes table, it is a shared album (bfqo)
-        if (envelopeId != 0L) {
+        Object localId = createLocalId(albumMediaKey);
+        Object emptyFeatures = getEmptyFeatureSet();
+
+        // 1. Try qcs(int accountId, LocalId localId, FeatureSet features) [Google Photos 7.97]
+        if (localId != null && emptyFeatures != null) {
             try {
-                Class<?> bfqoClass = Class.forName("bfqo");
-                Class<?> ahnrClass = Class.forName("ahnr");
-                Class<?> wrrClass = Class.forName("wrr");
-                Object ahnrInst = ahnrClass.getMethod("a", String.class).invoke(null, albumMediaKey);
-                Object emptyFeatures = wrrClass.getField("a").get(null);
-                Constructor<?> ctor = bfqoClass.getConstructor(int.class, long.class, ahnrClass, wrrClass);
+                Class<?> qcsClass = Class.forName("qcs");
+                Constructor<?> ctor = qcsClass.getConstructor(int.class, localId.getClass(), emptyFeatures.getClass());
                 ctor.setAccessible(true);
-                Object res = ctor.newInstance(accountId, envelopeId, ahnrInst, emptyFeatures);
+                Object res = ctor.newInstance(accountId, localId, emptyFeatures);
                 if (res != null) return res;
-            } catch (Throwable tShared) {
-                Log.w("morphe: StorageScanner", "bfqo reflection failed: " + tShared.getMessage());
-            }
+            } catch (Throwable ignored) {}
         }
 
-        // 2. Otherwise (or in collections table), it is a private personal album (nrx via dyu.x)
+        // 2. Try bjld(int accountId, long albumId, LocalId localId, FeatureSet features) [Google Photos 7.97 collections]
+        if (localId != null && emptyFeatures != null && collectionId != 0L) {
+            try {
+                Class<?> bjldClass = Class.forName("bjld");
+                Constructor<?> ctor = bjldClass.getConstructor(int.class, long.class, localId.getClass(), emptyFeatures.getClass());
+                ctor.setAccessible(true);
+                Object res = ctor.newInstance(accountId, collectionId, localId, emptyFeatures);
+                if (res != null) return res;
+            } catch (Throwable ignored) {}
+        }
+
+        // 3. Shared album via bfqo(int, long, LocalId, FeatureSet) [Google Photos 7.96]
+        if (envelopeId != 0L && localId != null && emptyFeatures != null) {
+            try {
+                Class<?> bfqoClass = Class.forName("bfqo");
+                Constructor<?> ctor = bfqoClass.getConstructor(int.class, long.class, localId.getClass(), emptyFeatures.getClass());
+                ctor.setAccessible(true);
+                Object res = ctor.newInstance(accountId, envelopeId, localId, emptyFeatures);
+                if (res != null) return res;
+            } catch (Throwable ignored) {}
+        }
+
+        // 4. Try dyu.x / dyu.w
         try {
             Class<?> dyuClass = Class.forName("dyu");
             Method xMethod = dyuClass.getMethod("x", int.class, String.class);
             Object res = xMethod.invoke(null, accountId, albumMediaKey);
             if (res != null) return res;
-        } catch (Throwable tDyuX) {
-            Log.w("morphe: StorageScanner", "dyu.x reflection failed: " + tDyuX.getMessage());
-        }
+        } catch (Throwable ignored) {}
 
-        // 3. Fallback: dyu.w
         try {
             Class<?> dyuClass = Class.forName("dyu");
             Method wMethod = dyuClass.getMethod("w", int.class, String.class);
@@ -3740,92 +3821,91 @@ public class StorageScanner {
                     Object collection = createAlbumCollection(context, accountId, albumMediaKey);
                     Object task = null;
 
-                    boolean isShared = false;
-                    try {
-                        File dbf = context.getDatabasePath("gphotos" + accountId + ".db");
-                        if (dbf != null && dbf.exists()) {
-                            try (SQLiteDatabase db = SQLiteDatabase.openDatabase(dbf.getAbsolutePath(), null, SQLiteDatabase.OPEN_READONLY | SQLiteDatabase.ENABLE_WRITE_AHEAD_LOGGING)) {
-                                if (hasTable(db, "envelopes")) {
-                                    try (Cursor c = db.rawQuery("SELECT 1 FROM envelopes WHERE media_key = ? LIMIT 1", new String[]{albumMediaKey})) {
-                                        if (c != null && c.moveToFirst()) {
-                                            isShared = true;
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    } catch (Throwable ignored) {}
-
-                    if (!isShared && collection != null) {
+                    // Try 1: osi.c(int accountId, camh collection, List coreItems) [Google Photos 7.97]
+                    if (collection != null) {
                         try {
-                            Class<?> bfwsClass = Class.forName("bfws");
-                            Class<?> bwpgClass = Class.forName("bwpg");
-                            Method aMethod = bfwsClass.getMethod("a", bwpgClass);
-                            Object res = aMethod.invoke(null, collection);
-                            if (res instanceof Boolean) isShared = (Boolean) res;
-                        } catch (Throwable ignored) {}
-                    }
-
-                    if (!isShared) {
-                        // Private personal album: use RemoveMediaFromPrivateAlbumTask with mom(cid=1)
-                        // This supplies ahnr directly so moj bypasses looking for bamr on collection.
-                        try {
-                            Class<?> ahnrClass = Class.forName("ahnr");
-                            Object ahnrInst = ahnrClass.getMethod("a", String.class).invoke(null, albumMediaKey);
-
-                            Class<?> momClass = Class.forName("mom");
-                            Constructor<?> momCtor = momClass.getConstructor(int.class, Object.class, Object.class, int.class);
-                            momCtor.setAccessible(true);
-                            Object momWorker = momCtor.newInstance(accountId, ahnrInst, coreItems, 1);
-
-                            Class<?> lazlkClass = Class.forName("azlk");
-                            Object yK = lazlkClass.getField("yK").get(null);
-
-                            Class<?> rgaClass = Class.forName("rga");
-                            Method hMethod = null;
-                            for (Method m : rgaClass.getMethods()) {
-                                if ("h".equals(m.getName()) && m.getParameterTypes().length == 3) {
-                                    hMethod = m;
+                            Class<?> osiClass = Class.forName("osi");
+                            for (Method m : osiClass.getMethods()) {
+                                if ("c".equals(m.getName()) && m.getParameterTypes().length == 3 && m.getParameterTypes()[0] == int.class) {
+                                    task = m.invoke(null, accountId, collection, coreItems);
+                                    Log.i("morphe: StorageScanner", "Created RemoveMediaFromPrivateAlbumTask via osi.c: " + task);
                                     break;
                                 }
                             }
-                            if (hMethod != null) {
-                                Object qdpInst = hMethod.invoke(null, "RemoveMediaFromPrivateAlbumTask", yK, momWorker);
-                                Method bMethod = qdpInst.getClass().getMethod("b");
-                                Object qdnInst = bMethod.invoke(qdpInst);
-
-                                Method aMethod = qdnInst.getClass().getMethod("a");
-                                task = aMethod.invoke(qdnInst);
-                                Log.i("morphe: StorageScanner", "Created RemoveMediaFromPrivateAlbumTask via mom(cid=1): " + task);
-                            } else {
-                                Log.w("morphe: StorageScanner", "Could not find rga.h method with 3 parameters");
-                            }
-                        } catch (Throwable tMom) {
-                            Log.w("morphe: StorageScanner", "mom(cid=1) task creation failed: " + tMom.getMessage(), tMom);
-                        }
-
-                        // Fallback to iyo.r
-                        if (task == null && collection != null) {
-                            try {
-                                Class<?> iyoClass = Class.forName("iyo");
-                                Class<?> bwpgClass = Class.forName("bwpg");
-                                Method rMethod = iyoClass.getMethod("r", int.class, bwpgClass, List.class);
-                                task = rMethod.invoke(null, accountId, collection, coreItems);
-                                Log.i("morphe: StorageScanner", "Created RemoveMediaFromPrivateAlbumTask via iyo.r: " + task);
-                            } catch (Throwable tIyo) {
-                                Log.w("morphe: StorageScanner", "iyo.r reflection failed: " + tIyo.getMessage());
-                            }
+                        } catch (Throwable tOsi) {
+                            Log.w("morphe: StorageScanner", "osi.c reflection failed: " + tOsi.getMessage());
                         }
                     }
 
+                    // Try 2: iyo.r(int accountId, bwpg collection, List coreItems) [Google Photos 7.96]
                     if (task == null && collection != null) {
-                        // Shared album or fallback: RemoveFromCollectionTask
+                        try {
+                            Class<?> iyoClass = Class.forName("iyo");
+                            for (Method m : iyoClass.getMethods()) {
+                                if ("r".equals(m.getName()) && m.getParameterTypes().length == 3 && m.getParameterTypes()[0] == int.class) {
+                                    task = m.invoke(null, accountId, collection, coreItems);
+                                    Log.i("morphe: StorageScanner", "Created RemoveMediaFromPrivateAlbumTask via iyo.r: " + task);
+                                    break;
+                                }
+                            }
+                        } catch (Throwable tIyo) {
+                            Log.w("morphe: StorageScanner", "iyo.r reflection failed: " + tIyo.getMessage());
+                        }
+                    }
+
+                    // Try 3: Task worker orj / mom with rga.h
+                    if (task == null) {
+                        Object localId = createLocalId(albumMediaKey);
+                        String[] workerCandidates = new String[]{"orj", "mom"};
+                        for (String wName : workerCandidates) {
+                            try {
+                                Class<?> wClass = Class.forName(wName);
+                                Constructor<?> wCtor = wClass.getConstructor(int.class, Object.class, Object.class, int.class);
+                                wCtor.setAccessible(true);
+                                Object worker = (localId != null)
+                                        ? wCtor.newInstance(accountId, localId, coreItems, 1)
+                                        : (collection != null ? wCtor.newInstance(accountId, collection, coreItems, 0) : null);
+                                if (worker != null) {
+                                    Class<?> rgaClass = Class.forName("rga");
+                                    Object priority = null;
+                                    String[] enumCandidates = new String[]{"bdft", "azlk"};
+                                    for (String eName : enumCandidates) {
+                                        try {
+                                            Class<?> eClass = Class.forName(eName);
+                                            priority = eClass.getField("yK").get(null);
+                                            if (priority != null) break;
+                                        } catch (Throwable ignored) {}
+                                    }
+                                    for (Method m : rgaClass.getMethods()) {
+                                        if ("h".equals(m.getName()) && m.getParameterTypes().length == 3) {
+                                            Object qdpInst = m.invoke(null, "RemoveMediaFromPrivateAlbumTask", priority, worker);
+                                            Method bMethod = qdpInst.getClass().getMethod("b");
+                                            Object qdnInst = bMethod.invoke(qdpInst);
+                                            Method aMethod = qdnInst.getClass().getMethod("a");
+                                            task = aMethod.invoke(qdnInst);
+                                            Log.i("morphe: StorageScanner", "Created RemoveMediaFromPrivateAlbumTask via " + wName + ": " + task);
+                                            break;
+                                        }
+                                    }
+                                    if (task != null) break;
+                                }
+                            } catch (Throwable ignored) {}
+                        }
+                    }
+
+                    // Try 4: RemoveFromCollectionTask (Shared collections)
+                    if (task == null && collection != null) {
                         try {
                             Class<?> taskClass = Class.forName("com.google.android.apps.photos.album.removefromalbum.RemoveFromCollectionTask");
-                            Class<?> bwpgClass = Class.forName("bwpg");
-                            Constructor<?> ctor = taskClass.getConstructor(int.class, Collection.class, bwpgClass);
-                            task = ctor.newInstance(accountId, coreItems, collection);
-                            Log.i("morphe: StorageScanner", "Created RemoveFromCollectionTask: " + task);
+                            Class<?> colClass = null;
+                            for (String cName : new String[]{"camh", "bwpg"}) {
+                                try { colClass = Class.forName(cName); break; } catch (Throwable ignored) {}
+                            }
+                            if (colClass != null) {
+                                Constructor<?> ctor = taskClass.getConstructor(int.class, Collection.class, colClass);
+                                task = ctor.newInstance(accountId, coreItems, collection);
+                                Log.i("morphe: StorageScanner", "Created RemoveFromCollectionTask: " + task);
+                            }
                         } catch (Throwable tTask) {
                             Log.w("morphe: StorageScanner", "RemoveFromCollectionTask reflection failed: " + tTask.getMessage());
                         }
@@ -3861,6 +3941,7 @@ public class StorageScanner {
         }
 
         // Optimistic purge in local tables (remote_media, shared_media, item_collection_data) with WAL enabled
+        int localDeletedRows = 0;
         try {
             File dbf = context.getDatabasePath("gphotos" + accountId + ".db");
             if (dbf != null && dbf.exists()) {
@@ -3868,13 +3949,13 @@ public class StorageScanner {
                     for (MediaItem it : items) {
                         String mKey = it.mediaKey != null && !it.mediaKey.isEmpty() ? it.mediaKey : it.dedupKey;
                         if (hasTable(db, "remote_media")) {
-                            db.delete("remote_media", "(dedup_key = ? OR media_key = ?) AND collection_id = ?", new String[]{it.dedupKey, mKey, albumMediaKey});
+                            localDeletedRows += db.delete("remote_media", "(dedup_key = ? OR media_key = ?) AND collection_id = ?", new String[]{it.dedupKey, mKey, albumMediaKey});
                         }
                         if (hasTable(db, "shared_media")) {
-                            db.delete("shared_media", "(dedup_key = ? OR media_key = ?) AND collection_id = ?", new String[]{it.dedupKey, mKey, albumMediaKey});
+                            localDeletedRows += db.delete("shared_media", "(dedup_key = ? OR media_key = ?) AND collection_id = ?", new String[]{it.dedupKey, mKey, albumMediaKey});
                         }
                         if (hasTable(db, "item_collection_data")) {
-                            db.delete("item_collection_data", "(canonical_id = ? OR canonical_id = ? OR icd_id LIKE ? OR icd_id LIKE ?) AND collection_id = ?",
+                            localDeletedRows += db.delete("item_collection_data", "(canonical_id = ? OR canonical_id = ? OR icd_id LIKE ? OR icd_id LIKE ?) AND collection_id = ?",
                                     new String[]{mKey, it.dedupKey, "%" + mKey + "%", "%" + it.dedupKey + "%", albumMediaKey});
                         }
                     }
@@ -3888,8 +3969,8 @@ public class StorageScanner {
             }
         } catch (Throwable ignored) {}
 
-        Log.i("morphe: StorageScanner", "executeOnlineRemoveFromAlbumTask finished: " + successCount + "/" + totalChunks + " chunks successful");
-        return successCount > 0;
+        Log.i("morphe: StorageScanner", "executeOnlineRemoveFromAlbumTask finished: " + successCount + "/" + totalChunks + " chunks successful, localDeletedRows=" + localDeletedRows);
+        return successCount > 0 || localDeletedRows > 0;
     }
 
     public static Long parseDateFromFilename(String filename) {
