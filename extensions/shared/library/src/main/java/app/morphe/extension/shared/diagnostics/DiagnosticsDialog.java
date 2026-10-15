@@ -26,6 +26,7 @@ import android.widget.AdapterView;
 import android.widget.ArrayAdapter;
 import android.widget.EditText;
 import android.widget.FrameLayout;
+import android.widget.HorizontalScrollView;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
@@ -249,6 +250,78 @@ public final class DiagnosticsDialog {
         inputWrapper.addView(btnClearSearch);
 
         filterBar.addView(inputWrapper);
+
+        // Category Chips Row (Horizontal Scroll)
+        HorizontalScrollView chipScrollView = new HorizontalScrollView(activity);
+        chipScrollView.setHorizontalScrollBarEnabled(false);
+        chipScrollView.setOverScrollMode(View.OVER_SCROLL_NEVER);
+        LinearLayout.LayoutParams csvLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        csvLp.topMargin = (int) (8 * density);
+        chipScrollView.setLayoutParams(csvLp);
+
+        LinearLayout chipsContainer = new LinearLayout(activity);
+        chipsContainer.setOrientation(LinearLayout.HORIZONTAL);
+        chipScrollView.addView(chipsContainer);
+
+        final String[] activeCategory = new String[]{"ALL"};
+        final Runnable[] loadLogsRef = new Runnable[1];
+
+        final String[][] chipDefs = new String[][] {
+            {"ALL", "All"},
+            {"ERROR", "🚨 Errors & Crashes"},
+            {"TOOLKIT", "🛠️ Toolkit"},
+            {"MAPS", "🗺️ Maps"},
+            {"FLAGS", "🚩 Flags"}
+        };
+        final TextView[] chipViews = new TextView[chipDefs.length];
+
+        Runnable updateChipStyles = () -> {
+            for (int i = 0; i < chipDefs.length; i++) {
+                TextView cv = chipViews[i];
+                if (cv == null) continue;
+                boolean isSelected = chipDefs[i][0].equals(activeCategory[0]);
+                if (isSelected) {
+                    cv.setBackground(createRoundedDrawable(theme.primary, 14 * density));
+                    cv.setTextColor(theme.onPrimary);
+                    cv.setTypeface(null, Typeface.BOLD);
+                } else {
+                    cv.setBackground(createRoundedCardDrawable(theme.surfaceContainer, theme.outline, 14 * density));
+                    cv.setTextColor(theme.textSecondary);
+                    cv.setTypeface(null, Typeface.NORMAL);
+                }
+            }
+        };
+
+        for (int i = 0; i < chipDefs.length; i++) {
+            final String key = chipDefs[i][0];
+            String label = chipDefs[i][1];
+            TextView chipView = new TextView(activity);
+            chipView.setText(label);
+            chipView.setTextSize(12f);
+            chipView.setGravity(Gravity.CENTER);
+            int cvPadH = (int) (12 * density);
+            int cvPadV = (int) (6 * density);
+            chipView.setPadding(cvPadH, cvPadV, cvPadH, cvPadV);
+            chipView.setClickable(true);
+            chipView.setFocusable(true);
+            LinearLayout.LayoutParams cLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            cLp.rightMargin = (int) (6 * density);
+            chipView.setLayoutParams(cLp);
+
+            chipViews[i] = chipView;
+            chipView.setOnClickListener(v -> {
+                if (!activeCategory[0].equals(key)) {
+                    activeCategory[0] = key;
+                    updateChipStyles.run();
+                    if (loadLogsRef[0] != null) {
+                        loadLogsRef[0].run();
+                    }
+                }
+            });
+            chipsContainer.addView(chipView);
+        }
+        updateChipStyles.run();
+        filterBar.addView(chipScrollView);
         root.addView(filterBar);
 
         // ─────────────────────────────────────────────────────────────────────
@@ -378,15 +451,17 @@ public final class DiagnosticsDialog {
                 tvLogs.setText("No log session selected.");
                 return;
             }
+            final String q = etSearch.getText().toString();
+            final String cat = activeCategory[0];
             new Thread(() -> {
-                String q = etSearch.getText().toString();
-                String content = SessionLogManager.readSessionContent(activeSession[0], q, "ALL");
+                String content = SessionLogManager.readSessionContent(activeSession[0], q, cat, 1000);
                 MAIN_HANDLER.post(() -> {
                     tvLogs.setText(content);
                     scrollView.post(() -> scrollView.fullScroll(View.FOCUS_DOWN));
                 });
             }).start();
         };
+        loadLogsRef[0] = loadLogs;
 
         // Sessions loader
         Runnable reloadSessions = () -> {

@@ -3286,6 +3286,7 @@ public class NativeToolkitDialog {
     // ─────────────────────────────────────────────────────────────────────────
     private static volatile Method sGlideWithMethod = null;
     private static volatile boolean sGlideResolved = false;
+    private static volatile boolean sLoggedGlideStrategy = false;
 
     private static Object getGlideRequestManager(Context context) {
         if (context == null) context = app.morphe.extension.shared.Utils.getContext();
@@ -3348,7 +3349,9 @@ public class NativeToolkitDialog {
                         Constructor<?> ctor = mClass.getConstructor(String.class, int.class, oClass);
                         model = ctor.newInstance(urlStr, accountId, defaultOptions);
                         if (model != null) {
-                            Logger.printInfo(() -> "Loaded RemoteMediaModel via: " + pair[0]);
+                            if (!sLoggedGlideStrategy) {
+                                Logger.printInfo(() -> "Loaded RemoteMediaModel via: " + pair[0]);
+                            }
                             break;
                         }
                     } catch (Throwable ignored) {}
@@ -3379,7 +3382,10 @@ public class NativeToolkitDialog {
                                     m.setAccessible(true);
                                     Object rb = m.invoke(requestManager, finalArg);
                                     if (rb != null && isValidTranscodeTarget(rb) && isModelSet(rb) && hasIntoImageViewMethod(rb)) {
-                                        Logger.printInfo(() -> "Loaded RequestBuilder via rm." + mName + "(" + finalArg.getClass().getSimpleName() + ")");
+                                        if (!sLoggedGlideStrategy) {
+                                            sLoggedGlideStrategy = true;
+                                            Logger.printInfo(() -> "Loaded RequestBuilder via rm." + mName + "(" + finalArg.getClass().getSimpleName() + ")");
+                                        }
                                         return rb;
                                     }
                                 } catch (Throwable ignored) {}
@@ -3412,7 +3418,10 @@ public class NativeToolkitDialog {
                                         lm.setAccessible(true);
                                         Object finalRb = lm.invoke(baseRb, finalArg);
                                         if (finalRb != null && isValidTranscodeTarget(finalRb) && isModelSet(finalRb) && hasIntoImageViewMethod(finalRb)) {
-                                            Logger.printInfo(() -> "Loaded RequestBuilder via baseRb." + mName + "(" + finalArg.getClass().getSimpleName() + ")");
+                                            if (!sLoggedGlideStrategy) {
+                                                sLoggedGlideStrategy = true;
+                                                Logger.printInfo(() -> "Loaded RequestBuilder via baseRb." + mName + "(" + finalArg.getClass().getSimpleName() + ")");
+                                            }
                                             return finalRb;
                                         }
                                     } catch (Throwable ignored) {}
@@ -3444,7 +3453,10 @@ public class NativeToolkitDialog {
                             m.setAccessible(true);
                             Object res = m.invoke(requestManager, arg);
                             if (res != null && isValidTranscodeTarget(res) && isModelSet(res) && hasIntoImageViewMethod(res)) {
-                                Logger.printInfo(() -> "Loaded RequestBuilder via fallback rm." + mn);
+                                if (!sLoggedGlideStrategy) {
+                                    sLoggedGlideStrategy = true;
+                                    Logger.printInfo(() -> "Loaded RequestBuilder via fallback rm." + mn);
+                                }
                                 return res;
                             }
                         } catch (Throwable ignored) {}

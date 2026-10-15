@@ -77,6 +77,8 @@ public final class SessionLogManager {
 
     private static final Deque<String> sRecentLogBuffer = new ArrayDeque<>();
     private static final Object BUFFER_LOCK = new Object();
+    private static volatile String sLastAppendedMessage = null;
+    private static volatile int sAppendedRepeatCount = 0;
     private static Thread.UncaughtExceptionHandler sOriginalCrashHandler;
 
     public static class SessionInfo {
@@ -328,16 +330,35 @@ public final class SessionLogManager {
     }
 
     /**
-     * Appends an in-app log entry from Morphe Logger.
+     * Appends an in-app log entry from Morphe Logger with consecutive repeat compaction.
      */
     public static void appendLog(String tag, String level, String message, Throwable ex) {
         if (message == null) return;
 
+        String sanitizedMsg = sanitize(message);
+
+        // Repetition compaction: suppress consecutive identical messages
+        String repeatNotice = null;
+        synchronized (BUFFER_LOCK) {
+            if (sanitizedMsg.equals(sLastAppendedMessage) && ex == null) {
+                sAppendedRepeatCount++;
+                return;
+            } else {
+                if (sAppendedRepeatCount > 0) {
+                    repeatNotice = "  ... [repeated " + sAppendedRepeatCount + " times]";
+                    sAppendedRepeatCount = 0;
+                }
+                sLastAppendedMessage = sanitizedMsg;
+            }
+        }
+
         SimpleDateFormat timeFmt = new SimpleDateFormat("HH:mm:ss.SSS", Locale.US);
         String timestamp = timeFmt.format(new Date());
 
-        String sanitizedMsg = sanitize(message);
         StringBuilder entry = new StringBuilder();
+        if (repeatNotice != null) {
+            entry.append(repeatNotice).append("\n");
+        }
         entry.append(timestamp).append(" [").append(level).append("] ").append(tag).append(": ").append(sanitizedMsg);
 
         if (ex != null) {
@@ -449,28 +470,63 @@ public final class SessionLogManager {
         logcatThread.start();
     }
 
+    private static boolean isExcludedLogcatLine(String line) {
+        if (line == null) return true;
+        // 1. Skip duplicate Morphe logger entries (already logged directly via appendLog)
+        if (line.contains("morphe: ") || line.contains("I/morphe") || line.contains("D/morphe") || line.contains("[INFO] ") || line.contains("[ERROR] ")) {
+            return true;
+        }
+        // 2. Framework UI / System churn
+        if (line.contains("ImeTracker") ||
+            line.contains("DynamiteContextFactory") ||
+            line.contains("ProviderInstaller") ||
+            line.contains("GraphicsEnvironment") ||
+            line.contains("nativeloader") ||
+            line.contains("JobInfo") ||
+            line.contains("requestLayout() improperly called") ||
+            line.contains("PRAGMA journal_mode=TRUNCATE") ||
+            line.contains("Not starting debugger since process cannot load")) {
+            return true;
+        }
+        return false;
+    }
+
     private static boolean isRelevantLogcatLine(String line) {
-        if (line == null) return false;
-        return line.contains("Morphe") ||
-               line.contains("morphe:") ||
-               line.contains("GmsMap") ||
-               line.contains("GmsCore") ||
-               line.contains("Mapbox") ||
-               line.contains("Phenotype") ||
-               line.contains("AndroidRuntime") ||
-               line.contains("FATAL") ||
-               line.contains("CameraUpdate") ||
-               line.contains("app.morphe") ||
-               line.contains("com.google.android.apps.photos") ||
-               line.contains("System.err") ||
-               line.contains("DEBUG   :") ||
-               line.contains("crash_dump") ||
-               line.contains("Fatal signal") ||
-               line.contains("Exception") ||
-               line.contains("Error") ||
-               line.contains("StrictMode") ||
-               line.contains(" E/") ||
-               line.contains(" F/");
+        if (line == null || isExcludedLogcatLine(line)) return false;
+
+        // Fatal and runtime crashes
+        if (line.contains("AndroidRuntime") ||
+            line.contains("FATAL EXCEPTION") ||
+            line.contains("DEBUG   :") ||
+            line.contains("crash_dump") ||
+            line.contains("Fatal signal")) {
+            return true;
+        }
+
+        // Uncaught exceptions & standard errors
+        if (line.contains("Exception") ||
+            line.contains("Error") ||
+            line.contains("System.err") ||
+            line.contains("StrictMode") ||
+            line.contains(" E/") ||
+            line.contains(" F/")) {
+            return true;
+        }
+
+        // Warnings from Morphe or critical database warnings
+        if (line.contains("W/morphe") || line.contains("E/morphe")) {
+            return true;
+        }
+
+        // Specific sub-features of interest
+        if (line.contains("GmsCore") ||
+            line.contains("GmsMap") ||
+            line.contains("Mapbox") ||
+            line.contains("PhenotypeFlag")) {
+            return true;
+        }
+
+        return false;
     }
 
     public static String sanitize(String input) {
@@ -522,11 +578,16 @@ public final class SessionLogManager {
     }
 
     public static String readSessionContent(SessionInfo session, String filterQuery, String levelFilter) {
+        return readSessionContent(session, filterQuery, levelFilter, 0);
+    }
+
+    public static String readSessionContent(SessionInfo session, String filterQuery, String levelFilter, int maxLines) {
         if (session == null || session.file == null || !session.file.exists()) {
             return "Log file not found.";
         }
 
-        StringBuilder sb = new StringBuilder();
+        StringBuilder headerSb = new StringBuilder();
+        List<String> matchedLines = new ArrayList<>();
         String q = filterQuery != null ? filterQuery.toLowerCase().trim() : "";
         String lvl = levelFilter != null ? levelFilter.toUpperCase() : "ALL";
 
@@ -538,16 +599,29 @@ public final class SessionLogManager {
                     line.startsWith("Photos") || line.startsWith("Morphe") || line.startsWith("MORPHE") ||
                     line.startsWith("Package:") || line.startsWith("GmsCore") || line.startsWith("Start Time:")) {
                     // Always include header lines
-                    sb.append(line).append("\n");
+                    headerSb.append(line).append("\n");
                     continue;
                 }
 
                 if (!lvl.equals("ALL")) {
-                    if (lvl.equals("ERROR") && !line.contains("[ERROR]") && !line.contains("FATAL") && !line.contains("Exception") && !line.contains("🚨")) {
-                        continue;
-                    } else if (lvl.equals("MAPS") && !line.contains("Map") && !line.contains("Location") && !line.contains("GmsMap")) {
-                        continue;
-                    } else if (lvl.equals("FLAGS") && !line.contains("Flag") && !line.contains("Phenotype")) {
+                    boolean matchesCategory = false;
+                    if (lvl.equals("ERROR")) {
+                        matchesCategory = line.contains("[ERROR]") || line.contains("FATAL") || line.contains("Exception") ||
+                                          line.contains("🚨") || line.contains(" E/") || line.contains(" F/") ||
+                                          line.contains("Crash") || line.contains("crash_dump");
+                    } else if (lvl.equals("TOOLKIT")) {
+                        matchesCategory = line.contains("Toolkit") || line.contains("toolkit") || line.contains("StorageScanner") ||
+                                          line.contains("NativeToolkitDialog") || line.contains("Mars") || line.contains("Locked") ||
+                                          line.contains("mars") || line.contains("locked") || line.contains("Album") ||
+                                          line.contains("album") || line.contains("gphotos") || line.contains("remote_media") ||
+                                          line.contains("shared_media") || line.contains("app.morphe.extension.shared.patches.toolkit");
+                    } else if (lvl.equals("MAPS")) {
+                        matchesCategory = line.contains("Map") || line.contains("Location") || line.contains("GmsMap") ||
+                                          line.contains("Mapbox") || line.contains("CameraUpdate");
+                    } else if (lvl.equals("FLAGS")) {
+                        matchesCategory = line.contains("Flag") || line.contains("Phenotype");
+                    }
+                    if (!matchesCategory) {
                         continue;
                     }
                 }
@@ -556,10 +630,23 @@ public final class SessionLogManager {
                     continue;
                 }
 
-                sb.append(line).append("\n");
+                matchedLines.add(line);
             }
         } catch (Throwable t) {
-            sb.append("\nFailed to read log file: ").append(t.getMessage());
+            headerSb.append("\nFailed to read log file: ").append(t.getMessage());
+        }
+
+        StringBuilder sb = new StringBuilder(headerSb);
+        if (maxLines > 0 && matchedLines.size() > maxLines) {
+            sb.append("\n[... Displaying latest ").append(maxLines).append(" of ").append(matchedLines.size()).append(" matching lines. Export file for complete history ...]\n\n");
+            int startIndex = matchedLines.size() - maxLines;
+            for (int i = startIndex; i < matchedLines.size(); i++) {
+                sb.append(matchedLines.get(i)).append("\n");
+            }
+        } else {
+            for (String l : matchedLines) {
+                sb.append(l).append("\n");
+            }
         }
 
         return sb.toString();
