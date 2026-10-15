@@ -3531,61 +3531,21 @@ public class StorageScanner {
     public static boolean isLockedFolderBackupEnabled(Context context, int accountId) {
         if (context == null) return false;
         try {
-            // 1. Check photos.backup.backup_prefs for photos.backup.back_up_mars
             SharedPreferences backupSp = context.getSharedPreferences("photos.backup.backup_prefs", Context.MODE_PRIVATE);
-            if (backupSp != null && backupSp.contains("photos.backup.back_up_mars")) {
-                if (backupSp.getBoolean("photos.backup.back_up_mars", false)) return true;
-            }
-        } catch (Throwable ignored) {}
-
-        try {
-            // 2. Check accounts shared preferences for mars backup onboarding
-            SharedPreferences accountsSp = context.getSharedPreferences("accounts", Context.MODE_PRIVATE);
-            if (accountsSp != null) {
-                Map<String, ?> all = accountsSp.getAll();
-                if (all != null) {
-                    for (Map.Entry<String, ?> entry : all.entrySet()) {
-                        String k = entry.getKey();
-                        if (k != null && k.contains("mars") && (k.endsWith("has_finished_mars_backup_onboarding") || k.endsWith("has_sent_start_cloud_rpc"))) {
-                            Object val = entry.getValue();
-                            if (val instanceof Boolean && (Boolean) val) {
-                                if (accountId >= 0) {
-                                    if (k.startsWith(accountId + ".")) return true;
-                                } else {
-                                    return true;
-                                }
-                            }
-                        }
-                    }
+            if (backupSp != null) {
+                // 1. Overall Default Backup must be enabled (account_id != -1)
+                int backupAccountId = backupSp.getInt("backup_prefs_account_id", -1);
+                if (backupAccountId == -1) {
+                    // Overall backup is turned OFF
+                    return false;
                 }
-            }
-        } catch (Throwable ignored) {}
-
-        try {
-            // 3. Check standalone mars preferences
-            String[] prefNames = new String[]{"com.google.android.apps.photos.mars.auth", "app.morphe.android.apps.photos.mars.auth", "mars"};
-            for (String pName : prefNames) {
-                SharedPreferences sp = context.getSharedPreferences(pName, Context.MODE_PRIVATE);
-                if (sp != null) {
-                    if (sp.getBoolean("has_finished_mars_backup_onboarding", false) || sp.getBoolean("has_sent_start_cloud_rpc", false)) {
-                        return true;
-                    }
+                if (accountId >= 0 && backupAccountId != accountId) {
+                    // Active backup account does not match this account
+                    return false;
                 }
-            }
-        } catch (Throwable ignored) {}
 
-        try {
-            // 4. Check database tables (remote_locked_media, account_locked_folder_metadata)
-            File dbf = context.getDatabasePath("gphotos" + accountId + ".db");
-            if (dbf != null && dbf.exists()) {
-                try (SQLiteDatabase db = SQLiteDatabase.openDatabase(dbf.getAbsolutePath(), null, SQLiteDatabase.OPEN_READONLY | SQLiteDatabase.ENABLE_WRITE_AHEAD_LOGGING)) {
-                    if (hasTable(db, "remote_locked_media") && getTableRowCount(db, "remote_locked_media") > 0) {
-                        return true;
-                    }
-                    if (hasTable(db, "account_locked_folder_metadata") && getTableRowCount(db, "account_locked_folder_metadata") > 0) {
-                        return true;
-                    }
-                }
+                // 2. Locked Folder backup toggle must be explicitly enabled
+                return backupSp.getBoolean("photos.backup.back_up_mars", false);
             }
         } catch (Throwable ignored) {}
 
