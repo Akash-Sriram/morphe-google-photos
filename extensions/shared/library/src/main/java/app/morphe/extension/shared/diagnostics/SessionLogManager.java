@@ -240,7 +240,6 @@ public final class SessionLogManager {
             writer.write("Session ID:        " + sCurrentSessionId + "\n");
             writer.write("Start Time:        " + new Date(sSessionStartTime).toString() + "\n");
             writer.write("Android OS:        " + Build.VERSION.RELEASE + " (API " + Build.VERSION.SDK_INT + ")\n");
-            writer.write("Security Patch:    " + (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M ? Build.VERSION.SECURITY_PATCH : "N/A") + "\n");
             writer.write("Photos App Ver:    " + Utils.getAppVersionName() + "\n");
             writer.write("Morphe Patches:    " + Utils.getPatchesReleaseVersion() + "\n");
             writer.write("Package:           " + (sContext != null ? sContext.getPackageName() : "unknown") + "\n");
@@ -673,11 +672,7 @@ public final class SessionLogManager {
     public static String formatGitHubReport(SessionInfo session, String content, String filterQuery, String levelFilter) {
         StringBuilder sb = new StringBuilder();
         sb.append("### Environment Information\n");
-        sb.append("- **Device**: ").append(Build.MANUFACTURER).append(" ").append(Build.MODEL).append("\n");
         sb.append("- **Android OS**: ").append(Build.VERSION.RELEASE).append(" (API ").append(Build.VERSION.SDK_INT).append(")\n");
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            sb.append("- **Security Patch**: ").append(Build.VERSION.SECURITY_PATCH).append("\n");
-        }
         sb.append("- **Photos Version**: ").append(Utils.getAppVersionName()).append("\n");
         sb.append("- **Morphe Version**: ").append(Utils.getPatchesReleaseVersion()).append("\n");
         if (session != null) {
