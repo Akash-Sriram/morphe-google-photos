@@ -3519,11 +3519,17 @@ public class StorageScanner {
 
     public static boolean isItemCloudBackedUp(MediaItem item) {
         if (item == null) return false;
-        if (item.remoteUrl != null && !item.remoteUrl.trim().isEmpty() && !item.remoteUrl.startsWith("local:")) {
-            return true;
+        if (item.remoteUrl != null && !item.remoteUrl.trim().isEmpty()) {
+            String u = item.remoteUrl.trim();
+            if (u.startsWith("http://") || u.startsWith("https://") || u.startsWith("//")) {
+                return true;
+            }
         }
-        if (item.mediaKey != null && !item.mediaKey.trim().isEmpty() && !item.mediaKey.startsWith("local:") && !item.mediaKey.equals(item.dedupKey)) {
-            return true;
+        if (item.mediaKey != null && !item.mediaKey.trim().isEmpty()) {
+            String k = item.mediaKey.trim();
+            if (!k.startsWith("local:") && !k.startsWith("/") && !k.startsWith("file:") && !k.equals(item.dedupKey)) {
+                return true;
+            }
         }
         return false;
     }

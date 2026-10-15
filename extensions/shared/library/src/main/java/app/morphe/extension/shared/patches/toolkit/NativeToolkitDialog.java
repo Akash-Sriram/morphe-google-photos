@@ -129,6 +129,7 @@ public class NativeToolkitDialog {
     private static StorageScanner.FilterCriteria currentCriteria = new StorageScanner.FilterCriteria();
     private static List<StorageScanner.MediaItem> allQueriedItems = new ArrayList<>();
     private static List<StorageScanner.AlbumInfo> availableAlbums = new ArrayList<>();
+    private static final AtomicInteger sScanSequence = new AtomicInteger(0);
     private static Runnable sRepopulateAlbumCardsRunnable = null;
     public enum SortOrder {
         DATE_DESC("Date (Newest first)", "Newest"),
@@ -858,6 +859,7 @@ public class NativeToolkitDialog {
         // Query Execution Engine
         // ─────────────────────────────────────────────────────────────────────
         runScanRef[0] = () -> {
+            final int scanSeq = sScanSequence.incrementAndGet();
             MAIN_HANDLER.post(() -> {
                 tvResultsStatus.setText("Scanning media matching filters...");
                 tvScanButtonLabel.setText("Scanning...");
@@ -865,6 +867,7 @@ public class NativeToolkitDialog {
             });
             THREAD_POOL.execute(() -> {
                 try {
+                    if (scanSeq != sScanSequence.get()) return;
                     if (currentAccount == null) {
                         currentAccount = StorageScanner.getActiveAccount(activity);
                     }
@@ -877,8 +880,9 @@ public class NativeToolkitDialog {
                     }
 
                     List<StorageScanner.MediaItem> items = StorageScanner.queryMedia(currentAccount, currentCriteria);
-                    allQueriedItems.clear();
-                    allQueriedItems.addAll(items);
+                    if (scanSeq != sScanSequence.get()) return;
+
+                    List<StorageScanner.MediaItem> resultItems = new ArrayList<>(items);
 
                     // If Similarity filter active, compute hashes & cluster
                     if (currentCriteria.similarityThreshold > 0 && !items.isEmpty()) {
@@ -886,7 +890,11 @@ public class NativeToolkitDialog {
                         int maxCandidates = Math.min(items.size(), 100);
                         List<StorageScanner.MediaItem> candidates = new ArrayList<>(items.subList(0, maxCandidates));
 
-                        MAIN_HANDLER.post(() -> tvResultsStatus.setText("Clustering visual similarity (checking top " + maxCandidates + " items)..."));
+                        MAIN_HANDLER.post(() -> {
+                            if (scanSeq == sScanSequence.get()) {
+                                tvResultsStatus.setText("Clustering visual similarity (checking top " + maxCandidates + " items)...");
+                            }
+                        });
 
                         int accId = currentAccount != null ? currentAccount.accountId : 0;
                         int workerThreads = Math.min(4, Math.max(2, Runtime.getRuntime().availableProcessors()));
@@ -924,26 +932,34 @@ public class NativeToolkitDialog {
                         } catch (InterruptedException ignored) {}
                         thumbPool.shutdown();
 
+                        if (scanSeq != sScanSequence.get()) return;
+
                         List<List<StorageScanner.MediaItem>> clusters = StorageScanner.clusterSimilarItems(candidates, currentCriteria.similarityThreshold, hSize);
-                        allQueriedItems.clear();
+                        resultItems = new ArrayList<>();
                         if (!clusters.isEmpty()) {
-                            List<StorageScanner.MediaItem> clusteredItems = new ArrayList<>();
-                            for (List<StorageScanner.MediaItem> cl : clusters) clusteredItems.addAll(cl);
-                            allQueriedItems.addAll(clusteredItems);
+                            for (List<StorageScanner.MediaItem> cl : clusters) resultItems.addAll(cl);
                         }
                     }
 
                     if (currentCriteria.similarityThreshold <= 0) {
-                        sortMediaItems(allQueriedItems, currentSortOrder);
+                        sortMediaItems(resultItems, currentSortOrder);
                     }
 
-                    selectedMediaKeys.clear();
-                    for (StorageScanner.MediaItem it : allQueriedItems) {
-                        selectedMediaKeys.add(getItemKey(it));
+                    if (scanSeq != sScanSequence.get()) return;
+
+                    final List<StorageScanner.MediaItem> finalResults = resultItems;
+                    final Set<String> newSelectedKeys = new HashSet<>();
+                    for (StorageScanner.MediaItem it : finalResults) {
+                        newSelectedKeys.add(getItemKey(it));
                     }
 
                     MAIN_HANDLER.post(() -> {
+                        if (scanSeq != sScanSequence.get()) return;
                         if (sProgressBar != null) sProgressBar.setVisibility(View.GONE);
+                        allQueriedItems = new ArrayList<>(finalResults);
+                        selectedMediaKeys.clear();
+                        selectedMediaKeys.addAll(newSelectedKeys);
+
                         tvScanButtonLabel.setText("Scan & Filter (" + allQueriedItems.size() + ")");
                         int consuming = 0;
                         long totalQuotaBytes = 0;
@@ -962,6 +978,7 @@ public class NativeToolkitDialog {
                 } catch (Throwable t) {
                     Logger.printException(() -> "Error in runScan", t);
                     MAIN_HANDLER.post(() -> {
+                        if (scanSeq != sScanSequence.get()) return;
                         if (sProgressBar != null) sProgressBar.setVisibility(View.GONE);
                         tvScanButtonLabel.setText("Scan & Filter");
                         tvResultsStatus.setText("Scan error: " + t.getMessage());
@@ -1765,9 +1782,11 @@ public class NativeToolkitDialog {
                 } else if ("unLock".equals(actionId)) {
                     int count = items.size();
                     String title = (count == 1) ? "Move out of Locked Folder?" : ("Move " + count + " items out of Locked Folder?");
+                    int accountId = (currentAccount != null) ? currentAccount.accountId : -1;
+                    boolean lockerBackupEnabled = StorageScanner.isLockedFolderBackupEnabled(activity, accountId);
                     int localCount = 0;
                     for (StorageScanner.MediaItem it : items) {
-                        if (!StorageScanner.isItemCloudBackedUp(it)) {
+                        if (!lockerBackupEnabled || !StorageScanner.isItemCloudBackedUp(it)) {
                             localCount++;
                         }
                     }
@@ -2966,10 +2985,11 @@ public class NativeToolkitDialog {
         renderResults(activity, container, items, selectedKeys, isGrid, onSelectionChanged, density, theme, new int[]{0});
     }
 
-    private static void renderResults(Activity activity, LinearLayout container, List<StorageScanner.MediaItem> items,
+    private static void renderResults(Activity activity, LinearLayout container, List<StorageScanner.MediaItem> rawItems,
                                       Set<String> selectedKeys, boolean isGrid, Runnable onSelectionChanged,
                                       float density, Theme theme, int[] currentPageRef) {
         container.removeAllViews();
+        final List<StorageScanner.MediaItem> items = (rawItems != null) ? new ArrayList<>(rawItems) : new ArrayList<>();
         if (items.isEmpty()) {
             TextView tvEmpty = new TextView(activity);
             tvEmpty.setText("No media items matched the selected filters.");
@@ -3003,6 +3023,7 @@ public class NativeToolkitDialog {
             int colCount = 3;
             LinearLayout currentRow = null;
             for (int i = start; i < end; i++) {
+                if (i >= items.size()) break;
                 int colIndex = i - start;
                 if (colIndex % colCount == 0) {
                     currentRow = new LinearLayout(activity);
@@ -3133,6 +3154,7 @@ public class NativeToolkitDialog {
         } else {
             // Detailed List View
             for (int i = start; i < end; i++) {
+                if (i >= items.size()) break;
                 final StorageScanner.MediaItem item = items.get(i);
                 final String itemKey = getItemKey(item);
 
