@@ -51,6 +51,7 @@ import android.media.MediaScannerConnection;
 import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.Toast;
+import android.util.TypedValue;
 import android.util.Size;
 import android.media.ThumbnailUtils;
 import android.provider.MediaStore;
@@ -201,8 +202,26 @@ public class NativeToolkitDialog {
         LinearLayout topBar = new LinearLayout(activity);
         topBar.setOrientation(LinearLayout.HORIZONTAL);
         topBar.setGravity(Gravity.CENTER_VERTICAL);
-        int tbPad = (int) (18 * density);
-        topBar.setPadding(tbPad, (int) (14 * density), (int) (12 * density), (int) (10 * density));
+        int tbPad = (int) (16 * density);
+        topBar.setPadding(tbPad, (int) (12 * density), (int) (10 * density), (int) (8 * density));
+
+        FrameLayout iconContainer = new FrameLayout(activity);
+        int icBox = (int) (34 * density);
+        LinearLayout.LayoutParams icBoxLp = new LinearLayout.LayoutParams(icBox, icBox);
+        icBoxLp.setMargins(0, 0, (int) (10 * density), 0);
+        iconContainer.setLayoutParams(icBoxLp);
+        GradientDrawable icBg = new GradientDrawable();
+        icBg.setCornerRadius(10 * density);
+        icBg.setColor(theme.surfaceContainer);
+        iconContainer.setBackground(icBg);
+
+        ImageView ivLead = new ImageView(activity);
+        ivLead.setImageDrawable(new MaterialVectorDrawable(MaterialVectorDrawable.TYPE_TOOLKIT, theme.primary));
+        int ivLeadSize = (int) (20 * density);
+        FrameLayout.LayoutParams ivLeadLp = new FrameLayout.LayoutParams(ivLeadSize, ivLeadSize, Gravity.CENTER);
+        ivLead.setLayoutParams(ivLeadLp);
+        iconContainer.addView(ivLead);
+        topBar.addView(iconContainer);
 
         LinearLayout titleCol = new LinearLayout(activity);
         titleCol.setOrientation(LinearLayout.VERTICAL);
@@ -211,7 +230,7 @@ public class NativeToolkitDialog {
         TextView tvTitle = new TextView(activity);
         tvTitle.setText("Google Photos Toolkit");
         tvTitle.setTextSize(17.5f);
-        tvTitle.setTextColor(theme.primary);
+        tvTitle.setTextColor(theme.textPrimary);
         tvTitle.setTypeface(null, Typeface.BOLD);
         titleCol.addView(tvTitle);
 
@@ -239,12 +258,12 @@ public class NativeToolkitDialog {
         titleCol.addView(tvSub);
         topBar.addView(titleCol);
 
-        View btnRefresh = createHeaderIconButton(activity, "↺", theme.textPrimary, (int) (40 * density));
+        View btnRefresh = createHeaderIconButton(activity, new MaterialVectorDrawable(MaterialVectorDrawable.TYPE_REFRESH, theme.textSecondary), (int) (40 * density), (int) (20 * density));
         btnRefresh.setTag("no_avatar");
         btnRefresh.setContentDescription("refresh");
         topBar.addView(btnRefresh);
 
-        View btnClose = createHeaderIconButton(activity, theme.textPrimary, (int) (40 * density));
+        View btnClose = createHeaderIconButton(activity, new MaterialVectorDrawable(MaterialVectorDrawable.TYPE_CLOSE, theme.textSecondary), (int) (40 * density), (int) (20 * density));
         btnClose.setTag("no_avatar");
         btnClose.setContentDescription("close");
         topBar.addView(btnClose);
@@ -2543,7 +2562,7 @@ public class NativeToolkitDialog {
         tvTitle.setTextColor(theme.textPrimary);
         header.addView(tvTitle, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
 
-        View btnClose = createHeaderIconButton(activity, theme.textSecondary, (int) (32 * density));
+        View btnClose = createHeaderIconButton(activity, new MaterialVectorDrawable(MaterialVectorDrawable.TYPE_CLOSE, theme.textSecondary), (int) (32 * density), (int) (18 * density));
         btnClose.setOnClickListener(v -> dialog.dismiss());
         header.addView(btnClose);
         root.addView(header);
@@ -4050,12 +4069,12 @@ public class NativeToolkitDialog {
     private static EditText createFilterInput(Activity activity, float density, Theme theme, String hint) {
         EditText et = new EditText(activity);
         et.setHint(hint);
-        et.setTextSize(13f);
+        et.setTextSize(13.5f);
         et.setTextColor(theme.textPrimary);
         et.setHintTextColor(theme.textSecondary);
-        et.setBackground(createRoundedDrawable(theme.searchInputBg, 10 * density));
+        et.setBackground(createRoundedDrawable(theme.searchInputBg, 12 * density));
         int p = (int) (12 * density);
-        et.setPadding(p, (int) (8 * density), p, (int) (8 * density));
+        et.setPadding(p, (int) (10 * density), p, (int) (10 * density));
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         lp.bottomMargin = (int) (6 * density);
         et.setLayoutParams(lp);
@@ -4254,29 +4273,35 @@ public class NativeToolkitDialog {
         return shape;
     }
 
-    private static View createHeaderIconButton(Activity activity, String iconText, int color, int touchSizePx) {
+    private static View createHeaderIconButton(Activity activity, Drawable iconDrawable, int touchSizePx, int iconSizePx) {
         FrameLayout box = new FrameLayout(activity);
         box.setClickable(true);
         box.setFocusable(true);
-        box.setContentDescription(iconText);
         box.setTag("toolkit_no_avatar");
         box.setLayoutParams(new LinearLayout.LayoutParams(touchSizePx, touchSizePx));
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+            TypedValue outValue = new TypedValue();
+            activity.getTheme().resolveAttribute(android.R.attr.selectableItemBackgroundBorderless, outValue, true);
+            box.setBackgroundResource(outValue.resourceId);
+        }
 
-        TextView tv = new TextView(activity);
-        tv.setText(iconText);
-        tv.setTextSize(18f);
-        tv.setTypeface(null, Typeface.BOLD);
-        tv.setTextColor(color);
-        tv.setGravity(Gravity.CENTER);
-        tv.setContentDescription(iconText);
-        tv.setTag("toolkit_no_avatar");
-        FrameLayout.LayoutParams tvLp = new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT);
-        tv.setLayoutParams(tvLp);
-        box.addView(tv);
+        ImageView iv = new ImageView(activity);
+        iv.setImageDrawable(iconDrawable);
+        FrameLayout.LayoutParams ivLp = new FrameLayout.LayoutParams(iconSizePx, iconSizePx, Gravity.CENTER);
+        iv.setLayoutParams(ivLp);
+        box.addView(iv);
         return box;
     }
 
+    private static View createHeaderIconButton(Activity activity, Drawable iconDrawable, int touchSizePx) {
+        return createHeaderIconButton(activity, iconDrawable, touchSizePx, (int) (touchSizePx * 0.5f));
+    }
+
     private static View createHeaderIconButton(Activity activity, int color, int touchSizePx) {
-        return createHeaderIconButton(activity, "✕", color, touchSizePx);
+        return createHeaderIconButton(activity, new MaterialVectorDrawable(MaterialVectorDrawable.TYPE_CLOSE, color), touchSizePx, (int) (touchSizePx * 0.5f));
+    }
+
+    private static View createHeaderIconButton(Activity activity, String iconText, int color, int touchSizePx) {
+        return createHeaderIconButton(activity, new MaterialVectorDrawable(MaterialVectorDrawable.TYPE_CLOSE, color), touchSizePx, (int) (touchSizePx * 0.5f));
     }
 }

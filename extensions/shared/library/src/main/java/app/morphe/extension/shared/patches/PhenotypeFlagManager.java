@@ -59,6 +59,7 @@ import android.widget.ProgressBar;
 import android.widget.Switch;
 import android.widget.TextView;
 import android.widget.Toast;
+import android.util.TypedValue;
 
 import org.json.JSONObject;
 import org.w3c.dom.Document;
@@ -118,6 +119,7 @@ public final class PhenotypeFlagManager {
         public static final int TYPE_CHEVRON_DOWN = 7;
         public static final int TYPE_CHEVRON_UP = 8;
         public static final int TYPE_SYNC = 9;
+        public static final int TYPE_REFRESH = 9;
         public static final int TYPE_EXPAND = 10;
         public static final int TYPE_COLLAPSE = 11;
         public static final int TYPE_IMPORT = 12;
@@ -1890,6 +1892,24 @@ public final class PhenotypeFlagManager {
         int tbPad = (int) (16 * density);
         topBar.setPadding(tbPad, (int) (12 * density), (int) (10 * density), (int) (8 * density));
 
+        FrameLayout iconContainer = new FrameLayout(activity);
+        int icBox = (int) (34 * density);
+        LinearLayout.LayoutParams icBoxLp = new LinearLayout.LayoutParams(icBox, icBox);
+        icBoxLp.setMargins(0, 0, (int) (10 * density), 0);
+        iconContainer.setLayoutParams(icBoxLp);
+        GradientDrawable icBg = new GradientDrawable();
+        icBg.setCornerRadius(10 * density);
+        icBg.setColor(theme.surfaceContainer);
+        iconContainer.setBackground(icBg);
+
+        ImageView ivLead = new ImageView(activity);
+        ivLead.setImageDrawable(new MaterialVectorDrawable(MaterialVectorDrawable.TYPE_TUNE, theme.primary));
+        int ivLeadSize = (int) (20 * density);
+        FrameLayout.LayoutParams ivLeadLp = new FrameLayout.LayoutParams(ivLeadSize, ivLeadSize, Gravity.CENTER);
+        ivLead.setLayoutParams(ivLeadLp);
+        iconContainer.addView(ivLead);
+        topBar.addView(iconContainer);
+
         LinearLayout titleCol = new LinearLayout(activity);
         titleCol.setOrientation(LinearLayout.VERTICAL);
         LinearLayout.LayoutParams titleLp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
@@ -1897,7 +1917,7 @@ public final class PhenotypeFlagManager {
 
         TextView tvTitle = new TextView(activity);
         tvTitle.setText("Photos Flags");
-        tvTitle.setTextSize(18);
+        tvTitle.setTextSize(17.5f);
         tvTitle.setTextColor(theme.textPrimary);
         tvTitle.setTypeface(null, Typeface.BOLD);
         View.OnLongClickListener headerEasterEgg = v -> {
@@ -1910,16 +1930,16 @@ public final class PhenotypeFlagManager {
 
         TextView tvSub = new TextView(activity);
         tvSub.setText("Loading flags...");
-        tvSub.setTextSize(11);
+        tvSub.setTextSize(11.5f);
         tvSub.setTextColor(theme.textSecondary);
         titleCol.addView(tvSub);
         topBar.addView(titleCol);
 
-        // Action Icons (Proper 22dp icons inside 42dp touch targets)
-        View btnSearch = createHeaderIconButton(activity, new MaterialVectorDrawable(MaterialVectorDrawable.TYPE_SEARCH, theme.textPrimary), (int) (42 * density), (int) (22 * density));
-        View btnAdd = createHeaderIconButton(activity, new MaterialVectorDrawable(MaterialVectorDrawable.TYPE_ADD, theme.textPrimary), (int) (42 * density), (int) (22 * density));
-        View btnMenu = createHeaderIconButton(activity, new MaterialVectorDrawable(MaterialVectorDrawable.TYPE_MORE, theme.textPrimary), (int) (42 * density), (int) (22 * density));
-        View btnClose = createHeaderIconButton(activity, new MaterialVectorDrawable(MaterialVectorDrawable.TYPE_CLOSE, theme.textPrimary), (int) (42 * density), (int) (22 * density));
+        // Action Icons (Proper 20dp icons inside 40dp touch targets)
+        View btnSearch = createHeaderIconButton(activity, new MaterialVectorDrawable(MaterialVectorDrawable.TYPE_SEARCH, theme.textSecondary), (int) (40 * density), (int) (20 * density));
+        View btnAdd = createHeaderIconButton(activity, new MaterialVectorDrawable(MaterialVectorDrawable.TYPE_ADD, theme.textSecondary), (int) (40 * density), (int) (20 * density));
+        View btnMenu = createHeaderIconButton(activity, new MaterialVectorDrawable(MaterialVectorDrawable.TYPE_MORE, theme.textSecondary), (int) (40 * density), (int) (20 * density));
+        View btnClose = createHeaderIconButton(activity, new MaterialVectorDrawable(MaterialVectorDrawable.TYPE_CLOSE, theme.textSecondary), (int) (40 * density), (int) (20 * density));
 
         topBar.addView(btnSearch);
         topBar.addView(btnAdd);
@@ -1938,12 +1958,20 @@ public final class PhenotypeFlagManager {
         inputWrapper.setOrientation(LinearLayout.HORIZONTAL);
         inputWrapper.setGravity(Gravity.CENTER_VERTICAL);
         inputWrapper.setBackground(createRoundedDrawable(theme.searchInputBg, 14 * density));
-        LinearLayout.LayoutParams iwLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, (int) (46 * density));
+        LinearLayout.LayoutParams iwLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, (int) (44 * density));
         inputWrapper.setLayoutParams(iwLp);
+
+        ImageView ivSearchIcon = new ImageView(activity);
+        ivSearchIcon.setImageDrawable(new MaterialVectorDrawable(MaterialVectorDrawable.TYPE_SEARCH, theme.textSecondary));
+        int siSize = (int) (18 * density);
+        LinearLayout.LayoutParams siLp = new LinearLayout.LayoutParams(siSize, siSize);
+        siLp.setMargins((int) (12 * density), 0, (int) (4 * density), 0);
+        ivSearchIcon.setLayoutParams(siLp);
+        inputWrapper.addView(ivSearchIcon);
 
         EditText etSearch = new EditText(activity);
         etSearch.setHint("Search flags, keys or values...");
-        etSearch.setTextSize(14);
+        etSearch.setTextSize(13.5f);
         etSearch.setTextColor(theme.textPrimary);
         etSearch.setHintTextColor(theme.textSecondary);
         etSearch.setBackground(null);
@@ -1951,7 +1979,7 @@ public final class PhenotypeFlagManager {
         etSearch.setMaxLines(1);
         etSearch.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_FILTER);
         etSearch.setImeOptions(EditorInfo.IME_ACTION_SEARCH | EditorInfo.IME_FLAG_NO_EXTRACT_UI);
-        int sPad = (int) (14 * density);
+        int sPad = (int) (8 * density);
         etSearch.setPadding(sPad, 0, (int) (6 * density), 0);
         LinearLayout.LayoutParams sLp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1f);
         etSearch.setLayoutParams(sLp);
@@ -1960,7 +1988,7 @@ public final class PhenotypeFlagManager {
         ImageView btnClearSearch = new ImageView(activity);
         btnClearSearch.setImageDrawable(new MaterialVectorDrawable(MaterialVectorDrawable.TYPE_CLOSE, theme.textSecondary));
         btnClearSearch.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
-        int cPad = (int) (12 * density);
+        int cPad = (int) (10 * density);
         btnClearSearch.setPadding(cPad, 0, cPad, 0);
         btnClearSearch.setVisibility(View.GONE);
         btnClearSearch.setClickable(true);
@@ -3547,6 +3575,11 @@ public final class PhenotypeFlagManager {
         box.setClickable(true);
         box.setFocusable(true);
         box.setLayoutParams(new LinearLayout.LayoutParams(touchSizePx, touchSizePx));
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+            TypedValue outValue = new TypedValue();
+            activity.getTheme().resolveAttribute(android.R.attr.selectableItemBackgroundBorderless, outValue, true);
+            box.setBackgroundResource(outValue.resourceId);
+        }
 
         ImageView iv = new ImageView(activity);
         iv.setImageDrawable(iconDrawable);

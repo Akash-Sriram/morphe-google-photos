@@ -33,6 +33,7 @@ import android.widget.ScrollView;
 import android.widget.Spinner;
 import android.widget.TextView;
 import android.widget.Toast;
+import android.util.TypedValue;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -119,7 +120,7 @@ public final class DiagnosticsDialog {
 
         TextView tvSub = new TextView(activity);
         tvSub.setText("Inspection & Session Analyzer");
-        tvSub.setTextSize(11);
+        tvSub.setTextSize(11.5f);
         tvSub.setTextColor(theme.textSecondary);
         titleCol.addView(tvSub);
 
@@ -211,7 +212,7 @@ public final class DiagnosticsDialog {
         LinearLayout inputWrapper = new LinearLayout(activity);
         inputWrapper.setOrientation(LinearLayout.HORIZONTAL);
         inputWrapper.setGravity(Gravity.CENTER_VERTICAL);
-        inputWrapper.setBackground(createRoundedDrawable(theme.searchInputBg, 12 * density));
+        inputWrapper.setBackground(createRoundedDrawable(theme.searchInputBg, 14 * density));
         LinearLayout.LayoutParams iwLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, (int) (44 * density));
         inputWrapper.setLayoutParams(iwLp);
 
@@ -596,6 +597,11 @@ public final class DiagnosticsDialog {
         frame.setLayoutParams(new LinearLayout.LayoutParams(sizePx, sizePx));
         frame.setClickable(true);
         frame.setFocusable(true);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+            TypedValue outValue = new TypedValue();
+            activity.getTheme().resolveAttribute(android.R.attr.selectableItemBackgroundBorderless, outValue, true);
+            frame.setBackgroundResource(outValue.resourceId);
+        }
 
         ImageView iv = new ImageView(activity);
         iv.setImageDrawable(icon);
