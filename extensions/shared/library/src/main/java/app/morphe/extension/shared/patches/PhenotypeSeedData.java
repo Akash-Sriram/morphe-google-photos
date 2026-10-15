@@ -18,7 +18,7 @@ import app.morphe.extension.shared.Logger;
 
 /**
  * Embedded official Phenotype seed data for Google Photos.
- * Automatically seeds the complete official phenotype flags (2,533 flags)
+ * Automatically seeds the complete official phenotype flags (2,534 flags)
  * on first launch or after data wipe so non-root Morphe has 100% feature parity.
  */
 public final class PhenotypeSeedData {
