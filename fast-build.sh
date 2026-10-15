@@ -7,7 +7,10 @@ set -e
 
 PROJECT_DIR="/mnt/WindowsDrive/Users/akash/Downloads/Project/Morphe"
 FAST_CACHE_DIR="$HOME/.cache/morphe-fast-build"
-CLI_JAR="$PROJECT_DIR/morphe-desktop-1.15.1-dev.7-all.jar"
+CLI_JAR="$PROJECT_DIR/morphe-desktop-1.18.2-dev.4-all.jar"
+if [ ! -f "$CLI_JAR" ]; then
+    CLI_JAR=$(ls -1 "$PROJECT_DIR"/morphe-desktop-*-all.jar 2>/dev/null | sort -V | tail -n 1)
+fi
 KEYSTORE_FILE="$PROJECT_DIR/Morphe.keystore"
 STOCK_APK="$PROJECT_DIR/google photos apks/com.google.android.apps.photos_7.97.0.997578476-52547221_minAPI24(arm64-v8a)(nodpi)_apkmirror.com.apk"
 if [ ! -f "$STOCK_APK" ] && [ -f "$PROJECT_DIR/google photos apks/com.google.android.apps.photos_7.97.0.997578476-52547203_minAPI24(arm64-v8a,armeabi-v7a,x86,x86_64)(nodpi)_apkmirror.com.apk" ]; then
