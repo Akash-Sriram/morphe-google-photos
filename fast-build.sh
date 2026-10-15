@@ -80,7 +80,12 @@ while [[ $# -gt 0 ]]; do
             shift
             ;;
         --update-cli)
-            "$PROJECT_DIR/update-morphe-cli.sh"
+            SCRIPT_DIR_LOCAL="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+            if [ -f "$SCRIPT_DIR_LOCAL/update-morphe-cli.sh" ]; then
+                "$SCRIPT_DIR_LOCAL/update-morphe-cli.sh"
+            elif [ -f "$PROJECT_DIR/update-morphe-cli.sh" ]; then
+                "$PROJECT_DIR/update-morphe-cli.sh"
+            fi
             shift
             ;;
         *)
