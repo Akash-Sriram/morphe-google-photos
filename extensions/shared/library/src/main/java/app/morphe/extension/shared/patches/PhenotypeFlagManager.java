@@ -43,6 +43,7 @@ import android.view.ViewGroup;
 import android.view.ViewOutlineProvider;
 import android.view.ViewTreeObserver;
 import android.view.Window;
+import android.view.WindowInsets;
 import android.view.WindowManager;
 import android.view.inputmethod.EditorInfo;
 import android.view.inputmethod.InputMethodManager;
@@ -666,6 +667,60 @@ public final class PhenotypeFlagManager {
         }
     }
 
+    private static int getNavigationBarBottomInset(Activity activity, View view) {
+        if (activity == null) return 0;
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                WindowInsets rootInsets = null;
+                if (view != null) {
+                    rootInsets = view.getRootWindowInsets();
+                }
+                if (rootInsets == null && activity.getWindow() != null) {
+                    View decor = activity.getWindow().getDecorView();
+                    if (decor != null) {
+                        rootInsets = decor.getRootWindowInsets();
+                    }
+                }
+                if (rootInsets != null) {
+                    return rootInsets.getInsets(WindowInsets.Type.navigationBars()).bottom;
+                }
+            } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                WindowInsets rootInsets = null;
+                if (view != null) {
+                    rootInsets = view.getRootWindowInsets();
+                }
+                if (rootInsets == null && activity.getWindow() != null) {
+                    View decor = activity.getWindow().getDecorView();
+                    if (decor != null) {
+                        rootInsets = decor.getRootWindowInsets();
+                    }
+                }
+                if (rootInsets != null) {
+                    return rootInsets.getSystemWindowInsetBottom();
+                }
+            }
+        } catch (Throwable ignored) {}
+        return 0;
+    }
+
+    private static void updateFloatingPillInsets(Activity activity, View pill) {
+        if (activity == null || pill == null) return;
+        try {
+            float density = activity.getResources().getDisplayMetrics().density;
+            int navBottom = getNavigationBarBottomInset(activity, pill);
+            int baseBottomMargin = (int) (22 * density);
+            int targetBottom = baseBottomMargin + navBottom;
+            ViewGroup.LayoutParams vlp = pill.getLayoutParams();
+            if (vlp instanceof FrameLayout.LayoutParams) {
+                FrameLayout.LayoutParams flp = (FrameLayout.LayoutParams) vlp;
+                if (flp.bottomMargin != targetBottom) {
+                    flp.bottomMargin = targetBottom;
+                    pill.setLayoutParams(flp);
+                }
+            }
+        } catch (Throwable ignored) {}
+    }
+
     // ─────────────────────────────────────────────────────────────────────────
     // Settings Activity Floating Pill Injection
     // ─────────────────────────────────────────────────────────────────────────
@@ -681,10 +736,15 @@ public final class PhenotypeFlagManager {
                     public void onGlobalLayout() {
                         try {
                             FrameLayout content = activity.findViewById(android.R.id.content);
-                            if (content != null && content.findViewWithTag(SETTINGS_PILL_TAG) == null) {
-                                LinearLayout pill = createFloatingPill(activity);
-                                content.addView(pill);
-                                Logger.printInfo(() -> "Photos Flags floating pill dock attached to SettingsActivity");
+                            if (content != null) {
+                                View existing = content.findViewWithTag(SETTINGS_PILL_TAG);
+                                if (existing == null) {
+                                    LinearLayout pill = createFloatingPill(activity);
+                                    content.addView(pill);
+                                    Logger.printInfo(() -> "Photos Flags floating pill dock attached to SettingsActivity");
+                                } else {
+                                    updateFloatingPillInsets(activity, existing);
+                                }
                             }
                             attachAboutEasterEgg(activity, decor);
                         } catch (Throwable t) {
@@ -712,8 +772,41 @@ public final class PhenotypeFlagManager {
                 (int) (52 * density)
         );
         lp.gravity = Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL;
-        lp.setMargins(0, 0, 0, (int) (22 * density));
+        int navBottom = getNavigationBarBottomInset(activity, null);
+        int baseBottomMargin = (int) (22 * density);
+        lp.setMargins(0, 0, 0, baseBottomMargin + navBottom);
         dock.setLayoutParams(lp);
+
+        dock.setOnApplyWindowInsetsListener((v, insets) -> {
+            try {
+                int insetBottom = 0;
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                    insetBottom = insets.getInsets(WindowInsets.Type.navigationBars()).bottom;
+                } else {
+                    insetBottom = insets.getSystemWindowInsetBottom();
+                }
+                FrameLayout.LayoutParams p = (FrameLayout.LayoutParams) v.getLayoutParams();
+                if (p != null) {
+                    int target = baseBottomMargin + insetBottom;
+                    if (p.bottomMargin != target) {
+                        p.bottomMargin = target;
+                        v.setLayoutParams(p);
+                    }
+                }
+            } catch (Throwable ignored) {}
+            return insets;
+        });
+
+        dock.addOnAttachStateChangeListener(new View.OnAttachStateChangeListener() {
+            @Override
+            public void onViewAttachedToWindow(View v) {
+                updateFloatingPillInsets(activity, v);
+                v.requestApplyInsets();
+            }
+
+            @Override
+            public void onViewDetachedFromWindow(View v) {}
+        });
 
         int padOuter = (int) (4 * density);
         dock.setPadding(padOuter, padOuter, padOuter, padOuter);
