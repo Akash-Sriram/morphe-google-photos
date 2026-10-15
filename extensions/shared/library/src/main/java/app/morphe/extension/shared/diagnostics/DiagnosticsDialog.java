@@ -224,7 +224,7 @@ public final class DiagnosticsDialog {
         inputWrapper.addView(ivSearchIcon);
 
         EditText etSearch = new EditText(activity);
-        etSearch.setHint("Search all logs (e.g. exception, crash, map, flag)...");
+        etSearch.setHint("Search logs (e.g. backup, album, toolkit, exception)...");
         etSearch.setTextSize(13.5f);
         etSearch.setTextColor(theme.textPrimary);
         etSearch.setHintTextColor(theme.textSecondary);
@@ -269,9 +269,9 @@ public final class DiagnosticsDialog {
         final String[][] chipDefs = new String[][] {
             {"ALL", "All"},
             {"ERROR", "🚨 Errors & Crashes"},
-            {"TOOLKIT", "🛠️ Toolkit"},
-            {"MAPS", "🗺️ Maps"},
-            {"FLAGS", "🚩 Flags"}
+            {"WARN", "⚠️ Warnings"},
+            {"INFO", "ℹ️ Info"},
+            {"MORPHE", "🧩 Morphe"}
         };
         final TextView[] chipViews = new TextView[chipDefs.length];
 

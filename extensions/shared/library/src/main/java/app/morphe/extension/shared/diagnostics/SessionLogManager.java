@@ -607,18 +607,14 @@ public final class SessionLogManager {
                     if (lvl.equals("ERROR")) {
                         matchesCategory = line.contains("[ERROR]") || line.contains("FATAL") || line.contains("Exception") ||
                                           line.contains("🚨") || line.contains(" E/") || line.contains(" F/") ||
-                                          line.contains("Crash") || line.contains("crash_dump");
-                    } else if (lvl.equals("TOOLKIT")) {
-                        matchesCategory = line.contains("Toolkit") || line.contains("toolkit") || line.contains("StorageScanner") ||
-                                          line.contains("NativeToolkitDialog") || line.contains("Mars") || line.contains("Locked") ||
-                                          line.contains("mars") || line.contains("locked") || line.contains("Album") ||
-                                          line.contains("album") || line.contains("gphotos") || line.contains("remote_media") ||
-                                          line.contains("shared_media") || line.contains("app.morphe.extension.shared.patches.toolkit");
-                    } else if (lvl.equals("MAPS")) {
-                        matchesCategory = line.contains("Map") || line.contains("Location") || line.contains("GmsMap") ||
-                                          line.contains("Mapbox") || line.contains("CameraUpdate");
-                    } else if (lvl.equals("FLAGS")) {
-                        matchesCategory = line.contains("Flag") || line.contains("Phenotype");
+                                          line.contains("Crash") || line.contains("crash_dump") || line.contains("WindowLeaked");
+                    } else if (lvl.equals("WARN")) {
+                        matchesCategory = line.contains("[WARN]") || line.contains(" W/") || line.contains("Warning") || line.contains("⚠️");
+                    } else if (lvl.equals("INFO")) {
+                        matchesCategory = line.contains("[INFO]") || line.contains(" I/") || line.contains("ℹ️");
+                    } else if (lvl.equals("MORPHE")) {
+                        matchesCategory = line.contains("morphe") || line.contains("Morphe") || line.contains("app.morphe") ||
+                                          line.contains("[INFO]") || line.contains("[WARN]") || line.contains("[ERROR]");
                     }
                     if (!matchesCategory) {
                         continue;
@@ -652,7 +648,14 @@ public final class SessionLogManager {
     }
 
     public static String getFilterDescription(String levelFilter, String filterQuery) {
-        String lvl = (levelFilter != null && !levelFilter.equalsIgnoreCase("ALL")) ? levelFilter : null;
+        String lvl = null;
+        if (levelFilter != null && !levelFilter.equalsIgnoreCase("ALL")) {
+            if (levelFilter.equalsIgnoreCase("ERROR")) lvl = "Errors & Crashes";
+            else if (levelFilter.equalsIgnoreCase("WARN")) lvl = "Warnings";
+            else if (levelFilter.equalsIgnoreCase("INFO")) lvl = "Info";
+            else if (levelFilter.equalsIgnoreCase("MORPHE")) lvl = "Morphe";
+            else lvl = levelFilter;
+        }
         String q = (filterQuery != null && !filterQuery.trim().isEmpty()) ? filterQuery.trim() : null;
         if (lvl != null && q != null) {
             return lvl + " + \"" + q + "\"";
