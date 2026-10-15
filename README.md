@@ -7,7 +7,7 @@ Morphe patches for **Google Photos**, derived from [RookieEnough/De-Vanced](http
 ## 🩹 Patches list
 
 <!-- PATCHES_START EXPANDED -->
-> **[v1.14.4](https://github.com/Akash-Sriram/morphe-google-photos/releases/tag/v1.14.4)**&nbsp;&nbsp;•&nbsp;&nbsp;`dev`&nbsp;&nbsp;•&nbsp;&nbsp;8 patches total
+> **[v1.15.0](https://github.com/Akash-Sriram/morphe-google-photos/releases/tag/v1.15.0)**&nbsp;&nbsp;•&nbsp;&nbsp;`main`&nbsp;&nbsp;•&nbsp;&nbsp;8 patches total
 <details open>
 <summary>📦 Google Photos&nbsp;&nbsp;•&nbsp;&nbsp;8 patches</summary>
 <br>
@@ -18,15 +18,15 @@ Morphe patches for **Google Photos**, derived from [RookieEnough/De-Vanced](http
 | :---: |
 
 | 💊&nbsp;Patch | 📜&nbsp;Description |
-|---|---|
+|----------|----------------|
 | [AMOLED dark theme](#amoled-dark-theme) | Makes Google Photos dark surfaces true black while keeping light mode untouched. |
 | [Custom Morphe branding](#custom-morphe-branding) | Replaces the Google Photos icon and in-app logos with Morphe branding (violet / teal / indigo / slate pinwheel, hand-drawn style). |
-| [DCIM & backup control](#dcim--backup-control) | Disables always-on backup for Camera and other DCIM subfolders, allowing individual folder control, and exports memory collages and creations to `DCIM/Google Photos` for quota-free backup. |
-| [Flag manager & Toolkit](#flag-manager--toolkit) | Enables an in-app flag manager and Morphe Toolkit in Photos Settings to toggle experimental feature flags, batch-fix EXIF timestamps, find visual duplicates, and manage library media. |
-| [GmsCore support](#gmscore-support) | Enables GmsCore / MicroG support, restores account avatar and Bento subscription badge, and renames package for non-root installs. |
-| [Media engine & AI fixes](#media-engine--ai-fixes) | Bypasses the 0MB Mobile Data Download check for AI models and fixes font loading across Stories and UI to prevent blank text and fallback fonts. |
-| [Official package name](#official-package-name) | Retains the official package name (`com.google.android.apps.photos`) and disables Play Store updates via maximum version code (strictly for devices without preinstalled Photos). |
-| [Spoof features](#spoof-features) | Spoofs the device to enable Google Pixel exclusive features, including unlimited original-quality backup. |
+| [DCIM & backup control](#dcim-backup-control) | Disables always on backup for the Camera and other DCIM folders, allowing individual folder control, and exports memory collages and creations to DCIM/Google Photos for quota-free backup. |
+| [Flag manager & Toolkit](#flag-manager-toolkit) | Enables an in-app flag manager and Morphe toolkit in Photos Settings to toggle experimental UI redesigns, video editor tools, and feature flags. |
+| [GmsCore support](#gmscore-support) | Enables GmsCore / MicroG support and renames package for non-root installs. Leave enabled for standard non-root installs; disable only for rooted system installs using genuine Google Play Services. |
+| [Media engine & AI fixes](#media-engine-ai-fixes) | Bypasses the 0MB Mobile Data Download check for AI models and fixes font loading across Stories and UI to prevent blank text and fallback fonts. |
+| [Official package name](#official-package-name) | Retains the official package name (com.google.android.apps.photos) instead of renaming to app.morphe.android.apps.photos and disables Play Store updates by setting the version code to maximum to prevent automatic overwriting. This is strictly for non-root users whose devices do not have Google Photos preinstalled by the OEM. |
+| [Spoof features](#spoof-features) | Spoofs the device to enable Google Pixel exclusive features, including unlimited storage. |
 
 </details>
 
