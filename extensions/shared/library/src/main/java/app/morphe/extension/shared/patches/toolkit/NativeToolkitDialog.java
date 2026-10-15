@@ -1752,11 +1752,37 @@ public class NativeToolkitDialog {
                         executeDbActionAsync(activity, actionId, items, param, refreshRunner);
                     }, density, theme);
                 } else if ("lock".equals(actionId)) {
-                    showActionConfirmDialog(activity, "Move " + items.size() + " item(s) to Locked Folder?", () -> {
+                    int count = items.size();
+                    String title = (count == 1) ? "Move to Locked Folder?" : ("Move " + count + " items to Locked Folder?");
+                    int accountId = (currentAccount != null) ? currentAccount.accountId : -1;
+                    boolean backupEnabled = StorageScanner.isLockedFolderBackupEnabled(activity, accountId);
+                    String msg = backupEnabled
+                            ? "These photos & videos will be hidden and won’t show up as you scroll through Google Photos or in other apps."
+                            : "These photos & videos will be hidden and won’t show up as you scroll through Google Photos or in other apps, and won’t be backed up.";
+                    showActionConfirmDialog(activity, title, msg, "Move", () -> {
                         executeDbActionAsync(activity, actionId, items, null, refreshRunner);
                     }, density, theme);
                 } else if ("unLock".equals(actionId)) {
-                    showActionConfirmDialog(activity, "Unlocking requires biometric authentication.\nAuthenticate now to open Locked Folder and unlock " + items.size() + " item(s)?", () -> {
+                    int count = items.size();
+                    String title = (count == 1) ? "Move out of Locked Folder?" : ("Move " + count + " items out of Locked Folder?");
+                    int localCount = 0;
+                    for (StorageScanner.MediaItem it : items) {
+                        if (!StorageScanner.isItemCloudBackedUp(it)) {
+                            localCount++;
+                        }
+                    }
+                    StringBuilder msgBuilder = new StringBuilder();
+                    msgBuilder.append("These photos & videos will no longer be hidden and can now show up as you scroll through Google Photos or in other apps.");
+                    if (localCount > 0) {
+                        msgBuilder.append("\n\n⚠️ Storage Notice:\n");
+                        if (localCount == count) {
+                            msgBuilder.append("These items are stored locally only without cloud backup. Moving them out will place them into local device storage (under device folders, e.g. DCIM/Pictures) and will not appear in your cloud photos timeline until backed up.");
+                        } else {
+                            msgBuilder.append(localCount).append(" of these items are stored locally only without cloud backup. Moving them out will place them into local device storage (under device folders, e.g. DCIM/Pictures) and will not appear in your cloud photos timeline until backed up.");
+                        }
+                    }
+                    msgBuilder.append("\n\nBiometric or device PIN authentication is required to open Locked Folder and unlock.");
+                    showActionConfirmDialog(activity, title, msgBuilder.toString(), "Move out", () -> {
                         executeDbActionAsync(activity, actionId, items, null, refreshRunner);
                     }, density, theme);
                 } else if ("setDateFromFilename".equals(actionId)) {
@@ -4047,6 +4073,10 @@ public class NativeToolkitDialog {
     }
 
     private static void showActionConfirmDialog(Activity activity, String msg, Runnable onConfirm, float density, Theme theme) {
+        showActionConfirmDialog(activity, null, msg, "Confirm", onConfirm, density, theme);
+    }
+
+    private static void showActionConfirmDialog(Activity activity, String title, String msg, String confirmBtnText, Runnable onConfirm, float density, Theme theme) {
         Dialog d = new Dialog(activity);
         d.requestWindowFeature(Window.FEATURE_NO_TITLE);
 
@@ -4056,11 +4086,24 @@ public class NativeToolkitDialog {
         int p = (int) (20 * density);
         box.setPadding(p, p, p, (int) (14 * density));
 
+        if (title != null && !title.isEmpty()) {
+            TextView tvTitle = new TextView(activity);
+            tvTitle.setText(title);
+            tvTitle.setTextSize(16f);
+            tvTitle.setTextColor(theme.textPrimary);
+            tvTitle.setTypeface(null, Typeface.BOLD);
+            tvTitle.setPadding(0, 0, 0, (int) (8 * density));
+            box.addView(tvTitle);
+        }
+
         TextView tv = new TextView(activity);
         tv.setText(msg);
-        tv.setTextSize(14.5f);
-        tv.setTextColor(theme.textPrimary);
-        tv.setTypeface(null, Typeface.BOLD);
+        tv.setTextSize(13.5f);
+        tv.setTextColor(title != null ? theme.textSecondary : theme.textPrimary);
+        if (title == null) {
+            tv.setTypeface(null, Typeface.BOLD);
+        }
+        tv.setLineSpacing(0, 1.15f);
         box.addView(tv);
 
         LinearLayout btnRow = new LinearLayout(activity);
@@ -4078,7 +4121,7 @@ public class NativeToolkitDialog {
         btnRow.addView(btnCancel);
 
         TextView btnOk = new TextView(activity);
-        btnOk.setText("Confirm");
+        btnOk.setText(confirmBtnText != null ? confirmBtnText : "Confirm");
         btnOk.setTextSize(13f);
         btnOk.setTypeface(null, Typeface.BOLD);
         btnOk.setTextColor(theme.onPrimary);

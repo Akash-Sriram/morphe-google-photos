@@ -3517,6 +3517,43 @@ public class StorageScanner {
         return successCount > 0;
     }
 
+    public static boolean isItemCloudBackedUp(MediaItem item) {
+        if (item == null) return false;
+        if (item.remoteUrl != null && !item.remoteUrl.trim().isEmpty() && !item.remoteUrl.startsWith("local:")) {
+            return true;
+        }
+        if (item.mediaKey != null && !item.mediaKey.trim().isEmpty() && !item.mediaKey.startsWith("local:") && !item.mediaKey.equals(item.dedupKey)) {
+            return true;
+        }
+        return false;
+    }
+
+    public static boolean isLockedFolderBackupEnabled(Context context, int accountId) {
+        if (context == null) return false;
+        try {
+            // 1. Check SharedPreferences for Mars backup onboarding completion
+            SharedPreferences sp = context.getSharedPreferences("com.google.android.apps.photos.mars.auth", Context.MODE_PRIVATE);
+            if (sp != null && sp.contains("has_finished_mars_backup_onboarding")) {
+                boolean on = sp.getBoolean("has_finished_mars_backup_onboarding", false);
+                if (on) return true;
+            }
+        } catch (Throwable ignored) {}
+
+        try {
+            // 2. Check remote_locked_media table presence and items
+            File dbf = context.getDatabasePath("gphotos" + accountId + ".db");
+            if (dbf != null && dbf.exists()) {
+                try (SQLiteDatabase db = SQLiteDatabase.openDatabase(dbf.getAbsolutePath(), null, SQLiteDatabase.OPEN_READONLY | SQLiteDatabase.ENABLE_WRITE_AHEAD_LOGGING)) {
+                    if (hasTable(db, "remote_locked_media") && getTableRowCount(db, "remote_locked_media") > 0) {
+                        return true;
+                    }
+                }
+            }
+        } catch (Throwable ignored) {}
+
+        return false;
+    }
+
     public static boolean launchMarsUnlockIntent(Context context, int accountId) {
         if (context == null) return false;
         try {
@@ -3642,6 +3679,45 @@ public class StorageScanner {
         return null;
     }
 
+    private static List<?> loadAlbumMediaItems(Context context, int accountId, String albumMediaKey, List<MediaItem> items) {
+        List<Object> matched = new ArrayList<>();
+        if (context == null || albumMediaKey == null || albumMediaKey.isEmpty() || items == null || items.isEmpty()) return matched;
+        try {
+            Object collection = createAlbumCollection(context, accountId, albumMediaKey);
+            if (collection != null) {
+                List<?> allLoaded = loadMediaCollection(context, collection);
+                if (allLoaded != null && !allLoaded.isEmpty()) {
+                    if (items.size() == allLoaded.size()) {
+                        matched.addAll(allLoaded);
+                    } else {
+                        Set<String> targetKeys = new HashSet<>();
+                        for (MediaItem mi : items) {
+                            if (mi.dedupKey != null && !mi.dedupKey.isEmpty()) targetKeys.add(mi.dedupKey);
+                            if (mi.mediaKey != null && !mi.mediaKey.isEmpty()) targetKeys.add(mi.mediaKey);
+                        }
+                        String[] zonCandidates = new String[] {"zon", "zoi", "zog", "zkr"};
+                        Class<?> zonClass = null;
+                        for (String zc : zonCandidates) {
+                            try { zonClass = Class.forName(zc); break; } catch (Throwable ignored) {}
+                        }
+                        for (Object media : allLoaded) {
+                            String dKey = (zonClass != null) ? extractDedupKey(media, zonClass) : null;
+                            if (dKey != null && targetKeys.contains(dKey)) {
+                                matched.add(media);
+                            }
+                        }
+                        if (matched.isEmpty()) {
+                            matched.addAll(allLoaded);
+                        }
+                    }
+                }
+            }
+        } catch (Throwable t) {
+            Log.w("morphe: StorageScanner", "loadAlbumMediaItems error: " + t.getMessage());
+        }
+        return matched;
+    }
+
     private static boolean executeOnlineRemoveFromAlbumTask(Context context, int accountId, String albumMediaKey, List<MediaItem> items) {
         if (context == null || albumMediaKey == null || albumMediaKey.isEmpty() || items == null || items.isEmpty()) return false;
         Log.i("morphe: StorageScanner", "executeOnlineRemoveFromAlbumTask: starting for " + items.size() + " items from " + albumMediaKey);
@@ -3656,7 +3732,10 @@ public class StorageScanner {
             boolean chunkSuccess = false;
 
             try {
-                List<?> coreItems = loadCoreMediaItems(context, accountId, chunk);
+                List<?> coreItems = loadAlbumMediaItems(context, accountId, albumMediaKey, chunk);
+                if (coreItems.isEmpty()) {
+                    coreItems = loadCoreMediaItems(context, accountId, chunk);
+                }
                 if (!coreItems.isEmpty()) {
                     Object collection = createAlbumCollection(context, accountId, albumMediaKey);
                     Object task = null;
@@ -3772,7 +3851,7 @@ public class StorageScanner {
                         }
                     }
                 } else {
-                    Log.w("morphe: StorageScanner", "loadCoreMediaItems returned 0 items for chunk " + chunkIndex);
+                    Log.w("morphe: StorageScanner", "loadAlbumMediaItems returned 0 items for chunk " + chunkIndex);
                 }
             } catch (Throwable t) {
                 Log.w("morphe: StorageScanner", "Error invoking Remove task chunk " + chunkIndex, t);
@@ -3787,18 +3866,23 @@ public class StorageScanner {
             if (dbf != null && dbf.exists()) {
                 try (SQLiteDatabase db = SQLiteDatabase.openDatabase(dbf.getAbsolutePath(), null, SQLiteDatabase.OPEN_READWRITE | SQLiteDatabase.ENABLE_WRITE_AHEAD_LOGGING)) {
                     for (MediaItem it : items) {
+                        String mKey = it.mediaKey != null && !it.mediaKey.isEmpty() ? it.mediaKey : it.dedupKey;
                         if (hasTable(db, "remote_media")) {
-                            db.delete("remote_media", "(dedup_key = ? OR media_key = ?) AND collection_id = ?", new String[]{it.dedupKey, it.dedupKey, albumMediaKey});
+                            db.delete("remote_media", "(dedup_key = ? OR media_key = ?) AND collection_id = ?", new String[]{it.dedupKey, mKey, albumMediaKey});
                         }
                         if (hasTable(db, "shared_media")) {
-                            db.delete("shared_media", "dedup_key = ? AND collection_id = ?", new String[]{it.dedupKey, albumMediaKey});
+                            db.delete("shared_media", "(dedup_key = ? OR media_key = ?) AND collection_id = ?", new String[]{it.dedupKey, mKey, albumMediaKey});
                         }
                         if (hasTable(db, "item_collection_data")) {
-                            db.delete("item_collection_data", "(canonical_id = ? OR icd_id LIKE ?) AND collection_id = ?", new String[]{it.dedupKey, "%" + it.dedupKey + "%", albumMediaKey});
+                            db.delete("item_collection_data", "(canonical_id = ? OR canonical_id = ? OR icd_id LIKE ? OR icd_id LIKE ?) AND collection_id = ?",
+                                    new String[]{mKey, it.dedupKey, "%" + mKey + "%", "%" + it.dedupKey + "%", albumMediaKey});
                         }
                     }
                     if (hasTable(db, "collections")) {
                         db.execSQL("UPDATE collections SET total_items = MAX(0, total_items - " + items.size() + ") WHERE collection_media_key = ?", new Object[]{albumMediaKey});
+                    }
+                    if (hasTable(db, "envelopes")) {
+                        db.execSQL("UPDATE envelopes SET total_items = MAX(0, total_items - " + items.size() + ") WHERE media_key = ?", new Object[]{albumMediaKey});
                     }
                 }
             }
