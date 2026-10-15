@@ -183,15 +183,22 @@ public final class PhenotypeFlagManager {
                     break;
                 }
                 case TYPE_LOGS: {
-                    float dotR = Math.min(w, h) * 0.065f;
-                    canvas.drawCircle(w * 0.18f, h * 0.28f, dotR, fillPaint);
-                    canvas.drawLine(w * 0.34f, h * 0.28f, w * 0.85f, h * 0.28f, strokePaint);
+                    // Terminal & Console Log Screen
+                    RectF screen = new RectF(w * 0.14f, h * 0.18f, w * 0.86f, h * 0.82f);
+                    canvas.drawRoundRect(screen, w * 0.12f, h * 0.12f, strokePaint);
 
-                    canvas.drawCircle(w * 0.18f, h * 0.50f, dotR, fillPaint);
-                    canvas.drawLine(w * 0.34f, h * 0.50f, w * 0.72f, h * 0.50f, strokePaint);
+                    // Terminal Prompt Chevron '>'
+                    Path prompt = new Path();
+                    prompt.moveTo(w * 0.28f, h * 0.37f);
+                    prompt.lineTo(w * 0.43f, h * 0.50f);
+                    prompt.lineTo(w * 0.28f, h * 0.63f);
+                    canvas.drawPath(prompt, strokePaint);
 
-                    canvas.drawCircle(w * 0.18f, h * 0.72f, dotR, fillPaint);
-                    canvas.drawLine(w * 0.34f, h * 0.72f, w * 0.88f, h * 0.72f, strokePaint);
+                    // Terminal Cursor Underscore '_'
+                    canvas.drawLine(w * 0.51f, h * 0.63f, w * 0.72f, h * 0.63f, strokePaint);
+
+                    // Live Log Status Indicator
+                    canvas.drawCircle(w * 0.71f, h * 0.35f, Math.min(w, h) * 0.065f, fillPaint);
                     break;
                 }
                 case TYPE_SEARCH: {
@@ -327,10 +334,17 @@ public final class PhenotypeFlagManager {
                     break;
                 }
                 case TYPE_DIAGNOSTICS: {
-                    canvas.drawLine(w * 0.16f, h * 0.82f, w * 0.84f, h * 0.82f, strokePaint);
-                    canvas.drawLine(w * 0.30f, h * 0.82f, w * 0.30f, h * 0.50f, strokePaint);
-                    canvas.drawLine(w * 0.50f, h * 0.82f, w * 0.50f, h * 0.24f, strokePaint);
-                    canvas.drawLine(w * 0.70f, h * 0.82f, w * 0.70f, h * 0.38f, strokePaint);
+                    RectF screen = new RectF(w * 0.14f, h * 0.18f, w * 0.86f, h * 0.82f);
+                    canvas.drawRoundRect(screen, w * 0.12f, h * 0.12f, strokePaint);
+
+                    Path prompt = new Path();
+                    prompt.moveTo(w * 0.28f, h * 0.37f);
+                    prompt.lineTo(w * 0.43f, h * 0.50f);
+                    prompt.lineTo(w * 0.28f, h * 0.63f);
+                    canvas.drawPath(prompt, strokePaint);
+
+                    canvas.drawLine(w * 0.51f, h * 0.63f, w * 0.72f, h * 0.63f, strokePaint);
+                    canvas.drawCircle(w * 0.71f, h * 0.35f, Math.min(w, h) * 0.065f, fillPaint);
                     break;
                 }
                 case TYPE_DELETE: {

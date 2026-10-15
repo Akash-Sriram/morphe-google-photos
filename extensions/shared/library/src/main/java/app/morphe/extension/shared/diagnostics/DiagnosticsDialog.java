@@ -99,7 +99,7 @@ public final class DiagnosticsDialog {
         iconContainer.setBackground(icBg);
 
         ImageView ivLead = new ImageView(activity);
-        ivLead.setImageDrawable(new MaterialVectorDrawable(MaterialVectorDrawable.TYPE_DIAGNOSTICS, theme.primary));
+        ivLead.setImageDrawable(new MaterialVectorDrawable(MaterialVectorDrawable.TYPE_LOGS, theme.primary));
         int ivLeadSize = (int) (20 * density);
         FrameLayout.LayoutParams ivLeadLp = new FrameLayout.LayoutParams(ivLeadSize, ivLeadSize, Gravity.CENTER);
         ivLead.setLayoutParams(ivLeadLp);
