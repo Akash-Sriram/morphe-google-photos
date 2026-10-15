@@ -79,6 +79,10 @@ while [[ $# -gt 0 ]]; do
             CLEAN=true
             shift
             ;;
+        --update-cli)
+            "$PROJECT_DIR/update-morphe-cli.sh"
+            shift
+            ;;
         *)
             echo "Unknown argument: $1"
             echo "Usage: $0 [--source test|main] [--official|--original|--mod] [--branding] [--components flags|toolkit|both] [--flags-only] [--toolkit|--both] [--device|-d <serial>] [--mpp-only] [--install|-i] [--clean]"

@@ -739,9 +739,19 @@ public class NativeToolkitDialog {
         resultsHeader.setPadding(0, (int) (8 * density), 0, (int) (6 * density));
 
         LinearLayout resTitleRow = createSectionHeader(activity, 4, "Matched Media Results", density, theme);
+        resultsHeader.addView(resTitleRow);
 
-        View resSpacer = new View(activity);
-        resTitleRow.addView(resSpacer, new LinearLayout.LayoutParams(0, 0, 1f));
+        HorizontalScrollView hControlsScroll = new HorizontalScrollView(activity);
+        hControlsScroll.setHorizontalScrollBarEnabled(false);
+        LinearLayout.LayoutParams hctrlLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        hctrlLp.topMargin = (int) (1 * density);
+        hctrlLp.bottomMargin = (int) (5 * density);
+        hControlsScroll.setLayoutParams(hctrlLp);
+
+        LinearLayout controlsRow = new LinearLayout(activity);
+        controlsRow.setOrientation(LinearLayout.HORIZONTAL);
+        controlsRow.setGravity(Gravity.CENTER_VERTICAL);
+        controlsRow.setPadding((int) (28 * density), 0, 0, 0);
 
         TextView btnSelectAll = new TextView(activity);
         btnSelectAll.setText("All");
@@ -755,7 +765,7 @@ public class NativeToolkitDialog {
         btnSelectAll.setLayoutParams(allLp);
         btnSelectAll.setClickable(true);
         btnSelectAll.setFocusable(true);
-        resTitleRow.addView(btnSelectAll);
+        controlsRow.addView(btnSelectAll);
 
         TextView btnClearSelect = new TextView(activity);
         btnClearSelect.setText("None");
@@ -769,7 +779,7 @@ public class NativeToolkitDialog {
         btnClearSelect.setLayoutParams(noneLp);
         btnClearSelect.setClickable(true);
         btnClearSelect.setFocusable(true);
-        resTitleRow.addView(btnClearSelect);
+        controlsRow.addView(btnClearSelect);
 
         TextView btnSort = new TextView(activity);
         btnSort.setText("↕ " + currentSortOrder.shortLabel);
@@ -783,7 +793,7 @@ public class NativeToolkitDialog {
         btnSort.setLayoutParams(sortLp);
         btnSort.setClickable(true);
         btnSort.setFocusable(true);
-        resTitleRow.addView(btnSort);
+        controlsRow.addView(btnSort);
 
         TextView btnToggleView = new TextView(activity);
         btnToggleView.setText(isGridViewRef[0] ? "⊞ Grid" : "☰ List");
@@ -794,9 +804,10 @@ public class NativeToolkitDialog {
         btnToggleView.setPadding((int) (9 * density), (int) (3 * density), (int) (9 * density), (int) (3 * density));
         btnToggleView.setClickable(true);
         btnToggleView.setFocusable(true);
-        resTitleRow.addView(btnToggleView);
+        controlsRow.addView(btnToggleView);
 
-        resultsHeader.addView(resTitleRow);
+        hControlsScroll.addView(controlsRow);
+        resultsHeader.addView(hControlsScroll);
 
         tvResultsStatus.setText("Scanning items...");
         tvResultsStatus.setTextSize(11.5f);
