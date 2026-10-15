@@ -27,6 +27,12 @@ CLEAN=false
 OFFICIAL_PKG=false
 COMPONENTS_MODE="both"
 DEVICE_SERIAL=""
+TARGET_ARCH=""
+BYTECODE_MODE="STRIP_FAST"
+CONTINUE_ON_ERROR=false
+DISABLE_PURGE=false
+MOUNT_INSTALL=false
+ENABLE_BRANDING=false
 
 # Parse arguments
 while [[ $# -gt 0 ]]; do
@@ -57,6 +63,26 @@ while [[ $# -gt 0 ]]; do
             ;;
         --toolkit|--both)
             COMPONENTS_MODE="both"
+            shift
+            ;;
+        --arch)
+            TARGET_ARCH="$2"
+            shift 2
+            ;;
+        --bytecode-mode)
+            BYTECODE_MODE="$2"
+            shift 2
+            ;;
+        --continue-on-error)
+            CONTINUE_ON_ERROR=true
+            shift
+            ;;
+        --debug|--disable-purge)
+            DISABLE_PURGE=true
+            shift
+            ;;
+        --mount)
+            MOUNT_INSTALL=true
             shift
             ;;
         --device|-d)
@@ -90,7 +116,7 @@ while [[ $# -gt 0 ]]; do
             ;;
         *)
             echo "Unknown argument: $1"
-            echo "Usage: $0 [--source test|main] [--official|--original|--mod] [--branding] [--components flags|toolkit|both] [--flags-only] [--toolkit|--both] [--device|-d <serial>] [--mpp-only] [--install|-i] [--clean]"
+            echo "Usage: $0 [--source test|main] [--official|--original|--mod] [--branding] [--components flags|toolkit|both] [--flags-only] [--toolkit|--both] [--arch <abi>] [--bytecode-mode STRIP_FAST|STRIP_SAFE|FULL] [--continue-on-error] [--mount] [--debug] [--device|-d <serial>] [--mpp-only] [--install|-i] [--update-cli] [--clean]"
             exit 1
             ;;
     esac
@@ -190,13 +216,17 @@ rsync -u "$STOCK_APK" "$FAST_CACHE_DIR/stock.apk"
 rsync -u "$CLI_JAR" "$FAST_CACHE_DIR/morphe-desktop.jar"
 rsync -u "$KEYSTORE_FILE" "$FAST_CACHE_DIR/Morphe.keystore"
 
+    JAVA_OPTS=(-Xms512m -Xmx4g -XX:+UseG1GC)
+
     PATCH_ARGS=(
         --patches="$MPP_FILE"
         --exclusive
+        --bytecode-mode="$BYTECODE_MODE"
         --keystore="$FAST_CACHE_DIR/Morphe.keystore"
         --keystore-password=""
         --keystore-entry-alias="Morphe"
         --keystore-entry-password="Morphe"
+        -r="$FAST_CACHE_DIR/patching-result.json"
         -e "AMOLED dark theme"
         -e "DCIM & backup control"
         -e "Flag manager & Toolkit"
@@ -205,6 +235,21 @@ rsync -u "$KEYSTORE_FILE" "$FAST_CACHE_DIR/Morphe.keystore"
         -e "Media engine & AI fixes"
         -e "Spoof features"
     )
+
+    if [ -n "$TARGET_ARCH" ] && [ "$TARGET_ARCH" != "all" ]; then
+        PATCH_ARGS+=(--striplibs="$TARGET_ARCH")
+        echo "✂️ Architecture: Stripping to $TARGET_ARCH"
+    fi
+
+    if [ "$CONTINUE_ON_ERROR" = true ]; then
+        PATCH_ARGS+=(--continue-on-error)
+        echo "⚠️ Option: continue-on-error enabled"
+    fi
+
+    if [ "$DISABLE_PURGE" = true ]; then
+        PATCH_ARGS+=(--disable-purge)
+        echo "🛠️ Debug: Purge disabled (scratch files retained)"
+    fi
 
     echo "🧩 Components mode: $COMPONENTS_MODE"
 
@@ -228,7 +273,7 @@ rsync -u "$KEYSTORE_FILE" "$FAST_CACHE_DIR/Morphe.keystore"
 
     (
         cd "$FAST_CACHE_DIR"
-        java -jar morphe-desktop.jar patch \
+        java "${JAVA_OPTS[@]}" -jar morphe-desktop.jar patch \
             "${PATCH_ARGS[@]}" \
             -o="$FAST_CACHE_DIR/photos_patched.apk" \
             "$FAST_CACHE_DIR/stock.apk"
@@ -252,8 +297,35 @@ if [ "$DO_INSTALL" = true ]; then
         ADB_CMD+=(-s "$DEVICE_SERIAL")
     elif [ -n "$ANDROID_SERIAL" ]; then
         ADB_CMD+=(-s "$ANDROID_SERIAL")
+    else
+        USB_DEVICE=$(adb devices -l 2>/dev/null | grep "usb:" | awk '{print $1}' | head -n 1)
+        if [ -n "$USB_DEVICE" ]; then
+            ADB_CMD+=(-s "$USB_DEVICE")
+            echo "🔌 Auto-selected USB device: $USB_DEVICE"
+        else
+            FIRST_DEVICE=$(adb devices 2>/dev/null | grep -E '\tdevice$' | awk '{print $1}' | head -n 1)
+            if [ -n "$FIRST_DEVICE" ]; then
+                ADB_CMD+=(-s "$FIRST_DEVICE")
+                echo "📶 Auto-selected device: $FIRST_DEVICE"
+            fi
+        fi
     fi
-    "${ADB_CMD[@]}" install -r -d "$OUTPUT_APK"
+
+    if [ "$MOUNT_INSTALL" = true ]; then
+        echo "⚡ Performing root mount install..."
+        java "${JAVA_OPTS[@]}" -jar "$FAST_CACHE_DIR/morphe-desktop.jar" patch \
+            --mount \
+            "${ADB_CMD[@]}" \
+            "$FAST_CACHE_DIR/photos_patched.apk"
+    else
+        if ! "${ADB_CMD[@]}" install -r -d "$OUTPUT_APK"; then
+            echo "⚠️ Direct install failed, falling back to push + local pm install..."
+            "${ADB_CMD[@]}" push "$OUTPUT_APK" /data/local/tmp/app_install.apk
+            "${ADB_CMD[@]}" shell pm install -r -d /data/local/tmp/app_install.apk
+            "${ADB_CMD[@]}" shell rm -f /data/local/tmp/app_install.apk
+        fi
+    fi
+
     echo "🚀 Launching $APP_PKG..."
     "${ADB_CMD[@]}" shell am force-stop "$APP_PKG" || true
     "${ADB_CMD[@]}" shell am start -n "$APP_PKG/com.google.android.apps.photos.home.HomeActivity" || \
