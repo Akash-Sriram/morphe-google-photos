@@ -46,3 +46,7 @@ revanced-patches/
 # Local tools and output APKs
 MorpheTools/
 scratch/
+
+# Local helper and build scripts
+fast-build.sh
+update-morphe-cli.sh
