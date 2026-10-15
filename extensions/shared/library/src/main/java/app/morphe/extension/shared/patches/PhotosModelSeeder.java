@@ -1,8 +1,21 @@
 package app.morphe.extension.shared.patches;
 
 import android.content.Context;
+import android.app.Activity;
+import android.app.Dialog;
+import android.graphics.Color;
+import android.graphics.Typeface;
+import android.graphics.drawable.ColorDrawable;
+import android.graphics.drawable.GradientDrawable;
 import android.os.Handler;
 import android.os.Looper;
+import android.view.Gravity;
+import android.view.View;
+import android.view.ViewGroup;
+import android.view.Window;
+import android.widget.LinearLayout;
+import android.widget.ScrollView;
+import android.widget.TextView;
 import android.widget.Toast;
 import android.util.Base64;
 import java.io.BufferedInputStream;
@@ -503,5 +516,215 @@ public final class PhotosModelSeeder {
         if (dir == null || !dir.exists() || !dir.isDirectory()) return 0;
         File[] files = dir.listFiles((d, name) -> name != null && name.startsWith("datadownloadfile_"));
         return files == null ? 0 : files.length;
+    }
+
+    public static void showModelManagerDialog(Activity activity) {
+        if (activity == null || activity.isFinishing() || activity.isDestroyed()) return;
+
+        float density = activity.getResources().getDisplayMetrics().density;
+        boolean isDark = Utils.isDarkModeEnabled();
+        int bgColor = isDark ? 0xFF1E1F22 : 0xFFFFFFFF;
+        int cardColor = isDark ? 0xFF2B2D31 : 0xFFF2F4F7;
+        int textPrimary = isDark ? 0xFFF2F3F5 : 0xFF1A1A1A;
+        int textSecondary = isDark ? 0xFF949BA4 : 0xFF666666;
+        int primaryColor = 0xFF1E5AA8;
+        int successColor = 0xFF2E7D32;
+        int warningColor = 0xFFED6C02;
+
+        Dialog dialog = new Dialog(activity);
+        dialog.requestWindowFeature(Window.FEATURE_NO_TITLE);
+
+        LinearLayout root = new LinearLayout(activity);
+        root.setOrientation(LinearLayout.VERTICAL);
+        GradientDrawable bg = new GradientDrawable();
+        bg.setColor(bgColor);
+        bg.setCornerRadius(24 * density);
+        root.setBackground(bg);
+        int pad = (int) (20 * density);
+        root.setPadding(pad, pad, pad, pad);
+
+        // Header
+        TextView tvTitle = new TextView(activity);
+        tvTitle.setText("🤖 On-Device AI Models");
+        tvTitle.setTextSize(18f);
+        tvTitle.setTypeface(null, Typeface.BOLD);
+        tvTitle.setTextColor(textPrimary);
+        root.addView(tvTitle);
+
+        TextView tvSub = new TextView(activity);
+        tvSub.setText("Morphe MDD Model Seeder & Cache");
+        tvSub.setTextSize(12f);
+        tvSub.setTextColor(textSecondary);
+        tvSub.setPadding(0, (int) (2 * density), 0, (int) (12 * density));
+        root.addView(tvSub);
+
+        // Summary Card
+        LinearLayout sumCard = new LinearLayout(activity);
+        sumCard.setOrientation(LinearLayout.HORIZONTAL);
+        sumCard.setGravity(Gravity.CENTER_VERTICAL);
+        GradientDrawable scBg = new GradientDrawable();
+        scBg.setColor(cardColor);
+        scBg.setCornerRadius(12 * density);
+        sumCard.setBackground(scBg);
+        int cPad = (int) (12 * density);
+        sumCard.setPadding(cPad, cPad, cPad, cPad);
+
+        File modelsDir = new File(activity.getFilesDir(), MDD_MODELS_REL_PATH);
+        int currentCount = countModelsInDir(modelsDir);
+        int expectedTotal = getExpectedModelCount();
+
+        TextView tvStatus = new TextView(activity);
+        tvStatus.setText(currentCount + " / " + expectedTotal + " Model Files Installed");
+        tvStatus.setTextSize(13.5f);
+        tvStatus.setTypeface(null, Typeface.BOLD);
+        tvStatus.setTextColor(currentCount >= expectedTotal && expectedTotal > 0 ? successColor : warningColor);
+        LinearLayout.LayoutParams tsLp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+        sumCard.addView(tvStatus, tsLp);
+        root.addView(sumCard);
+
+        // Scrollable Groups List
+        ScrollView sv = new ScrollView(activity);
+        LinearLayout.LayoutParams svLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, (int) (260 * density));
+        svLp.topMargin = (int) (12 * density);
+        svLp.bottomMargin = (int) (14 * density);
+        sv.setLayoutParams(svLp);
+
+        LinearLayout listLayout = new LinearLayout(activity);
+        listLayout.setOrientation(LinearLayout.VERTICAL);
+        sv.addView(listLayout);
+        root.addView(sv);
+
+        // Populate groups
+        Map<String, List<ModelEntry>> allGroups = parseAllGroupsFromManifests();
+        for (Map.Entry<String, List<ModelEntry>> entry : allGroups.entrySet()) {
+            String groupName = entry.getKey();
+            List<ModelEntry> entries = entry.getValue();
+
+            int installed = 0;
+            for (ModelEntry me : entries) {
+                File f = new File(modelsDir, me.filename);
+                if (f.exists() && f.length() > 0) installed++;
+            }
+
+            LinearLayout gRow = new LinearLayout(activity);
+            gRow.setOrientation(LinearLayout.HORIZONTAL);
+            gRow.setGravity(Gravity.CENTER_VERTICAL);
+            GradientDrawable grBg = new GradientDrawable();
+            grBg.setColor(cardColor);
+            grBg.setCornerRadius(10 * density);
+            gRow.setBackground(grBg);
+            gRow.setPadding((int) (12 * density), (int) (10 * density), (int) (12 * density), (int) (10 * density));
+            LinearLayout.LayoutParams rLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            rLp.bottomMargin = (int) (6 * density);
+            gRow.setLayoutParams(rLp);
+
+            LinearLayout tCol = new LinearLayout(activity);
+            tCol.setOrientation(LinearLayout.VERTICAL);
+            LinearLayout.LayoutParams tcLp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+            tCol.setLayoutParams(tcLp);
+
+            TextView gTitle = new TextView(activity);
+            String displayTitle = formatGroupName(groupName);
+            gTitle.setText(displayTitle);
+            gTitle.setTextSize(13f);
+            gTitle.setTypeface(null, Typeface.BOLD);
+            gTitle.setTextColor(textPrimary);
+            tCol.addView(gTitle);
+
+            TextView gSub = new TextView(activity);
+            gSub.setText(installed + " of " + entries.size() + " files cached");
+            gSub.setTextSize(11f);
+            gSub.setTextColor(textSecondary);
+            tCol.addView(gSub);
+            gRow.addView(tCol);
+
+            TextView badge = new TextView(activity);
+            badge.setTextSize(11f);
+            badge.setTypeface(null, Typeface.BOLD);
+            badge.setPadding((int) (8 * density), (int) (4 * density), (int) (8 * density), (int) (4 * density));
+            GradientDrawable bBg = new GradientDrawable();
+            bBg.setCornerRadius(8 * density);
+            if (installed >= entries.size() && !entries.isEmpty()) {
+                badge.setText("✓ Ready");
+                badge.setTextColor(0xFFFFFFFF);
+                bBg.setColor(successColor);
+            } else {
+                badge.setText("⬇ Download");
+                badge.setTextColor(0xFFFFFFFF);
+                bBg.setColor(primaryColor);
+                badge.setClickable(true);
+                badge.setFocusable(true);
+                badge.setOnClickListener(v -> {
+                    badge.setText("Downloading...");
+                    badge.setClickable(false);
+                    new Thread(() -> {
+                        downloadGroup(activity, groupName);
+                        activity.runOnUiThread(() -> {
+                            int newCount = countModelsInDir(modelsDir);
+                            tvStatus.setText(newCount + " / " + expectedTotal + " Model Files Installed");
+                            badge.setText("✓ Ready");
+                            bBg.setColor(successColor);
+                        });
+                    }).start();
+                });
+            }
+            badge.setBackground(bBg);
+            gRow.addView(badge);
+
+            listLayout.addView(gRow);
+        }
+
+        // Action Buttons Row
+        LinearLayout btnRow = new LinearLayout(activity);
+        btnRow.setOrientation(LinearLayout.HORIZONTAL);
+        btnRow.setGravity(Gravity.END);
+
+        TextView btnClose = new TextView(activity);
+        btnClose.setText("Close");
+        btnClose.setTextSize(13f);
+        btnClose.setTextColor(textPrimary);
+        btnClose.setTypeface(null, Typeface.BOLD);
+        btnClose.setPadding((int) (16 * density), (int) (10 * density), (int) (16 * density), (int) (10 * density));
+        btnClose.setOnClickListener(v -> dialog.dismiss());
+        btnRow.addView(btnClose);
+
+        TextView btnDownloadAll = new TextView(activity);
+        btnDownloadAll.setText("Download All Missing");
+        btnDownloadAll.setTextSize(13f);
+        btnDownloadAll.setTypeface(null, Typeface.BOLD);
+        btnDownloadAll.setTextColor(0xFFFFFFFF);
+        GradientDrawable dlBg = new GradientDrawable();
+        dlBg.setColor(primaryColor);
+        dlBg.setCornerRadius(10 * density);
+        btnDownloadAll.setBackground(dlBg);
+        btnDownloadAll.setPadding((int) (16 * density), (int) (10 * density), (int) (16 * density), (int) (10 * density));
+        btnDownloadAll.setOnClickListener(v -> {
+            btnDownloadAll.setText("Downloading in background...");
+            btnDownloadAll.setEnabled(false);
+            enableAndEnsureSeeded(activity);
+            Toast.makeText(activity, "Started background download for all missing AI models", Toast.LENGTH_LONG).show();
+            dialog.dismiss();
+        });
+        btnRow.addView(btnDownloadAll);
+        root.addView(btnRow);
+
+        dialog.setContentView(root);
+        dialog.show();
+
+        Window w = dialog.getWindow();
+        if (w != null) {
+            w.setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
+            int screenWidth = activity.getResources().getDisplayMetrics().widthPixels;
+            w.setLayout(Math.min((int) (screenWidth * 0.92f), (int) (480 * density)), ViewGroup.LayoutParams.WRAP_CONTENT);
+        }
+    }
+
+    private static String formatGroupName(String raw) {
+        if (raw == null) return "AI Model Pack";
+        if (raw.toLowerCase().contains("magic") || raw.toLowerCase().contains("eraser") || raw.toLowerCase().contains("inpaint")) return "✨ Magic Eraser & Camouflage";
+        if (raw.toLowerCase().contains("portrait") || raw.toLowerCase().contains("face") || raw.toLowerCase().contains("relight")) return "👤 Portrait Relight & Blur";
+        if (raw.toLowerCase().contains("sky") || raw.toLowerCase().contains("color_pop")) return "🌅 Sky Suggestions & Color Pop";
+        if (raw.toLowerCase().contains("cinematic") || raw.toLowerCase().contains("depth") || raw.toLowerCase().contains("3d")) return "🎬 Cinematic 3D Depth";
+        return "🧠 " + raw.replace("_", " ");
     }
 }

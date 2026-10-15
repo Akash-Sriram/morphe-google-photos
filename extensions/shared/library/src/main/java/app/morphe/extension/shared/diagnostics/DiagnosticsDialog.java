@@ -26,12 +26,14 @@ import android.widget.AdapterView;
 import android.widget.ArrayAdapter;
 import android.widget.EditText;
 import android.widget.FrameLayout;
+import android.widget.HorizontalScrollView;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.Spinner;
 import android.widget.TextView;
 import android.widget.Toast;
+import android.util.TypedValue;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -97,7 +99,7 @@ public final class DiagnosticsDialog {
         iconContainer.setBackground(icBg);
 
         ImageView ivLead = new ImageView(activity);
-        ivLead.setImageDrawable(new MaterialVectorDrawable(MaterialVectorDrawable.TYPE_DIAGNOSTICS, theme.primary));
+        ivLead.setImageDrawable(new MaterialVectorDrawable(MaterialVectorDrawable.TYPE_LOGS, theme.primary));
         int ivLeadSize = (int) (20 * density);
         FrameLayout.LayoutParams ivLeadLp = new FrameLayout.LayoutParams(ivLeadSize, ivLeadSize, Gravity.CENTER);
         ivLead.setLayoutParams(ivLeadLp);
@@ -118,7 +120,7 @@ public final class DiagnosticsDialog {
 
         TextView tvSub = new TextView(activity);
         tvSub.setText("Inspection & Session Analyzer");
-        tvSub.setTextSize(11);
+        tvSub.setTextSize(11.5f);
         tvSub.setTextColor(theme.textSecondary);
         titleCol.addView(tvSub);
 
@@ -210,7 +212,7 @@ public final class DiagnosticsDialog {
         LinearLayout inputWrapper = new LinearLayout(activity);
         inputWrapper.setOrientation(LinearLayout.HORIZONTAL);
         inputWrapper.setGravity(Gravity.CENTER_VERTICAL);
-        inputWrapper.setBackground(createRoundedDrawable(theme.searchInputBg, 12 * density));
+        inputWrapper.setBackground(createRoundedDrawable(theme.searchInputBg, 14 * density));
         LinearLayout.LayoutParams iwLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, (int) (44 * density));
         inputWrapper.setLayoutParams(iwLp);
 
@@ -223,7 +225,7 @@ public final class DiagnosticsDialog {
         inputWrapper.addView(ivSearchIcon);
 
         EditText etSearch = new EditText(activity);
-        etSearch.setHint("Search all logs (e.g. exception, crash, map, flag)...");
+        etSearch.setHint("Search logs (e.g. backup, album, toolkit, exception)...");
         etSearch.setTextSize(13.5f);
         etSearch.setTextColor(theme.textPrimary);
         etSearch.setHintTextColor(theme.textSecondary);
@@ -249,6 +251,78 @@ public final class DiagnosticsDialog {
         inputWrapper.addView(btnClearSearch);
 
         filterBar.addView(inputWrapper);
+
+        // Category Chips Row (Horizontal Scroll)
+        HorizontalScrollView chipScrollView = new HorizontalScrollView(activity);
+        chipScrollView.setHorizontalScrollBarEnabled(false);
+        chipScrollView.setOverScrollMode(View.OVER_SCROLL_NEVER);
+        LinearLayout.LayoutParams csvLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        csvLp.topMargin = (int) (8 * density);
+        chipScrollView.setLayoutParams(csvLp);
+
+        LinearLayout chipsContainer = new LinearLayout(activity);
+        chipsContainer.setOrientation(LinearLayout.HORIZONTAL);
+        chipScrollView.addView(chipsContainer);
+
+        final String[] activeCategory = new String[]{"ALL"};
+        final Runnable[] loadLogsRef = new Runnable[1];
+
+        final String[][] chipDefs = new String[][] {
+            {"ALL", "All"},
+            {"ERROR", "🚨 Errors & Crashes"},
+            {"WARN", "⚠️ Warnings"},
+            {"INFO", "ℹ️ Info"},
+            {"MORPHE", "🧩 Morphe"}
+        };
+        final TextView[] chipViews = new TextView[chipDefs.length];
+
+        Runnable updateChipStyles = () -> {
+            for (int i = 0; i < chipDefs.length; i++) {
+                TextView cv = chipViews[i];
+                if (cv == null) continue;
+                boolean isSelected = chipDefs[i][0].equals(activeCategory[0]);
+                if (isSelected) {
+                    cv.setBackground(createRoundedDrawable(theme.primary, 14 * density));
+                    cv.setTextColor(theme.onPrimary);
+                    cv.setTypeface(null, Typeface.BOLD);
+                } else {
+                    cv.setBackground(createRoundedCardDrawable(theme.surfaceContainer, theme.outline, 14 * density));
+                    cv.setTextColor(theme.textSecondary);
+                    cv.setTypeface(null, Typeface.NORMAL);
+                }
+            }
+        };
+
+        for (int i = 0; i < chipDefs.length; i++) {
+            final String key = chipDefs[i][0];
+            String label = chipDefs[i][1];
+            TextView chipView = new TextView(activity);
+            chipView.setText(label);
+            chipView.setTextSize(12f);
+            chipView.setGravity(Gravity.CENTER);
+            int cvPadH = (int) (12 * density);
+            int cvPadV = (int) (6 * density);
+            chipView.setPadding(cvPadH, cvPadV, cvPadH, cvPadV);
+            chipView.setClickable(true);
+            chipView.setFocusable(true);
+            LinearLayout.LayoutParams cLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            cLp.rightMargin = (int) (6 * density);
+            chipView.setLayoutParams(cLp);
+
+            chipViews[i] = chipView;
+            chipView.setOnClickListener(v -> {
+                if (!activeCategory[0].equals(key)) {
+                    activeCategory[0] = key;
+                    updateChipStyles.run();
+                    if (loadLogsRef[0] != null) {
+                        loadLogsRef[0].run();
+                    }
+                }
+            });
+            chipsContainer.addView(chipView);
+        }
+        updateChipStyles.run();
+        filterBar.addView(chipScrollView);
         root.addView(filterBar);
 
         // ─────────────────────────────────────────────────────────────────────
@@ -378,15 +452,17 @@ public final class DiagnosticsDialog {
                 tvLogs.setText("No log session selected.");
                 return;
             }
+            final String q = etSearch.getText().toString();
+            final String cat = activeCategory[0];
             new Thread(() -> {
-                String q = etSearch.getText().toString();
-                String content = SessionLogManager.readSessionContent(activeSession[0], q, "ALL");
+                String content = SessionLogManager.readSessionContent(activeSession[0], q, cat, 1000);
                 MAIN_HANDLER.post(() -> {
                     tvLogs.setText(content);
                     scrollView.post(() -> scrollView.fullScroll(View.FOCUS_DOWN));
                 });
             }).start();
         };
+        loadLogsRef[0] = loadLogs;
 
         // Sessions loader
         Runnable reloadSessions = () -> {
@@ -457,26 +533,34 @@ public final class DiagnosticsDialog {
         // Action Buttons Click Handlers
         btnExport.setOnClickListener(v -> {
             if (activeSession[0] != null) {
-                showExportOptionsDialog(activity, theme, activeSession[0]);
+                String q = etSearch.getText().toString();
+                String cat = activeCategory[0];
+                showExportOptionsDialog(activity, theme, activeSession[0], q, cat);
             }
         });
 
         btnCopy.setOnClickListener(v -> {
             if (activeSession[0] != null) {
-                SessionLogManager.copyGitHubMarkdown(activity, activeSession[0]);
+                String q = etSearch.getText().toString();
+                String cat = activeCategory[0];
+                SessionLogManager.copyGitHubMarkdown(activity, activeSession[0], q, cat);
             }
         });
 
         btnCopy.setOnLongClickListener(v -> {
             if (activeSession[0] != null) {
-                SessionLogManager.copyToClipboard(activity, activeSession[0]);
+                String q = etSearch.getText().toString();
+                String cat = activeCategory[0];
+                SessionLogManager.copyToClipboard(activity, activeSession[0], q, cat);
             }
             return true;
         });
 
         btnShare.setOnClickListener(v -> {
             if (activeSession[0] != null) {
-                showShareOptionsDialog(activity, theme, activeSession[0]);
+                String q = etSearch.getText().toString();
+                String cat = activeCategory[0];
+                showShareOptionsDialog(activity, theme, activeSession[0], q, cat);
             }
         });
 
@@ -513,6 +597,11 @@ public final class DiagnosticsDialog {
         frame.setLayoutParams(new LinearLayout.LayoutParams(sizePx, sizePx));
         frame.setClickable(true);
         frame.setFocusable(true);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+            TypedValue outValue = new TypedValue();
+            activity.getTheme().resolveAttribute(android.R.attr.selectableItemBackgroundBorderless, outValue, true);
+            frame.setBackgroundResource(outValue.resourceId);
+        }
 
         ImageView iv = new ImageView(activity);
         iv.setImageDrawable(icon);
@@ -783,7 +872,7 @@ public final class DiagnosticsDialog {
         }
     }
 
-    private static void showExportOptionsDialog(Activity activity, Theme theme, SessionLogManager.SessionInfo session) {
+    private static void showExportOptionsDialog(Activity activity, Theme theme, SessionLogManager.SessionInfo session, String filterQuery, String levelFilter) {
         float density = activity.getResources().getDisplayMetrics().density;
         Dialog d = new Dialog(activity);
         d.requestWindowFeature(Window.FEATURE_NO_TITLE);
@@ -804,15 +893,18 @@ public final class DiagnosticsDialog {
             root.setClipToOutline(true);
         }
 
+        boolean isFiltered = (levelFilter != null && !levelFilter.equalsIgnoreCase("ALL")) || (filterQuery != null && !filterQuery.trim().isEmpty());
+        String filterDesc = SessionLogManager.getFilterDescription(levelFilter, filterQuery);
+
         TextView tvTitle = new TextView(activity);
-        tvTitle.setText("Export Log File");
+        tvTitle.setText(isFiltered ? "Export Filtered Log" : "Export Log File");
         tvTitle.setTextSize(18.5f);
         tvTitle.setTypeface(null, Typeface.BOLD);
         tvTitle.setTextColor(theme.textPrimary);
         root.addView(tvTitle);
 
         TextView tvSub = new TextView(activity);
-        tvSub.setText("Select file format to save into Downloads/Morphe/:");
+        tvSub.setText(isFiltered ? "Active Filter: [" + filterDesc + "]\nSelect format to save into Downloads/Morphe/:" : "Select file format to save into Downloads/Morphe/:");
         tvSub.setTextSize(13f);
         tvSub.setTextColor(theme.textSecondary);
         LinearLayout.LayoutParams subLp = new LinearLayout.LayoutParams(
@@ -821,25 +913,41 @@ public final class DiagnosticsDialog {
         tvSub.setLayoutParams(subLp);
         root.addView(tvSub);
 
-        // Option 1: Raw .log
-        View optLog = createOptionCard(activity, theme, "📄", "Raw Log File (.log)",
-                "Standard log file containing complete terminal output & stack traces", v -> {
-                    d.dismiss();
-                    SessionLogManager.exportSessionToFile(activity, session, false);
-                });
+        // Option 1: Log file (.log)
+        String logTitle = isFiltered ? "Filtered Log (.log)" : "Raw Log File (.log)";
+        String logSubtitle = isFiltered ? "Saves matching lines for [" + filterDesc + "]" : "Standard log file containing complete terminal output & stack traces";
+        View optLog = createOptionCard(activity, theme, "📄", logTitle, logSubtitle, v -> {
+            d.dismiss();
+            SessionLogManager.exportSessionToFile(activity, session, false, filterQuery, levelFilter);
+        });
         root.addView(optLog);
 
         // Option 2: GitHub .md
-        View optMd = createOptionCard(activity, theme, "🐙", "GitHub Markdown (.md)",
-                "Formatted report with device specs, crash summary & <details> tags", v -> {
-                    d.dismiss();
-                    SessionLogManager.exportSessionToFile(activity, session, true);
-                });
+        String mdTitle = isFiltered ? "Filtered GitHub Report (.md)" : "GitHub Markdown (.md)";
+        String mdSubtitle = isFiltered ? "Formatted report containing filtered logs for [" + filterDesc + "]" : "Formatted report with device specs, crash summary & <details> tags";
+        View optMd = createOptionCard(activity, theme, "🐙", mdTitle, mdSubtitle, v -> {
+            d.dismiss();
+            SessionLogManager.exportSessionToFile(activity, session, true, filterQuery, levelFilter);
+        });
         LinearLayout.LayoutParams optMdLp = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         optMdLp.topMargin = (int) (8 * density);
         optMd.setLayoutParams(optMdLp);
         root.addView(optMd);
+
+        // Option 3: Full Unfiltered Log (if filtered)
+        if (isFiltered) {
+            View optFull = createOptionCard(activity, theme, "📦", "Full Unfiltered Log (.log)",
+                    "Exports complete unmodified session log without filters", v -> {
+                        d.dismiss();
+                        SessionLogManager.exportSessionToFile(activity, session, false, null, "ALL");
+                    });
+            LinearLayout.LayoutParams optFullLp = new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            optFullLp.topMargin = (int) (8 * density);
+            optFull.setLayoutParams(optFullLp);
+            root.addView(optFull);
+        }
 
         // Cancel
         TextView btnCancel = new TextView(activity);
@@ -870,7 +978,7 @@ public final class DiagnosticsDialog {
         d.show();
     }
 
-    private static void showShareOptionsDialog(Activity activity, Theme theme, SessionLogManager.SessionInfo session) {
+    private static void showShareOptionsDialog(Activity activity, Theme theme, SessionLogManager.SessionInfo session, String filterQuery, String levelFilter) {
         float density = activity.getResources().getDisplayMetrics().density;
         Dialog d = new Dialog(activity);
         d.requestWindowFeature(Window.FEATURE_NO_TITLE);
@@ -891,15 +999,18 @@ public final class DiagnosticsDialog {
             root.setClipToOutline(true);
         }
 
+        boolean isFiltered = (levelFilter != null && !levelFilter.equalsIgnoreCase("ALL")) || (filterQuery != null && !filterQuery.trim().isEmpty());
+        String filterDesc = SessionLogManager.getFilterDescription(levelFilter, filterQuery);
+
         TextView tvTitle = new TextView(activity);
-        tvTitle.setText("Share Diagnostics");
+        tvTitle.setText(isFiltered ? "Share Filtered Log" : "Share Diagnostics");
         tvTitle.setTextSize(18.5f);
         tvTitle.setTypeface(null, Typeface.BOLD);
         tvTitle.setTextColor(theme.textPrimary);
         root.addView(tvTitle);
 
         TextView tvSub = new TextView(activity);
-        tvSub.setText("Select how to share this session:");
+        tvSub.setText(isFiltered ? "Active Filter: [" + filterDesc + "]\nSelect how to share:" : "Select how to share this session:");
         tvSub.setTextSize(13f);
         tvSub.setTextColor(theme.textSecondary);
         LinearLayout.LayoutParams subLp = new LinearLayout.LayoutParams(
@@ -909,24 +1020,40 @@ public final class DiagnosticsDialog {
         root.addView(tvSub);
 
         // Option 1: Share .log file
-        View optLog = createOptionCard(activity, theme, "📄", "Share Log File (.log)",
-                "Sends actual .log file attachment via Android share sheet", v -> {
-                    d.dismiss();
-                    SessionLogManager.shareSessionFile(activity, session, false);
-                });
+        String logTitle = isFiltered ? "Share Filtered Log (.log)" : "Share Log File (.log)";
+        String logSub = isFiltered ? "Sends filtered log (" + filterDesc + ") via Android share sheet" : "Sends actual .log file attachment via Android share sheet";
+        View optLog = createOptionCard(activity, theme, "📄", logTitle, logSub, v -> {
+            d.dismiss();
+            SessionLogManager.shareSessionFile(activity, session, false, filterQuery, levelFilter);
+        });
         root.addView(optLog);
 
         // Option 2: Share .md file
-        View optMd = createOptionCard(activity, theme, "🐙", "Share GitHub Report (.md)",
-                "Sends formatted Markdown report attachment via share sheet", v -> {
-                    d.dismiss();
-                    SessionLogManager.shareSessionFile(activity, session, true);
-                });
+        String mdTitle = isFiltered ? "Share Filtered GitHub Report (.md)" : "Share GitHub Report (.md)";
+        String mdSub = isFiltered ? "Sends filtered Markdown report (" + filterDesc + ") via share sheet" : "Sends formatted Markdown report attachment via share sheet";
+        View optMd = createOptionCard(activity, theme, "🐙", mdTitle, mdSub, v -> {
+            d.dismiss();
+            SessionLogManager.shareSessionFile(activity, session, true, filterQuery, levelFilter);
+        });
         LinearLayout.LayoutParams optMdLp = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         optMdLp.topMargin = (int) (8 * density);
         optMd.setLayoutParams(optMdLp);
         root.addView(optMd);
+
+        // Option 3: Full Log (if filtered)
+        if (isFiltered) {
+            View optFull = createOptionCard(activity, theme, "📦", "Share Full Log (.log)",
+                    "Sends complete unmodified session log file", v -> {
+                        d.dismiss();
+                        SessionLogManager.shareSessionFile(activity, session, false, null, "ALL");
+                    });
+            LinearLayout.LayoutParams optFullLp = new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            optFullLp.topMargin = (int) (8 * density);
+            optFull.setLayoutParams(optFullLp);
+            root.addView(optFull);
+        }
 
         // Cancel
         TextView btnCancel = new TextView(activity);

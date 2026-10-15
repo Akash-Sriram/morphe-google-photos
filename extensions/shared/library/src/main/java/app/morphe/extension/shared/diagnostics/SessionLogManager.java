@@ -77,6 +77,8 @@ public final class SessionLogManager {
 
     private static final Deque<String> sRecentLogBuffer = new ArrayDeque<>();
     private static final Object BUFFER_LOCK = new Object();
+    private static volatile String sLastAppendedMessage = null;
+    private static volatile int sAppendedRepeatCount = 0;
     private static Thread.UncaughtExceptionHandler sOriginalCrashHandler;
 
     public static class SessionInfo {
@@ -238,7 +240,6 @@ public final class SessionLogManager {
             writer.write("Session ID:        " + sCurrentSessionId + "\n");
             writer.write("Start Time:        " + new Date(sSessionStartTime).toString() + "\n");
             writer.write("Android OS:        " + Build.VERSION.RELEASE + " (API " + Build.VERSION.SDK_INT + ")\n");
-            writer.write("Security Patch:    " + (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M ? Build.VERSION.SECURITY_PATCH : "N/A") + "\n");
             writer.write("Photos App Ver:    " + Utils.getAppVersionName() + "\n");
             writer.write("Morphe Patches:    " + Utils.getPatchesReleaseVersion() + "\n");
             writer.write("Package:           " + (sContext != null ? sContext.getPackageName() : "unknown") + "\n");
@@ -328,16 +329,35 @@ public final class SessionLogManager {
     }
 
     /**
-     * Appends an in-app log entry from Morphe Logger.
+     * Appends an in-app log entry from Morphe Logger with consecutive repeat compaction.
      */
     public static void appendLog(String tag, String level, String message, Throwable ex) {
         if (message == null) return;
 
+        String sanitizedMsg = sanitize(message);
+
+        // Repetition compaction: suppress consecutive identical messages
+        String repeatNotice = null;
+        synchronized (BUFFER_LOCK) {
+            if (sanitizedMsg.equals(sLastAppendedMessage) && ex == null) {
+                sAppendedRepeatCount++;
+                return;
+            } else {
+                if (sAppendedRepeatCount > 0) {
+                    repeatNotice = "  ... [repeated " + sAppendedRepeatCount + " times]";
+                    sAppendedRepeatCount = 0;
+                }
+                sLastAppendedMessage = sanitizedMsg;
+            }
+        }
+
         SimpleDateFormat timeFmt = new SimpleDateFormat("HH:mm:ss.SSS", Locale.US);
         String timestamp = timeFmt.format(new Date());
 
-        String sanitizedMsg = sanitize(message);
         StringBuilder entry = new StringBuilder();
+        if (repeatNotice != null) {
+            entry.append(repeatNotice).append("\n");
+        }
         entry.append(timestamp).append(" [").append(level).append("] ").append(tag).append(": ").append(sanitizedMsg);
 
         if (ex != null) {
@@ -449,28 +469,63 @@ public final class SessionLogManager {
         logcatThread.start();
     }
 
+    private static boolean isExcludedLogcatLine(String line) {
+        if (line == null) return true;
+        // 1. Skip duplicate Morphe logger entries (already logged directly via appendLog)
+        if (line.contains("morphe: ") || line.contains("I/morphe") || line.contains("D/morphe") || line.contains("[INFO] ") || line.contains("[ERROR] ")) {
+            return true;
+        }
+        // 2. Framework UI / System churn
+        if (line.contains("ImeTracker") ||
+            line.contains("DynamiteContextFactory") ||
+            line.contains("ProviderInstaller") ||
+            line.contains("GraphicsEnvironment") ||
+            line.contains("nativeloader") ||
+            line.contains("JobInfo") ||
+            line.contains("requestLayout() improperly called") ||
+            line.contains("PRAGMA journal_mode=TRUNCATE") ||
+            line.contains("Not starting debugger since process cannot load")) {
+            return true;
+        }
+        return false;
+    }
+
     private static boolean isRelevantLogcatLine(String line) {
-        if (line == null) return false;
-        return line.contains("Morphe") ||
-               line.contains("morphe:") ||
-               line.contains("GmsMap") ||
-               line.contains("GmsCore") ||
-               line.contains("Mapbox") ||
-               line.contains("Phenotype") ||
-               line.contains("AndroidRuntime") ||
-               line.contains("FATAL") ||
-               line.contains("CameraUpdate") ||
-               line.contains("app.morphe") ||
-               line.contains("com.google.android.apps.photos") ||
-               line.contains("System.err") ||
-               line.contains("DEBUG   :") ||
-               line.contains("crash_dump") ||
-               line.contains("Fatal signal") ||
-               line.contains("Exception") ||
-               line.contains("Error") ||
-               line.contains("StrictMode") ||
-               line.contains(" E/") ||
-               line.contains(" F/");
+        if (line == null || isExcludedLogcatLine(line)) return false;
+
+        // Fatal and runtime crashes
+        if (line.contains("AndroidRuntime") ||
+            line.contains("FATAL EXCEPTION") ||
+            line.contains("DEBUG   :") ||
+            line.contains("crash_dump") ||
+            line.contains("Fatal signal")) {
+            return true;
+        }
+
+        // Uncaught exceptions & standard errors
+        if (line.contains("Exception") ||
+            line.contains("Error") ||
+            line.contains("System.err") ||
+            line.contains("StrictMode") ||
+            line.contains(" E/") ||
+            line.contains(" F/")) {
+            return true;
+        }
+
+        // Warnings from Morphe or critical database warnings
+        if (line.contains("W/morphe") || line.contains("E/morphe")) {
+            return true;
+        }
+
+        // Specific sub-features of interest
+        if (line.contains("GmsCore") ||
+            line.contains("GmsMap") ||
+            line.contains("Mapbox") ||
+            line.contains("PhenotypeFlag")) {
+            return true;
+        }
+
+        return false;
     }
 
     public static String sanitize(String input) {
@@ -522,11 +577,16 @@ public final class SessionLogManager {
     }
 
     public static String readSessionContent(SessionInfo session, String filterQuery, String levelFilter) {
+        return readSessionContent(session, filterQuery, levelFilter, 0);
+    }
+
+    public static String readSessionContent(SessionInfo session, String filterQuery, String levelFilter, int maxLines) {
         if (session == null || session.file == null || !session.file.exists()) {
             return "Log file not found.";
         }
 
-        StringBuilder sb = new StringBuilder();
+        StringBuilder headerSb = new StringBuilder();
+        List<String> matchedLines = new ArrayList<>();
         String q = filterQuery != null ? filterQuery.toLowerCase().trim() : "";
         String lvl = levelFilter != null ? levelFilter.toUpperCase() : "ALL";
 
@@ -538,16 +598,25 @@ public final class SessionLogManager {
                     line.startsWith("Photos") || line.startsWith("Morphe") || line.startsWith("MORPHE") ||
                     line.startsWith("Package:") || line.startsWith("GmsCore") || line.startsWith("Start Time:")) {
                     // Always include header lines
-                    sb.append(line).append("\n");
+                    headerSb.append(line).append("\n");
                     continue;
                 }
 
                 if (!lvl.equals("ALL")) {
-                    if (lvl.equals("ERROR") && !line.contains("[ERROR]") && !line.contains("FATAL") && !line.contains("Exception") && !line.contains("🚨")) {
-                        continue;
-                    } else if (lvl.equals("MAPS") && !line.contains("Map") && !line.contains("Location") && !line.contains("GmsMap")) {
-                        continue;
-                    } else if (lvl.equals("FLAGS") && !line.contains("Flag") && !line.contains("Phenotype")) {
+                    boolean matchesCategory = false;
+                    if (lvl.equals("ERROR")) {
+                        matchesCategory = line.contains("[ERROR]") || line.contains("FATAL") || line.contains("Exception") ||
+                                          line.contains("🚨") || line.contains(" E/") || line.contains(" F/") ||
+                                          line.contains("Crash") || line.contains("crash_dump") || line.contains("WindowLeaked");
+                    } else if (lvl.equals("WARN")) {
+                        matchesCategory = line.contains("[WARN]") || line.contains(" W/") || line.contains("Warning") || line.contains("⚠️");
+                    } else if (lvl.equals("INFO")) {
+                        matchesCategory = line.contains("[INFO]") || line.contains(" I/") || line.contains("ℹ️");
+                    } else if (lvl.equals("MORPHE")) {
+                        matchesCategory = line.contains("morphe") || line.contains("Morphe") || line.contains("app.morphe") ||
+                                          line.contains("[INFO]") || line.contains("[WARN]") || line.contains("[ERROR]");
+                    }
+                    if (!matchesCategory) {
                         continue;
                     }
                 }
@@ -556,23 +625,57 @@ public final class SessionLogManager {
                     continue;
                 }
 
-                sb.append(line).append("\n");
+                matchedLines.add(line);
             }
         } catch (Throwable t) {
-            sb.append("\nFailed to read log file: ").append(t.getMessage());
+            headerSb.append("\nFailed to read log file: ").append(t.getMessage());
+        }
+
+        StringBuilder sb = new StringBuilder(headerSb);
+        if (maxLines > 0 && matchedLines.size() > maxLines) {
+            sb.append("\n[... Displaying latest ").append(maxLines).append(" of ").append(matchedLines.size()).append(" matching lines. Export file for complete history ...]\n\n");
+            int startIndex = matchedLines.size() - maxLines;
+            for (int i = startIndex; i < matchedLines.size(); i++) {
+                sb.append(matchedLines.get(i)).append("\n");
+            }
+        } else {
+            for (String l : matchedLines) {
+                sb.append(l).append("\n");
+            }
         }
 
         return sb.toString();
     }
 
+    public static String getFilterDescription(String levelFilter, String filterQuery) {
+        String lvl = null;
+        if (levelFilter != null && !levelFilter.equalsIgnoreCase("ALL")) {
+            if (levelFilter.equalsIgnoreCase("ERROR")) lvl = "Errors & Crashes";
+            else if (levelFilter.equalsIgnoreCase("WARN")) lvl = "Warnings";
+            else if (levelFilter.equalsIgnoreCase("INFO")) lvl = "Info";
+            else if (levelFilter.equalsIgnoreCase("MORPHE")) lvl = "Morphe";
+            else lvl = levelFilter;
+        }
+        String q = (filterQuery != null && !filterQuery.trim().isEmpty()) ? filterQuery.trim() : null;
+        if (lvl != null && q != null) {
+            return lvl + " + \"" + q + "\"";
+        } else if (lvl != null) {
+            return lvl;
+        } else if (q != null) {
+            return "\"" + q + "\"";
+        } else {
+            return "All";
+        }
+    }
+
     public static String formatGitHubReport(SessionInfo session, String content) {
+        return formatGitHubReport(session, content, null, "ALL");
+    }
+
+    public static String formatGitHubReport(SessionInfo session, String content, String filterQuery, String levelFilter) {
         StringBuilder sb = new StringBuilder();
         sb.append("### Environment Information\n");
-        sb.append("- **Device**: ").append(Build.MANUFACTURER).append(" ").append(Build.MODEL).append("\n");
         sb.append("- **Android OS**: ").append(Build.VERSION.RELEASE).append(" (API ").append(Build.VERSION.SDK_INT).append(")\n");
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            sb.append("- **Security Patch**: ").append(Build.VERSION.SECURITY_PATCH).append("\n");
-        }
         sb.append("- **Photos Version**: ").append(Utils.getAppVersionName()).append("\n");
         sb.append("- **Morphe Version**: ").append(Utils.getPatchesReleaseVersion()).append("\n");
         if (session != null) {
@@ -582,6 +685,10 @@ public final class SessionLogManager {
                 sb.append("- **Crashed**: Yes\n");
             }
         }
+        boolean isFiltered = (levelFilter != null && !levelFilter.equalsIgnoreCase("ALL")) || (filterQuery != null && !filterQuery.trim().isEmpty());
+        if (isFiltered) {
+            sb.append("- **Active Filter**: `").append(getFilterDescription(levelFilter, filterQuery)).append("`\n");
+        }
         sb.append("\n");
 
         if (session != null && session.isCrashed && session.crashSummary != null && !session.crashSummary.isEmpty()) {
@@ -590,7 +697,7 @@ public final class SessionLogManager {
         }
 
         sb.append("<details>\n");
-        sb.append("<summary>📄 Diagnostics Log (click to expand)</summary>\n\n");
+        sb.append("<summary>📄 Diagnostics Log (").append(isFiltered ? "Filtered: " + getFilterDescription(levelFilter, filterQuery) : "click to expand").append(")</summary>\n\n");
         sb.append("```log\n");
         if (content != null) {
             sb.append(content.trim());
@@ -602,14 +709,20 @@ public final class SessionLogManager {
     }
 
     public static Uri exportSessionToFile(Context context, SessionInfo session, boolean asMarkdown) {
+        return exportSessionToFile(context, session, asMarkdown, null, "ALL");
+    }
+
+    public static Uri exportSessionToFile(Context context, SessionInfo session, boolean asMarkdown, String filterQuery, String levelFilter) {
         if (context == null || session == null) return null;
         try {
-            String rawContent = readSessionContent(session, null, "ALL");
-            String content = asMarkdown ? formatGitHubReport(session, rawContent) : rawContent;
+            boolean isFiltered = (levelFilter != null && !levelFilter.equalsIgnoreCase("ALL")) || (filterQuery != null && !filterQuery.trim().isEmpty());
+            String rawContent = readSessionContent(session, filterQuery, levelFilter, 0);
+            String content = asMarkdown ? formatGitHubReport(session, rawContent, filterQuery, levelFilter) : rawContent;
             String ext = asMarkdown ? ".md" : ".log";
             String mimeType = asMarkdown ? "text/markdown" : "text/plain";
             String baseName = session.id.replace(".log", "");
-            String fileName = "morphe_photos_diagnostics_" + baseName + ext;
+            String suffix = isFiltered ? ("_" + ((levelFilter != null && !levelFilter.equalsIgnoreCase("ALL")) ? levelFilter.toLowerCase() : "filtered")) : "";
+            String fileName = "morphe_photos_diagnostics_" + baseName + suffix + ext;
 
             Uri resultUri = null;
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
@@ -651,21 +764,27 @@ public final class SessionLogManager {
     }
 
     public static void shareSessionFile(Activity activity, SessionInfo session, boolean asMarkdown) {
+        shareSessionFile(activity, session, asMarkdown, null, "ALL");
+    }
+
+    public static void shareSessionFile(Activity activity, SessionInfo session, boolean asMarkdown, String filterQuery, String levelFilter) {
         if (activity == null || session == null) return;
         IO_EXECUTOR.execute(() -> {
             try {
-                Uri fileUri = exportSessionToFile(activity, session, asMarkdown);
+                Uri fileUri = exportSessionToFile(activity, session, asMarkdown, filterQuery, levelFilter);
                 MAIN_HANDLER.post(() -> {
                     try {
                         Intent sendIntent = new Intent(Intent.ACTION_SEND);
                         sendIntent.setType(asMarkdown ? "text/markdown" : "text/plain");
-                        sendIntent.putExtra(Intent.EXTRA_SUBJECT, "Morphe Photos Diagnostics (" + session.id + ")");
+                        boolean isFiltered = (levelFilter != null && !levelFilter.equalsIgnoreCase("ALL")) || (filterQuery != null && !filterQuery.trim().isEmpty());
+                        String subject = "Morphe Photos Diagnostics (" + session.id + (isFiltered ? " - " + getFilterDescription(levelFilter, filterQuery) : "") + ")";
+                        sendIntent.putExtra(Intent.EXTRA_SUBJECT, subject);
                         if (fileUri != null) {
                             sendIntent.putExtra(Intent.EXTRA_STREAM, fileUri);
                             sendIntent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
                         } else {
-                            String raw = readSessionContent(session, null, "ALL");
-                            sendIntent.putExtra(Intent.EXTRA_TEXT, asMarkdown ? formatGitHubReport(session, raw) : raw);
+                            String raw = readSessionContent(session, filterQuery, levelFilter, 0);
+                            sendIntent.putExtra(Intent.EXTRA_TEXT, asMarkdown ? formatGitHubReport(session, raw, filterQuery, levelFilter) : raw);
                         }
                         activity.startActivity(Intent.createChooser(sendIntent, "Share Diagnostics Log"));
                     } catch (Throwable t) {
@@ -679,17 +798,25 @@ public final class SessionLogManager {
     }
 
     public static void copyGitHubMarkdown(Context context, SessionInfo session) {
+        copyGitHubMarkdown(context, session, null, "ALL");
+    }
+
+    public static void copyGitHubMarkdown(Context context, SessionInfo session, String filterQuery, String levelFilter) {
         if (context == null || session == null) return;
         IO_EXECUTOR.execute(() -> {
-            String rawContent = readSessionContent(session, null, "ALL");
-            String markdown = formatGitHubReport(session, rawContent);
+            String rawContent = readSessionContent(session, filterQuery, levelFilter, 0);
+            String markdown = formatGitHubReport(session, rawContent, filterQuery, levelFilter);
             MAIN_HANDLER.post(() -> {
                 try {
                     ClipboardManager cm = (ClipboardManager) context.getSystemService(Context.CLIPBOARD_SERVICE);
                     if (cm != null) {
                         ClipData clip = ClipData.newPlainText("Morphe GitHub Diagnostics", markdown);
                         cm.setPrimaryClip(clip);
-                        Toast.makeText(context, "✓ Copied GitHub Markdown (pre-formatted with <details>)", Toast.LENGTH_LONG).show();
+                        boolean isFiltered = (levelFilter != null && !levelFilter.equalsIgnoreCase("ALL")) || (filterQuery != null && !filterQuery.trim().isEmpty());
+                        String msg = isFiltered
+                                ? "✓ Copied Filtered GitHub Markdown (" + getFilterDescription(levelFilter, filterQuery) + ")"
+                                : "✓ Copied GitHub Markdown (pre-formatted with <details>)";
+                        Toast.makeText(context, msg, Toast.LENGTH_LONG).show();
                     }
                 } catch (Throwable t) {
                     Toast.makeText(context, "Failed to copy: " + t.getMessage(), Toast.LENGTH_SHORT).show();
@@ -699,11 +826,15 @@ public final class SessionLogManager {
     }
 
     public static void shareSession(Activity activity, SessionInfo session) {
-        shareSessionFile(activity, session, false);
+        shareSessionFile(activity, session, false, null, "ALL");
     }
 
     public static void copyToClipboard(Context context, SessionInfo session) {
-        copyGitHubMarkdown(context, session);
+        copyGitHubMarkdown(context, session, null, "ALL");
+    }
+
+    public static void copyToClipboard(Context context, SessionInfo session, String filterQuery, String levelFilter) {
+        copyGitHubMarkdown(context, session, filterQuery, levelFilter);
     }
 
     public static void clearAllSessions(Runnable onComplete) {

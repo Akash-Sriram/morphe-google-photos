@@ -150,7 +150,15 @@ val amoledDarkThemePatch = resourcePatch(
         var changedStyles = 0
 
         resDirectory.walkTopDown()
-            .filter(File::isValuesXml)
+            .onEnter { dir -> dir == resDirectory || dir.name.startsWith("values", ignoreCase = true) }
+            .filter { file ->
+                file.isValuesXml() && (
+                    file.isNightValuesXml() ||
+                    file.name.startsWith("color", ignoreCase = true) ||
+                    file.name.startsWith("style", ignoreCase = true) ||
+                    file.name.startsWith("theme", ignoreCase = true)
+                )
+            }
             .forEach { file ->
                 val source = file.readText()
                 if (!source.contains("<color") && !source.contains("<style")) return@forEach
@@ -167,8 +175,6 @@ val amoledDarkThemePatch = resourcePatch(
         if (changed == 0) {
             throw PatchException("No Google Photos AMOLED theme resources were patched.")
         }
-
-        println("AMOLED dark theme: patched $changedColors color(s), $changedStyles style item(s).")
     }
 }
 

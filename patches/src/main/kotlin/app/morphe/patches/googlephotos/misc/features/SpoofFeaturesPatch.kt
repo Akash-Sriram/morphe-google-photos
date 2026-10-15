@@ -118,32 +118,14 @@ val spoofFeaturesPatch = bytecodePatch(
                     didPatchFeatureFlag = true
                 }
 
-                // Also patch SystemProperties.get() callsites in any method that we touched,
-                // and in methods that call SystemProperties.get() directly (to cover native paths).
-                val implInstructions = implementation.instructions.toList()
-                val hasSystemPropCall = implInstructions.any { instr ->
+                // Also patch SystemProperties.get() callsites in any method that contains them.
+                val hasSystemPropCall = implementation.instructions.any { instr ->
                     val ref = (instr as? ReferenceInstruction)?.reference as? MethodReference
                     ref != null && ref.isSystemPropertiesStringGetter()
                 }
                 if (hasSystemPropCall) {
                     mutableMethod.patchSystemPropertyReads(SYSTEM_PROPERTY_OVERRIDES)
                 }
-            }
-        }
-
-        // Sweep remaining classes for SystemProperties.get() callsites not already covered above.
-        classDefForEach { classDef ->
-            val mutableClass by lazy { mutableClassDefBy(classDef) }
-            classDef.methods.forEach classLoop@{ method ->
-                val implementation = method.implementation ?: return@classLoop
-                val implInstructions = implementation.instructions.toList()
-                val hasSystemPropCall = implInstructions.any { instr ->
-                    val ref = (instr as? ReferenceInstruction)?.reference as? MethodReference
-                    ref != null && ref.isSystemPropertiesStringGetter()
-                }
-                if (!hasSystemPropCall) return@classLoop
-                val mutableMethod = mutableClass.findMutableMethodOf(method)
-                mutableMethod.patchSystemPropertyReads(SYSTEM_PROPERTY_OVERRIDES)
             }
         }
     }

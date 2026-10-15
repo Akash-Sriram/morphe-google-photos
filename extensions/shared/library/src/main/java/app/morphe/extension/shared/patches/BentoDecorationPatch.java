@@ -24,12 +24,19 @@ public final class BentoDecorationPatch {
         }
 
         try {
+            boolean isG1 = isGoogleOneAccount(accountObj);
             String accountName = getAccountName(accountObj);
-            Logger.printInfo(() -> "Providing Pro badge for active account: " + accountName);
+
+            if (!isG1) {
+                Logger.printDebug(() -> "Active account (" + accountName + ") is not Google One subscribed, omitting badge.");
+                return null;
+            }
+
+            Logger.printInfo(() -> "Genuine Google One subscription active for: " + accountName + ". Providing Pro badge.");
             return "Pro";
         } catch (Throwable t) {
             Logger.printException(() -> "Error evaluating Google One status in Bento menu", t);
-            return "Pro";
+            return null;
         }
     }
 

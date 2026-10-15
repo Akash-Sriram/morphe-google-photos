@@ -12,3 +12,16 @@ internal object InitializeFeaturesEnumFingerprint : Fingerprint(
     ),
 )
 
+internal object SaveCreationMixinFingerprint : Fingerprint(
+    strings = listOf("SaveCreationMixin"),
+)
+
+internal object MfyCreationMixinFingerprint : Fingerprint(
+    strings = listOf("MFYCreationMixin"),
+)
+
+internal object MfySectionDelegateFingerprint : Fingerprint(
+    strings = listOf("MFYSectionDelegate"),
+)
+
+

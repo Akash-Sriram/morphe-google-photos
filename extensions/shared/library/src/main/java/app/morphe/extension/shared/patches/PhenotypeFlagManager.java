@@ -43,6 +43,7 @@ import android.view.ViewGroup;
 import android.view.ViewOutlineProvider;
 import android.view.ViewTreeObserver;
 import android.view.Window;
+import android.view.WindowInsets;
 import android.view.WindowManager;
 import android.view.inputmethod.EditorInfo;
 import android.view.inputmethod.InputMethodManager;
@@ -58,6 +59,7 @@ import android.widget.ProgressBar;
 import android.widget.Switch;
 import android.widget.TextView;
 import android.widget.Toast;
+import android.util.TypedValue;
 
 import org.json.JSONObject;
 import org.w3c.dom.Document;
@@ -117,6 +119,7 @@ public final class PhenotypeFlagManager {
         public static final int TYPE_CHEVRON_DOWN = 7;
         public static final int TYPE_CHEVRON_UP = 8;
         public static final int TYPE_SYNC = 9;
+        public static final int TYPE_REFRESH = 9;
         public static final int TYPE_EXPAND = 10;
         public static final int TYPE_COLLAPSE = 11;
         public static final int TYPE_IMPORT = 12;
@@ -128,6 +131,7 @@ public final class PhenotypeFlagManager {
         public static final int TYPE_DELETE = 18;
         public static final int TYPE_RESTART = 19;
         public static final int TYPE_CHECK = 20;
+        public static final int TYPE_TOOLKIT = 21;
 
         private final int type;
         private final Paint strokePaint;
@@ -179,15 +183,22 @@ public final class PhenotypeFlagManager {
                     break;
                 }
                 case TYPE_LOGS: {
-                    float dotR = Math.min(w, h) * 0.065f;
-                    canvas.drawCircle(w * 0.18f, h * 0.28f, dotR, fillPaint);
-                    canvas.drawLine(w * 0.34f, h * 0.28f, w * 0.85f, h * 0.28f, strokePaint);
+                    // Terminal & Console Log Screen
+                    RectF screen = new RectF(w * 0.14f, h * 0.18f, w * 0.86f, h * 0.82f);
+                    canvas.drawRoundRect(screen, w * 0.12f, h * 0.12f, strokePaint);
 
-                    canvas.drawCircle(w * 0.18f, h * 0.50f, dotR, fillPaint);
-                    canvas.drawLine(w * 0.34f, h * 0.50f, w * 0.72f, h * 0.50f, strokePaint);
+                    // Terminal Prompt Chevron '>'
+                    Path prompt = new Path();
+                    prompt.moveTo(w * 0.28f, h * 0.37f);
+                    prompt.lineTo(w * 0.43f, h * 0.50f);
+                    prompt.lineTo(w * 0.28f, h * 0.63f);
+                    canvas.drawPath(prompt, strokePaint);
 
-                    canvas.drawCircle(w * 0.18f, h * 0.72f, dotR, fillPaint);
-                    canvas.drawLine(w * 0.34f, h * 0.72f, w * 0.88f, h * 0.72f, strokePaint);
+                    // Terminal Cursor Underscore '_'
+                    canvas.drawLine(w * 0.51f, h * 0.63f, w * 0.72f, h * 0.63f, strokePaint);
+
+                    // Live Log Status Indicator
+                    canvas.drawCircle(w * 0.71f, h * 0.35f, Math.min(w, h) * 0.065f, fillPaint);
                     break;
                 }
                 case TYPE_SEARCH: {
@@ -323,10 +334,17 @@ public final class PhenotypeFlagManager {
                     break;
                 }
                 case TYPE_DIAGNOSTICS: {
-                    canvas.drawLine(w * 0.16f, h * 0.82f, w * 0.84f, h * 0.82f, strokePaint);
-                    canvas.drawLine(w * 0.30f, h * 0.82f, w * 0.30f, h * 0.50f, strokePaint);
-                    canvas.drawLine(w * 0.50f, h * 0.82f, w * 0.50f, h * 0.24f, strokePaint);
-                    canvas.drawLine(w * 0.70f, h * 0.82f, w * 0.70f, h * 0.38f, strokePaint);
+                    RectF screen = new RectF(w * 0.14f, h * 0.18f, w * 0.86f, h * 0.82f);
+                    canvas.drawRoundRect(screen, w * 0.12f, h * 0.12f, strokePaint);
+
+                    Path prompt = new Path();
+                    prompt.moveTo(w * 0.28f, h * 0.37f);
+                    prompt.lineTo(w * 0.43f, h * 0.50f);
+                    prompt.lineTo(w * 0.28f, h * 0.63f);
+                    canvas.drawPath(prompt, strokePaint);
+
+                    canvas.drawLine(w * 0.51f, h * 0.63f, w * 0.72f, h * 0.63f, strokePaint);
+                    canvas.drawCircle(w * 0.71f, h * 0.35f, Math.min(w, h) * 0.065f, fillPaint);
                     break;
                 }
                 case TYPE_DELETE: {
@@ -354,6 +372,21 @@ public final class PhenotypeFlagManager {
                     p.lineTo(w * 0.42f, h * 0.72f);
                     p.lineTo(w * 0.80f, h * 0.28f);
                     canvas.drawPath(p, strokePaint);
+                    break;
+                }
+                case TYPE_TOOLKIT: {
+                    // Wrench / Toolkit icon
+                    Path wrench = new Path();
+                    wrench.moveTo(w * 0.68f, h * 0.22f);
+                    wrench.lineTo(w * 0.78f, h * 0.32f);
+                    wrench.lineTo(w * 0.68f, h * 0.42f);
+                    wrench.lineTo(w * 0.38f, h * 0.72f);
+                    wrench.lineTo(w * 0.28f, h * 0.62f);
+                    wrench.lineTo(w * 0.58f, h * 0.32f);
+                    wrench.close();
+                    canvas.drawPath(wrench, strokePaint);
+                    canvas.drawLine(w * 0.28f, h * 0.62f, w * 0.22f, h * 0.68f, strokePaint);
+                    canvas.drawCircle(w * 0.74f, h * 0.26f, Math.min(w, h) * 0.08f, fillPaint);
                     break;
                 }
             }
@@ -545,6 +578,165 @@ public final class PhenotypeFlagManager {
         return context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE);
     }
 
+    public static String getComponentsMode() {
+        return "flags";
+    }
+
+    public static String getEffectiveComponentsMode(Context context) {
+        try {
+            if (context != null) {
+                SharedPreferences prefs = getPrefs(context);
+                String saved = prefs.getString("_components_mode", null);
+                if (saved != null && !saved.trim().isEmpty()) {
+                    return saved.trim().toLowerCase();
+                }
+            }
+        } catch (Throwable ignored) {}
+        return getComponentsMode();
+    }
+
+    public static void refreshFloatingPill(Activity activity) {
+        if (activity == null || activity.isFinishing() || activity.isDestroyed()) return;
+        activity.runOnUiThread(() -> {
+            try {
+                FrameLayout content = activity.findViewById(android.R.id.content);
+                if (content != null) {
+                    View existing = content.findViewWithTag(SETTINGS_PILL_TAG);
+                    if (existing != null) {
+                        content.removeView(existing);
+                        LinearLayout newPill = createFloatingPill(activity);
+                        content.addView(newPill);
+                    }
+                }
+            } catch (Throwable t) {
+                Logger.printException(() -> "Error refreshing floating pill", t);
+            }
+        });
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Photos About Settings Easter Egg (AI & On-Device ML Manager)
+    // ─────────────────────────────────────────────────────────────────────────
+
+    private static final int TAG_ABOUT_HOOKED = 0x7E3A9101;
+
+    public static void hookAboutActivity(Activity activity) {
+        if (activity == null || activity.isFinishing() || activity.isDestroyed()) return;
+
+        activity.runOnUiThread(() -> {
+            try {
+                View decor = activity.getWindow().getDecorView();
+                decor.getViewTreeObserver().addOnGlobalLayoutListener(new ViewTreeObserver.OnGlobalLayoutListener() {
+                    @Override
+                    public void onGlobalLayout() {
+                        try {
+                            attachAboutEasterEgg(activity, decor);
+                        } catch (Throwable ignored) {}
+                    }
+                });
+            } catch (Throwable t) {
+                Logger.printException(() -> "Error in hookAboutActivity", t);
+            }
+        });
+    }
+
+    private static void attachAboutEasterEgg(Activity activity, View view) {
+        if (view == null) return;
+        if (view instanceof TextView) {
+            TextView tv = (TextView) view;
+            CharSequence cs = tv.getText();
+            if (cs != null) {
+                String str = cs.toString().trim();
+                boolean isVersionText = str.equalsIgnoreCase("Version")
+                        || str.toLowerCase().startsWith("version ")
+                        || str.matches("^\\d+\\.\\d+(\\.\\d+)?.*");
+                if (isVersionText) {
+                    if (tv.getTag(TAG_ABOUT_HOOKED) == null) {
+                        tv.setTag(TAG_ABOUT_HOOKED, Boolean.TRUE);
+                        View.OnLongClickListener longClick = v -> {
+                            Logger.printInfo(() -> "Version view long-pressed! Launching Model Manager Dialog...");
+                            try {
+                                PhotosModelSeeder.showModelManagerDialog(activity);
+                            } catch (Throwable t) {
+                                Logger.printException(() -> "Error opening Model Manager dialog", t);
+                            }
+                            return true;
+                        };
+                        tv.setOnLongClickListener(longClick);
+
+                        View parent = (View) tv.getParent();
+                        if (parent != null) {
+                            parent.setOnLongClickListener(longClick);
+                            if (parent.getParent() instanceof View) {
+                                ((View) parent.getParent()).setOnLongClickListener(longClick);
+                            }
+                        }
+                        Logger.printInfo(() -> "Attached On-Device AI Model Manager easter egg to version view: " + str);
+                    }
+                }
+            }
+        } else if (view instanceof ViewGroup) {
+            ViewGroup vg = (ViewGroup) view;
+            for (int i = 0; i < vg.getChildCount(); i++) {
+                attachAboutEasterEgg(activity, vg.getChildAt(i));
+            }
+        }
+    }
+
+    private static int getNavigationBarBottomInset(Activity activity, View view) {
+        if (activity == null) return 0;
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                WindowInsets rootInsets = null;
+                if (view != null) {
+                    rootInsets = view.getRootWindowInsets();
+                }
+                if (rootInsets == null && activity.getWindow() != null) {
+                    View decor = activity.getWindow().getDecorView();
+                    if (decor != null) {
+                        rootInsets = decor.getRootWindowInsets();
+                    }
+                }
+                if (rootInsets != null) {
+                    return rootInsets.getInsets(WindowInsets.Type.navigationBars()).bottom;
+                }
+            } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                WindowInsets rootInsets = null;
+                if (view != null) {
+                    rootInsets = view.getRootWindowInsets();
+                }
+                if (rootInsets == null && activity.getWindow() != null) {
+                    View decor = activity.getWindow().getDecorView();
+                    if (decor != null) {
+                        rootInsets = decor.getRootWindowInsets();
+                    }
+                }
+                if (rootInsets != null) {
+                    return rootInsets.getSystemWindowInsetBottom();
+                }
+            }
+        } catch (Throwable ignored) {}
+        return 0;
+    }
+
+    private static void updateFloatingPillInsets(Activity activity, View pill) {
+        if (activity == null || pill == null) return;
+        try {
+            float density = activity.getResources().getDisplayMetrics().density;
+            int navBottom = getNavigationBarBottomInset(activity, pill);
+            int baseBottomMargin = (int) (22 * density);
+            int targetBottom = baseBottomMargin + navBottom;
+            ViewGroup.LayoutParams vlp = pill.getLayoutParams();
+            if (vlp instanceof FrameLayout.LayoutParams) {
+                FrameLayout.LayoutParams flp = (FrameLayout.LayoutParams) vlp;
+                if (flp.bottomMargin != targetBottom) {
+                    flp.bottomMargin = targetBottom;
+                    pill.setLayoutParams(flp);
+                }
+            }
+        } catch (Throwable ignored) {}
+    }
+
     // ─────────────────────────────────────────────────────────────────────────
     // Settings Activity Floating Pill Injection
     // ─────────────────────────────────────────────────────────────────────────
@@ -560,11 +752,17 @@ public final class PhenotypeFlagManager {
                     public void onGlobalLayout() {
                         try {
                             FrameLayout content = activity.findViewById(android.R.id.content);
-                            if (content != null && content.findViewWithTag(SETTINGS_PILL_TAG) == null) {
-                                LinearLayout pill = createFloatingPill(activity);
-                                content.addView(pill);
-                                Logger.printInfo(() -> "Photos Flags floating pill attached to SettingsActivity");
+                            if (content != null) {
+                                View existing = content.findViewWithTag(SETTINGS_PILL_TAG);
+                                if (existing == null) {
+                                    LinearLayout pill = createFloatingPill(activity);
+                                    content.addView(pill);
+                                    Logger.printInfo(() -> "Photos Flags floating pill dock attached to SettingsActivity");
+                                } else {
+                                    updateFloatingPillInsets(activity, existing);
+                                }
                             }
+                            attachAboutEasterEgg(activity, decor);
                         } catch (Throwable t) {
                             Logger.printException(() -> "Error attaching Photos Flags pill", t);
                         }
@@ -590,8 +788,41 @@ public final class PhenotypeFlagManager {
                 (int) (52 * density)
         );
         lp.gravity = Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL;
-        lp.setMargins(0, 0, 0, (int) (22 * density));
+        int navBottom = getNavigationBarBottomInset(activity, null);
+        int baseBottomMargin = (int) (22 * density);
+        lp.setMargins(0, 0, 0, baseBottomMargin + navBottom);
         dock.setLayoutParams(lp);
+
+        dock.setOnApplyWindowInsetsListener((v, insets) -> {
+            try {
+                int insetBottom = 0;
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                    insetBottom = insets.getInsets(WindowInsets.Type.navigationBars()).bottom;
+                } else {
+                    insetBottom = insets.getSystemWindowInsetBottom();
+                }
+                FrameLayout.LayoutParams p = (FrameLayout.LayoutParams) v.getLayoutParams();
+                if (p != null) {
+                    int target = baseBottomMargin + insetBottom;
+                    if (p.bottomMargin != target) {
+                        p.bottomMargin = target;
+                        v.setLayoutParams(p);
+                    }
+                }
+            } catch (Throwable ignored) {}
+            return insets;
+        });
+
+        dock.addOnAttachStateChangeListener(new View.OnAttachStateChangeListener() {
+            @Override
+            public void onViewAttachedToWindow(View v) {
+                updateFloatingPillInsets(activity, v);
+                v.requestApplyInsets();
+            }
+
+            @Override
+            public void onViewDetachedFromWindow(View v) {}
+        });
 
         int padOuter = (int) (4 * density);
         dock.setPadding(padOuter, padOuter, padOuter, padOuter);
@@ -603,13 +834,15 @@ public final class PhenotypeFlagManager {
         bgDock.setStroke((int) (1 * density), theme.outline);
         dock.setBackground(bgDock);
 
+        int itemPadH = (int) (14 * density);
+        int iconSize = (int) (20 * density);
+
         // Segment 1: Flags
         LinearLayout itemFlags = new LinearLayout(activity);
         itemFlags.setOrientation(LinearLayout.HORIZONTAL);
         itemFlags.setGravity(Gravity.CENTER);
         itemFlags.setClickable(true);
         itemFlags.setFocusable(true);
-        int itemPadH = (int) (18 * density);
         itemFlags.setPadding(itemPadH, 0, itemPadH, 0);
         LinearLayout.LayoutParams lpFlags = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT,
@@ -624,30 +857,94 @@ public final class PhenotypeFlagManager {
 
         ImageView iconFlags = new ImageView(activity);
         iconFlags.setImageDrawable(new MaterialVectorDrawable(MaterialVectorDrawable.TYPE_TUNE, theme.onPrimaryContainer));
-        int iconSize = (int) (20 * density);
         LinearLayout.LayoutParams icLp1 = new LinearLayout.LayoutParams(iconSize, iconSize);
-        icLp1.setMargins(0, 0, (int) (8 * density), 0);
+        icLp1.setMargins(0, 0, (int) (6 * density), 0);
         iconFlags.setLayoutParams(icLp1);
         itemFlags.addView(iconFlags);
 
         TextView labelFlags = new TextView(activity);
         labelFlags.setText("Flags");
-        labelFlags.setTextSize(14f);
+        labelFlags.setTextSize(13.5f);
         labelFlags.setTextColor(theme.onPrimaryContainer);
         labelFlags.setTypeface(null, Typeface.BOLD);
         itemFlags.addView(labelFlags);
         itemFlags.setOnClickListener(v -> showFlagManagerDialog(activity));
-        dock.addView(itemFlags);
 
-        // Divider line
-        View divider = new View(activity);
-        divider.setBackgroundColor(theme.outline);
-        LinearLayout.LayoutParams divLp = new LinearLayout.LayoutParams((int) (1 * density), (int) (22 * density));
-        divLp.setMargins((int) (4 * density), 0, (int) (4 * density), 0);
-        divider.setLayoutParams(divLp);
-        dock.addView(divider);
+        // Divider 1
+        View divider1 = new View(activity);
+        divider1.setBackgroundColor(theme.outline);
+        LinearLayout.LayoutParams divLp1 = new LinearLayout.LayoutParams((int) (1 * density), (int) (20 * density));
+        divLp1.setMargins((int) (2 * density), 0, (int) (2 * density), 0);
+        divider1.setLayoutParams(divLp1);
 
-        // Segment 2: Logs
+        // Segment 2: Toolkit (in between Flags and Logs)
+        LinearLayout itemToolkit = new LinearLayout(activity);
+        itemToolkit.setOrientation(LinearLayout.HORIZONTAL);
+        itemToolkit.setGravity(Gravity.CENTER);
+        itemToolkit.setClickable(true);
+        itemToolkit.setFocusable(true);
+        itemToolkit.setPadding(itemPadH, 0, itemPadH, 0);
+        LinearLayout.LayoutParams lpToolkit = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.MATCH_PARENT
+        );
+        itemToolkit.setLayoutParams(lpToolkit);
+
+        GradientDrawable bgToolkit = new GradientDrawable();
+        bgToolkit.setCornerRadius(22 * density);
+        bgToolkit.setColor(Color.TRANSPARENT);
+        itemToolkit.setBackground(bgToolkit);
+
+        ImageView iconToolkit = new ImageView(activity);
+        iconToolkit.setImageDrawable(new MaterialVectorDrawable(MaterialVectorDrawable.TYPE_TOOLKIT, theme.textPrimary));
+        LinearLayout.LayoutParams icLpToolkit = new LinearLayout.LayoutParams(iconSize, iconSize);
+        icLpToolkit.setMargins(0, 0, (int) (6 * density), 0);
+        iconToolkit.setLayoutParams(icLpToolkit);
+        itemToolkit.addView(iconToolkit);
+
+        TextView labelToolkit = new TextView(activity);
+        labelToolkit.setText("Toolkit");
+        labelToolkit.setTextSize(13.5f);
+        labelToolkit.setTextColor(theme.textPrimary);
+        labelToolkit.setTypeface(null, Typeface.BOLD);
+        itemToolkit.addView(labelToolkit);
+        itemToolkit.setOnClickListener(v -> {
+            app.morphe.extension.shared.patches.toolkit.NativeToolkitDialog.show(activity);
+        });
+
+        // Divider 2
+        View divider2 = new View(activity);
+        divider2.setBackgroundColor(theme.outline);
+        LinearLayout.LayoutParams divLp2 = new LinearLayout.LayoutParams((int) (1 * density), (int) (20 * density));
+        divLp2.setMargins((int) (2 * density), 0, (int) (2 * density), 0);
+        divider2.setLayoutParams(divLp2);
+
+        String mode = getEffectiveComponentsMode(activity);
+        boolean showFlags = !"toolkit".equalsIgnoreCase(mode);
+        boolean showToolkit = !"flags".equalsIgnoreCase(mode);
+
+        if (showFlags) {
+            dock.addView(itemFlags);
+        }
+
+        if (showFlags && showToolkit) {
+            dock.addView(divider1);
+        }
+
+        if (showToolkit) {
+            if (!showFlags) {
+                bgToolkit.setColor(theme.primaryContainer);
+                iconToolkit.setImageDrawable(new MaterialVectorDrawable(MaterialVectorDrawable.TYPE_TOOLKIT, theme.onPrimaryContainer));
+                labelToolkit.setTextColor(theme.onPrimaryContainer);
+            }
+            dock.addView(itemToolkit);
+        }
+
+        if (showFlags || showToolkit) {
+            dock.addView(divider2);
+        }
+
+        // Segment 3: Logs
         LinearLayout itemLogs = new LinearLayout(activity);
         itemLogs.setOrientation(LinearLayout.HORIZONTAL);
         itemLogs.setGravity(Gravity.CENTER);
@@ -668,13 +965,13 @@ public final class PhenotypeFlagManager {
         ImageView iconLogs = new ImageView(activity);
         iconLogs.setImageDrawable(new MaterialVectorDrawable(MaterialVectorDrawable.TYPE_LOGS, theme.textPrimary));
         LinearLayout.LayoutParams icLp2 = new LinearLayout.LayoutParams(iconSize, iconSize);
-        icLp2.setMargins(0, 0, (int) (8 * density), 0);
+        icLp2.setMargins(0, 0, (int) (6 * density), 0);
         iconLogs.setLayoutParams(icLp2);
         itemLogs.addView(iconLogs);
 
         TextView labelLogs = new TextView(activity);
         labelLogs.setText("Logs");
-        labelLogs.setTextSize(14f);
+        labelLogs.setTextSize(13.5f);
         labelLogs.setTextColor(theme.textPrimary);
         labelLogs.setTypeface(null, Typeface.BOLD);
         itemLogs.addView(labelLogs);
@@ -1609,6 +1906,24 @@ public final class PhenotypeFlagManager {
         int tbPad = (int) (16 * density);
         topBar.setPadding(tbPad, (int) (12 * density), (int) (10 * density), (int) (8 * density));
 
+        FrameLayout iconContainer = new FrameLayout(activity);
+        int icBox = (int) (34 * density);
+        LinearLayout.LayoutParams icBoxLp = new LinearLayout.LayoutParams(icBox, icBox);
+        icBoxLp.setMargins(0, 0, (int) (10 * density), 0);
+        iconContainer.setLayoutParams(icBoxLp);
+        GradientDrawable icBg = new GradientDrawable();
+        icBg.setCornerRadius(10 * density);
+        icBg.setColor(theme.surfaceContainer);
+        iconContainer.setBackground(icBg);
+
+        ImageView ivLead = new ImageView(activity);
+        ivLead.setImageDrawable(new MaterialVectorDrawable(MaterialVectorDrawable.TYPE_TUNE, theme.primary));
+        int ivLeadSize = (int) (20 * density);
+        FrameLayout.LayoutParams ivLeadLp = new FrameLayout.LayoutParams(ivLeadSize, ivLeadSize, Gravity.CENTER);
+        ivLead.setLayoutParams(ivLeadLp);
+        iconContainer.addView(ivLead);
+        topBar.addView(iconContainer);
+
         LinearLayout titleCol = new LinearLayout(activity);
         titleCol.setOrientation(LinearLayout.VERTICAL);
         LinearLayout.LayoutParams titleLp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
@@ -1616,23 +1931,29 @@ public final class PhenotypeFlagManager {
 
         TextView tvTitle = new TextView(activity);
         tvTitle.setText("Photos Flags");
-        tvTitle.setTextSize(18);
+        tvTitle.setTextSize(17.5f);
         tvTitle.setTextColor(theme.textPrimary);
         tvTitle.setTypeface(null, Typeface.BOLD);
+        View.OnLongClickListener headerEasterEgg = v -> {
+            PhotosModelSeeder.showModelManagerDialog(activity);
+            return true;
+        };
+        tvTitle.setOnLongClickListener(headerEasterEgg);
+        titleCol.setOnLongClickListener(headerEasterEgg);
         titleCol.addView(tvTitle);
 
         TextView tvSub = new TextView(activity);
         tvSub.setText("Loading flags...");
-        tvSub.setTextSize(11);
+        tvSub.setTextSize(11.5f);
         tvSub.setTextColor(theme.textSecondary);
         titleCol.addView(tvSub);
         topBar.addView(titleCol);
 
-        // Action Icons (Proper 22dp icons inside 42dp touch targets)
-        View btnSearch = createHeaderIconButton(activity, new MaterialVectorDrawable(MaterialVectorDrawable.TYPE_SEARCH, theme.textPrimary), (int) (42 * density), (int) (22 * density));
-        View btnAdd = createHeaderIconButton(activity, new MaterialVectorDrawable(MaterialVectorDrawable.TYPE_ADD, theme.textPrimary), (int) (42 * density), (int) (22 * density));
-        View btnMenu = createHeaderIconButton(activity, new MaterialVectorDrawable(MaterialVectorDrawable.TYPE_MORE, theme.textPrimary), (int) (42 * density), (int) (22 * density));
-        View btnClose = createHeaderIconButton(activity, new MaterialVectorDrawable(MaterialVectorDrawable.TYPE_CLOSE, theme.textPrimary), (int) (42 * density), (int) (22 * density));
+        // Action Icons (Proper 20dp icons inside 40dp touch targets)
+        View btnSearch = createHeaderIconButton(activity, new MaterialVectorDrawable(MaterialVectorDrawable.TYPE_SEARCH, theme.textSecondary), (int) (40 * density), (int) (20 * density));
+        View btnAdd = createHeaderIconButton(activity, new MaterialVectorDrawable(MaterialVectorDrawable.TYPE_ADD, theme.textSecondary), (int) (40 * density), (int) (20 * density));
+        View btnMenu = createHeaderIconButton(activity, new MaterialVectorDrawable(MaterialVectorDrawable.TYPE_MORE, theme.textSecondary), (int) (40 * density), (int) (20 * density));
+        View btnClose = createHeaderIconButton(activity, new MaterialVectorDrawable(MaterialVectorDrawable.TYPE_CLOSE, theme.textSecondary), (int) (40 * density), (int) (20 * density));
 
         topBar.addView(btnSearch);
         topBar.addView(btnAdd);
@@ -1651,12 +1972,20 @@ public final class PhenotypeFlagManager {
         inputWrapper.setOrientation(LinearLayout.HORIZONTAL);
         inputWrapper.setGravity(Gravity.CENTER_VERTICAL);
         inputWrapper.setBackground(createRoundedDrawable(theme.searchInputBg, 14 * density));
-        LinearLayout.LayoutParams iwLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, (int) (46 * density));
+        LinearLayout.LayoutParams iwLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, (int) (44 * density));
         inputWrapper.setLayoutParams(iwLp);
+
+        ImageView ivSearchIcon = new ImageView(activity);
+        ivSearchIcon.setImageDrawable(new MaterialVectorDrawable(MaterialVectorDrawable.TYPE_SEARCH, theme.textSecondary));
+        int siSize = (int) (18 * density);
+        LinearLayout.LayoutParams siLp = new LinearLayout.LayoutParams(siSize, siSize);
+        siLp.setMargins((int) (12 * density), 0, (int) (4 * density), 0);
+        ivSearchIcon.setLayoutParams(siLp);
+        inputWrapper.addView(ivSearchIcon);
 
         EditText etSearch = new EditText(activity);
         etSearch.setHint("Search flags, keys or values...");
-        etSearch.setTextSize(14);
+        etSearch.setTextSize(13.5f);
         etSearch.setTextColor(theme.textPrimary);
         etSearch.setHintTextColor(theme.textSecondary);
         etSearch.setBackground(null);
@@ -1664,7 +1993,7 @@ public final class PhenotypeFlagManager {
         etSearch.setMaxLines(1);
         etSearch.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_FILTER);
         etSearch.setImeOptions(EditorInfo.IME_ACTION_SEARCH | EditorInfo.IME_FLAG_NO_EXTRACT_UI);
-        int sPad = (int) (14 * density);
+        int sPad = (int) (8 * density);
         etSearch.setPadding(sPad, 0, (int) (6 * density), 0);
         LinearLayout.LayoutParams sLp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1f);
         etSearch.setLayoutParams(sLp);
@@ -1673,7 +2002,7 @@ public final class PhenotypeFlagManager {
         ImageView btnClearSearch = new ImageView(activity);
         btnClearSearch.setImageDrawable(new MaterialVectorDrawable(MaterialVectorDrawable.TYPE_CLOSE, theme.textSecondary));
         btnClearSearch.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
-        int cPad = (int) (12 * density);
+        int cPad = (int) (10 * density);
         btnClearSearch.setPadding(cPad, 0, cPad, 0);
         btnClearSearch.setVisibility(View.GONE);
         btnClearSearch.setClickable(true);
@@ -2175,6 +2504,71 @@ public final class PhenotypeFlagManager {
     // Options Menu
     // ─────────────────────────────────────────────────────────────────────────
 
+    private static void showDockComponentsDialog(Activity activity) {
+        float density = activity.getResources().getDisplayMetrics().density;
+        Theme theme = Theme.get(activity);
+
+        LinearLayout list = new LinearLayout(activity);
+        list.setOrientation(LinearLayout.VERTICAL);
+        list.setPadding((int) (16 * density), (int) (4 * density), (int) (16 * density), (int) (16 * density));
+
+        Dialog d = createM3Dialog(activity, "Dock Components", list);
+
+        String currentMode = getEffectiveComponentsMode(activity);
+
+        String[][] options = new String[][] {
+            {"flags", "Flag manager only", "Show only Phenotype Flag Manager in the dock"},
+            {"both", "Both (Flag manager & Toolkit)", "Show both Flag manager and Morphe Toolkit in the dock"},
+            {"toolkit", "Toolkit only", "Show only Morphe Toolkit in the dock"}
+        };
+
+        for (String[] opt : options) {
+            String modeKey = opt[0];
+            String title = opt[1];
+            String subtitle = opt[2];
+            boolean isSelected = modeKey.equalsIgnoreCase(currentMode);
+
+            LinearLayout row = new LinearLayout(activity);
+            row.setOrientation(LinearLayout.VERTICAL);
+            row.setClickable(true);
+            row.setFocusable(true);
+            int padH = (int) (16 * density);
+            int padV = (int) (12 * density);
+            row.setPadding(padH, padV, padH, padV);
+            row.setBackground(createCardDrawable(isSelected, density, theme));
+            LinearLayout.LayoutParams rLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            rLp.bottomMargin = (int) (8 * density);
+            row.setLayoutParams(rLp);
+
+            TextView tvTitle = new TextView(activity);
+            tvTitle.setText(title);
+            tvTitle.setTextSize(14.5f);
+            tvTitle.setTextColor(isSelected ? theme.primary : theme.textPrimary);
+            tvTitle.setTypeface(null, Typeface.BOLD);
+            row.addView(tvTitle);
+
+            TextView tvSub = new TextView(activity);
+            tvSub.setText(subtitle);
+            tvSub.setTextSize(12f);
+            tvSub.setTextColor(theme.textSecondary);
+            LinearLayout.LayoutParams sLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            sLp.topMargin = (int) (2 * density);
+            tvSub.setLayoutParams(sLp);
+            row.addView(tvSub);
+
+            row.setOnClickListener(v -> {
+                getPrefs(activity).edit().putString("_components_mode", modeKey).apply();
+                refreshFloatingPill(activity);
+                d.dismiss();
+                Toast.makeText(activity, "Dock mode set to: " + title, Toast.LENGTH_SHORT).show();
+            });
+
+            list.addView(row);
+        }
+
+        d.show();
+    }
+
     private static void showProperOptionsMenu(Activity activity, SharedPreferences prefs, FlagAdapter adapter, Runnable onRefresh) {
         float density = activity.getResources().getDisplayMetrics().density;
         Theme theme = Theme.get(activity);
@@ -2196,6 +2590,16 @@ public final class PhenotypeFlagManager {
         }
 
         List<MenuItem> items = new ArrayList<>();
+
+        // 0. AI & On-Device ML Models
+        items.add(new MenuItem(MaterialVectorDrawable.TYPE_PRESETS, "AI & On-Device ML Models", "Inspect and verify on-device Gemini, Magic Eraser, and MDD assets", () -> {
+            PhotosModelSeeder.showModelManagerDialog(activity);
+        }));
+
+        // Dock Components
+        items.add(new MenuItem(MaterialVectorDrawable.TYPE_TOOLKIT, "Dock Components", "Choose between Flags, Toolkit, or Both in the settings dock", () -> {
+            showDockComponentsDialog(activity);
+        }));
 
         // 1. Import from File (SAF)
         items.add(new MenuItem(MaterialVectorDrawable.TYPE_IMPORT, "Import from File", "Load flags from a .json or .txt backup via system file picker", () -> {
@@ -3185,6 +3589,11 @@ public final class PhenotypeFlagManager {
         box.setClickable(true);
         box.setFocusable(true);
         box.setLayoutParams(new LinearLayout.LayoutParams(touchSizePx, touchSizePx));
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+            TypedValue outValue = new TypedValue();
+            activity.getTheme().resolveAttribute(android.R.attr.selectableItemBackgroundBorderless, outValue, true);
+            box.setBackgroundResource(outValue.resourceId);
+        }
 
         ImageView iv = new ImageView(activity);
         iv.setImageDrawable(iconDrawable);
