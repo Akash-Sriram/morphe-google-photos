@@ -532,26 +532,34 @@ public final class DiagnosticsDialog {
         // Action Buttons Click Handlers
         btnExport.setOnClickListener(v -> {
             if (activeSession[0] != null) {
-                showExportOptionsDialog(activity, theme, activeSession[0]);
+                String q = etSearch.getText().toString();
+                String cat = activeCategory[0];
+                showExportOptionsDialog(activity, theme, activeSession[0], q, cat);
             }
         });
 
         btnCopy.setOnClickListener(v -> {
             if (activeSession[0] != null) {
-                SessionLogManager.copyGitHubMarkdown(activity, activeSession[0]);
+                String q = etSearch.getText().toString();
+                String cat = activeCategory[0];
+                SessionLogManager.copyGitHubMarkdown(activity, activeSession[0], q, cat);
             }
         });
 
         btnCopy.setOnLongClickListener(v -> {
             if (activeSession[0] != null) {
-                SessionLogManager.copyToClipboard(activity, activeSession[0]);
+                String q = etSearch.getText().toString();
+                String cat = activeCategory[0];
+                SessionLogManager.copyToClipboard(activity, activeSession[0], q, cat);
             }
             return true;
         });
 
         btnShare.setOnClickListener(v -> {
             if (activeSession[0] != null) {
-                showShareOptionsDialog(activity, theme, activeSession[0]);
+                String q = etSearch.getText().toString();
+                String cat = activeCategory[0];
+                showShareOptionsDialog(activity, theme, activeSession[0], q, cat);
             }
         });
 
@@ -858,7 +866,7 @@ public final class DiagnosticsDialog {
         }
     }
 
-    private static void showExportOptionsDialog(Activity activity, Theme theme, SessionLogManager.SessionInfo session) {
+    private static void showExportOptionsDialog(Activity activity, Theme theme, SessionLogManager.SessionInfo session, String filterQuery, String levelFilter) {
         float density = activity.getResources().getDisplayMetrics().density;
         Dialog d = new Dialog(activity);
         d.requestWindowFeature(Window.FEATURE_NO_TITLE);
@@ -879,15 +887,18 @@ public final class DiagnosticsDialog {
             root.setClipToOutline(true);
         }
 
+        boolean isFiltered = (levelFilter != null && !levelFilter.equalsIgnoreCase("ALL")) || (filterQuery != null && !filterQuery.trim().isEmpty());
+        String filterDesc = SessionLogManager.getFilterDescription(levelFilter, filterQuery);
+
         TextView tvTitle = new TextView(activity);
-        tvTitle.setText("Export Log File");
+        tvTitle.setText(isFiltered ? "Export Filtered Log" : "Export Log File");
         tvTitle.setTextSize(18.5f);
         tvTitle.setTypeface(null, Typeface.BOLD);
         tvTitle.setTextColor(theme.textPrimary);
         root.addView(tvTitle);
 
         TextView tvSub = new TextView(activity);
-        tvSub.setText("Select file format to save into Downloads/Morphe/:");
+        tvSub.setText(isFiltered ? "Active Filter: [" + filterDesc + "]\nSelect format to save into Downloads/Morphe/:" : "Select file format to save into Downloads/Morphe/:");
         tvSub.setTextSize(13f);
         tvSub.setTextColor(theme.textSecondary);
         LinearLayout.LayoutParams subLp = new LinearLayout.LayoutParams(
@@ -896,25 +907,41 @@ public final class DiagnosticsDialog {
         tvSub.setLayoutParams(subLp);
         root.addView(tvSub);
 
-        // Option 1: Raw .log
-        View optLog = createOptionCard(activity, theme, "📄", "Raw Log File (.log)",
-                "Standard log file containing complete terminal output & stack traces", v -> {
-                    d.dismiss();
-                    SessionLogManager.exportSessionToFile(activity, session, false);
-                });
+        // Option 1: Log file (.log)
+        String logTitle = isFiltered ? "Filtered Log (.log)" : "Raw Log File (.log)";
+        String logSubtitle = isFiltered ? "Saves matching lines for [" + filterDesc + "]" : "Standard log file containing complete terminal output & stack traces";
+        View optLog = createOptionCard(activity, theme, "📄", logTitle, logSubtitle, v -> {
+            d.dismiss();
+            SessionLogManager.exportSessionToFile(activity, session, false, filterQuery, levelFilter);
+        });
         root.addView(optLog);
 
         // Option 2: GitHub .md
-        View optMd = createOptionCard(activity, theme, "🐙", "GitHub Markdown (.md)",
-                "Formatted report with device specs, crash summary & <details> tags", v -> {
-                    d.dismiss();
-                    SessionLogManager.exportSessionToFile(activity, session, true);
-                });
+        String mdTitle = isFiltered ? "Filtered GitHub Report (.md)" : "GitHub Markdown (.md)";
+        String mdSubtitle = isFiltered ? "Formatted report containing filtered logs for [" + filterDesc + "]" : "Formatted report with device specs, crash summary & <details> tags";
+        View optMd = createOptionCard(activity, theme, "🐙", mdTitle, mdSubtitle, v -> {
+            d.dismiss();
+            SessionLogManager.exportSessionToFile(activity, session, true, filterQuery, levelFilter);
+        });
         LinearLayout.LayoutParams optMdLp = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         optMdLp.topMargin = (int) (8 * density);
         optMd.setLayoutParams(optMdLp);
         root.addView(optMd);
+
+        // Option 3: Full Unfiltered Log (if filtered)
+        if (isFiltered) {
+            View optFull = createOptionCard(activity, theme, "📦", "Full Unfiltered Log (.log)",
+                    "Exports complete unmodified session log without filters", v -> {
+                        d.dismiss();
+                        SessionLogManager.exportSessionToFile(activity, session, false, null, "ALL");
+                    });
+            LinearLayout.LayoutParams optFullLp = new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            optFullLp.topMargin = (int) (8 * density);
+            optFull.setLayoutParams(optFullLp);
+            root.addView(optFull);
+        }
 
         // Cancel
         TextView btnCancel = new TextView(activity);
@@ -945,7 +972,7 @@ public final class DiagnosticsDialog {
         d.show();
     }
 
-    private static void showShareOptionsDialog(Activity activity, Theme theme, SessionLogManager.SessionInfo session) {
+    private static void showShareOptionsDialog(Activity activity, Theme theme, SessionLogManager.SessionInfo session, String filterQuery, String levelFilter) {
         float density = activity.getResources().getDisplayMetrics().density;
         Dialog d = new Dialog(activity);
         d.requestWindowFeature(Window.FEATURE_NO_TITLE);
@@ -966,15 +993,18 @@ public final class DiagnosticsDialog {
             root.setClipToOutline(true);
         }
 
+        boolean isFiltered = (levelFilter != null && !levelFilter.equalsIgnoreCase("ALL")) || (filterQuery != null && !filterQuery.trim().isEmpty());
+        String filterDesc = SessionLogManager.getFilterDescription(levelFilter, filterQuery);
+
         TextView tvTitle = new TextView(activity);
-        tvTitle.setText("Share Diagnostics");
+        tvTitle.setText(isFiltered ? "Share Filtered Log" : "Share Diagnostics");
         tvTitle.setTextSize(18.5f);
         tvTitle.setTypeface(null, Typeface.BOLD);
         tvTitle.setTextColor(theme.textPrimary);
         root.addView(tvTitle);
 
         TextView tvSub = new TextView(activity);
-        tvSub.setText("Select how to share this session:");
+        tvSub.setText(isFiltered ? "Active Filter: [" + filterDesc + "]\nSelect how to share:" : "Select how to share this session:");
         tvSub.setTextSize(13f);
         tvSub.setTextColor(theme.textSecondary);
         LinearLayout.LayoutParams subLp = new LinearLayout.LayoutParams(
@@ -984,24 +1014,40 @@ public final class DiagnosticsDialog {
         root.addView(tvSub);
 
         // Option 1: Share .log file
-        View optLog = createOptionCard(activity, theme, "📄", "Share Log File (.log)",
-                "Sends actual .log file attachment via Android share sheet", v -> {
-                    d.dismiss();
-                    SessionLogManager.shareSessionFile(activity, session, false);
-                });
+        String logTitle = isFiltered ? "Share Filtered Log (.log)" : "Share Log File (.log)";
+        String logSub = isFiltered ? "Sends filtered log (" + filterDesc + ") via Android share sheet" : "Sends actual .log file attachment via Android share sheet";
+        View optLog = createOptionCard(activity, theme, "📄", logTitle, logSub, v -> {
+            d.dismiss();
+            SessionLogManager.shareSessionFile(activity, session, false, filterQuery, levelFilter);
+        });
         root.addView(optLog);
 
         // Option 2: Share .md file
-        View optMd = createOptionCard(activity, theme, "🐙", "Share GitHub Report (.md)",
-                "Sends formatted Markdown report attachment via share sheet", v -> {
-                    d.dismiss();
-                    SessionLogManager.shareSessionFile(activity, session, true);
-                });
+        String mdTitle = isFiltered ? "Share Filtered GitHub Report (.md)" : "Share GitHub Report (.md)";
+        String mdSub = isFiltered ? "Sends filtered Markdown report (" + filterDesc + ") via share sheet" : "Sends formatted Markdown report attachment via share sheet";
+        View optMd = createOptionCard(activity, theme, "🐙", mdTitle, mdSub, v -> {
+            d.dismiss();
+            SessionLogManager.shareSessionFile(activity, session, true, filterQuery, levelFilter);
+        });
         LinearLayout.LayoutParams optMdLp = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         optMdLp.topMargin = (int) (8 * density);
         optMd.setLayoutParams(optMdLp);
         root.addView(optMd);
+
+        // Option 3: Full Log (if filtered)
+        if (isFiltered) {
+            View optFull = createOptionCard(activity, theme, "📦", "Share Full Log (.log)",
+                    "Sends complete unmodified session log file", v -> {
+                        d.dismiss();
+                        SessionLogManager.shareSessionFile(activity, session, false, null, "ALL");
+                    });
+            LinearLayout.LayoutParams optFullLp = new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            optFullLp.topMargin = (int) (8 * density);
+            optFull.setLayoutParams(optFullLp);
+            root.addView(optFull);
+        }
 
         // Cancel
         TextView btnCancel = new TextView(activity);

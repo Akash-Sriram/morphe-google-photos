@@ -652,7 +652,25 @@ public final class SessionLogManager {
         return sb.toString();
     }
 
+    public static String getFilterDescription(String levelFilter, String filterQuery) {
+        String lvl = (levelFilter != null && !levelFilter.equalsIgnoreCase("ALL")) ? levelFilter : null;
+        String q = (filterQuery != null && !filterQuery.trim().isEmpty()) ? filterQuery.trim() : null;
+        if (lvl != null && q != null) {
+            return lvl + " + \"" + q + "\"";
+        } else if (lvl != null) {
+            return lvl;
+        } else if (q != null) {
+            return "\"" + q + "\"";
+        } else {
+            return "All";
+        }
+    }
+
     public static String formatGitHubReport(SessionInfo session, String content) {
+        return formatGitHubReport(session, content, null, "ALL");
+    }
+
+    public static String formatGitHubReport(SessionInfo session, String content, String filterQuery, String levelFilter) {
         StringBuilder sb = new StringBuilder();
         sb.append("### Environment Information\n");
         sb.append("- **Device**: ").append(Build.MANUFACTURER).append(" ").append(Build.MODEL).append("\n");
@@ -669,6 +687,10 @@ public final class SessionLogManager {
                 sb.append("- **Crashed**: Yes\n");
             }
         }
+        boolean isFiltered = (levelFilter != null && !levelFilter.equalsIgnoreCase("ALL")) || (filterQuery != null && !filterQuery.trim().isEmpty());
+        if (isFiltered) {
+            sb.append("- **Active Filter**: `").append(getFilterDescription(levelFilter, filterQuery)).append("`\n");
+        }
         sb.append("\n");
 
         if (session != null && session.isCrashed && session.crashSummary != null && !session.crashSummary.isEmpty()) {
@@ -677,7 +699,7 @@ public final class SessionLogManager {
         }
 
         sb.append("<details>\n");
-        sb.append("<summary>📄 Diagnostics Log (click to expand)</summary>\n\n");
+        sb.append("<summary>📄 Diagnostics Log (").append(isFiltered ? "Filtered: " + getFilterDescription(levelFilter, filterQuery) : "click to expand").append(")</summary>\n\n");
         sb.append("```log\n");
         if (content != null) {
             sb.append(content.trim());
@@ -689,14 +711,20 @@ public final class SessionLogManager {
     }
 
     public static Uri exportSessionToFile(Context context, SessionInfo session, boolean asMarkdown) {
+        return exportSessionToFile(context, session, asMarkdown, null, "ALL");
+    }
+
+    public static Uri exportSessionToFile(Context context, SessionInfo session, boolean asMarkdown, String filterQuery, String levelFilter) {
         if (context == null || session == null) return null;
         try {
-            String rawContent = readSessionContent(session, null, "ALL");
-            String content = asMarkdown ? formatGitHubReport(session, rawContent) : rawContent;
+            boolean isFiltered = (levelFilter != null && !levelFilter.equalsIgnoreCase("ALL")) || (filterQuery != null && !filterQuery.trim().isEmpty());
+            String rawContent = readSessionContent(session, filterQuery, levelFilter, 0);
+            String content = asMarkdown ? formatGitHubReport(session, rawContent, filterQuery, levelFilter) : rawContent;
             String ext = asMarkdown ? ".md" : ".log";
             String mimeType = asMarkdown ? "text/markdown" : "text/plain";
             String baseName = session.id.replace(".log", "");
-            String fileName = "morphe_photos_diagnostics_" + baseName + ext;
+            String suffix = isFiltered ? ("_" + ((levelFilter != null && !levelFilter.equalsIgnoreCase("ALL")) ? levelFilter.toLowerCase() : "filtered")) : "";
+            String fileName = "morphe_photos_diagnostics_" + baseName + suffix + ext;
 
             Uri resultUri = null;
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
@@ -738,21 +766,27 @@ public final class SessionLogManager {
     }
 
     public static void shareSessionFile(Activity activity, SessionInfo session, boolean asMarkdown) {
+        shareSessionFile(activity, session, asMarkdown, null, "ALL");
+    }
+
+    public static void shareSessionFile(Activity activity, SessionInfo session, boolean asMarkdown, String filterQuery, String levelFilter) {
         if (activity == null || session == null) return;
         IO_EXECUTOR.execute(() -> {
             try {
-                Uri fileUri = exportSessionToFile(activity, session, asMarkdown);
+                Uri fileUri = exportSessionToFile(activity, session, asMarkdown, filterQuery, levelFilter);
                 MAIN_HANDLER.post(() -> {
                     try {
                         Intent sendIntent = new Intent(Intent.ACTION_SEND);
                         sendIntent.setType(asMarkdown ? "text/markdown" : "text/plain");
-                        sendIntent.putExtra(Intent.EXTRA_SUBJECT, "Morphe Photos Diagnostics (" + session.id + ")");
+                        boolean isFiltered = (levelFilter != null && !levelFilter.equalsIgnoreCase("ALL")) || (filterQuery != null && !filterQuery.trim().isEmpty());
+                        String subject = "Morphe Photos Diagnostics (" + session.id + (isFiltered ? " - " + getFilterDescription(levelFilter, filterQuery) : "") + ")";
+                        sendIntent.putExtra(Intent.EXTRA_SUBJECT, subject);
                         if (fileUri != null) {
                             sendIntent.putExtra(Intent.EXTRA_STREAM, fileUri);
                             sendIntent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
                         } else {
-                            String raw = readSessionContent(session, null, "ALL");
-                            sendIntent.putExtra(Intent.EXTRA_TEXT, asMarkdown ? formatGitHubReport(session, raw) : raw);
+                            String raw = readSessionContent(session, filterQuery, levelFilter, 0);
+                            sendIntent.putExtra(Intent.EXTRA_TEXT, asMarkdown ? formatGitHubReport(session, raw, filterQuery, levelFilter) : raw);
                         }
                         activity.startActivity(Intent.createChooser(sendIntent, "Share Diagnostics Log"));
                     } catch (Throwable t) {
@@ -766,17 +800,25 @@ public final class SessionLogManager {
     }
 
     public static void copyGitHubMarkdown(Context context, SessionInfo session) {
+        copyGitHubMarkdown(context, session, null, "ALL");
+    }
+
+    public static void copyGitHubMarkdown(Context context, SessionInfo session, String filterQuery, String levelFilter) {
         if (context == null || session == null) return;
         IO_EXECUTOR.execute(() -> {
-            String rawContent = readSessionContent(session, null, "ALL");
-            String markdown = formatGitHubReport(session, rawContent);
+            String rawContent = readSessionContent(session, filterQuery, levelFilter, 0);
+            String markdown = formatGitHubReport(session, rawContent, filterQuery, levelFilter);
             MAIN_HANDLER.post(() -> {
                 try {
                     ClipboardManager cm = (ClipboardManager) context.getSystemService(Context.CLIPBOARD_SERVICE);
                     if (cm != null) {
                         ClipData clip = ClipData.newPlainText("Morphe GitHub Diagnostics", markdown);
                         cm.setPrimaryClip(clip);
-                        Toast.makeText(context, "✓ Copied GitHub Markdown (pre-formatted with <details>)", Toast.LENGTH_LONG).show();
+                        boolean isFiltered = (levelFilter != null && !levelFilter.equalsIgnoreCase("ALL")) || (filterQuery != null && !filterQuery.trim().isEmpty());
+                        String msg = isFiltered
+                                ? "✓ Copied Filtered GitHub Markdown (" + getFilterDescription(levelFilter, filterQuery) + ")"
+                                : "✓ Copied GitHub Markdown (pre-formatted with <details>)";
+                        Toast.makeText(context, msg, Toast.LENGTH_LONG).show();
                     }
                 } catch (Throwable t) {
                     Toast.makeText(context, "Failed to copy: " + t.getMessage(), Toast.LENGTH_SHORT).show();
@@ -786,11 +828,15 @@ public final class SessionLogManager {
     }
 
     public static void shareSession(Activity activity, SessionInfo session) {
-        shareSessionFile(activity, session, false);
+        shareSessionFile(activity, session, false, null, "ALL");
     }
 
     public static void copyToClipboard(Context context, SessionInfo session) {
-        copyGitHubMarkdown(context, session);
+        copyGitHubMarkdown(context, session, null, "ALL");
+    }
+
+    public static void copyToClipboard(Context context, SessionInfo session, String filterQuery, String levelFilter) {
+        copyGitHubMarkdown(context, session, filterQuery, levelFilter);
     }
 
     public static void clearAllSessions(Runnable onComplete) {
