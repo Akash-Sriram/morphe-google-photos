@@ -129,6 +129,7 @@ public class NativeToolkitDialog {
     private static StorageScanner.FilterCriteria currentCriteria = new StorageScanner.FilterCriteria();
     private static List<StorageScanner.MediaItem> allQueriedItems = new ArrayList<>();
     private static List<StorageScanner.AlbumInfo> availableAlbums = new ArrayList<>();
+    private static Runnable sRepopulateAlbumCardsRunnable = null;
     public enum SortOrder {
         DATE_DESC("Date (Newest first)", "Newest"),
         DATE_ASC("Date (Oldest first)", "Oldest"),
@@ -165,6 +166,11 @@ public class NativeToolkitDialog {
     private static void showDialogInternal(Activity activity) {
         float density = activity.getResources().getDisplayMetrics().density;
         Theme theme = Theme.get(activity);
+
+        currentCriteria = new StorageScanner.FilterCriteria();
+        currentSortOrder = SortOrder.DATE_DESC;
+        allQueriedItems.clear();
+        availableAlbums.clear();
 
         Dialog dialog = new Dialog(activity);
         dialog.requestWindowFeature(Window.FEATURE_NO_TITLE);
@@ -215,6 +221,15 @@ public class NativeToolkitDialog {
             StorageScanner.ensureArchiveConsistency(currentAccount);
         }
 
+        THREAD_POOL.execute(() -> {
+            if (currentAccount != null) {
+                availableAlbums = StorageScanner.getAvailableAlbums(currentAccount);
+                if (sRepopulateAlbumCardsRunnable != null) {
+                    sRepopulateAlbumCardsRunnable.run();
+                }
+            }
+        });
+
         TextView tvSub = new TextView(activity);
         String accLabel = currentAccount != null ? currentAccount.accountName : "No Account";
         tvSub.setText(accLabel + " (Active Account)");
@@ -222,6 +237,11 @@ public class NativeToolkitDialog {
         tvSub.setTextColor(theme.textSecondary);
         titleCol.addView(tvSub);
         topBar.addView(titleCol);
+
+        View btnRefresh = createHeaderIconButton(activity, "↺", theme.textPrimary, (int) (40 * density));
+        btnRefresh.setTag("no_avatar");
+        btnRefresh.setContentDescription("refresh");
+        topBar.addView(btnRefresh);
 
         View btnClose = createHeaderIconButton(activity, theme.textPrimary, (int) (40 * density));
         btnClose.setTag("no_avatar");
@@ -839,6 +859,9 @@ public class NativeToolkitDialog {
                     }
                     if (currentAccount != null) {
                         availableAlbums = StorageScanner.getAvailableAlbums(currentAccount);
+                        if (sRepopulateAlbumCardsRunnable != null) {
+                            sRepopulateAlbumCardsRunnable.run();
+                        }
                         StorageScanner.syncPendingLocalTrash(activity, currentAccount.accountId);
                     }
 
@@ -936,6 +959,37 @@ public class NativeToolkitDialog {
             });
         };
 
+        btnRefresh.setOnClickListener(v -> {
+            currentCriteria = new StorageScanner.FilterCriteria();
+            currentSortOrder = SortOrder.DATE_DESC;
+            selectedMediaKeys.clear();
+            if (updateSelectionSummaryRef[0] != null) updateSelectionSummaryRef[0].run();
+
+            tvSourceActiveBadge.setText(currentCriteria.source.displayName);
+            for (int j = 0; j < sources.length; j++) {
+                boolean sel = (sources[j] == currentCriteria.source);
+                sourceViews.get(j).setTextColor(sel ? theme.onPrimaryContainer : theme.textSecondary);
+                sourceViews.get(j).setBackground(createRoundedDrawable(sel ? theme.primaryContainer : theme.surfaceContainer, 12 * density));
+            }
+            filterCardsRef[0] = build21FiltersAccordion(activity, filtersAccordionContainer, density, theme, onFilterChanged);
+            int rCount = updateFilterVisibility(currentCriteria.source, filterCardsRef[0]);
+            if (tvFiltersTitleRef[0] != null) tvFiltersTitleRef[0].setText("Configure Filters (" + rCount + ")");
+            updateActionStates(currentCriteria.source, currentCriteria, actionButtonsMap);
+            if (updateChipsAndBadgeRef[0] != null) updateChipsAndBadgeRef[0].run();
+
+            THREAD_POOL.execute(() -> {
+                if (currentAccount != null) {
+                    availableAlbums = StorageScanner.getAvailableAlbums(currentAccount);
+                    if (sRepopulateAlbumCardsRunnable != null) {
+                        sRepopulateAlbumCardsRunnable.run();
+                    }
+                }
+            });
+
+            if (runScanRef[0] != null) runScanRef[0].run();
+            Toast.makeText(activity, "Toolkit refreshed", Toast.LENGTH_SHORT).show();
+        });
+
         btnClose.setOnClickListener(v -> dialog.dismiss());
 
         // Window size - popup-friendly (94% width, 88% height)
@@ -945,6 +999,8 @@ public class NativeToolkitDialog {
             sTvProgressInfo = null;
             allQueriedItems.clear();
             availableAlbums.clear();
+            sRepopulateAlbumCardsRunnable = null;
+            currentCriteria = new StorageScanner.FilterCriteria();
             clearCache();
         });
         dialog.show();
@@ -1090,6 +1146,36 @@ public class NativeToolkitDialog {
         return row;
     }
 
+    private static void populateAlbumCheckboxes(Activity activity, Theme theme, LinearLayout content, Runnable updateBadge, boolean isExclude, Runnable onFilterChanged) {
+        content.removeAllViews();
+        if (availableAlbums.isEmpty()) {
+            TextView tvEmpty = new TextView(activity);
+            tvEmpty.setText("No albums loaded.");
+            tvEmpty.setTextColor(theme.textSecondary);
+            content.addView(tvEmpty);
+        } else {
+            for (StorageScanner.AlbumInfo alb : availableAlbums) {
+                CheckBox cb = new CheckBox(activity);
+                String label = isExclude ? "Exclude: " + alb.title : alb.title + " (" + alb.itemCount + ")";
+                cb.setText(label);
+                cb.setTextColor(theme.textPrimary);
+                List<String> list = isExclude ? currentCriteria.albumsExclude : currentCriteria.albumsInclude;
+                cb.setChecked(list.contains(alb.mediaKey));
+                cb.setOnCheckedChangeListener((b, c) -> {
+                    if (c) {
+                        if (!list.contains(alb.mediaKey)) list.add(alb.mediaKey);
+                    } else {
+                        list.remove(alb.mediaKey);
+                    }
+                    if (updateBadge != null) updateBadge.run();
+                    if (onFilterChanged != null) onFilterChanged.run();
+                });
+                content.addView(cb);
+            }
+        }
+        if (updateBadge != null) updateBadge.run();
+    }
+
     // ─────────────────────────────────────────────────────────────────────────
     // STEP 2: All 21 Filters Accordion Builder (Direct from user.js)
     // ─────────────────────────────────────────────────────────────────────────
@@ -1098,31 +1184,19 @@ public class NativeToolkitDialog {
         Set<String> expandedSet = new HashSet<>();
         Map<String, View> cards = new HashMap<>();
 
+        LinearLayout[] includeAlbumsContentRef = new LinearLayout[1];
+        Runnable[] includeAlbumsBadgeRef = new Runnable[1];
+        LinearLayout[] excludeAlbumsContentRef = new LinearLayout[1];
+        Runnable[] excludeAlbumsBadgeRef = new Runnable[1];
+
         // 1. Select Albums
         cards.put("includeAlbums", addFilterCard(activity, container, density, theme, expandedSet, "Select Albums",
                 "Target specific albums (Albums source)",
                 () -> currentCriteria.albumsInclude.isEmpty() ? null : currentCriteria.albumsInclude.size() + " selected",
                 (content, updateBadge) -> {
-                    if (availableAlbums.isEmpty()) {
-                        TextView tvEmpty = new TextView(activity);
-                        tvEmpty.setText("No albums loaded.");
-                        tvEmpty.setTextColor(theme.textSecondary);
-                        content.addView(tvEmpty);
-                    } else {
-                        for (StorageScanner.AlbumInfo alb : availableAlbums) {
-                            CheckBox cb = new CheckBox(activity);
-                            cb.setText(alb.title + " (" + alb.itemCount + ")");
-                            cb.setTextColor(theme.textPrimary);
-                            cb.setChecked(currentCriteria.albumsInclude.contains(alb.mediaKey));
-                            cb.setOnCheckedChangeListener((b, c) -> {
-                                if (c) currentCriteria.albumsInclude.add(alb.mediaKey);
-                                else currentCriteria.albumsInclude.remove(alb.mediaKey);
-                                updateBadge.run();
-                                if (onFilterChanged != null) onFilterChanged.run();
-                            });
-                            content.addView(cb);
-                        }
-                    }
+                    includeAlbumsContentRef[0] = content;
+                    includeAlbumsBadgeRef[0] = updateBadge;
+                    populateAlbumCheckboxes(activity, theme, content, updateBadge, false, onFilterChanged);
                 }));
 
         // 2. Search Query
@@ -1144,19 +1218,9 @@ public class NativeToolkitDialog {
                 "Omit media present in selected albums",
                 () -> currentCriteria.albumsExclude.isEmpty() ? null : currentCriteria.albumsExclude.size() + " excluded",
                 (content, updateBadge) -> {
-                    for (StorageScanner.AlbumInfo alb : availableAlbums) {
-                        CheckBox cb = new CheckBox(activity);
-                        cb.setText("Exclude: " + alb.title);
-                        cb.setTextColor(theme.textPrimary);
-                        cb.setChecked(currentCriteria.albumsExclude.contains(alb.mediaKey));
-                        cb.setOnCheckedChangeListener((b, c) -> {
-                            if (c) currentCriteria.albumsExclude.add(alb.mediaKey);
-                            else currentCriteria.albumsExclude.remove(alb.mediaKey);
-                            updateBadge.run();
-                            if (onFilterChanged != null) onFilterChanged.run();
-                        });
-                        content.addView(cb);
-                    }
+                    excludeAlbumsContentRef[0] = content;
+                    excludeAlbumsBadgeRef[0] = updateBadge;
+                    populateAlbumCheckboxes(activity, theme, content, updateBadge, true, onFilterChanged);
                 }));
 
         // 4. Date Interval
@@ -1566,6 +1630,17 @@ public class NativeToolkitDialog {
                     });
                     content.addView(cbSort);
                 }));
+
+        sRepopulateAlbumCardsRunnable = () -> {
+            activity.runOnUiThread(() -> {
+                if (includeAlbumsContentRef[0] != null) {
+                    populateAlbumCheckboxes(activity, theme, includeAlbumsContentRef[0], includeAlbumsBadgeRef[0], false, onFilterChanged);
+                }
+                if (excludeAlbumsContentRef[0] != null) {
+                    populateAlbumCheckboxes(activity, theme, excludeAlbumsContentRef[0], excludeAlbumsBadgeRef[0], true, onFilterChanged);
+                }
+            });
+        };
 
         return cards;
     }
@@ -1985,6 +2060,9 @@ public class NativeToolkitDialog {
                     }
                     if (currentAccount != null) {
                         availableAlbums = StorageScanner.getAvailableAlbums(currentAccount);
+                        if (sRepopulateAlbumCardsRunnable != null) {
+                            sRepopulateAlbumCardsRunnable.run();
+                        }
                     }
                     if (!"unLock".equals(actionId) && refreshRunner != null && refreshRunner[0] != null) {
                         refreshRunner[0].run();
@@ -4088,25 +4166,29 @@ public class NativeToolkitDialog {
         return shape;
     }
 
-    private static View createHeaderIconButton(Activity activity, int color, int touchSizePx) {
+    private static View createHeaderIconButton(Activity activity, String iconText, int color, int touchSizePx) {
         FrameLayout box = new FrameLayout(activity);
         box.setClickable(true);
         box.setFocusable(true);
-        box.setContentDescription("Close");
+        box.setContentDescription(iconText);
         box.setTag("toolkit_no_avatar");
         box.setLayoutParams(new LinearLayout.LayoutParams(touchSizePx, touchSizePx));
 
         TextView tv = new TextView(activity);
-        tv.setText("✕");
+        tv.setText(iconText);
         tv.setTextSize(18f);
         tv.setTypeface(null, Typeface.BOLD);
         tv.setTextColor(color);
         tv.setGravity(Gravity.CENTER);
-        tv.setContentDescription("Close");
+        tv.setContentDescription(iconText);
         tv.setTag("toolkit_no_avatar");
         FrameLayout.LayoutParams tvLp = new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT);
         tv.setLayoutParams(tvLp);
         box.addView(tv);
         return box;
+    }
+
+    private static View createHeaderIconButton(Activity activity, int color, int touchSizePx) {
+        return createHeaderIconButton(activity, "✕", color, touchSizePx);
     }
 }

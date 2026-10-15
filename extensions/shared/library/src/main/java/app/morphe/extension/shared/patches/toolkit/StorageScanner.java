@@ -36,6 +36,7 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.Date;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
@@ -514,27 +515,72 @@ public class StorageScanner {
         try {
             db = SQLiteDatabase.openDatabase(dbFile.getAbsolutePath(), null, SQLiteDatabase.OPEN_READONLY);
             tuneDatabasePerformance(db);
-            if (hasTable(db, "collections") || hasTable(db, "envelopes")) {
-                String sql = "SELECT c.collection_media_key, coalesce(c.title_text, c.title, e.title) as album_title, c.total_items, (c.audience > 1) as is_shared " +
-                        "FROM collections c LEFT JOIN envelopes e ON c.associated_envelope_media_key = e.media_key " +
-                        "WHERE album_title IS NOT NULL AND album_title != '' " +
-                        "AND (c.is_hidden = 0 OR c.is_hidden IS NULL) AND (c.is_soft_deleted = 0 OR c.is_soft_deleted IS NULL) " +
-                        "UNION " +
-                        "SELECT e.media_key, e.title, e.total_item_count, 1 as is_shared " +
-                        "FROM envelopes e WHERE e.title IS NOT NULL AND e.title != '' " +
-                        "AND (e.is_hidden = 0 OR e.is_hidden IS NULL) " +
-                        "AND e.media_key NOT IN (SELECT coalesce(associated_envelope_media_key, '') FROM collections) " +
-                        "ORDER BY album_title COLLATE NOCASE ASC";
+            Map<String, AlbumInfo> albumMap = new LinkedHashMap<>();
+
+            // 1. Query collections (User Albums)
+            if (hasTable(db, "collections")) {
+                String titleCol = hasColumn(db, "collections", "title_text") ? "coalesce(title_text, title)" : "title";
+                String hiddenCond = hasColumn(db, "collections", "is_hidden") ? "AND (is_hidden = 0 OR is_hidden IS NULL)" : "";
+                String itemsCol = hasColumn(db, "collections", "total_items") ? "total_items" : "0";
+                String audienceCol = hasColumn(db, "collections", "audience") ? "(audience > 1)" : "0";
+                String sql = "SELECT collection_media_key, " + titleCol + " as album_title, " + itemsCol + ", " + audienceCol +
+                        " FROM collections WHERE album_title IS NOT NULL AND album_title != '' " + hiddenCond +
+                        " ORDER BY album_title COLLATE NOCASE ASC";
                 try (Cursor c = db.rawQuery(sql, null)) {
                     while (c != null && c.moveToNext()) {
                         String mKey = c.getString(0);
                         String title = c.getString(1);
                         int count = c.getInt(2);
                         boolean isShared = c.getInt(3) == 1;
-                        albums.add(new AlbumInfo(mKey, title, count, isShared));
+                        if (mKey != null && title != null && !title.trim().isEmpty()) {
+                            albumMap.put(mKey, new AlbumInfo(mKey, title.trim(), count, isShared));
+                        }
                     }
+                } catch (Throwable tCol) {
+                    Logger.printException(() -> "Error querying collections table", tCol);
                 }
             }
+
+            // 2. Query envelopes (Shared / Link-shared Albums)
+            if (hasTable(db, "envelopes")) {
+                String hiddenCond = hasColumn(db, "envelopes", "is_hidden") ? "AND (is_hidden = 0 OR is_hidden IS NULL)" : "";
+                String countCol = hasColumn(db, "envelopes", "total_item_count") ? "total_item_count" : "0";
+                String sql = "SELECT media_key, title, " + countCol +
+                        " FROM envelopes WHERE title IS NOT NULL AND title != '' " + hiddenCond +
+                        " ORDER BY title COLLATE NOCASE ASC";
+                try (Cursor c = db.rawQuery(sql, null)) {
+                    while (c != null && c.moveToNext()) {
+                        String mKey = c.getString(0);
+                        String title = c.getString(1);
+                        int count = c.getInt(2);
+                        if (mKey != null && title != null && !title.trim().isEmpty()) {
+                            if (!albumMap.containsKey(mKey)) {
+                                albumMap.put(mKey, new AlbumInfo(mKey, title.trim(), count, true));
+                            }
+                        }
+                    }
+                } catch (Throwable tEnv) {
+                    Logger.printException(() -> "Error querying envelopes table", tEnv);
+                }
+            }
+
+            // 3. Fallback: Distinct collection_id in remote_media or shared_media if collections/envelopes empty
+            if (albumMap.isEmpty()) {
+                if (hasTable(db, "remote_media")) {
+                    String sql = "SELECT DISTINCT collection_id FROM remote_media WHERE collection_id IS NOT NULL AND collection_id != ''";
+                    try (Cursor c = db.rawQuery(sql, null)) {
+                        while (c != null && c.moveToNext()) {
+                            String mKey = c.getString(0);
+                            if (mKey != null && !mKey.isEmpty() && !albumMap.containsKey(mKey)) {
+                                albumMap.put(mKey, new AlbumInfo(mKey, "Album (" + mKey.substring(0, Math.min(8, mKey.length())) + "…)", 0, false));
+                            }
+                        }
+                    } catch (Throwable ignored) {}
+                }
+            }
+
+            albums.addAll(albumMap.values());
+            Log.i("morphe: StorageScanner", "getAvailableAlbums found " + albums.size() + " albums");
         } catch (Throwable t) {
             Logger.printException(() -> "Error fetching albums", t);
         } finally {
