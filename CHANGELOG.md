@@ -1,3 +1,9 @@
+## [1.15.2](https://github.com/Akash-Sriram/morphe-google-photos/compare/v1.15.1...v1.15.2) (2026-10-16)
+
+### 🐛 Bug Fixes
+
+* **Google Photos - Toolkit:** validate core media loader and resolve features request for locked folder unlock ([ecd9241](https://github.com/Akash-Sriram/morphe-google-photos/commit/ecd9241f3eebdb8610720eca584f33e973527c7d))
+
 ## [1.15.1](https://github.com/Akash-Sriram/morphe-google-photos/compare/v1.15.0...v1.15.1) (2026-10-16)
 
 ### 🐛 Bug Fixes
