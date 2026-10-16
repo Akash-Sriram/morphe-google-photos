@@ -129,19 +129,8 @@ val gmsCoreSupportPatch = gmsCoreSupportPatch(
         //  - Relax MDD and WorkManager network constraints from UNMETERED/NOT_ROAMING to CONNECTED
         //  - Places Map photo grid scroll jump (Lahuf.h)
         //  - Map Explore bottom sheet photo count
-        //  - Mars package-name string translation (when package renaming is enabled)
         //  - MarsGridActivity.onCreate hook
         //  - Discover photos.killswitch_info_panel_map field
-        val isPackageChangeEnabled = PackageNameConfig.isPackageNameChangeEnabled
-        val targetPackageName = PackageNameConfig.effectivePackageName.ifEmpty { MORPHE_PHOTOS_PACKAGE_NAME }
-        val marsPackagePrefixes = listOf(
-            "$PHOTOS_PACKAGE_NAME.mars.",
-            "content://$PHOTOS_PACKAGE_NAME.mars.",
-        )
-        val marsLibPrefixes = listOf(
-            "com.google.android.libraries.photos.api.mars",
-            "content://com.google.android.libraries.photos.api.mars",
-        )
         var killswitchFieldRef: FieldReference? = null
         val candidateSgetMethods = mutableListOf<Pair<ClassDef, com.android.tools.smali.dexlib2.iface.Method>>()
 
@@ -282,32 +271,6 @@ val gmsCoreSupportPatch = gmsCoreSupportPatch(
                             foundStringDistance++
                         }
                     }
-
-                    // Mars string replacement
-                    if (isPackageChangeEnabled && instruction is com.android.tools.smali.dexlib2.iface.instruction.formats.Instruction21c && ref is StringReference) {
-                        val original = ref.string
-                        if (!original.endsWith("Activity") && !original.contains("Activity$") &&
-                            !original.endsWith("Task") && !original.contains("Task$") &&
-                            !original.endsWith("Service") && !original.contains("Service$")) {
-                            val transformed = when {
-                                marsLibPrefixes.any { original.startsWith(it) } ->
-                                    original.replace("com.google.android.libraries.photos.api.mars", "$targetPackageName.api.mars")
-                                marsPackagePrefixes.any { original.startsWith(it) } ->
-                                    original.replace(PHOTOS_PACKAGE_NAME, targetPackageName)
-                                else -> null
-                            }
-                            if (transformed != null) {
-                                mutableMethod.replaceInstruction(
-                                    index,
-                                    com.android.tools.smali.dexlib2.builder.instruction.BuilderInstruction21c(
-                                        com.android.tools.smali.dexlib2.Opcode.CONST_STRING,
-                                        (instruction as OneRegisterInstruction).registerA,
-                                        com.android.tools.smali.dexlib2.immutable.reference.ImmutableStringReference(transformed),
-                                    ),
-                                )
-                            }
-                        }
-                    }
                 }
             }
         }
@@ -398,6 +361,55 @@ val gmsCoreSupportPatch = gmsCoreSupportPatch(
             }
         }
     },
+    finalizeBlock = {
+        if (PackageNameConfig.isPackageNameChangeEnabled) {
+            val targetPackageName = PackageNameConfig.effectivePackageName.ifEmpty { MORPHE_PHOTOS_PACKAGE_NAME }
+            val marsPackagePrefixes = listOf(
+                "$PHOTOS_PACKAGE_NAME.mars.",
+                "content://$PHOTOS_PACKAGE_NAME.mars.",
+            )
+            val marsLibPrefixes = listOf(
+                "com.google.android.libraries.photos.api.mars",
+                "content://com.google.android.libraries.photos.api.mars",
+            )
+
+            classDefForEach { classDef ->
+                val mutableClass by lazy { mutableClassDefBy(classDef) }
+                classDef.methods.forEach classLoop@{ method ->
+                    val implementation = method.implementation ?: return@classLoop
+                    val mutableMethod by lazy { mutableClass.findMutableMethodOf(method) }
+
+                    implementation.instructions.forEachIndexed { index, instruction ->
+                        val ref = (instruction as? com.android.tools.smali.dexlib2.iface.instruction.ReferenceInstruction)?.reference
+                        if (instruction is com.android.tools.smali.dexlib2.iface.instruction.formats.Instruction21c && ref is StringReference) {
+                            val original = ref.string
+                            if (!original.endsWith("Activity") && !original.contains("Activity$") &&
+                                !original.endsWith("Task") && !original.contains("Task$") &&
+                                !original.endsWith("Service") && !original.contains("Service$")) {
+                                val transformed = when {
+                                    marsLibPrefixes.any { original.startsWith(it) } ->
+                                        original.replace("com.google.android.libraries.photos.api.mars", "$targetPackageName.api.mars")
+                                    marsPackagePrefixes.any { original.startsWith(it) } ->
+                                        original.replace(PHOTOS_PACKAGE_NAME, targetPackageName)
+                                    else -> null
+                                }
+                                if (transformed != null) {
+                                    mutableMethod.replaceInstruction(
+                                        index,
+                                        com.android.tools.smali.dexlib2.builder.instruction.BuilderInstruction21c(
+                                            com.android.tools.smali.dexlib2.Opcode.CONST_STRING,
+                                            (instruction as OneRegisterInstruction).registerA,
+                                            com.android.tools.smali.dexlib2.immutable.reference.ImmutableStringReference(transformed),
+                                        ),
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    },
 ) {
     dependsOn(
         deviceComplianceCheckPatch,
@@ -465,15 +477,6 @@ private fun gmsCoreSupportResourcePatch() =
                         }
                     }
 
-                    val existingPerms = manifest.getElementsByTagName("uses-permission").asSequence()
-                        .map { (it as Element).getAttribute("android:name") }
-                        .toSet()
-                    if ("android.permission.MANAGE_EXTERNAL_STORAGE" !in existingPerms) {
-                        val permNode = document.createElement("uses-permission")
-                        permNode.setAttribute("android:name", "android.permission.MANAGE_EXTERNAL_STORAGE")
-                        manifest.appendChild(permNode)
-                    }
-
                     val providers = manifest.getElementsByTagName("provider").asSequence()
                     for (node in providers) {
                         val provider = node as Element
@@ -484,6 +487,18 @@ private fun gmsCoreSupportResourcePatch() =
                             provider.setAttribute("android:authorities", authorities.replace(originalPackageName, targetPackageName))
                         }
                     }
+                }
+            }
+
+            document("AndroidManifest.xml").use { document ->
+                val manifest = document.getNode("manifest") as Element
+                val existingPerms = manifest.getElementsByTagName("uses-permission").asSequence()
+                    .map { (it as Element).getAttribute("android:name") }
+                    .toSet()
+                if ("android.permission.MANAGE_EXTERNAL_STORAGE" !in existingPerms) {
+                    val permNode = document.createElement("uses-permission")
+                    permNode.setAttribute("android:name", "android.permission.MANAGE_EXTERNAL_STORAGE")
+                    manifest.appendChild(permNode)
                 }
             }
 

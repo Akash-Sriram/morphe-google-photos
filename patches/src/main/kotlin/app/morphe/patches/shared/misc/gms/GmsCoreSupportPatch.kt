@@ -94,6 +94,7 @@ fun gmsCoreSupportPatch(
     extensionPatch: Patch<*>,
     gmsCoreSupportResourcePatchFactory: () -> Patch<*>,
     executeBlock: BytecodePatchContext.() -> Unit = {},
+    finalizeBlock: BytecodePatchContext.() -> Unit = {},
     block: BytecodePatchBuilder.() -> Unit = {},
 ) = bytecodePatch(
     name = "GmsCore support",
@@ -114,136 +115,122 @@ fun gmsCoreSupportPatch(
         extensionPatch,
     )
 
-    execute {
-        fun transformStringReferences(transform: (str: String) -> String?) = classDefForEach {
-            val mutableClass by lazy {
-                mutableClassDefBy(it)
-            }
-
-            it.methods.forEach classLoop@{ method ->
-                val implementation = method.implementation ?: return@classLoop
-
-                val mutableMethod by lazy {
-                    mutableClass.findMutableMethodOf(method)
-                }
-
-                implementation.instructions.forEachIndexed { index, instruction ->
-                    val string = ((instruction as? Instruction21c)?.reference as? StringReference)?.string
-                        ?: return@forEachIndexed
-
-                    // Apply transformation.
-                    val transformedString = transform(string) ?: return@forEachIndexed
-
-                    mutableMethod.replaceInstruction(
-                        index,
-                        BuilderInstruction21c(
-                            Opcode.CONST_STRING,
-                            instruction.registerA,
-                            ImmutableStringReference(transformedString),
-                        ),
-                    )
-                }
-            }
+    fun BytecodePatchContext.transformStringReferences(transform: (str: String) -> String?) = classDefForEach {
+        val mutableClass by lazy {
+            mutableClassDefBy(it)
         }
 
-        // region Collection of transformations that are applied to all strings.
+        it.methods.forEach classLoop@{ method ->
+            val implementation = method.implementation ?: return@classLoop
 
-        fun commonTransform(referencedString: String): String? {
-            // Fast exit: if string doesn't even contain relevant substrings, skip set lookups.
-            if (!referencedString.startsWith("com.google") &&
-                referencedString != "subscribedfeeds"
-            ) {
-                return null
+            val mutableMethod by lazy {
+                mutableClass.findMutableMethodOf(method)
             }
 
-            return when (referencedString) {
-                "com.google",
-                "com.google.android.gms",
-                in PERMISSIONS,
-                in ACTIONS,
-                in AUTHORITIES,
-                -> {
-                    if (fromPackageName == "com.google.android.apps.photos" && referencedString.contains("phenotype")) {
-                        null
-                    } else {
-                        referencedString.replace("com.google", GMS_CORE_VENDOR_GROUP_ID)
-                    }
-                }
+            implementation.instructions.forEachIndexed { index, instruction ->
+                val string = ((instruction as? Instruction21c)?.reference as? StringReference)?.string
+                    ?: return@forEachIndexed
 
-                // No vendor prefix for whatever reason...
-                "subscribedfeeds" -> "$GMS_CORE_VENDOR_GROUP_ID.subscribedfeeds"
-                else -> null
+                // Apply transformation.
+                val transformedString = transform(string) ?: return@forEachIndexed
+
+                mutableMethod.replaceInstruction(
+                    index,
+                    BuilderInstruction21c(
+                        Opcode.CONST_STRING,
+                        instruction.registerA,
+                        ImmutableStringReference(transformedString),
+                    ),
+                )
             }
         }
+    }
 
-        fun contentUrisTransform(str: String): String? {
-            // only when content:// uri
-            if (str.startsWith("content://")) {
-                // check if matches any authority
-                for (authority in AUTHORITIES) {
-                    if (fromPackageName == "com.google.android.apps.photos" && authority.contains("phenotype")) {
-                        continue
-                    }
-                    val uriPrefix = "content://$authority"
-                    if (str.startsWith(uriPrefix)) {
-                        return str.replace(
-                            uriPrefix,
-                            "content://${authority.replace("com.google", GMS_CORE_VENDOR_GROUP_ID)}",
-                        )
-                    }
-                }
-
-                // gms also has a 'subscribedfeeds' authority, check for that one too
-                val subFeedsUriPrefix = "content://subscribedfeeds"
-                if (str.startsWith(subFeedsUriPrefix)) {
-                    return str.replace(subFeedsUriPrefix, "content://$GMS_CORE_VENDOR_GROUP_ID.subscribedfeeds")
-                }
-            }
-
+    fun commonTransform(referencedString: String): String? {
+        // Fast exit: if string doesn't even contain relevant substrings, skip set lookups.
+        if (!referencedString.startsWith("com.google") &&
+            referencedString != "subscribedfeeds"
+        ) {
             return null
         }
 
-        fun packageNameTransform(fromPackageName: String, toPackageName: String): (String) -> String? = { string ->
-            when (string) {
-                "$fromPackageName.SuggestionProvider",
-                "$fromPackageName.fileprovider",
-                -> string.replace(fromPackageName, toPackageName)
-
-                else -> null
-            }
-        }
-
-        fun transformPrimeMethod(packageName: String) {
-            primeMethodFingerprint!!.method.apply {
-                var register = 2
-
-                val index = instructions.indexOfFirst {
-                    if (it.getReference<StringReference>()?.string != fromPackageName) return@indexOfFirst false
-
-                    register = (it as OneRegisterInstruction).registerA
-                    return@indexOfFirst true
+        return when (referencedString) {
+            "com.google",
+            "com.google.android.gms",
+            in PERMISSIONS,
+            in ACTIONS,
+            in AUTHORITIES,
+            -> {
+                if (fromPackageName == "com.google.android.apps.photos" && referencedString.contains("phenotype")) {
+                    null
+                } else {
+                    referencedString.replace("com.google", GMS_CORE_VENDOR_GROUP_ID)
                 }
+            }
 
-                replaceInstruction(index, "const-string v$register, \"$packageName\"")
+            // No vendor prefix for whatever reason...
+            "subscribedfeeds" -> "$GMS_CORE_VENDOR_GROUP_ID.subscribedfeeds"
+            else -> null
+        }
+    }
+
+    fun contentUrisTransform(str: String): String? {
+        // only when content:// uri
+        if (str.startsWith("content://")) {
+            // check if matches any authority
+            for (authority in AUTHORITIES) {
+                if (fromPackageName == "com.google.android.apps.photos" && authority.contains("phenotype")) {
+                    continue
+                }
+                val uriPrefix = "content://$authority"
+                if (str.startsWith(uriPrefix)) {
+                    return str.replace(
+                        uriPrefix,
+                        "content://${authority.replace("com.google", GMS_CORE_VENDOR_GROUP_ID)}",
+                    )
+                }
+            }
+
+            // gms also has a 'subscribedfeeds' authority, check for that one too
+            val subFeedsUriPrefix = "content://subscribedfeeds"
+            if (str.startsWith(subFeedsUriPrefix)) {
+                return str.replace(subFeedsUriPrefix, "content://$GMS_CORE_VENDOR_GROUP_ID.subscribedfeeds")
             }
         }
 
-        // endregion
+        return null
+    }
 
-        val packageName = PackageNameConfig.resolvePackageName(fromPackageName, toPackageName)
+    fun packageNameTransform(fromPackageName: String, toPackageName: String): (String) -> String? = { string ->
+        when (string) {
+            "$fromPackageName.SuggestionProvider",
+            "$fromPackageName.fileprovider",
+            -> string.replace(fromPackageName, toPackageName)
 
-        val transformations: List<(String) -> String?> = if (packageName != fromPackageName) {
-            listOf(
-                ::commonTransform,
-                ::contentUrisTransform,
-                packageNameTransform(fromPackageName, packageName),
-            )
-        } else {
-            listOf(
-                ::commonTransform,
-                ::contentUrisTransform,
-            )
+            else -> null
         }
+    }
+
+    fun BytecodePatchContext.transformPrimeMethod(packageName: String) {
+        primeMethodFingerprint!!.method.apply {
+            var register = 2
+
+            val index = instructions.indexOfFirst {
+                if (it.getReference<StringReference>()?.string != fromPackageName) return@indexOfFirst false
+
+                register = (it as OneRegisterInstruction).registerA
+                return@indexOfFirst true
+            }
+
+            replaceInstruction(index, "const-string v$register, \"$packageName\"")
+        }
+    }
+
+    execute {
+        val transformations: List<(String) -> String?> = listOf(
+            ::commonTransform,
+            ::contentUrisTransform,
+        )
         transformStringReferences transform@{ string ->
             transformations.forEach { transform ->
                 transform(string)?.let { transformedString -> return@transform transformedString }
@@ -251,9 +238,6 @@ fun gmsCoreSupportPatch(
 
             return@transform null
         }
-
-        // Specific method that needs to be patched.
-        primeMethodFingerprint?.let { transformPrimeMethod(packageName) }
 
         // Return these methods early to prevent the app from crashing.
         earlyReturnFingerprints.forEach {
@@ -288,6 +272,20 @@ fun gmsCoreSupportPatch(
         )
 
         executeBlock()
+    }
+
+    finalize {
+        if (PackageNameConfig.isPackageNameChangeEnabled) {
+            val packageName = PackageNameConfig.resolvePackageName(fromPackageName, toPackageName)
+            if (packageName != fromPackageName) {
+                primeMethodFingerprint?.let { transformPrimeMethod(packageName) }
+                transformStringReferences transform@{ string ->
+                    packageNameTransform(fromPackageName, packageName)(string)
+                }
+            }
+        }
+
+        finalizeBlock()
     }
 
     block()
@@ -654,21 +652,10 @@ fun gmsCoreSupportResourcePatch(
          * Patch the manifest to support GmsCore.
          */
         fun patchManifest() {
-            val packageName = PackageNameConfig.resolvePackageName(fromPackageName, toPackageName)
-
             val transformations = mutableMapOf(
                 "com.google.android.c2dm" to "$GMS_CORE_VENDOR_GROUP_ID.android.c2dm",
-                "com.google.android.libraries.photos.api.mars" to "$packageName.api.mars",
                 "</queries>" to "<package android:name=\"$GMS_CORE_VENDOR_GROUP_ID.android.gms\"/></queries>",
             )
-
-            if (packageName != fromPackageName) {
-                transformations["package=\"$fromPackageName"] = "package=\"$packageName"
-                transformations["android:authorities=\"$fromPackageName"] = "android:authorities=\"$packageName"
-                transformations["$fromPackageName.permission.C2D_MESSAGE"] = "$packageName.permission.C2D_MESSAGE"
-                transformations["$fromPackageName.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION"] = "$packageName.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION"
-                transformations["$fromPackageName.permission.SEARCH_IN_PHOTOS"] = "$packageName.permission.SEARCH_IN_PHOTOS"
-            }
 
             val manifest = get("AndroidManifest.xml")
             manifest.writeText(

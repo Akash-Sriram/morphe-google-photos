@@ -30,6 +30,7 @@ private var originalVersionCode: Int = 0
 
 private val officialPackageNameResourcePatch = resourcePatch {
     execute {
+        PackageNameConfig.useOfficialPackageName = true
         document("AndroidManifest.xml").use { document ->
             val manifest = document.getNode("manifest") as Element
             originalVersionCode = manifest.getAttribute("android:versionCode").toInt()
