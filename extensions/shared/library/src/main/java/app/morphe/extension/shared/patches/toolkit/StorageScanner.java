@@ -7,6 +7,7 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.database.Cursor;
+import android.database.DatabaseUtils;
 import android.database.sqlite.SQLiteDatabase;
 import android.graphics.Bitmap;
 import android.graphics.Color;
@@ -243,6 +244,7 @@ public class StorageScanner {
         public final String caption;
         public long perceptualHash = 0;
         public int clusterId = -1;
+        public boolean isCloudBackedUp = false;
 
         public MediaItem(String dedupKey, String mediaKey, String filename, long sizeBytes,
                          long quotaBytes, long captureTimestamp, String remoteUrl,
@@ -963,7 +965,7 @@ public class StorageScanner {
                             if ("include".equals(crit.descriptionMatchType) && !matches) continue;
                         }
 
-                        items.add(new MediaItem(
+                        MediaItem mi = new MediaItem(
                                 c.getString(cDedupKey),
                                 c.getString(cMediaKey),
                                 filename,
@@ -982,7 +984,19 @@ public class StorageScanner {
                                 c.getDouble(cLatitude),
                                 c.getDouble(cLongitude),
                                 caption
-                        ));
+                        );
+                        if ("remote_media".equals(targetTable) || "shared_media".equals(targetTable) || "remote_locked_media".equals(targetTable)) {
+                            mi.isCloudBackedUp = true;
+                        } else if ("account_local_locked_media".equals(targetTable)) {
+                            if (hasTable(db, "remote_locked_media") && mi.dedupKey != null && !mi.dedupKey.isEmpty()) {
+                                try (Cursor rc = db.rawQuery("SELECT 1 FROM remote_locked_media WHERE dedup_key = ? LIMIT 1", new String[]{mi.dedupKey})) {
+                                    if (rc != null && rc.moveToFirst()) {
+                                        mi.isCloudBackedUp = true;
+                                    }
+                                } catch (Throwable ignored) {}
+                            }
+                        }
+                        items.add(mi);
                     }
                 }
             }
@@ -1062,7 +1076,7 @@ public class StorageScanner {
                                     if ("include".equals(crit.descriptionMatchType) && !matches) continue;
                                 }
 
-                                items.add(new MediaItem(
+                                MediaItem smi = new MediaItem(
                                         dKey,
                                         sc.getString(scMediaKey),
                                         filename,
@@ -1081,7 +1095,9 @@ public class StorageScanner {
                                         sc.getDouble(scLatitude),
                                         sc.getDouble(scLongitude),
                                         caption
-                                ));
+                                );
+                                smi.isCloudBackedUp = true;
+                                items.add(smi);
                                 seen.add(dKey);
                             }
                         }
@@ -1114,7 +1130,7 @@ public class StorageScanner {
                             String path = lc.getString(6);
                             String fileUri = (path != null && !path.isEmpty()) ? (path.startsWith("/") ? "file://" + path : path) : "";
 
-                            items.add(new MediaItem(
+                            MediaItem lmi = new MediaItem(
                                     dKey,
                                     dKey,
                                     filename,
@@ -1133,7 +1149,15 @@ public class StorageScanner {
                                     lc.getDouble(15),
                                     lc.getDouble(16),
                                     ""
-                            ));
+                            );
+                            if (hasTable(db, "remote_locked_media") && dKey != null && !dKey.isEmpty()) {
+                                try (Cursor rc = db.rawQuery("SELECT 1 FROM remote_locked_media WHERE dedup_key = ? LIMIT 1", new String[]{dKey})) {
+                                    if (rc != null && rc.moveToFirst()) {
+                                        lmi.isCloudBackedUp = true;
+                                    }
+                                } catch (Throwable ignored) {}
+                            }
+                            items.add(lmi);
                             seen.add(dKey);
                         }
                     }
@@ -3516,6 +3540,100 @@ public class StorageScanner {
                         db.beginTransaction();
                         try {
                             for (MediaItem it : chunkItems) {
+                                boolean existsInRemoteMars = false;
+                                ContentValues remoteMediaValues = new ContentValues();
+                                if (hasTable(db, "remote_locked_media") && hasTable(db, "remote_media")) {
+                                    String sel = "dedup_key = ?";
+                                    List<String> selArgs = new ArrayList<>();
+                                    selArgs.add(it.dedupKey);
+                                    if (it.mediaKey != null && !it.mediaKey.isEmpty() && !it.mediaKey.equals(it.dedupKey)) {
+                                        sel = "(dedup_key = ? OR media_key = ?)";
+                                        selArgs.add(it.mediaKey);
+                                    }
+                                    try (Cursor rmc = db.query("remote_locked_media", null, sel, selArgs.toArray(new String[0]), null, null, null, "1")) {
+                                        if (rmc != null && rmc.moveToFirst()) {
+                                            existsInRemoteMars = true;
+                                            for (int ci = 0; ci < rmc.getColumnCount(); ci++) {
+                                                String col = rmc.getColumnName(ci);
+                                                if ("_id".equalsIgnoreCase(col)) continue;
+                                                if (hasColumn(db, "remote_media", col)) {
+                                                    switch (rmc.getType(ci)) {
+                                                        case Cursor.FIELD_TYPE_INTEGER:
+                                                            remoteMediaValues.put(col, rmc.getLong(ci));
+                                                            break;
+                                                        case Cursor.FIELD_TYPE_FLOAT:
+                                                            remoteMediaValues.put(col, rmc.getDouble(ci));
+                                                            break;
+                                                        case Cursor.FIELD_TYPE_STRING:
+                                                            remoteMediaValues.put(col, rmc.getString(ci));
+                                                            break;
+                                                        case Cursor.FIELD_TYPE_BLOB:
+                                                            remoteMediaValues.put(col, rmc.getBlob(ci));
+                                                            break;
+                                                        case Cursor.FIELD_TYPE_NULL:
+                                                            remoteMediaValues.putNull(col);
+                                                            break;
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    } catch (Throwable tQuery) {
+                                        Log.w("morphe: StorageScanner", "Failed to read remote_locked_media row for " + it.dedupKey, tQuery);
+                                    }
+                                }
+
+                                if (existsInRemoteMars || it.isCloudBackedUp) {
+                                    if (hasTable(db, "remote_media")) {
+                                        if (hasColumn(db, "remote_media", "state")) remoteMediaValues.put("state", 0);
+                                        if (hasColumn(db, "remote_media", "is_archived")) remoteMediaValues.put("is_archived", 0);
+                                        if (hasColumn(db, "remote_media", "trash_timestamp")) remoteMediaValues.put("trash_timestamp", 0);
+                                        if (!remoteMediaValues.containsKey("dedup_key") && it.dedupKey != null) {
+                                            remoteMediaValues.put("dedup_key", it.dedupKey);
+                                        }
+                                        if (!remoteMediaValues.containsKey("media_key") && it.mediaKey != null) {
+                                            remoteMediaValues.put("media_key", it.mediaKey);
+                                        }
+                                        if (!remoteMediaValues.containsKey("capture_timestamp") && it.captureTimestamp > 0) {
+                                            remoteMediaValues.put("capture_timestamp", it.captureTimestamp);
+                                        }
+                                        if (!remoteMediaValues.containsKey("utc_timestamp") && it.captureTimestamp > 0) {
+                                            remoteMediaValues.put("utc_timestamp", it.captureTimestamp);
+                                        }
+                                        if (!remoteMediaValues.containsKey("filename") && it.filename != null) {
+                                            remoteMediaValues.put("filename", it.filename);
+                                        }
+                                        if (!remoteMediaValues.containsKey("size_bytes") && it.sizeBytes > 0) {
+                                            remoteMediaValues.put("size_bytes", it.sizeBytes);
+                                        }
+                                        if (!remoteMediaValues.containsKey("type")) {
+                                            remoteMediaValues.put("type", (it.duration > 0 || (it.mimeType != null && it.mimeType.startsWith("video/"))) ? 2 : 1);
+                                        }
+                                        if (!remoteMediaValues.containsKey("mime_type") && it.mimeType != null && !it.mimeType.isEmpty()) {
+                                            remoteMediaValues.put("mime_type", it.mimeType);
+                                        }
+                                        if (!remoteMediaValues.containsKey("quota_charged_bytes") && it.quotaBytes >= 0 && hasColumn(db, "remote_media", "quota_charged_bytes")) {
+                                            remoteMediaValues.put("quota_charged_bytes", it.quotaBytes);
+                                        }
+                                        db.insertWithOnConflict("remote_media", null, remoteMediaValues, SQLiteDatabase.CONFLICT_REPLACE);
+                                        Log.i("morphe: StorageScanner", "Restored unlocked item into remote_media: " + it.dedupKey);
+                                    }
+                                } else {
+                                    if (hasTable(db, "remote_media")) {
+                                        ContentValues cv = new ContentValues();
+                                        if (hasColumn(db, "remote_media", "state")) cv.put("state", 0);
+                                        if (hasColumn(db, "remote_media", "is_archived")) cv.put("is_archived", 0);
+                                        if (hasColumn(db, "remote_media", "trash_timestamp")) cv.put("trash_timestamp", 0);
+                                        String whereRemote = "dedup_key = ?";
+                                        List<String> argsRemote = new ArrayList<>();
+                                        argsRemote.add(it.dedupKey);
+                                        if (hasColumn(db, "remote_media", "media_key") && it.mediaKey != null && !it.mediaKey.isEmpty() && !it.mediaKey.equals(it.dedupKey)) {
+                                            whereRemote = "(dedup_key = ? OR media_key = ?)";
+                                            argsRemote.add(it.mediaKey);
+                                        }
+                                        db.update("remote_media", cv, whereRemote, argsRemote.toArray(new String[0]));
+                                    }
+                                }
+
                                 if (hasTable(db, "remote_locked_media")) {
                                     String where = "dedup_key = ?";
                                     List<String> args = new ArrayList<>();
@@ -3528,20 +3646,6 @@ public class StorageScanner {
                                 }
                                 if (hasTable(db, "account_local_locked_media") && it.dedupKey != null && !it.dedupKey.isEmpty()) {
                                     db.delete("account_local_locked_media", "dedup_key = ?", new String[]{it.dedupKey});
-                                }
-                                if (hasTable(db, "remote_media")) {
-                                    ContentValues cv = new ContentValues();
-                                    if (hasColumn(db, "remote_media", "state")) cv.put("state", 0);
-                                    if (hasColumn(db, "remote_media", "is_archived")) cv.put("is_archived", 0);
-                                    if (hasColumn(db, "remote_media", "trash_timestamp")) cv.put("trash_timestamp", 0);
-                                    String whereRemote = "dedup_key = ?";
-                                    List<String> argsRemote = new ArrayList<>();
-                                    argsRemote.add(it.dedupKey);
-                                    if (hasColumn(db, "remote_media", "media_key") && it.mediaKey != null && !it.mediaKey.isEmpty() && !it.mediaKey.equals(it.dedupKey)) {
-                                        whereRemote = "(dedup_key = ? OR media_key = ?)";
-                                        argsRemote.add(it.mediaKey);
-                                    }
-                                    db.update("remote_media", cv, whereRemote, argsRemote.toArray(new String[0]));
                                 }
                                 if (hasTable(db, "media")) {
                                     ContentValues mCv = new ContentValues();
@@ -3575,6 +3679,8 @@ public class StorageScanner {
 
     public static boolean isItemCloudBackedUp(MediaItem item) {
         if (item == null) return false;
+        if (item.isCloudBackedUp) return true;
+        if (item.quotaBytes > 0) return true;
         if (item.remoteUrl != null && !item.remoteUrl.trim().isEmpty()) {
             String u = item.remoteUrl.trim();
             if (u.startsWith("http://") || u.startsWith("https://") || u.startsWith("//")) {
@@ -3595,21 +3701,32 @@ public class StorageScanner {
         try {
             SharedPreferences backupSp = context.getSharedPreferences("photos.backup.backup_prefs", Context.MODE_PRIVATE);
             if (backupSp != null) {
-                // 1. Overall Default Backup must be enabled (account_id != -1)
+                if (backupSp.getBoolean("photos.backup.back_up_mars", false)) {
+                    return true;
+                }
                 int backupAccountId = backupSp.getInt("backup_prefs_account_id", -1);
-                if (backupAccountId == -1) {
-                    // Overall backup is turned OFF
-                    return false;
+                if (backupAccountId != -1 && (accountId < 0 || backupAccountId == accountId)) {
+                    if (backupSp.getBoolean("photos.backup.back_up_mars", false)) {
+                        return true;
+                    }
                 }
-                if (accountId >= 0 && backupAccountId != accountId) {
-                    // Active backup account does not match this account
-                    return false;
-                }
-
-                // 2. Locked Folder backup toggle must be explicitly enabled
-                return backupSp.getBoolean("photos.backup.back_up_mars", false);
             }
         } catch (Throwable ignored) {}
+
+        // Fallback: Check if remote_locked_media has records in gphotos<accountId>.db
+        if (accountId >= 0) {
+            try {
+                File dbf = context.getDatabasePath("gphotos" + accountId + ".db");
+                if (dbf != null && dbf.exists()) {
+                    try (SQLiteDatabase db = SQLiteDatabase.openDatabase(dbf.getAbsolutePath(), null, SQLiteDatabase.OPEN_READONLY)) {
+                        if (hasTable(db, "remote_locked_media")) {
+                            long count = DatabaseUtils.queryNumEntries(db, "remote_locked_media");
+                            if (count > 0) return true;
+                        }
+                    }
+                }
+            } catch (Throwable ignored) {}
+        }
 
         return false;
     }
@@ -4156,6 +4273,22 @@ public class StorageScanner {
             }
         } catch (Throwable t) {
             Logger.printException(() -> "Could not run SyncActionQueueBlock", t);
+        }
+
+        try {
+            Class<?> userMediaSyncTaskClass = Class.forName("com.google.android.apps.photos.assistant.remote.provider.PerformSyncUserMediaBackgroundTask");
+            Constructor<?> userMediaCtor = userMediaSyncTaskClass.getConstructor(int.class);
+            Object userMediaTask = userMediaCtor.newInstance(accountId);
+            runTaskAsync(context, userMediaTask);
+            Logger.printInfo(() -> "Scheduled PerformSyncUserMediaBackgroundTask for account " + accountId);
+        } catch (Throwable t) {
+            try {
+                Class<?> deltaSyncClass = Class.forName("com.google.android.apps.photos.metasync.fetcher.PerformDeltaSyncBackgroundTask");
+                Constructor<?> deltaCtor = deltaSyncClass.getConstructor(int.class);
+                Object deltaTask = deltaCtor.newInstance(accountId);
+                runTaskAsync(context, deltaTask);
+                Logger.printInfo(() -> "Scheduled PerformDeltaSyncBackgroundTask for account " + accountId);
+            } catch (Throwable ignored) {}
         }
     }
 

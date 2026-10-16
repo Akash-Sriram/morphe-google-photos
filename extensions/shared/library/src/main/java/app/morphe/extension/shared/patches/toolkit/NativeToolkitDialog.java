@@ -1810,13 +1810,16 @@ public class NativeToolkitDialog {
                     boolean lockerBackupEnabled = StorageScanner.isLockedFolderBackupEnabled(activity, accountId);
                     int localCount = 0;
                     for (StorageScanner.MediaItem it : items) {
-                        if (!lockerBackupEnabled || !StorageScanner.isItemCloudBackedUp(it)) {
+                        boolean backedUp = it.isCloudBackedUp || StorageScanner.isItemCloudBackedUp(it);
+                        if (!lockerBackupEnabled || !backedUp) {
                             localCount++;
                         }
                     }
                     StringBuilder msgBuilder = new StringBuilder();
-                    msgBuilder.append("These photos & videos will no longer be hidden and can now show up as you scroll through Google Photos or in other apps.");
-                    if (localCount > 0) {
+                    if (localCount == 0) {
+                        msgBuilder.append("These photos & videos will be moved out of Locked Folder and will appear in your Google Photos library.");
+                    } else {
+                        msgBuilder.append("These photos & videos will no longer be hidden and can now show up as you scroll through Google Photos or in other apps.");
                         msgBuilder.append("\n\n⚠️ Storage Notice:\n");
                         if (localCount == count) {
                             msgBuilder.append("These items are stored locally only without cloud backup. Moving them out will place them into local device storage (under device folders, e.g. DCIM/Pictures) and will not appear in your cloud photos timeline until backed up.");
