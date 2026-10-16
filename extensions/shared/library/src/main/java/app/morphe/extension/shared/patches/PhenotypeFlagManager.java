@@ -47,6 +47,7 @@ import android.view.WindowInsets;
 import android.view.WindowManager;
 import android.view.inputmethod.EditorInfo;
 import android.view.inputmethod.InputMethodManager;
+import android.widget.AbsListView;
 import android.widget.BaseAdapter;
 import android.widget.Button;
 import android.widget.EditText;
@@ -58,6 +59,7 @@ import android.widget.ScrollView;
 import android.widget.ProgressBar;
 import android.widget.Switch;
 import android.widget.TextView;
+import app.morphe.extension.shared.Utils;
 import android.widget.Toast;
 import android.util.TypedValue;
 
@@ -229,6 +231,20 @@ public final class PhenotypeFlagManager {
         public static final int TYPE_RESTART = 19;
         public static final int TYPE_CHECK = 20;
         public static final int TYPE_TOOLKIT = 21;
+        public static final int TYPE_LOCK = 22;
+        public static final int TYPE_FOLDER = 23;
+        public static final int TYPE_STAR = 24;
+        public static final int TYPE_CALENDAR = 25;
+        public static final int TYPE_SORT = 26;
+        public static final int TYPE_ARCHIVE = 27;
+        public static final int TYPE_PHOTO = 28;
+        public static final int TYPE_VIDEO = 29;
+        public static final int TYPE_DOWNLOAD = 30;
+        public static final int TYPE_GRID = 31;
+        public static final int TYPE_LIST = 32;
+        public static final int TYPE_TAG = 33;
+        public static final int TYPE_SHIELD = 34;
+        public static final int TYPE_SHARE = 35;
 
         private final int type;
         private final Paint strokePaint;
@@ -484,6 +500,153 @@ public final class PhenotypeFlagManager {
                     canvas.drawPath(wrench, strokePaint);
                     canvas.drawLine(w * 0.28f, h * 0.62f, w * 0.22f, h * 0.68f, strokePaint);
                     canvas.drawCircle(w * 0.74f, h * 0.26f, Math.min(w, h) * 0.08f, fillPaint);
+                    break;
+                }
+                case TYPE_LOCK: {
+                    RectF shackle = new RectF(w * 0.32f, h * 0.16f, w * 0.68f, h * 0.52f);
+                    canvas.drawArc(shackle, 180, 180, false, strokePaint);
+                    canvas.drawLine(w * 0.32f, h * 0.34f, w * 0.32f, h * 0.50f, strokePaint);
+                    canvas.drawLine(w * 0.68f, h * 0.34f, w * 0.68f, h * 0.50f, strokePaint);
+                    RectF body = new RectF(w * 0.22f, h * 0.48f, w * 0.78f, h * 0.84f);
+                    canvas.drawRoundRect(body, w * 0.08f, h * 0.08f, strokePaint);
+                    canvas.drawCircle(w * 0.50f, h * 0.64f, Math.min(w, h) * 0.06f, fillPaint);
+                    break;
+                }
+                case TYPE_FOLDER: {
+                    Path folder = new Path();
+                    folder.moveTo(w * 0.16f, h * 0.28f);
+                    folder.lineTo(w * 0.42f, h * 0.28f);
+                    folder.lineTo(w * 0.50f, h * 0.36f);
+                    folder.lineTo(w * 0.84f, h * 0.36f);
+                    folder.lineTo(w * 0.84f, h * 0.78f);
+                    folder.lineTo(w * 0.16f, h * 0.78f);
+                    folder.close();
+                    canvas.drawPath(folder, strokePaint);
+                    break;
+                }
+                case TYPE_STAR: {
+                    Path star = new Path();
+                    float scx = w * 0.50f, scy = h * 0.50f;
+                    float rOuter = Math.min(w, h) * 0.36f, rInner = rOuter * 0.45f;
+                    for (int si = 0; si < 10; si++) {
+                        float r = (si % 2 == 0) ? rOuter : rInner;
+                        double angle = -Math.PI / 2 + si * Math.PI / 5;
+                        float x = (float) (scx + r * Math.cos(angle));
+                        float y = (float) (scy + r * Math.sin(angle));
+                        if (si == 0) star.moveTo(x, y); else star.lineTo(x, y);
+                    }
+                    star.close();
+                    canvas.drawPath(star, strokePaint);
+                    break;
+                }
+                case TYPE_CALENDAR: {
+                    RectF cal = new RectF(w * 0.20f, h * 0.24f, w * 0.80f, h * 0.82f);
+                    canvas.drawRoundRect(cal, w * 0.08f, h * 0.08f, strokePaint);
+                    canvas.drawLine(w * 0.20f, h * 0.42f, w * 0.80f, h * 0.42f, strokePaint);
+                    canvas.drawLine(w * 0.34f, h * 0.16f, w * 0.34f, h * 0.28f, strokePaint);
+                    canvas.drawLine(w * 0.66f, h * 0.16f, w * 0.66f, h * 0.28f, strokePaint);
+                    break;
+                }
+                case TYPE_SORT: {
+                    canvas.drawLine(w * 0.35f, h * 0.76f, w * 0.35f, h * 0.24f, strokePaint);
+                    Path up = new Path();
+                    up.moveTo(w * 0.22f, h * 0.38f);
+                    up.lineTo(w * 0.35f, h * 0.24f);
+                    up.lineTo(w * 0.48f, h * 0.38f);
+                    canvas.drawPath(up, strokePaint);
+                    canvas.drawLine(w * 0.65f, h * 0.24f, w * 0.65f, h * 0.76f, strokePaint);
+                    Path dn = new Path();
+                    dn.moveTo(w * 0.52f, h * 0.62f);
+                    dn.lineTo(w * 0.65f, h * 0.76f);
+                    dn.lineTo(w * 0.78f, h * 0.62f);
+                    canvas.drawPath(dn, strokePaint);
+                    break;
+                }
+                case TYPE_ARCHIVE: {
+                    RectF box = new RectF(w * 0.18f, h * 0.34f, w * 0.82f, h * 0.82f);
+                    canvas.drawRoundRect(box, w * 0.06f, h * 0.06f, strokePaint);
+                    RectF lid = new RectF(w * 0.14f, h * 0.20f, w * 0.86f, h * 0.34f);
+                    canvas.drawRoundRect(lid, w * 0.04f, h * 0.04f, strokePaint);
+                    canvas.drawLine(w * 0.38f, h * 0.54f, w * 0.62f, h * 0.54f, strokePaint);
+                    break;
+                }
+                case TYPE_PHOTO: {
+                    RectF frame = new RectF(w * 0.16f, h * 0.20f, w * 0.84f, h * 0.80f);
+                    canvas.drawRoundRect(frame, w * 0.08f, h * 0.08f, strokePaint);
+                    Path mtn = new Path();
+                    mtn.moveTo(w * 0.22f, h * 0.72f);
+                    mtn.lineTo(w * 0.44f, h * 0.46f);
+                    mtn.lineTo(w * 0.58f, h * 0.60f);
+                    mtn.lineTo(w * 0.68f, h * 0.50f);
+                    mtn.lineTo(w * 0.78f, h * 0.72f);
+                    canvas.drawPath(mtn, strokePaint);
+                    canvas.drawCircle(w * 0.36f, h * 0.36f, Math.min(w, h) * 0.06f, fillPaint);
+                    break;
+                }
+                case TYPE_VIDEO: {
+                    RectF vf = new RectF(w * 0.16f, h * 0.24f, w * 0.64f, h * 0.76f);
+                    canvas.drawRoundRect(vf, w * 0.08f, h * 0.08f, strokePaint);
+                    Path tri = new Path();
+                    tri.moveTo(w * 0.66f, h * 0.40f);
+                    tri.lineTo(w * 0.84f, h * 0.26f);
+                    tri.lineTo(w * 0.84f, h * 0.74f);
+                    tri.lineTo(w * 0.66f, h * 0.60f);
+                    tri.close();
+                    canvas.drawPath(tri, strokePaint);
+                    break;
+                }
+                case TYPE_DOWNLOAD: {
+                    canvas.drawLine(w * 0.50f, h * 0.18f, w * 0.50f, h * 0.62f, strokePaint);
+                    Path dArr = new Path();
+                    dArr.moveTo(w * 0.32f, h * 0.46f);
+                    dArr.lineTo(w * 0.50f, h * 0.64f);
+                    dArr.lineTo(w * 0.68f, h * 0.46f);
+                    canvas.drawPath(dArr, strokePaint);
+                    canvas.drawLine(w * 0.22f, h * 0.78f, w * 0.78f, h * 0.78f, strokePaint);
+                    break;
+                }
+                case TYPE_GRID: {
+                    canvas.drawRoundRect(new RectF(w * 0.18f, h * 0.18f, w * 0.45f, h * 0.45f), w * 0.04f, h * 0.04f, strokePaint);
+                    canvas.drawRoundRect(new RectF(w * 0.55f, h * 0.18f, w * 0.82f, h * 0.45f), w * 0.04f, h * 0.04f, strokePaint);
+                    canvas.drawRoundRect(new RectF(w * 0.18f, h * 0.55f, w * 0.45f, h * 0.82f), w * 0.04f, h * 0.04f, strokePaint);
+                    canvas.drawRoundRect(new RectF(w * 0.55f, h * 0.55f, w * 0.82f, h * 0.82f), w * 0.04f, h * 0.04f, strokePaint);
+                    break;
+                }
+                case TYPE_LIST: {
+                    canvas.drawLine(w * 0.20f, h * 0.30f, w * 0.80f, h * 0.30f, strokePaint);
+                    canvas.drawLine(w * 0.20f, h * 0.50f, w * 0.80f, h * 0.50f, strokePaint);
+                    canvas.drawLine(w * 0.20f, h * 0.70f, w * 0.80f, h * 0.70f, strokePaint);
+                    break;
+                }
+                case TYPE_TAG: {
+                    Path tag = new Path();
+                    tag.moveTo(w * 0.20f, h * 0.24f);
+                    tag.lineTo(w * 0.54f, h * 0.24f);
+                    tag.lineTo(w * 0.82f, h * 0.52f);
+                    tag.lineTo(w * 0.52f, h * 0.82f);
+                    tag.lineTo(w * 0.20f, h * 0.50f);
+                    tag.close();
+                    canvas.drawPath(tag, strokePaint);
+                    canvas.drawCircle(w * 0.34f, h * 0.38f, Math.min(w, h) * 0.06f, fillPaint);
+                    break;
+                }
+                case TYPE_SHIELD: {
+                    Path shld = new Path();
+                    shld.moveTo(w * 0.50f, h * 0.18f);
+                    shld.lineTo(w * 0.80f, h * 0.28f);
+                    shld.quadTo(w * 0.80f, h * 0.64f, w * 0.50f, h * 0.84f);
+                    shld.quadTo(w * 0.20f, h * 0.64f, w * 0.20f, h * 0.28f);
+                    shld.close();
+                    canvas.drawPath(shld, strokePaint);
+                    break;
+                }
+                case TYPE_SHARE: {
+                    float r = Math.min(w, h) * 0.07f;
+                    canvas.drawCircle(w * 0.72f, h * 0.28f, r, strokePaint);
+                    canvas.drawCircle(w * 0.28f, h * 0.50f, r, strokePaint);
+                    canvas.drawCircle(w * 0.72f, h * 0.72f, r, strokePaint);
+                    canvas.drawLine(w * 0.34f, h * 0.46f, w * 0.66f, h * 0.32f, strokePaint);
+                    canvas.drawLine(w * 0.34f, h * 0.54f, w * 0.66f, h * 0.68f, strokePaint);
                     break;
                 }
             }
@@ -1187,7 +1350,21 @@ public final class PhenotypeFlagManager {
         String getCategory() { return curatedFlag != null ? curatedFlag.category : null; }
     }
 
-    private static class FlagViewHolder {
+    public static class DisplayRow {
+        final int type;
+        final DisplayItem item1;
+        final DisplayItem item2;
+
+        DisplayRow(DisplayItem item1, DisplayItem item2) {
+            this.item1 = item1;
+            this.item2 = item2;
+            this.type = (item1 != null && item1.isHeader()) ? ITEM_TYPE_HEADER : ITEM_TYPE_FLAG;
+        }
+
+        boolean isHeader() { return type == ITEM_TYPE_HEADER; }
+    }
+
+    private static class FlagCardViewHolder {
         LinearLayout root;
         TextView tvTitle;
         TextView tvTriggerBadge;
@@ -1196,6 +1373,16 @@ public final class PhenotypeFlagManager {
         Switch swToggle;
         TextView valChip;
         ImageView btnDelete;
+    }
+
+    private static class SingleFlagViewHolder {
+        FlagCardViewHolder card;
+    }
+
+    private static class DualFlagViewHolder {
+        LinearLayout row;
+        FlagCardViewHolder card1;
+        FlagCardViewHolder card2;
     }
 
     public interface TabUpdateListener {
@@ -1220,7 +1407,7 @@ public final class PhenotypeFlagManager {
         private final float density;
         private final Theme theme;
         private final List<DisplayItem> allItems = new ArrayList<>();
-        private final List<DisplayItem> displayedItems = new ArrayList<>();
+        private final List<DisplayRow> displayedRows = new ArrayList<>();
         private final List<DisplayItem> curatedItems = new ArrayList<>();
         private final List<DisplayItem> customItems = new ArrayList<>();
         private final Set<String> customKeysSet = new HashSet<>();
@@ -1312,12 +1499,12 @@ public final class PhenotypeFlagManager {
             this.emptyContainer = emptyContainer;
         }
 
-        @Override public int getCount() { return displayedItems.size(); }
-        @Override public DisplayItem getItem(int position) { return displayedItems.get(position); }
+        @Override public int getCount() { return displayedRows.size(); }
+        @Override public DisplayRow getItem(int position) { return displayedRows.get(position); }
         @Override public long getItemId(int position) { return position; }
         @Override public int getViewTypeCount() { return 2; }
-        @Override public int getItemViewType(int position) { return displayedItems.get(position).type; }
-        @Override public boolean isEnabled(int position) { return !displayedItems.get(position).isHeader(); }
+        @Override public int getItemViewType(int position) { return displayedRows.get(position).type; }
+        @Override public boolean isEnabled(int position) { return !displayedRows.get(position).isHeader(); }
 
         private static boolean isFlagEnabled(SharedPreferences prefs, CuratedFlag cf) {
             if (!prefs.contains(cf.key)) return false;
@@ -1464,8 +1651,11 @@ public final class PhenotypeFlagManager {
 
         private void updateSubtitleText() {
             int flagsShown = 0;
-            for (DisplayItem it : displayedItems) {
-                if (!it.isHeader()) flagsShown++;
+            for (DisplayRow row : displayedRows) {
+                if (!row.isHeader()) {
+                    if (row.item1 != null) flagsShown++;
+                    if (row.item2 != null) flagsShown++;
+                }
             }
             updateSubtitleText(flagsShown, countTotalMatches(currentFilterQuery));
         }
@@ -1490,7 +1680,7 @@ public final class PhenotypeFlagManager {
                 searchCollapsedCategories.clear();
             }
             this.currentFilterQuery = newQuery;
-            displayedItems.clear();
+            displayedRows.clear();
 
             DisplayItem currentHeader = null;
             List<DisplayItem> currentSection = new ArrayList<>();
@@ -1500,14 +1690,7 @@ public final class PhenotypeFlagManager {
                 if (it.isHeader()) {
                     if (currentHeader != null) {
                         if (currentFilterQuery.isEmpty() || !currentSection.isEmpty()) {
-                            displayedItems.add(currentHeader);
-                            boolean isExpanded = (currentHeader.headerTitle != null && currentHeader.headerTitle.startsWith("Custom Overrides"))
-                                    || (currentFilterQuery.isEmpty()
-                                        ? expandedCategories.contains(currentHeader.headerTitle)
-                                        : !searchCollapsedCategories.contains(currentHeader.headerTitle));
-                            if (isExpanded) {
-                                displayedItems.addAll(currentSection);
-                            }
+                            appendSectionToRows(currentHeader, currentSection);
                             totalMatched += currentSection.size();
                         }
                     }
@@ -1526,14 +1709,7 @@ public final class PhenotypeFlagManager {
             }
             if (currentHeader != null) {
                 if (currentFilterQuery.isEmpty() || !currentSection.isEmpty()) {
-                    displayedItems.add(currentHeader);
-                    boolean isExpanded = (currentHeader.headerTitle != null && currentHeader.headerTitle.startsWith("Custom Overrides"))
-                            || (currentFilterQuery.isEmpty()
-                                ? expandedCategories.contains(currentHeader.headerTitle)
-                                : !searchCollapsedCategories.contains(currentHeader.headerTitle));
-                    if (isExpanded) {
-                        displayedItems.addAll(currentSection);
-                    }
+                    appendSectionToRows(currentHeader, currentSection);
                     totalMatched += currentSection.size();
                 }
             }
@@ -1541,10 +1717,34 @@ public final class PhenotypeFlagManager {
             notifyDataSetChanged();
 
             int flagsShown = 0;
-            for (DisplayItem it : displayedItems) {
-                if (!it.isHeader()) flagsShown++;
+            for (DisplayRow row : displayedRows) {
+                if (!row.isHeader()) {
+                    if (row.item1 != null) flagsShown++;
+                    if (row.item2 != null) flagsShown++;
+                }
             }
             updateSubtitleText(flagsShown, totalMatched);
+        }
+
+        private void appendSectionToRows(DisplayItem header, List<DisplayItem> section) {
+            displayedRows.add(new DisplayRow(header, null));
+            boolean isExpanded = (header.headerTitle != null && header.headerTitle.startsWith("Custom Overrides"))
+                    || (currentFilterQuery.isEmpty()
+                        ? expandedCategories.contains(header.headerTitle)
+                        : !searchCollapsedCategories.contains(header.headerTitle));
+            if (isExpanded) {
+                if (isLargeScreen(activity)) {
+                    for (int i = 0; i < section.size(); i += 2) {
+                        DisplayItem it1 = section.get(i);
+                        DisplayItem it2 = (i + 1 < section.size()) ? section.get(i + 1) : null;
+                        displayedRows.add(new DisplayRow(it1, it2));
+                    }
+                } else {
+                    for (DisplayItem it : section) {
+                        displayedRows.add(new DisplayRow(it, null));
+                    }
+                }
+            }
         }
 
         private void clearAllCustomFlagsDialog() {
@@ -1601,9 +1801,10 @@ public final class PhenotypeFlagManager {
 
         @Override
         public View getView(int position, View convertView, ViewGroup parent) {
-            DisplayItem item = getItem(position);
+            DisplayRow row = getItem(position);
 
-            if (item.isHeader()) {
+            if (row.isHeader()) {
+                DisplayItem item = row.item1;
                 HeaderViewHolder hHolder;
                 if (convertView != null && convertView.getTag() instanceof HeaderViewHolder) {
                     hHolder = (HeaderViewHolder) convertView.getTag();
@@ -1801,81 +2002,133 @@ public final class PhenotypeFlagManager {
                 return convertView;
             }
 
-            FlagViewHolder holder;
-            if (convertView == null || !(convertView.getTag() instanceof FlagViewHolder)) {
-                holder = new FlagViewHolder();
-                LinearLayout row = new LinearLayout(activity);
-                row.setOrientation(LinearLayout.HORIZONTAL);
-                row.setGravity(Gravity.CENTER_VERTICAL);
-                int rPad = (int) (14 * density);
-                row.setPadding(rPad, (int) (10 * density), rPad, (int) (10 * density));
-
-                LinearLayout textCol = new LinearLayout(activity);
-                textCol.setOrientation(LinearLayout.VERTICAL);
-                LinearLayout.LayoutParams colLp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
-                textCol.setLayoutParams(colLp);
-
-                TextView tvTitle = new TextView(activity);
-                tvTitle.setTextSize(14);
-                tvTitle.setTypeface(null, Typeface.BOLD);
-                textCol.addView(tvTitle);
-
-                TextView tvTriggerBadge = new TextView(activity);
-                tvTriggerBadge.setTextSize(10);
-                tvTriggerBadge.setTypeface(null, Typeface.BOLD);
-                int bPad = (int) (6 * density);
-                tvTriggerBadge.setPadding(bPad, (int) (2 * density), bPad, (int) (2 * density));
-                LinearLayout.LayoutParams tbLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-                tbLp.topMargin = (int) (2 * density);
-                tbLp.bottomMargin = (int) (2 * density);
-                tvTriggerBadge.setLayoutParams(tbLp);
-                textCol.addView(tvTriggerBadge);
-
-                TextView tvDesc = new TextView(activity);
-                tvDesc.setTextSize(12);
-                tvDesc.setPadding(0, (int) (2 * density), 0, (int) (2 * density));
-                textCol.addView(tvDesc);
-
-                TextView tvKey = new TextView(activity);
-                tvKey.setTextSize(10);
-                textCol.addView(tvKey);
-                row.addView(textCol);
-
-                Switch sw = new Switch(activity);
-                row.addView(sw);
-
-                TextView valChip = new TextView(activity);
-                valChip.setTextSize(13);
-                valChip.setTypeface(null, Typeface.BOLD);
-                int p = (int) (10 * density);
-                valChip.setPadding(p, (int) (6 * density), p, (int) (6 * density));
-                row.addView(valChip);
-
-                ImageView btnDelete = new ImageView(activity);
-                int delSize = (int) (34 * density);
-                LinearLayout.LayoutParams delLp = new LinearLayout.LayoutParams(delSize, delSize);
-                delLp.setMargins((int) (6 * density), 0, 0, 0);
-                btnDelete.setLayoutParams(delLp);
-                btnDelete.setClickable(true);
-                btnDelete.setFocusable(true);
-                btnDelete.setPadding((int) (5 * density), (int) (5 * density), (int) (5 * density), (int) (5 * density));
-                btnDelete.setVisibility(View.GONE);
-                row.addView(btnDelete);
-
-                holder.root = row;
-                holder.tvTitle = tvTitle;
-                holder.tvTriggerBadge = tvTriggerBadge;
-                holder.tvDesc = tvDesc;
-                holder.tvKey = tvKey;
-                holder.swToggle = sw;
-                holder.valChip = valChip;
-                holder.btnDelete = btnDelete;
-
-                convertView = row;
-                convertView.setTag(holder);
+            boolean isLarge = isLargeScreen(activity);
+            if (!isLarge) {
+                SingleFlagViewHolder holder;
+                if (convertView == null || !(convertView.getTag() instanceof SingleFlagViewHolder)) {
+                    holder = new SingleFlagViewHolder();
+                    holder.card = createFlagCardView(activity, density);
+                    convertView = holder.card.root;
+                    convertView.setTag(holder);
+                } else {
+                    holder = (SingleFlagViewHolder) convertView.getTag();
+                }
+                bindFlagCard(holder.card, row.item1);
+                return convertView;
             } else {
-                holder = (FlagViewHolder) convertView.getTag();
+                DualFlagViewHolder holder;
+                if (convertView == null || !(convertView.getTag() instanceof DualFlagViewHolder)) {
+                    holder = new DualFlagViewHolder();
+                    LinearLayout rowLayout = new LinearLayout(activity);
+                    rowLayout.setOrientation(LinearLayout.HORIZONTAL);
+                    rowLayout.setLayoutParams(new AbsListView.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+
+                    holder.card1 = createFlagCardView(activity, density);
+                    LinearLayout.LayoutParams lp1 = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+                    lp1.rightMargin = (int) (4 * density);
+                    holder.card1.root.setLayoutParams(lp1);
+                    rowLayout.addView(holder.card1.root);
+
+                    holder.card2 = createFlagCardView(activity, density);
+                    LinearLayout.LayoutParams lp2 = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+                    lp2.leftMargin = (int) (4 * density);
+                    holder.card2.root.setLayoutParams(lp2);
+                    rowLayout.addView(holder.card2.root);
+
+                    holder.row = rowLayout;
+                    convertView = rowLayout;
+                    convertView.setTag(holder);
+                } else {
+                    holder = (DualFlagViewHolder) convertView.getTag();
+                }
+
+                bindFlagCard(holder.card1, row.item1);
+                holder.card1.root.setVisibility(View.VISIBLE);
+
+                if (row.item2 != null) {
+                    holder.card2.root.setVisibility(View.VISIBLE);
+                    bindFlagCard(holder.card2, row.item2);
+                } else {
+                    holder.card2.root.setVisibility(View.INVISIBLE);
+                }
+                return convertView;
             }
+        }
+
+        private FlagCardViewHolder createFlagCardView(Activity activity, float density) {
+            FlagCardViewHolder holder = new FlagCardViewHolder();
+            LinearLayout card = new LinearLayout(activity);
+            card.setOrientation(LinearLayout.HORIZONTAL);
+            card.setGravity(Gravity.CENTER_VERTICAL);
+            int rPad = (int) (14 * density);
+            card.setPadding(rPad, (int) (10 * density), rPad, (int) (10 * density));
+            card.setLayoutParams(new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+
+            LinearLayout textCol = new LinearLayout(activity);
+            textCol.setOrientation(LinearLayout.VERTICAL);
+            LinearLayout.LayoutParams colLp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+            textCol.setLayoutParams(colLp);
+
+            TextView tvTitle = new TextView(activity);
+            tvTitle.setTextSize(14);
+            tvTitle.setTypeface(null, Typeface.BOLD);
+            textCol.addView(tvTitle);
+
+            TextView tvTriggerBadge = new TextView(activity);
+            tvTriggerBadge.setTextSize(10);
+            tvTriggerBadge.setTypeface(null, Typeface.BOLD);
+            int bPad = (int) (6 * density);
+            tvTriggerBadge.setPadding(bPad, (int) (2 * density), bPad, (int) (2 * density));
+            LinearLayout.LayoutParams tbLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            tbLp.topMargin = (int) (2 * density);
+            tbLp.bottomMargin = (int) (2 * density);
+            tvTriggerBadge.setLayoutParams(tbLp);
+            textCol.addView(tvTriggerBadge);
+
+            TextView tvDesc = new TextView(activity);
+            tvDesc.setTextSize(12);
+            tvDesc.setPadding(0, (int) (2 * density), 0, (int) (2 * density));
+            textCol.addView(tvDesc);
+
+            TextView tvKey = new TextView(activity);
+            tvKey.setTextSize(10);
+            textCol.addView(tvKey);
+            card.addView(textCol);
+
+            Switch sw = new Switch(activity);
+            card.addView(sw);
+
+            TextView valChip = new TextView(activity);
+            valChip.setTextSize(13);
+            valChip.setTypeface(null, Typeface.BOLD);
+            int p = (int) (10 * density);
+            valChip.setPadding(p, (int) (6 * density), p, (int) (6 * density));
+            card.addView(valChip);
+
+            ImageView btnDelete = new ImageView(activity);
+            int delSize = (int) (34 * density);
+            LinearLayout.LayoutParams delLp = new LinearLayout.LayoutParams(delSize, delSize);
+            delLp.setMargins((int) (6 * density), 0, 0, 0);
+            btnDelete.setLayoutParams(delLp);
+            btnDelete.setClickable(true);
+            btnDelete.setFocusable(true);
+            btnDelete.setPadding((int) (5 * density), (int) (5 * density), (int) (5 * density), (int) (5 * density));
+            btnDelete.setVisibility(View.GONE);
+            card.addView(btnDelete);
+
+            holder.root = card;
+            holder.tvTitle = tvTitle;
+            holder.tvTriggerBadge = tvTriggerBadge;
+            holder.tvDesc = tvDesc;
+            holder.tvKey = tvKey;
+            holder.swToggle = sw;
+            holder.valChip = valChip;
+            holder.btnDelete = btnDelete;
+            return holder;
+        }
+
+        private void bindFlagCard(FlagCardViewHolder holder, DisplayItem item) {
+            if (item == null) return;
 
             // Re-apply styling on recycled views
             holder.tvTitle.setTextColor(theme.textPrimary);
@@ -1964,8 +2217,6 @@ public final class PhenotypeFlagManager {
                     }
                 }));
             }
-
-            return convertView;
         }
 
         private void applySwitchTint(Switch sw, Theme theme) {
@@ -2241,8 +2492,9 @@ public final class PhenotypeFlagManager {
         btnApply.setFocusable(true);
         btnApply.setBackground(createActionPillDrawable(theme.primary, 24 * density));
         int btnHeight = (int) (48 * density);
+        int btnWidth = isLargeScreen(activity) ? (int) (360 * density) : ViewGroup.LayoutParams.MATCH_PARENT;
         LinearLayout.LayoutParams applyLp = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, btnHeight);
+                btnWidth, btnHeight);
         btnApply.setLayoutParams(applyLp);
 
         TextView tvApply = new TextView(activity);
@@ -2508,17 +2760,46 @@ public final class PhenotypeFlagManager {
         setCurrentOpenDialog(dialog);
         updateDockTabState(activity, DOCK_TAB_FLAGS);
 
-        // Window size - popup-friendly (94% width, 88% height)
+        // Window size - popup-friendly (94% width, 88% height on phone, adaptive up to 920dp on tablet)
+        applyAdaptiveDialogBounds(dialog, activity);
+    }
+
+    public static boolean isLargeScreen(Activity activity) {
+        if (activity == null) return false;
+        int swDp = activity.getResources().getConfiguration().smallestScreenWidthDp;
+        return swDp >= 600 || Utils.isTablet();
+    }
+
+    public static void applyAdaptiveDialogBounds(Dialog dialog, Activity activity) {
+        if (dialog == null || activity == null) return;
         Window window = dialog.getWindow();
-        if (window != null) {
-            window.setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
-            int screenWidth = activity.getResources().getDisplayMetrics().widthPixels;
-            int screenHeight = activity.getResources().getDisplayMetrics().heightPixels;
-            int dialogWidth = Math.min((int) (screenWidth * 0.94f), (int) (520 * density));
-            int dialogHeight = (int) (screenHeight * 0.88f);
-            window.setLayout(dialogWidth, dialogHeight);
-            window.setGravity(Gravity.CENTER);
+        if (window == null) return;
+        window.setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
+
+        float density = activity.getResources().getDisplayMetrics().density;
+        int screenWidth = activity.getResources().getDisplayMetrics().widthPixels;
+        int screenHeight = activity.getResources().getDisplayMetrics().heightPixels;
+        boolean isLandscape = activity.getResources().getConfiguration().orientation == Configuration.ORIENTATION_LANDSCAPE;
+        boolean isLarge = isLargeScreen(activity);
+
+        int dialogWidth;
+        int dialogHeight;
+
+        if (isLarge) {
+            if (isLandscape) {
+                dialogWidth = Math.min((int) (screenWidth * 0.92f), (int) (1050 * density));
+                dialogHeight = Math.min((int) (screenHeight * 0.92f), (int) (760 * density));
+            } else {
+                dialogWidth = Math.min((int) (screenWidth * 0.90f), (int) (720 * density));
+                dialogHeight = (int) (screenHeight * 0.86f);
+            }
+        } else {
+            dialogWidth = Math.min((int) (screenWidth * 0.94f), (int) (520 * density));
+            dialogHeight = (int) (screenHeight * 0.88f);
         }
+
+        window.setLayout(dialogWidth, dialogHeight);
+        window.setGravity(Gravity.CENTER);
     }
 
     private static void renderEmptySlate(Activity activity, LinearLayout container, float density, Theme theme, Runnable onLoadPresets) {

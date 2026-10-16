@@ -10,6 +10,7 @@ import android.content.ClipboardManager;
 import android.content.Context;
 import android.content.Intent;
 import android.content.res.ColorStateList;
+import android.content.res.Configuration;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.graphics.Canvas;
@@ -276,603 +277,23 @@ public class NativeToolkitDialog {
         root.addView(divTop);
 
         // ─────────────────────────────────────────────────────────────────────
-        // Main Scrollable Workflow Container
+        // Main Container (Adaptive Dual-Pane for Tablets, Single-Pane for Phones)
         // ─────────────────────────────────────────────────────────────────────
-        ScrollView mainScrollView = new ScrollView(activity);
-        mainScrollView.setLayoutParams(new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
-        mainScrollView.setPadding(tbPad, (int) (8 * density), tbPad, (int) (76 * density));
-        mainScrollView.setClipToPadding(false);
-
-        LinearLayout workflowLayout = new LinearLayout(activity);
-        workflowLayout.setOrientation(LinearLayout.VERTICAL);
-        workflowLayout.setLayoutParams(new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-        mainScrollView.addView(workflowLayout);
-        root.addView(mainScrollView);
+        boolean isLarge = PhenotypeFlagManager.isLargeScreen(activity);
+        boolean isLandscape = activity.getResources().getConfiguration().orientation == Configuration.ORIENTATION_LANDSCAPE;
 
         TextView tvScanButtonLabel = new TextView(activity);
         TextView tvResultsStatus = new TextView(activity);
         LinearLayout resultsListContainer = new LinearLayout(activity);
         resultsListContainer.setOrientation(LinearLayout.VERTICAL);
 
-        // ─────────────────────────────────────────────────────────────────────
-        // STEP 1: CHOOSE SOURCE (Collapsible)
-        // ─────────────────────────────────────────────────────────────────────
-        LinearLayout sourceHeaderRow = new LinearLayout(activity);
-        sourceHeaderRow.setOrientation(LinearLayout.HORIZONTAL);
-        sourceHeaderRow.setGravity(Gravity.CENTER_VERTICAL);
-        sourceHeaderRow.setPadding(0, (int) (12 * density), 0, (int) (8 * density));
-        sourceHeaderRow.setClickable(true);
-        sourceHeaderRow.setFocusable(true);
-
-        TextView badge1 = new TextView(activity);
-        badge1.setText("1");
-        badge1.setTextSize(11f);
-        badge1.setTypeface(null, Typeface.BOLD);
-        badge1.setTextColor(theme.onPrimary);
-        badge1.setGravity(Gravity.CENTER);
-        int b1Size = (int) (20 * density);
-        LinearLayout.LayoutParams b1Lp = new LinearLayout.LayoutParams(b1Size, b1Size);
-        b1Lp.rightMargin = (int) (8 * density);
-        badge1.setLayoutParams(b1Lp);
-        badge1.setBackground(createRoundedDrawable(theme.primary, 10 * density));
-        sourceHeaderRow.addView(badge1);
-
-        TextView tvSourceTitle = new TextView(activity);
-        tvSourceTitle.setText("Choose Source");
-        tvSourceTitle.setTextSize(14f);
-        tvSourceTitle.setTypeface(null, Typeface.BOLD);
-        tvSourceTitle.setTextColor(theme.textPrimary);
-        sourceHeaderRow.addView(tvSourceTitle);
-
-        TextView tvSourceActiveBadge = new TextView(activity);
-        tvSourceActiveBadge.setText(currentCriteria.source.displayName);
-        tvSourceActiveBadge.setTextSize(10.5f);
-        tvSourceActiveBadge.setTypeface(null, Typeface.BOLD);
-        tvSourceActiveBadge.setTextColor(theme.onPrimaryContainer);
-        tvSourceActiveBadge.setBackground(createRoundedDrawable(theme.primaryContainer, 10 * density));
-        int sabPadH = (int) (7 * density);
-        int sabPadV = (int) (2 * density);
-        tvSourceActiveBadge.setPadding(sabPadH, sabPadV, sabPadH, sabPadV);
-        LinearLayout.LayoutParams sabLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        sabLp.leftMargin = (int) (8 * density);
-        tvSourceActiveBadge.setLayoutParams(sabLp);
-        sourceHeaderRow.addView(tvSourceActiveBadge);
-
-        View sourceHeaderSpacer = new View(activity);
-        sourceHeaderRow.addView(sourceHeaderSpacer, new LinearLayout.LayoutParams(0, 0, 1f));
-
-        ImageView ivSourceChevron = new ImageView(activity);
-        ivSourceChevron.setTag("no_avatar");
-        ivSourceChevron.setContentDescription("collapse");
-        ivSourceChevron.setImageDrawable(new MaterialVectorDrawable(MaterialVectorDrawable.TYPE_CHEVRON_UP, theme.textSecondary));
-        ivSourceChevron.setLayoutParams(new LinearLayout.LayoutParams((int) (20 * density), (int) (20 * density)));
-        sourceHeaderRow.addView(ivSourceChevron);
-
-        workflowLayout.addView(sourceHeaderRow);
-
-        HorizontalScrollView hSourceScroll = new HorizontalScrollView(activity);
-        hSourceScroll.setHorizontalScrollBarEnabled(false);
-        LinearLayout.LayoutParams hssLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        hssLp.bottomMargin = (int) (6 * density);
-        hSourceScroll.setLayoutParams(hssLp);
-
-        sourceHeaderRow.setOnClickListener(v -> {
-            boolean isExpanded = (hSourceScroll.getVisibility() == View.VISIBLE);
-            if (isExpanded) {
-                hSourceScroll.setVisibility(View.GONE);
-                ivSourceChevron.setImageDrawable(new MaterialVectorDrawable(MaterialVectorDrawable.TYPE_CHEVRON_DOWN, theme.textSecondary));
-            } else {
-                hSourceScroll.setVisibility(View.VISIBLE);
-                ivSourceChevron.setImageDrawable(new MaterialVectorDrawable(MaterialVectorDrawable.TYPE_CHEVRON_UP, theme.textSecondary));
-            }
-        });
-
-        LinearLayout sourcePillsInner = new LinearLayout(activity);
-        sourcePillsInner.setOrientation(LinearLayout.HORIZONTAL);
-
-        StorageScanner.SourceType[] sources = StorageScanner.SourceType.values();
-        List<TextView> sourceViews = new ArrayList<>();
-
-        for (StorageScanner.SourceType src : sources) {
-            TextView pill = new TextView(activity);
-            pill.setText(src.displayName);
-            pill.setTextSize(12f);
-            pill.setTypeface(null, Typeface.BOLD);
-            pill.setClickable(true);
-            pill.setFocusable(true);
-            int pH = (int) (12 * density);
-            int pV = (int) (6.5f * density);
-            pill.setPadding(pH, pV, pH, pV);
-            LinearLayout.LayoutParams pLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-            pLp.rightMargin = (int) (6 * density);
-            pill.setLayoutParams(pLp);
-
-            boolean isSelected = (src == currentCriteria.source);
-            pill.setTextColor(isSelected ? theme.onPrimaryContainer : theme.textSecondary);
-            pill.setBackground(createRoundedDrawable(isSelected ? theme.primaryContainer : theme.surfaceContainer, 12 * density));
-
-            sourceViews.add(pill);
-            sourcePillsInner.addView(pill);
-        }
-        hSourceScroll.addView(sourcePillsInner);
-        workflowLayout.addView(hSourceScroll);
-
-        // Step 2, 3, 4 state & controllers
         Set<String> selectedMediaKeys = new HashSet<>();
         boolean[] isGridViewRef = new boolean[]{true};
-        Map<String, View>[] filterCardsRef = new Map[1];
         Map<String, TextView> actionButtonsMap = new HashMap<>();
-        TextView[] tvFiltersTitleRef = new TextView[1];
-        Runnable[] updateChipsAndBadgeRef = new Runnable[1];
-        Runnable[] updateSelectionSummaryRef = new Runnable[1];
-
-        Runnable onFilterChanged = () -> {
-            updateActionStates(currentCriteria.source, currentCriteria, actionButtonsMap);
-            if (updateChipsAndBadgeRef[0] != null) updateChipsAndBadgeRef[0].run();
-            if (runScanRef[0] != null) runScanRef[0].run();
-        };
-
-        // Wire Source pill click listener
-        for (int i = 0; i < sources.length; i++) {
-            final StorageScanner.SourceType src = sources[i];
-            TextView pill = sourceViews.get(i);
-            pill.setOnClickListener(v -> {
-                currentCriteria.source = src;
-                tvSourceActiveBadge.setText(src.displayName);
-                for (int j = 0; j < sources.length; j++) {
-                    boolean sel = (sources[j] == currentCriteria.source);
-                    sourceViews.get(j).setTextColor(sel ? theme.onPrimaryContainer : theme.textSecondary);
-                    sourceViews.get(j).setBackground(createRoundedDrawable(sel ? theme.primaryContainer : theme.surfaceContainer, 12 * density));
-                }
-                int count = updateFilterVisibility(src, filterCardsRef[0]);
-                if (tvFiltersTitleRef[0] != null) {
-                    tvFiltersTitleRef[0].setText("Configure Filters (" + count + ")");
-                }
-                updateActionStates(src, currentCriteria, actionButtonsMap);
-                onFilterChanged.run();
-            });
-        }
-
-        // ─────────────────────────────────────────────────────────────────────
-        // STEP 2: CONFIGURE FILTERS (Collapsible Section + Active Filter Chips)
-        // ─────────────────────────────────────────────────────────────────────
-        LinearLayout filterHeaderRow = new LinearLayout(activity);
-        filterHeaderRow.setOrientation(LinearLayout.HORIZONTAL);
-        filterHeaderRow.setGravity(Gravity.CENTER_VERTICAL);
-        filterHeaderRow.setPadding(0, (int) (12 * density), 0, (int) (8 * density));
-        filterHeaderRow.setClickable(true);
-        filterHeaderRow.setFocusable(true);
-
-        TextView badge2 = new TextView(activity);
-        badge2.setText("2");
-        badge2.setTextSize(11f);
-        badge2.setTypeface(null, Typeface.BOLD);
-        badge2.setTextColor(theme.onPrimary);
-        badge2.setGravity(Gravity.CENTER);
-        int b2Size = (int) (20 * density);
-        LinearLayout.LayoutParams b2Lp = new LinearLayout.LayoutParams(b2Size, b2Size);
-        b2Lp.rightMargin = (int) (8 * density);
-        badge2.setLayoutParams(b2Lp);
-        badge2.setBackground(createRoundedDrawable(theme.primary, 10 * density));
-        filterHeaderRow.addView(badge2);
-
-        TextView tvFiltersTitle = new TextView(activity);
-        tvFiltersTitleRef[0] = tvFiltersTitle;
-        tvFiltersTitle.setText("Configure Filters");
-        tvFiltersTitle.setTextSize(14f);
-        tvFiltersTitle.setTypeface(null, Typeface.BOLD);
-        tvFiltersTitle.setTextColor(theme.textPrimary);
-        filterHeaderRow.addView(tvFiltersTitle);
-
-        TextView tvFiltersActiveBadge = new TextView(activity);
-        tvFiltersActiveBadge.setTextSize(10.5f);
-        tvFiltersActiveBadge.setTypeface(null, Typeface.BOLD);
-        tvFiltersActiveBadge.setTextColor(theme.textSecondary);
-        tvFiltersActiveBadge.setBackground(createRoundedDrawable(theme.surfaceContainer, 10 * density));
-        tvFiltersActiveBadge.setText("All Media (No filters)");
-        tvFiltersActiveBadge.setSingleLine(true);
-        tvFiltersActiveBadge.setEllipsize(TextUtils.TruncateAt.END);
-        int fabPadH = (int) (7 * density);
-        int fabPadV = (int) (2 * density);
-        tvFiltersActiveBadge.setPadding(fabPadH, fabPadV, fabPadH, fabPadV);
-        LinearLayout.LayoutParams fabLp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
-        fabLp.leftMargin = (int) (8 * density);
-        fabLp.rightMargin = (int) (6 * density);
-        tvFiltersActiveBadge.setLayoutParams(fabLp);
-        filterHeaderRow.addView(tvFiltersActiveBadge);
-
-        ImageView ivFiltersChevron = new ImageView(activity);
-        ivFiltersChevron.setTag("no_avatar");
-        ivFiltersChevron.setContentDescription("collapse");
-        ivFiltersChevron.setImageDrawable(new MaterialVectorDrawable(MaterialVectorDrawable.TYPE_CHEVRON_UP, theme.textSecondary));
-        LinearLayout.LayoutParams ivLp = new LinearLayout.LayoutParams((int) (20 * density), (int) (20 * density));
-        ivFiltersChevron.setLayoutParams(ivLp);
-        filterHeaderRow.addView(ivFiltersChevron);
-
-        workflowLayout.addView(filterHeaderRow);
-
-        // Active Filter Chips Row
-        HorizontalScrollView hChipsScroll = new HorizontalScrollView(activity);
-        hChipsScroll.setHorizontalScrollBarEnabled(false);
-        hChipsScroll.setVisibility(View.GONE);
-        LinearLayout.LayoutParams hcsLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        hcsLp.bottomMargin = (int) (6 * density);
-        hChipsScroll.setLayoutParams(hcsLp);
-
-        LinearLayout chipsContainer = new LinearLayout(activity);
-        chipsContainer.setOrientation(LinearLayout.HORIZONTAL);
-        chipsContainer.setGravity(Gravity.CENTER_VERTICAL);
-        hChipsScroll.addView(chipsContainer);
-        workflowLayout.addView(hChipsScroll);
-
-        LinearLayout filtersAccordionContainer = new LinearLayout(activity);
-        filtersAccordionContainer.setOrientation(LinearLayout.VERTICAL);
-        workflowLayout.addView(filtersAccordionContainer);
-
-        LinearLayout filterActionRow = new LinearLayout(activity);
-        filterActionRow.setOrientation(LinearLayout.HORIZONTAL);
-        filterActionRow.setPadding(0, (int) (10 * density), 0, (int) (14 * density));
-
-        filterCardsRef[0] = build21FiltersAccordion(activity, filtersAccordionContainer, density, theme, onFilterChanged);
-        int initialFilterCount = updateFilterVisibility(currentCriteria.source, filterCardsRef[0]);
-        tvFiltersTitle.setText("Configure Filters (" + initialFilterCount + ")");
-
-        // Scan / Filter Trigger Buttons
-
-        TextView btnResetFilters = new TextView(activity);
-        btnResetFilters.setText("Reset Filters");
-        btnResetFilters.setTextSize(13f);
-        btnResetFilters.setTypeface(null, Typeface.BOLD);
-        btnResetFilters.setTextColor(theme.primary);
-        btnResetFilters.setGravity(Gravity.CENTER);
-        btnResetFilters.setPadding((int) (14 * density), (int) (9 * density), (int) (14 * density), (int) (9 * density));
-        btnResetFilters.setBackground(createActionPillDrawable(theme.surfaceContainer, 16 * density));
-        LinearLayout.LayoutParams rfLp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
-        rfLp.rightMargin = (int) (8 * density);
-        btnResetFilters.setLayoutParams(rfLp);
-        filterActionRow.addView(btnResetFilters);
-
-        LinearLayout btnApplyScan = new LinearLayout(activity);
-        btnApplyScan.setOrientation(LinearLayout.HORIZONTAL);
-        btnApplyScan.setGravity(Gravity.CENTER);
-        btnApplyScan.setClickable(true);
-        btnApplyScan.setFocusable(true);
-        btnApplyScan.setBackground(createActionPillDrawable(theme.primary, 16 * density));
-        btnApplyScan.setPadding((int) (16 * density), (int) (9 * density), (int) (16 * density), (int) (9 * density));
-        btnApplyScan.setLayoutParams(new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1.4f));
-
-        tvScanButtonLabel.setText("Apply & Scan");
-        tvScanButtonLabel.setTextSize(13.5f);
-        tvScanButtonLabel.setTypeface(null, Typeface.BOLD);
-        tvScanButtonLabel.setTextColor(theme.onPrimary);
-        btnApplyScan.addView(tvScanButtonLabel);
-        filterActionRow.addView(btnApplyScan);
-        workflowLayout.addView(filterActionRow);
-
-        updateChipsAndBadgeRef[0] = () -> {
-            List<Pair<String, Runnable>> activeList = getActiveFilterList(currentCriteria);
-            int activeCount = activeList.size();
-            if (activeCount > 0) {
-                StringBuilder summary = new StringBuilder();
-                for (int i = 0; i < Math.min(activeList.size(), 2); i++) {
-                    if (i > 0) summary.append(", ");
-                    summary.append(activeList.get(i).first);
-                }
-                if (activeList.size() > 2) summary.append("...");
-                tvFiltersActiveBadge.setText(activeCount + " Active: " + summary.toString());
-                tvFiltersActiveBadge.setTextColor(theme.onPrimaryContainer);
-                tvFiltersActiveBadge.setBackground(createRoundedDrawable(theme.primaryContainer, 10 * density));
-                tvFiltersActiveBadge.setVisibility(View.VISIBLE);
-                hChipsScroll.setVisibility(View.VISIBLE);
-            } else {
-                tvFiltersActiveBadge.setText("All Media (No filters)");
-                tvFiltersActiveBadge.setTextColor(theme.textSecondary);
-                tvFiltersActiveBadge.setBackground(createRoundedDrawable(theme.surfaceContainer, 10 * density));
-                tvFiltersActiveBadge.setVisibility(View.VISIBLE);
-                hChipsScroll.setVisibility(View.GONE);
-            }
-
-            chipsContainer.removeAllViews();
-            for (Pair<String, Runnable> item : activeList) {
-                LinearLayout chip = new LinearLayout(activity);
-                chip.setOrientation(LinearLayout.HORIZONTAL);
-                chip.setGravity(Gravity.CENTER_VERTICAL);
-                chip.setBackground(createRoundedDrawable(theme.primaryContainer, 12 * density));
-                int cPadH = (int) (10 * density);
-                int cPadV = (int) (4 * density);
-                chip.setPadding(cPadH, cPadV, (int) (8 * density), cPadV);
-                LinearLayout.LayoutParams cLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-                cLp.rightMargin = (int) (6 * density);
-                chip.setLayoutParams(cLp);
-
-                TextView tvChip = new TextView(activity);
-                tvChip.setText(item.first);
-                tvChip.setTextSize(11f);
-                tvChip.setTypeface(null, Typeface.BOLD);
-                tvChip.setTextColor(theme.onPrimaryContainer);
-                chip.addView(tvChip);
-
-                TextView tvClose = new TextView(activity);
-                tvClose.setText(" ✕");
-                tvClose.setTextSize(12f);
-                tvClose.setTypeface(null, Typeface.BOLD);
-                tvClose.setTextColor(theme.onPrimaryContainer);
-                tvClose.setPadding((int) (4 * density), 0, 0, 0);
-                chip.addView(tvClose);
-
-                chip.setClickable(true);
-                chip.setFocusable(true);
-                chip.setOnClickListener(v -> {
-                    item.second.run();
-                    filterCardsRef[0] = build21FiltersAccordion(activity, filtersAccordionContainer, density, theme, onFilterChanged);
-                    int cCount = updateFilterVisibility(currentCriteria.source, filterCardsRef[0]);
-                    if (tvFiltersTitleRef[0] != null) tvFiltersTitleRef[0].setText("Configure Filters (" + cCount + ")");
-                    onFilterChanged.run();
-                });
-                chipsContainer.addView(chip);
-            }
-        };
-
-        // Header click toggles filter accordion expansion
-        filterHeaderRow.setOnClickListener(v -> {
-            boolean isExpanded = (filtersAccordionContainer.getVisibility() == View.VISIBLE);
-            if (isExpanded) {
-                filtersAccordionContainer.setVisibility(View.GONE);
-                filterActionRow.setVisibility(View.GONE);
-                ivFiltersChevron.setImageDrawable(new MaterialVectorDrawable(MaterialVectorDrawable.TYPE_CHEVRON_DOWN, theme.textSecondary));
-            } else {
-                filtersAccordionContainer.setVisibility(View.VISIBLE);
-                filterActionRow.setVisibility(View.VISIBLE);
-                ivFiltersChevron.setImageDrawable(new MaterialVectorDrawable(MaterialVectorDrawable.TYPE_CHEVRON_UP, theme.textSecondary));
-            }
-        });
-
-        btnResetFilters.setOnClickListener(v -> {
-            StorageScanner.SourceType savedSource = currentCriteria.source;
-            currentCriteria = new StorageScanner.FilterCriteria();
-            currentCriteria.source = savedSource;
-            filterCardsRef[0] = build21FiltersAccordion(activity, filtersAccordionContainer, density, theme, onFilterChanged);
-            int rCount = updateFilterVisibility(currentCriteria.source, filterCardsRef[0]);
-            if (tvFiltersTitleRef[0] != null) tvFiltersTitleRef[0].setText("Configure Filters (" + rCount + ")");
-            onFilterChanged.run();
-            Toast.makeText(activity, "Reset all filters to default", Toast.LENGTH_SHORT).show();
-        });
-
-        btnApplyScan.setOnClickListener(v -> {
-            // Auto-collapse filters on apply so preview is immediately prominent
-            filtersAccordionContainer.setVisibility(View.GONE);
-            filterActionRow.setVisibility(View.GONE);
-            ivFiltersChevron.setImageDrawable(new MaterialVectorDrawable(MaterialVectorDrawable.TYPE_CHEVRON_DOWN, theme.textSecondary));
-            onFilterChanged.run();
-        });
-
-        // ─────────────────────────────────────────────────────────────────────
-        // STEP 3: CHOOSE ACTION (13 Actions, Collapsible)
-        // ─────────────────────────────────────────────────────────────────────
-        LinearLayout actionHeaderRow = new LinearLayout(activity);
-        actionHeaderRow.setOrientation(LinearLayout.HORIZONTAL);
-        actionHeaderRow.setGravity(Gravity.CENTER_VERTICAL);
-        actionHeaderRow.setPadding(0, (int) (12 * density), 0, (int) (8 * density));
-        actionHeaderRow.setClickable(true);
-        actionHeaderRow.setFocusable(true);
-
-        TextView badge3 = new TextView(activity);
-        badge3.setText("3");
-        badge3.setTextSize(11f);
-        badge3.setTypeface(null, Typeface.BOLD);
-        badge3.setTextColor(theme.onPrimary);
-        badge3.setGravity(Gravity.CENTER);
-        int b3Size = (int) (20 * density);
-        LinearLayout.LayoutParams b3Lp = new LinearLayout.LayoutParams(b3Size, b3Size);
-        b3Lp.rightMargin = (int) (8 * density);
-        badge3.setLayoutParams(b3Lp);
-        badge3.setBackground(createRoundedDrawable(theme.primary, 10 * density));
-        actionHeaderRow.addView(badge3);
-
-        TextView tvActionsTitle = new TextView(activity);
-        tvActionsTitle.setText("Choose Action (13)");
-        tvActionsTitle.setTextSize(14f);
-        tvActionsTitle.setTypeface(null, Typeface.BOLD);
-        tvActionsTitle.setTextColor(theme.textPrimary);
-        actionHeaderRow.addView(tvActionsTitle);
-
-        TextView tvActionsActiveBadge = new TextView(activity);
-        tvActionsActiveBadge.setText("0 selected");
-        tvActionsActiveBadge.setTextSize(10.5f);
-        tvActionsActiveBadge.setTypeface(null, Typeface.BOLD);
-        tvActionsActiveBadge.setTextColor(theme.onPrimaryContainer);
-        tvActionsActiveBadge.setBackground(createRoundedDrawable(theme.primaryContainer, 10 * density));
-        int aabPadH = (int) (7 * density);
-        int aabPadV = (int) (2 * density);
-        tvActionsActiveBadge.setPadding(aabPadH, aabPadV, aabPadH, aabPadV);
-        LinearLayout.LayoutParams aabLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        aabLp.leftMargin = (int) (8 * density);
-        tvActionsActiveBadge.setLayoutParams(aabLp);
-        actionHeaderRow.addView(tvActionsActiveBadge);
-
-        View actionHeaderSpacer = new View(activity);
-        actionHeaderRow.addView(actionHeaderSpacer, new LinearLayout.LayoutParams(0, 0, 1f));
-
-        ImageView ivActionsChevron = new ImageView(activity);
-        ivActionsChevron.setTag("no_avatar");
-        ivActionsChevron.setContentDescription("collapse");
-        ivActionsChevron.setImageDrawable(new MaterialVectorDrawable(MaterialVectorDrawable.TYPE_CHEVRON_UP, theme.textSecondary));
-        ivActionsChevron.setLayoutParams(new LinearLayout.LayoutParams((int) (20 * density), (int) (20 * density)));
-        actionHeaderRow.addView(ivActionsChevron);
-
-        workflowLayout.addView(actionHeaderRow);
-
-        ItemsProvider selectedItemsProvider = () -> {
-            List<StorageScanner.MediaItem> list = new ArrayList<>();
-            for (StorageScanner.MediaItem it : allQueriedItems) {
-                if (selectedMediaKeys.contains(getItemKey(it))) {
-                    list.add(it);
-                }
-            }
-            return list;
-        };
-
-        LinearLayout actionGrid = buildActionButtonsGrid(activity, density, theme, selectedItemsProvider, runScanRef, actionButtonsMap);
-        updateActionStates(currentCriteria.source, currentCriteria, actionButtonsMap);
-        workflowLayout.addView(actionGrid);
-
-        actionHeaderRow.setOnClickListener(v -> {
-            boolean isExpanded = (actionGrid.getVisibility() == View.VISIBLE);
-            if (isExpanded) {
-                actionGrid.setVisibility(View.GONE);
-                ivActionsChevron.setImageDrawable(new MaterialVectorDrawable(MaterialVectorDrawable.TYPE_CHEVRON_DOWN, theme.textSecondary));
-            } else {
-                actionGrid.setVisibility(View.VISIBLE);
-                ivActionsChevron.setImageDrawable(new MaterialVectorDrawable(MaterialVectorDrawable.TYPE_CHEVRON_UP, theme.textSecondary));
-            }
-        });
-
-        // Visual Material Progress Bar
-        sProgressBar = new ProgressBar(activity, null, android.R.attr.progressBarStyleHorizontal);
-        sProgressBar.setIndeterminate(true);
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-            sProgressBar.setIndeterminateTintList(ColorStateList.valueOf(theme.primary));
-        }
-        sProgressBar.setVisibility(View.GONE);
-        LinearLayout.LayoutParams pbLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, (int) (4 * density));
-        pbLp.topMargin = (int) (8 * density);
-        pbLp.bottomMargin = (int) (4 * density);
-        sProgressBar.setLayoutParams(pbLp);
-        workflowLayout.addView(sProgressBar);
-
-        sTvProgressInfo = new TextView(activity);
-        sTvProgressInfo.setTextSize(11.5f);
-        sTvProgressInfo.setTextColor(theme.primary);
-        sTvProgressInfo.setGravity(Gravity.CENTER);
-        sTvProgressInfo.setVisibility(View.GONE);
-        LinearLayout.LayoutParams piLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        piLp.topMargin = (int) (2 * density);
-        piLp.bottomMargin = (int) (6 * density);
-        sTvProgressInfo.setLayoutParams(piLp);
-        workflowLayout.addView(sTvProgressInfo);
-
-        // ─────────────────────────────────────────────────────────────────────
-        // STEP 4: MATCHED MEDIA RESULTS
-        // ─────────────────────────────────────────────────────────────────────
-        LinearLayout resultsHeader = new LinearLayout(activity);
-        resultsHeader.setOrientation(LinearLayout.VERTICAL);
-        resultsHeader.setPadding(0, (int) (8 * density), 0, (int) (6 * density));
-
-        LinearLayout resTitleRow = createSectionHeader(activity, 4, "Matched Media Results", density, theme);
-        resultsHeader.addView(resTitleRow);
-
-        HorizontalScrollView hControlsScroll = new HorizontalScrollView(activity);
-        hControlsScroll.setHorizontalScrollBarEnabled(false);
-        LinearLayout.LayoutParams hctrlLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        hctrlLp.topMargin = (int) (1 * density);
-        hctrlLp.bottomMargin = (int) (5 * density);
-        hControlsScroll.setLayoutParams(hctrlLp);
-
-        LinearLayout controlsRow = new LinearLayout(activity);
-        controlsRow.setOrientation(LinearLayout.HORIZONTAL);
-        controlsRow.setGravity(Gravity.CENTER_VERTICAL);
-        controlsRow.setPadding((int) (28 * density), 0, 0, 0);
-
-        TextView btnSelectAll = new TextView(activity);
-        btnSelectAll.setText("All");
-        btnSelectAll.setTextSize(11f);
-        btnSelectAll.setTypeface(null, Typeface.BOLD);
-        btnSelectAll.setTextColor(theme.primary);
-        btnSelectAll.setBackground(createActionPillDrawable(theme.surfaceContainer, 10 * density));
-        btnSelectAll.setPadding((int) (8 * density), (int) (3 * density), (int) (8 * density), (int) (3 * density));
-        LinearLayout.LayoutParams allLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        allLp.rightMargin = (int) (5 * density);
-        btnSelectAll.setLayoutParams(allLp);
-        btnSelectAll.setClickable(true);
-        btnSelectAll.setFocusable(true);
-        controlsRow.addView(btnSelectAll);
-
-        TextView btnClearSelect = new TextView(activity);
-        btnClearSelect.setText("None");
-        btnClearSelect.setTextSize(11f);
-        btnClearSelect.setTypeface(null, Typeface.BOLD);
-        btnClearSelect.setTextColor(theme.textSecondary);
-        btnClearSelect.setBackground(createActionPillDrawable(theme.surfaceContainer, 10 * density));
-        btnClearSelect.setPadding((int) (8 * density), (int) (3 * density), (int) (8 * density), (int) (3 * density));
-        LinearLayout.LayoutParams noneLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        noneLp.rightMargin = (int) (6 * density);
-        btnClearSelect.setLayoutParams(noneLp);
-        btnClearSelect.setClickable(true);
-        btnClearSelect.setFocusable(true);
-        controlsRow.addView(btnClearSelect);
-
-        TextView btnSort = new TextView(activity);
-        btnSort.setText("↕ " + currentSortOrder.shortLabel);
-        btnSort.setTextSize(11f);
-        btnSort.setTypeface(null, Typeface.BOLD);
-        btnSort.setTextColor(theme.textPrimary);
-        btnSort.setBackground(createActionPillDrawable(theme.surfaceContainer, 10 * density));
-        btnSort.setPadding((int) (8 * density), (int) (3 * density), (int) (8 * density), (int) (3 * density));
-        LinearLayout.LayoutParams sortLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        sortLp.rightMargin = (int) (6 * density);
-        btnSort.setLayoutParams(sortLp);
-        btnSort.setClickable(true);
-        btnSort.setFocusable(true);
-        controlsRow.addView(btnSort);
-
-        TextView btnToggleView = new TextView(activity);
-        btnToggleView.setText(isGridViewRef[0] ? "⊞ Grid" : "☰ List");
-        btnToggleView.setTextSize(11f);
-        btnToggleView.setTypeface(null, Typeface.BOLD);
-        btnToggleView.setTextColor(theme.onPrimaryContainer);
-        btnToggleView.setBackground(createActionPillDrawable(theme.primaryContainer, 10 * density));
-        btnToggleView.setPadding((int) (9 * density), (int) (3 * density), (int) (9 * density), (int) (3 * density));
-        btnToggleView.setClickable(true);
-        btnToggleView.setFocusable(true);
-        controlsRow.addView(btnToggleView);
-
-        hControlsScroll.addView(controlsRow);
-        resultsHeader.addView(hControlsScroll);
-
-        tvResultsStatus.setText("Scanning items...");
-        tvResultsStatus.setTextSize(11.5f);
-        tvResultsStatus.setTextColor(theme.textSecondary);
-        tvResultsStatus.setPadding((int) (28 * density), 0, 0, 0);
-        resultsHeader.addView(tvResultsStatus);
-        workflowLayout.addView(resultsHeader);
-
-        workflowLayout.addView(resultsListContainer);
-
         final int[] currentPageRef = new int[]{0};
-
-        updateSelectionSummaryRef[0] = () -> {
-            int selCount = selectedMediaKeys.size();
-            tvActionsActiveBadge.setText(selCount + " selected");
-        };
-
-        btnSort.setOnClickListener(v -> {
-            showSortPickerDialog(activity, () -> {
-                btnSort.setText("↕ " + currentSortOrder.shortLabel);
-                sortMediaItems(allQueriedItems, currentSortOrder);
-                currentPageRef[0] = 0;
-                renderResults(activity, resultsListContainer, allQueriedItems, selectedMediaKeys, isGridViewRef[0], updateSelectionSummaryRef[0], density, theme, currentPageRef);
-            }, density, theme);
-        });
-
-        btnSelectAll.setOnClickListener(v -> {
-            for (StorageScanner.MediaItem it : allQueriedItems) {
-                selectedMediaKeys.add(getItemKey(it));
-            }
-            updateSelectionSummaryRef[0].run();
-            renderResults(activity, resultsListContainer, allQueriedItems, selectedMediaKeys, isGridViewRef[0], updateSelectionSummaryRef[0], density, theme, currentPageRef);
-        });
-
-        btnClearSelect.setOnClickListener(v -> {
-            selectedMediaKeys.clear();
-            updateSelectionSummaryRef[0].run();
-            renderResults(activity, resultsListContainer, allQueriedItems, selectedMediaKeys, isGridViewRef[0], updateSelectionSummaryRef[0], density, theme, currentPageRef);
-        });
-
-        btnToggleView.setOnClickListener(v -> {
-            isGridViewRef[0] = !isGridViewRef[0];
-            btnToggleView.setText(isGridViewRef[0] ? "⊞ Grid" : "☰ List");
-            renderResults(activity, resultsListContainer, allQueriedItems, selectedMediaKeys, isGridViewRef[0], updateSelectionSummaryRef[0], density, theme, currentPageRef);
-        });
+        Runnable[] updateSelectionSummaryRef = new Runnable[1];
+        Runnable[] updateChipsAndBadgeRef = new Runnable[1];
+        Runnable[] onRefreshRef = new Runnable[1];
 
         // ─────────────────────────────────────────────────────────────────────
         // Query Execution Engine
@@ -1006,7 +427,702 @@ public class NativeToolkitDialog {
             });
         };
 
-        btnRefresh.setOnClickListener(v -> {
+        if (isLarge && isLandscape) {
+            buildTabletStudioLayout(activity, root, density, theme, tvScanButtonLabel, tvResultsStatus,
+                    resultsListContainer, actionButtonsMap, selectedMediaKeys, isGridViewRef,
+                    currentPageRef, runScanRef, updateSelectionSummaryRef, onRefreshRef);
+        } else {
+            LinearLayout leftPane;
+            LinearLayout rightPane;
+
+            if (isLarge) {
+                LinearLayout dualPaneContainer = new LinearLayout(activity);
+                dualPaneContainer.setOrientation(LinearLayout.HORIZONTAL);
+                dualPaneContainer.setLayoutParams(new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
+
+                ScrollView leftScroll = new ScrollView(activity);
+                leftScroll.setLayoutParams(new LinearLayout.LayoutParams((int) (290 * density), ViewGroup.LayoutParams.MATCH_PARENT));
+                leftScroll.setPadding(tbPad, (int) (8 * density), (int) (12 * density), (int) (24 * density));
+                leftScroll.setClipToPadding(false);
+
+                leftPane = new LinearLayout(activity);
+                leftPane.setOrientation(LinearLayout.VERTICAL);
+                leftPane.setLayoutParams(new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+                leftScroll.addView(leftPane);
+
+                View centerDivider = new View(activity);
+                centerDivider.setBackgroundColor(theme.outline);
+                centerDivider.setLayoutParams(new LinearLayout.LayoutParams((int) (1 * density), ViewGroup.LayoutParams.MATCH_PARENT));
+
+                ScrollView rightScroll = new ScrollView(activity);
+                rightScroll.setLayoutParams(new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1.0f));
+                rightScroll.setPadding((int) (14 * density), (int) (8 * density), tbPad, (int) (24 * density));
+                rightScroll.setClipToPadding(false);
+
+                rightPane = new LinearLayout(activity);
+                rightPane.setOrientation(LinearLayout.VERTICAL);
+                rightPane.setLayoutParams(new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+                rightScroll.addView(rightPane);
+
+                dualPaneContainer.addView(leftScroll);
+                dualPaneContainer.addView(centerDivider);
+                dualPaneContainer.addView(rightScroll);
+                root.addView(dualPaneContainer);
+            } else {
+                ScrollView mainScrollView = new ScrollView(activity);
+                mainScrollView.setLayoutParams(new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
+                mainScrollView.setPadding(tbPad, (int) (8 * density), tbPad, (int) (76 * density));
+                mainScrollView.setClipToPadding(false);
+
+                LinearLayout workflowLayout = new LinearLayout(activity);
+                workflowLayout.setOrientation(LinearLayout.VERTICAL);
+                workflowLayout.setLayoutParams(new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+                mainScrollView.addView(workflowLayout);
+                root.addView(mainScrollView);
+
+                leftPane = workflowLayout;
+                rightPane = workflowLayout;
+            }
+
+        // ─────────────────────────────────────────────────────────────────────
+        // STEP 1: CHOOSE SOURCE (Collapsible)
+        // ─────────────────────────────────────────────────────────────────────
+        LinearLayout sourceHeaderRow = new LinearLayout(activity);
+        sourceHeaderRow.setOrientation(LinearLayout.HORIZONTAL);
+        sourceHeaderRow.setGravity(Gravity.CENTER_VERTICAL);
+        sourceHeaderRow.setPadding(0, (int) (12 * density), 0, (int) (8 * density));
+        sourceHeaderRow.setClickable(true);
+        sourceHeaderRow.setFocusable(true);
+
+        TextView badge1 = new TextView(activity);
+        badge1.setText("1");
+        badge1.setTextSize(11f);
+        badge1.setTypeface(null, Typeface.BOLD);
+        badge1.setTextColor(theme.onPrimary);
+        badge1.setGravity(Gravity.CENTER);
+        int b1Size = (int) (20 * density);
+        LinearLayout.LayoutParams b1Lp = new LinearLayout.LayoutParams(b1Size, b1Size);
+        b1Lp.rightMargin = (int) (8 * density);
+        badge1.setLayoutParams(b1Lp);
+        badge1.setBackground(createRoundedDrawable(theme.primary, 10 * density));
+        sourceHeaderRow.addView(badge1);
+
+        TextView tvSourceTitle = new TextView(activity);
+        tvSourceTitle.setText("Choose Source");
+        tvSourceTitle.setTextSize(14f);
+        tvSourceTitle.setTypeface(null, Typeface.BOLD);
+        tvSourceTitle.setTextColor(theme.textPrimary);
+        sourceHeaderRow.addView(tvSourceTitle);
+
+        TextView tvSourceActiveBadge = new TextView(activity);
+        tvSourceActiveBadge.setText(currentCriteria.source.displayName);
+        tvSourceActiveBadge.setTextSize(10.5f);
+        tvSourceActiveBadge.setTypeface(null, Typeface.BOLD);
+        tvSourceActiveBadge.setTextColor(theme.onPrimaryContainer);
+        tvSourceActiveBadge.setBackground(createRoundedDrawable(theme.primaryContainer, 10 * density));
+        int sabPadH = (int) (7 * density);
+        int sabPadV = (int) (2 * density);
+        tvSourceActiveBadge.setPadding(sabPadH, sabPadV, sabPadH, sabPadV);
+        LinearLayout.LayoutParams sabLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        sabLp.leftMargin = (int) (8 * density);
+        tvSourceActiveBadge.setLayoutParams(sabLp);
+        sourceHeaderRow.addView(tvSourceActiveBadge);
+
+        View sourceHeaderSpacer = new View(activity);
+        sourceHeaderRow.addView(sourceHeaderSpacer, new LinearLayout.LayoutParams(0, 0, 1f));
+
+        ImageView ivSourceChevron = new ImageView(activity);
+        ivSourceChevron.setTag("no_avatar");
+        ivSourceChevron.setContentDescription("collapse");
+        ivSourceChevron.setImageDrawable(new MaterialVectorDrawable(MaterialVectorDrawable.TYPE_CHEVRON_UP, theme.textSecondary));
+        ivSourceChevron.setLayoutParams(new LinearLayout.LayoutParams((int) (20 * density), (int) (20 * density)));
+        sourceHeaderRow.addView(ivSourceChevron);
+
+        leftPane.addView(sourceHeaderRow);
+
+        View sourceSelectorContainer;
+        StorageScanner.SourceType[] sources = StorageScanner.SourceType.values();
+        List<TextView> sourceViews = new ArrayList<>();
+
+        if (isLarge && isLandscape) {
+            LinearLayout sourceGrid = new LinearLayout(activity);
+            sourceGrid.setOrientation(LinearLayout.VERTICAL);
+            LinearLayout.LayoutParams sgLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            sgLp.bottomMargin = (int) (6 * density);
+            sourceGrid.setLayoutParams(sgLp);
+
+            int cols = 4;
+            LinearLayout currentRow = null;
+            for (int i = 0; i < sources.length; i++) {
+                final StorageScanner.SourceType src = sources[i];
+                if (i % cols == 0) {
+                    currentRow = new LinearLayout(activity);
+                    currentRow.setOrientation(LinearLayout.HORIZONTAL);
+                    LinearLayout.LayoutParams rowLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+                    if (i > 0) rowLp.topMargin = (int) (4 * density);
+                    currentRow.setLayoutParams(rowLp);
+                    sourceGrid.addView(currentRow);
+                }
+
+                TextView pill = new TextView(activity);
+                pill.setText(src.displayName);
+                pill.setTextSize(11f);
+                pill.setTypeface(null, Typeface.BOLD);
+                pill.setClickable(true);
+                pill.setFocusable(true);
+                pill.setGravity(Gravity.CENTER);
+                pill.setMinHeight((int) (30 * density));
+                int pH = (int) (4 * density);
+                int pV = (int) (5.5f * density);
+                pill.setPadding(pH, pV, pH, pV);
+                LinearLayout.LayoutParams pLp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+                if (i % cols != cols - 1) pLp.rightMargin = (int) (5 * density);
+                pill.setLayoutParams(pLp);
+
+                boolean isSelected = (src == currentCriteria.source);
+                pill.setTextColor(isSelected ? theme.onPrimaryContainer : theme.textSecondary);
+                pill.setBackground(createRoundedDrawable(isSelected ? theme.primaryContainer : theme.surfaceContainer, 12 * density));
+
+                sourceViews.add(pill);
+                if (currentRow != null) currentRow.addView(pill);
+            }
+            if (currentRow != null) {
+                int remainder = sources.length % cols;
+                if (remainder != 0) {
+                    int missing = cols - remainder;
+                    for (int m = 0; m < missing; m++) {
+                        View spacer = new View(activity);
+                        LinearLayout.LayoutParams spLp = new LinearLayout.LayoutParams(0, 0, 1f);
+                        if (m < missing - 1) spLp.rightMargin = (int) (5 * density);
+                        spacer.setLayoutParams(spLp);
+                        currentRow.addView(spacer);
+                    }
+                }
+            }
+            sourceSelectorContainer = sourceGrid;
+        } else {
+            HorizontalScrollView hSourceScroll = new HorizontalScrollView(activity);
+            hSourceScroll.setHorizontalScrollBarEnabled(false);
+            LinearLayout.LayoutParams hssLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            hssLp.bottomMargin = (int) (6 * density);
+            hSourceScroll.setLayoutParams(hssLp);
+
+            LinearLayout sourcePillsInner = new LinearLayout(activity);
+            sourcePillsInner.setOrientation(LinearLayout.HORIZONTAL);
+
+            for (StorageScanner.SourceType src : sources) {
+                TextView pill = new TextView(activity);
+                pill.setText(src.displayName);
+                pill.setTextSize(12f);
+                pill.setTypeface(null, Typeface.BOLD);
+                pill.setClickable(true);
+                pill.setFocusable(true);
+                int pH = (int) (12 * density);
+                int pV = (int) (6.5f * density);
+                pill.setPadding(pH, pV, pH, pV);
+                LinearLayout.LayoutParams pLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+                pLp.rightMargin = (int) (6 * density);
+                pill.setLayoutParams(pLp);
+
+                boolean isSelected = (src == currentCriteria.source);
+                pill.setTextColor(isSelected ? theme.onPrimaryContainer : theme.textSecondary);
+                pill.setBackground(createRoundedDrawable(isSelected ? theme.primaryContainer : theme.surfaceContainer, 12 * density));
+
+                sourceViews.add(pill);
+                sourcePillsInner.addView(pill);
+            }
+            hSourceScroll.addView(sourcePillsInner);
+            sourceSelectorContainer = hSourceScroll;
+        }
+
+        sourceHeaderRow.setOnClickListener(v -> {
+            boolean isExpanded = (sourceSelectorContainer.getVisibility() == View.VISIBLE);
+            if (isExpanded) {
+                sourceSelectorContainer.setVisibility(View.GONE);
+                ivSourceChevron.setImageDrawable(new MaterialVectorDrawable(MaterialVectorDrawable.TYPE_CHEVRON_DOWN, theme.textSecondary));
+            } else {
+                sourceSelectorContainer.setVisibility(View.VISIBLE);
+                ivSourceChevron.setImageDrawable(new MaterialVectorDrawable(MaterialVectorDrawable.TYPE_CHEVRON_UP, theme.textSecondary));
+            }
+        });
+
+        leftPane.addView(sourceSelectorContainer);
+
+        // Step 2, 3, 4 state & controllers (specific to phone/portrait layout)
+        Map<String, View>[] filterCardsRef = new Map[1];
+        final LinearLayout[] filtersAccordionContainerRef = new LinearLayout[1];
+        TextView[] tvFiltersTitleRef = new TextView[1];
+
+        Runnable onFilterChanged = () -> {
+            updateActionStates(currentCriteria.source, currentCriteria, actionButtonsMap);
+            if (updateChipsAndBadgeRef[0] != null) updateChipsAndBadgeRef[0].run();
+            if (runScanRef[0] != null) runScanRef[0].run();
+        };
+
+        // Wire Source pill click listener
+        for (int i = 0; i < sources.length; i++) {
+            final StorageScanner.SourceType src = sources[i];
+            TextView pill = sourceViews.get(i);
+            pill.setOnClickListener(v -> {
+                currentCriteria.source = src;
+                tvSourceActiveBadge.setText(src.displayName);
+                for (int j = 0; j < sources.length; j++) {
+                    boolean sel = (sources[j] == currentCriteria.source);
+                    sourceViews.get(j).setTextColor(sel ? theme.onPrimaryContainer : theme.textSecondary);
+                    sourceViews.get(j).setBackground(createRoundedDrawable(sel ? theme.primaryContainer : theme.surfaceContainer, 12 * density));
+                }
+                int count = updateFilterVisibility(activity, src, filterCardsRef[0], filtersAccordionContainerRef[0], density);
+                if (tvFiltersTitleRef[0] != null) {
+                    tvFiltersTitleRef[0].setText("Configure Filters (" + count + ")");
+                }
+                updateActionStates(src, currentCriteria, actionButtonsMap);
+                onFilterChanged.run();
+            });
+        }
+
+        // ─────────────────────────────────────────────────────────────────────
+        // STEP 2: CONFIGURE FILTERS (Collapsible Section + Active Filter Chips)
+        // ─────────────────────────────────────────────────────────────────────
+        LinearLayout filterHeaderRow = new LinearLayout(activity);
+        filterHeaderRow.setOrientation(LinearLayout.HORIZONTAL);
+        filterHeaderRow.setGravity(Gravity.CENTER_VERTICAL);
+        filterHeaderRow.setPadding(0, (int) (12 * density), 0, (int) (8 * density));
+        filterHeaderRow.setClickable(true);
+        filterHeaderRow.setFocusable(true);
+
+        TextView badge2 = new TextView(activity);
+        badge2.setText("2");
+        badge2.setTextSize(11f);
+        badge2.setTypeface(null, Typeface.BOLD);
+        badge2.setTextColor(theme.onPrimary);
+        badge2.setGravity(Gravity.CENTER);
+        int b2Size = (int) (20 * density);
+        LinearLayout.LayoutParams b2Lp = new LinearLayout.LayoutParams(b2Size, b2Size);
+        b2Lp.rightMargin = (int) (8 * density);
+        badge2.setLayoutParams(b2Lp);
+        badge2.setBackground(createRoundedDrawable(theme.primary, 10 * density));
+        filterHeaderRow.addView(badge2);
+
+        TextView tvFiltersTitle = new TextView(activity);
+        tvFiltersTitleRef[0] = tvFiltersTitle;
+        tvFiltersTitle.setText("Configure Filters");
+        tvFiltersTitle.setTextSize(14f);
+        tvFiltersTitle.setTypeface(null, Typeface.BOLD);
+        tvFiltersTitle.setTextColor(theme.textPrimary);
+        filterHeaderRow.addView(tvFiltersTitle);
+
+        TextView tvFiltersActiveBadge = new TextView(activity);
+        tvFiltersActiveBadge.setTextSize(10.5f);
+        tvFiltersActiveBadge.setTypeface(null, Typeface.BOLD);
+        tvFiltersActiveBadge.setTextColor(theme.textSecondary);
+        tvFiltersActiveBadge.setBackground(createRoundedDrawable(theme.surfaceContainer, 10 * density));
+        tvFiltersActiveBadge.setText("All Media (No filters)");
+        tvFiltersActiveBadge.setSingleLine(true);
+        tvFiltersActiveBadge.setEllipsize(TextUtils.TruncateAt.END);
+        int fabPadH = (int) (7 * density);
+        int fabPadV = (int) (2 * density);
+        tvFiltersActiveBadge.setPadding(fabPadH, fabPadV, fabPadH, fabPadV);
+        LinearLayout.LayoutParams fabLp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+        fabLp.leftMargin = (int) (8 * density);
+        fabLp.rightMargin = (int) (6 * density);
+        tvFiltersActiveBadge.setLayoutParams(fabLp);
+        filterHeaderRow.addView(tvFiltersActiveBadge);
+
+        ImageView ivFiltersChevron = new ImageView(activity);
+        ivFiltersChevron.setTag("no_avatar");
+        ivFiltersChevron.setContentDescription("collapse");
+        ivFiltersChevron.setImageDrawable(new MaterialVectorDrawable(MaterialVectorDrawable.TYPE_CHEVRON_UP, theme.textSecondary));
+        LinearLayout.LayoutParams ivLp = new LinearLayout.LayoutParams((int) (20 * density), (int) (20 * density));
+        ivFiltersChevron.setLayoutParams(ivLp);
+        filterHeaderRow.addView(ivFiltersChevron);
+
+        leftPane.addView(filterHeaderRow);
+
+        // Active Filter Chips Row
+        HorizontalScrollView hChipsScroll = new HorizontalScrollView(activity);
+        hChipsScroll.setHorizontalScrollBarEnabled(false);
+        hChipsScroll.setVisibility(View.GONE);
+        LinearLayout.LayoutParams hcsLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        hcsLp.bottomMargin = (int) (6 * density);
+        hChipsScroll.setLayoutParams(hcsLp);
+
+        LinearLayout chipsContainer = new LinearLayout(activity);
+        chipsContainer.setOrientation(LinearLayout.HORIZONTAL);
+        chipsContainer.setGravity(Gravity.CENTER_VERTICAL);
+        hChipsScroll.addView(chipsContainer);
+        leftPane.addView(hChipsScroll);
+
+        LinearLayout filtersAccordionContainer = new LinearLayout(activity);
+        filtersAccordionContainer.setOrientation(LinearLayout.VERTICAL);
+        filtersAccordionContainerRef[0] = filtersAccordionContainer;
+        leftPane.addView(filtersAccordionContainer);
+
+        LinearLayout filterActionRow = new LinearLayout(activity);
+        filterActionRow.setOrientation(LinearLayout.HORIZONTAL);
+        filterActionRow.setPadding(0, (int) (10 * density), 0, (int) (14 * density));
+
+        filterCardsRef[0] = build21FiltersAccordion(activity, filtersAccordionContainer, density, theme, onFilterChanged);
+        int initialFilterCount = updateFilterVisibility(activity, currentCriteria.source, filterCardsRef[0], filtersAccordionContainer, density);
+        tvFiltersTitle.setText("Configure Filters (" + initialFilterCount + ")");
+
+        // Scan / Filter Trigger Buttons
+
+        TextView btnResetFilters = new TextView(activity);
+        btnResetFilters.setText("Reset Filters");
+        btnResetFilters.setTextSize(13f);
+        btnResetFilters.setTypeface(null, Typeface.BOLD);
+        btnResetFilters.setTextColor(theme.primary);
+        btnResetFilters.setGravity(Gravity.CENTER);
+        btnResetFilters.setPadding((int) (14 * density), (int) (9 * density), (int) (14 * density), (int) (9 * density));
+        btnResetFilters.setBackground(createActionPillDrawable(theme.surfaceContainer, 16 * density));
+        LinearLayout.LayoutParams rfLp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+        rfLp.rightMargin = (int) (8 * density);
+        btnResetFilters.setLayoutParams(rfLp);
+        filterActionRow.addView(btnResetFilters);
+
+        LinearLayout btnApplyScan = new LinearLayout(activity);
+        btnApplyScan.setOrientation(LinearLayout.HORIZONTAL);
+        btnApplyScan.setGravity(Gravity.CENTER);
+        btnApplyScan.setClickable(true);
+        btnApplyScan.setFocusable(true);
+        btnApplyScan.setBackground(createActionPillDrawable(theme.primary, 16 * density));
+        btnApplyScan.setPadding((int) (16 * density), (int) (9 * density), (int) (16 * density), (int) (9 * density));
+        btnApplyScan.setLayoutParams(new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1.4f));
+
+        tvScanButtonLabel.setText("Apply & Scan");
+        tvScanButtonLabel.setTextSize(13.5f);
+        tvScanButtonLabel.setTypeface(null, Typeface.BOLD);
+        tvScanButtonLabel.setTextColor(theme.onPrimary);
+        btnApplyScan.addView(tvScanButtonLabel);
+        filterActionRow.addView(btnApplyScan);
+        leftPane.addView(filterActionRow);
+
+        updateChipsAndBadgeRef[0] = () -> {
+            List<Pair<String, Runnable>> activeList = getActiveFilterList(currentCriteria);
+            int activeCount = activeList.size();
+            if (activeCount > 0) {
+                StringBuilder summary = new StringBuilder();
+                for (int i = 0; i < Math.min(activeList.size(), 2); i++) {
+                    if (i > 0) summary.append(", ");
+                    summary.append(activeList.get(i).first);
+                }
+                if (activeList.size() > 2) summary.append("...");
+                tvFiltersActiveBadge.setText(activeCount + " Active: " + summary.toString());
+                tvFiltersActiveBadge.setTextColor(theme.onPrimaryContainer);
+                tvFiltersActiveBadge.setBackground(createRoundedDrawable(theme.primaryContainer, 10 * density));
+                tvFiltersActiveBadge.setVisibility(View.VISIBLE);
+                hChipsScroll.setVisibility(View.VISIBLE);
+            } else {
+                tvFiltersActiveBadge.setText("All Media (No filters)");
+                tvFiltersActiveBadge.setTextColor(theme.textSecondary);
+                tvFiltersActiveBadge.setBackground(createRoundedDrawable(theme.surfaceContainer, 10 * density));
+                tvFiltersActiveBadge.setVisibility(View.VISIBLE);
+                hChipsScroll.setVisibility(View.GONE);
+            }
+
+            chipsContainer.removeAllViews();
+            for (Pair<String, Runnable> item : activeList) {
+                LinearLayout chip = new LinearLayout(activity);
+                chip.setOrientation(LinearLayout.HORIZONTAL);
+                chip.setGravity(Gravity.CENTER_VERTICAL);
+                chip.setBackground(createRoundedDrawable(theme.primaryContainer, 12 * density));
+                int cPadH = (int) (10 * density);
+                int cPadV = (int) (4 * density);
+                chip.setPadding(cPadH, cPadV, (int) (8 * density), cPadV);
+                LinearLayout.LayoutParams cLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+                cLp.rightMargin = (int) (6 * density);
+                chip.setLayoutParams(cLp);
+
+                TextView tvChip = new TextView(activity);
+                tvChip.setText(item.first);
+                tvChip.setTextSize(11f);
+                tvChip.setTypeface(null, Typeface.BOLD);
+                tvChip.setTextColor(theme.onPrimaryContainer);
+                chip.addView(tvChip);
+
+                TextView tvClose = new TextView(activity);
+                tvClose.setText(" ✕");
+                tvClose.setTextSize(12f);
+                tvClose.setTypeface(null, Typeface.BOLD);
+                tvClose.setTextColor(theme.onPrimaryContainer);
+                tvClose.setPadding((int) (4 * density), 0, 0, 0);
+                chip.addView(tvClose);
+
+                chip.setClickable(true);
+                chip.setFocusable(true);
+                chip.setOnClickListener(v -> {
+                    item.second.run();
+                    filterCardsRef[0] = build21FiltersAccordion(activity, filtersAccordionContainer, density, theme, onFilterChanged);
+                    int cCount = updateFilterVisibility(activity, currentCriteria.source, filterCardsRef[0], filtersAccordionContainer, density);
+                    if (tvFiltersTitleRef[0] != null) tvFiltersTitleRef[0].setText("Configure Filters (" + cCount + ")");
+                    onFilterChanged.run();
+                });
+                chipsContainer.addView(chip);
+            }
+        };
+
+        // Header click toggles filter accordion expansion
+        filterHeaderRow.setOnClickListener(v -> {
+            boolean isExpanded = (filtersAccordionContainer.getVisibility() == View.VISIBLE);
+            if (isExpanded) {
+                filtersAccordionContainer.setVisibility(View.GONE);
+                filterActionRow.setVisibility(View.GONE);
+                ivFiltersChevron.setImageDrawable(new MaterialVectorDrawable(MaterialVectorDrawable.TYPE_CHEVRON_DOWN, theme.textSecondary));
+            } else {
+                filtersAccordionContainer.setVisibility(View.VISIBLE);
+                filterActionRow.setVisibility(View.VISIBLE);
+                ivFiltersChevron.setImageDrawable(new MaterialVectorDrawable(MaterialVectorDrawable.TYPE_CHEVRON_UP, theme.textSecondary));
+            }
+        });
+
+        btnResetFilters.setOnClickListener(v -> {
+            StorageScanner.SourceType savedSource = currentCriteria.source;
+            currentCriteria = new StorageScanner.FilterCriteria();
+            currentCriteria.source = savedSource;
+            filterCardsRef[0] = build21FiltersAccordion(activity, filtersAccordionContainer, density, theme, onFilterChanged);
+            int rCount = updateFilterVisibility(activity, currentCriteria.source, filterCardsRef[0], filtersAccordionContainer, density);
+            if (tvFiltersTitleRef[0] != null) tvFiltersTitleRef[0].setText("Configure Filters (" + rCount + ")");
+            onFilterChanged.run();
+            Toast.makeText(activity, "Reset all filters to default", Toast.LENGTH_SHORT).show();
+        });
+
+        btnApplyScan.setOnClickListener(v -> {
+            // Auto-collapse filters on apply so preview is immediately prominent
+            filtersAccordionContainer.setVisibility(View.GONE);
+            filterActionRow.setVisibility(View.GONE);
+            ivFiltersChevron.setImageDrawable(new MaterialVectorDrawable(MaterialVectorDrawable.TYPE_CHEVRON_DOWN, theme.textSecondary));
+            onFilterChanged.run();
+        });
+
+        // ─────────────────────────────────────────────────────────────────────
+        // STEP 3: CHOOSE ACTION (13 Actions, Collapsible)
+        // ─────────────────────────────────────────────────────────────────────
+        LinearLayout actionHeaderRow = new LinearLayout(activity);
+        actionHeaderRow.setOrientation(LinearLayout.HORIZONTAL);
+        actionHeaderRow.setGravity(Gravity.CENTER_VERTICAL);
+        actionHeaderRow.setPadding(0, (int) (12 * density), 0, (int) (8 * density));
+        actionHeaderRow.setClickable(true);
+        actionHeaderRow.setFocusable(true);
+
+        TextView badge3 = new TextView(activity);
+        badge3.setText("3");
+        badge3.setTextSize(11f);
+        badge3.setTypeface(null, Typeface.BOLD);
+        badge3.setTextColor(theme.onPrimary);
+        badge3.setGravity(Gravity.CENTER);
+        int b3Size = (int) (20 * density);
+        LinearLayout.LayoutParams b3Lp = new LinearLayout.LayoutParams(b3Size, b3Size);
+        b3Lp.rightMargin = (int) (8 * density);
+        badge3.setLayoutParams(b3Lp);
+        badge3.setBackground(createRoundedDrawable(theme.primary, 10 * density));
+        actionHeaderRow.addView(badge3);
+
+        TextView tvActionsTitle = new TextView(activity);
+        tvActionsTitle.setText("Choose Action (13)");
+        tvActionsTitle.setTextSize(14f);
+        tvActionsTitle.setTypeface(null, Typeface.BOLD);
+        tvActionsTitle.setTextColor(theme.textPrimary);
+        actionHeaderRow.addView(tvActionsTitle);
+
+        TextView tvActionsActiveBadge = new TextView(activity);
+        tvActionsActiveBadge.setText("0 selected");
+        tvActionsActiveBadge.setTextSize(10.5f);
+        tvActionsActiveBadge.setTypeface(null, Typeface.BOLD);
+        tvActionsActiveBadge.setTextColor(theme.onPrimaryContainer);
+        tvActionsActiveBadge.setBackground(createRoundedDrawable(theme.primaryContainer, 10 * density));
+        int aabPadH = (int) (7 * density);
+        int aabPadV = (int) (2 * density);
+        tvActionsActiveBadge.setPadding(aabPadH, aabPadV, aabPadH, aabPadV);
+        LinearLayout.LayoutParams aabLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        aabLp.leftMargin = (int) (8 * density);
+        tvActionsActiveBadge.setLayoutParams(aabLp);
+        actionHeaderRow.addView(tvActionsActiveBadge);
+
+        View actionHeaderSpacer = new View(activity);
+        actionHeaderRow.addView(actionHeaderSpacer, new LinearLayout.LayoutParams(0, 0, 1f));
+
+        ImageView ivActionsChevron = new ImageView(activity);
+        ivActionsChevron.setTag("no_avatar");
+        ivActionsChevron.setContentDescription("collapse");
+        ivActionsChevron.setImageDrawable(new MaterialVectorDrawable(MaterialVectorDrawable.TYPE_CHEVRON_UP, theme.textSecondary));
+        ivActionsChevron.setLayoutParams(new LinearLayout.LayoutParams((int) (20 * density), (int) (20 * density)));
+        actionHeaderRow.addView(ivActionsChevron);
+
+        rightPane.addView(actionHeaderRow);
+
+        ItemsProvider selectedItemsProvider = () -> {
+            List<StorageScanner.MediaItem> list = new ArrayList<>();
+            for (StorageScanner.MediaItem it : allQueriedItems) {
+                if (selectedMediaKeys.contains(getItemKey(it))) {
+                    list.add(it);
+                }
+            }
+            return list;
+        };
+
+        LinearLayout actionGrid = buildActionButtonsGrid(activity, density, theme, selectedItemsProvider, runScanRef, actionButtonsMap);
+        updateActionStates(currentCriteria.source, currentCriteria, actionButtonsMap);
+        rightPane.addView(actionGrid);
+
+        actionHeaderRow.setOnClickListener(v -> {
+            boolean isExpanded = (actionGrid.getVisibility() == View.VISIBLE);
+            if (isExpanded) {
+                actionGrid.setVisibility(View.GONE);
+                ivActionsChevron.setImageDrawable(new MaterialVectorDrawable(MaterialVectorDrawable.TYPE_CHEVRON_DOWN, theme.textSecondary));
+            } else {
+                actionGrid.setVisibility(View.VISIBLE);
+                ivActionsChevron.setImageDrawable(new MaterialVectorDrawable(MaterialVectorDrawable.TYPE_CHEVRON_UP, theme.textSecondary));
+            }
+        });
+
+        // Visual Material Progress Bar
+        sProgressBar = new ProgressBar(activity, null, android.R.attr.progressBarStyleHorizontal);
+        sProgressBar.setIndeterminate(true);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+            sProgressBar.setIndeterminateTintList(ColorStateList.valueOf(theme.primary));
+        }
+        sProgressBar.setVisibility(View.GONE);
+        LinearLayout.LayoutParams pbLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, (int) (4 * density));
+        pbLp.topMargin = (int) (8 * density);
+        pbLp.bottomMargin = (int) (4 * density);
+        sProgressBar.setLayoutParams(pbLp);
+        rightPane.addView(sProgressBar);
+
+        sTvProgressInfo = new TextView(activity);
+        sTvProgressInfo.setTextSize(11.5f);
+        sTvProgressInfo.setTextColor(theme.primary);
+        sTvProgressInfo.setGravity(Gravity.CENTER);
+        sTvProgressInfo.setVisibility(View.GONE);
+        LinearLayout.LayoutParams piLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        piLp.topMargin = (int) (2 * density);
+        piLp.bottomMargin = (int) (6 * density);
+        sTvProgressInfo.setLayoutParams(piLp);
+        rightPane.addView(sTvProgressInfo);
+
+        // ─────────────────────────────────────────────────────────────────────
+        // STEP 4: MATCHED MEDIA RESULTS
+        // ─────────────────────────────────────────────────────────────────────
+        LinearLayout resultsHeader = new LinearLayout(activity);
+        resultsHeader.setOrientation(LinearLayout.VERTICAL);
+        resultsHeader.setPadding(0, (int) (8 * density), 0, (int) (6 * density));
+
+        LinearLayout resTitleRow = createSectionHeader(activity, 4, "Matched Media Results", density, theme);
+        resultsHeader.addView(resTitleRow);
+
+        HorizontalScrollView hControlsScroll = new HorizontalScrollView(activity);
+        hControlsScroll.setHorizontalScrollBarEnabled(false);
+        LinearLayout.LayoutParams hctrlLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        hctrlLp.topMargin = (int) (1 * density);
+        hctrlLp.bottomMargin = (int) (5 * density);
+        hControlsScroll.setLayoutParams(hctrlLp);
+
+        LinearLayout controlsRow = new LinearLayout(activity);
+        controlsRow.setOrientation(LinearLayout.HORIZONTAL);
+        controlsRow.setGravity(Gravity.CENTER_VERTICAL);
+        controlsRow.setPadding((int) (28 * density), 0, 0, 0);
+
+        TextView btnSelectAll = new TextView(activity);
+        btnSelectAll.setText("All");
+        btnSelectAll.setTextSize(11f);
+        btnSelectAll.setTypeface(null, Typeface.BOLD);
+        btnSelectAll.setTextColor(theme.primary);
+        btnSelectAll.setBackground(createActionPillDrawable(theme.surfaceContainer, 10 * density));
+        btnSelectAll.setPadding((int) (8 * density), (int) (3 * density), (int) (8 * density), (int) (3 * density));
+        LinearLayout.LayoutParams allLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        allLp.rightMargin = (int) (5 * density);
+        btnSelectAll.setLayoutParams(allLp);
+        btnSelectAll.setClickable(true);
+        btnSelectAll.setFocusable(true);
+        controlsRow.addView(btnSelectAll);
+
+        TextView btnClearSelect = new TextView(activity);
+        btnClearSelect.setText("None");
+        btnClearSelect.setTextSize(11f);
+        btnClearSelect.setTypeface(null, Typeface.BOLD);
+        btnClearSelect.setTextColor(theme.textSecondary);
+        btnClearSelect.setBackground(createActionPillDrawable(theme.surfaceContainer, 10 * density));
+        btnClearSelect.setPadding((int) (8 * density), (int) (3 * density), (int) (8 * density), (int) (3 * density));
+        LinearLayout.LayoutParams noneLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        noneLp.rightMargin = (int) (6 * density);
+        btnClearSelect.setLayoutParams(noneLp);
+        btnClearSelect.setClickable(true);
+        btnClearSelect.setFocusable(true);
+        controlsRow.addView(btnClearSelect);
+
+        TextView btnSort = new TextView(activity);
+        btnSort.setText("↕ " + currentSortOrder.shortLabel);
+        btnSort.setTextSize(11f);
+        btnSort.setTypeface(null, Typeface.BOLD);
+        btnSort.setTextColor(theme.textPrimary);
+        btnSort.setBackground(createActionPillDrawable(theme.surfaceContainer, 10 * density));
+        btnSort.setPadding((int) (8 * density), (int) (3 * density), (int) (8 * density), (int) (3 * density));
+        LinearLayout.LayoutParams sortLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        sortLp.rightMargin = (int) (6 * density);
+        btnSort.setLayoutParams(sortLp);
+        btnSort.setClickable(true);
+        btnSort.setFocusable(true);
+        controlsRow.addView(btnSort);
+
+        TextView btnToggleView = new TextView(activity);
+        btnToggleView.setText(isGridViewRef[0] ? "⊞ Grid" : "☰ List");
+        btnToggleView.setTextSize(11f);
+        btnToggleView.setTypeface(null, Typeface.BOLD);
+        btnToggleView.setTextColor(theme.onPrimaryContainer);
+        btnToggleView.setBackground(createActionPillDrawable(theme.primaryContainer, 10 * density));
+        btnToggleView.setPadding((int) (9 * density), (int) (3 * density), (int) (9 * density), (int) (3 * density));
+        btnToggleView.setClickable(true);
+        btnToggleView.setFocusable(true);
+        controlsRow.addView(btnToggleView);
+
+        hControlsScroll.addView(controlsRow);
+        resultsHeader.addView(hControlsScroll);
+
+        tvResultsStatus.setText("Scanning items...");
+        tvResultsStatus.setTextSize(11.5f);
+        tvResultsStatus.setTextColor(theme.textSecondary);
+        tvResultsStatus.setPadding((int) (28 * density), 0, 0, 0);
+        resultsHeader.addView(tvResultsStatus);
+        rightPane.addView(resultsHeader);
+
+        rightPane.addView(resultsListContainer);
+
+
+
+        updateSelectionSummaryRef[0] = () -> {
+            int selCount = selectedMediaKeys.size();
+            tvActionsActiveBadge.setText(selCount + " selected");
+        };
+
+        btnSort.setOnClickListener(v -> {
+            showSortPickerDialog(activity, () -> {
+                btnSort.setText("↕ " + currentSortOrder.shortLabel);
+                sortMediaItems(allQueriedItems, currentSortOrder);
+                currentPageRef[0] = 0;
+                renderResults(activity, resultsListContainer, allQueriedItems, selectedMediaKeys, isGridViewRef[0], updateSelectionSummaryRef[0], density, theme, currentPageRef);
+            }, density, theme);
+        });
+
+        btnSelectAll.setOnClickListener(v -> {
+            for (StorageScanner.MediaItem it : allQueriedItems) {
+                selectedMediaKeys.add(getItemKey(it));
+            }
+            updateSelectionSummaryRef[0].run();
+            renderResults(activity, resultsListContainer, allQueriedItems, selectedMediaKeys, isGridViewRef[0], updateSelectionSummaryRef[0], density, theme, currentPageRef);
+        });
+
+        btnClearSelect.setOnClickListener(v -> {
+            selectedMediaKeys.clear();
+            updateSelectionSummaryRef[0].run();
+            renderResults(activity, resultsListContainer, allQueriedItems, selectedMediaKeys, isGridViewRef[0], updateSelectionSummaryRef[0], density, theme, currentPageRef);
+        });
+
+        btnToggleView.setOnClickListener(v -> {
+            isGridViewRef[0] = !isGridViewRef[0];
+            btnToggleView.setText(isGridViewRef[0] ? "⊞ Grid" : "☰ List");
+            renderResults(activity, resultsListContainer, allQueriedItems, selectedMediaKeys, isGridViewRef[0], updateSelectionSummaryRef[0], density, theme, currentPageRef);
+        });
+
+        onRefreshRef[0] = () -> {
             currentCriteria = new StorageScanner.FilterCriteria();
             currentSortOrder = SortOrder.DATE_DESC;
             selectedMediaKeys.clear();
@@ -1019,7 +1135,7 @@ public class NativeToolkitDialog {
                 sourceViews.get(j).setBackground(createRoundedDrawable(sel ? theme.primaryContainer : theme.surfaceContainer, 12 * density));
             }
             filterCardsRef[0] = build21FiltersAccordion(activity, filtersAccordionContainer, density, theme, onFilterChanged);
-            int rCount = updateFilterVisibility(currentCriteria.source, filterCardsRef[0]);
+            int rCount = updateFilterVisibility(activity, currentCriteria.source, filterCardsRef[0], filtersAccordionContainer, density);
             if (tvFiltersTitleRef[0] != null) tvFiltersTitleRef[0].setText("Configure Filters (" + rCount + ")");
             updateActionStates(currentCriteria.source, currentCriteria, actionButtonsMap);
             if (updateChipsAndBadgeRef[0] != null) updateChipsAndBadgeRef[0].run();
@@ -1034,8 +1150,13 @@ public class NativeToolkitDialog {
             });
 
             if (runScanRef[0] != null) runScanRef[0].run();
-            Toast.makeText(activity, "Toolkit refreshed", Toast.LENGTH_SHORT).show();
-        });
+        };
+    }
+
+    btnRefresh.setOnClickListener(v -> {
+        if (onRefreshRef[0] != null) onRefreshRef[0].run();
+        Toast.makeText(activity, "Toolkit refreshed", Toast.LENGTH_SHORT).show();
+    });
 
         btnClose.setOnClickListener(v -> dialog.dismiss());
 
@@ -1057,19 +1178,1227 @@ public class NativeToolkitDialog {
         PhenotypeFlagManager.setCurrentOpenDialog(dialog);
         PhenotypeFlagManager.updateDockTabState(activity, PhenotypeFlagManager.DOCK_TAB_TOOLKIT);
 
-        Window window = dialog.getWindow();
-        if (window != null) {
-            window.setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
-            int screenWidth = activity.getResources().getDisplayMetrics().widthPixels;
-            int screenHeight = activity.getResources().getDisplayMetrics().heightPixels;
-            int dialogWidth = Math.min((int) (screenWidth * 0.94f), (int) (520 * density));
-            int dialogHeight = (int) (screenHeight * 0.88f);
-            window.setLayout(dialogWidth, dialogHeight);
-            window.setGravity(Gravity.CENTER);
-        }
+        // Responsive popup window sizing with clean rounded geometry (adaptive up to 920dp on tablet)
+        PhenotypeFlagManager.applyAdaptiveDialogBounds(dialog, activity);
 
         // Run initial scan
         runScanRef[0].run();
+    }
+
+    private interface OnIndexSelectedListener {
+        void onSelected(int index);
+    }
+
+    private static LinearLayout createStepBadgeWithLabel(Activity activity, String stepNum, String label, float density, Theme theme) {
+        LinearLayout row = new LinearLayout(activity);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+
+        TextView badge = new TextView(activity);
+        badge.setText(stepNum);
+        badge.setTextSize(11f);
+        badge.setTypeface(null, Typeface.BOLD);
+        badge.setTextColor(theme.onPrimary);
+        badge.setGravity(Gravity.CENTER);
+        int bSize = (int) (20 * density);
+        LinearLayout.LayoutParams bLp = new LinearLayout.LayoutParams(bSize, bSize);
+        bLp.rightMargin = (int) (6 * density);
+        badge.setLayoutParams(bLp);
+        badge.setBackground(createRoundedDrawable(theme.primary, 10 * density));
+        row.addView(badge);
+
+        TextView tv = new TextView(activity);
+        tv.setText(label);
+        tv.setTextSize(11f);
+        tv.setTypeface(null, Typeface.BOLD);
+        tv.setTextColor(theme.textPrimary);
+        row.addView(tv);
+
+        return row;
+    }
+
+    private static TextView createCanvasToolbarButton(Activity activity, String text, int textColor, float density, Theme theme) {
+        TextView btn = new TextView(activity);
+        btn.setText(text);
+        btn.setTextSize(11f);
+        btn.setTypeface(null, Typeface.BOLD);
+        btn.setTextColor(textColor);
+        btn.setBackground(createActionPillDrawable(theme.surfaceContainer, 8 * density));
+        btn.setPadding((int) (8 * density), (int) (3 * density), (int) (8 * density), (int) (3 * density));
+        btn.setClickable(true);
+        btn.setFocusable(true);
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        lp.leftMargin = (int) (5 * density);
+        btn.setLayoutParams(lp);
+        return btn;
+    }
+
+    private static LinearLayout createSegmentedGroup(Activity activity, String[] options, int selectedIdx, float density, Theme theme, OnIndexSelectedListener listener) {
+        LinearLayout group = new LinearLayout(activity);
+        group.setOrientation(LinearLayout.HORIZONTAL);
+        group.setBackground(createRoundedDrawable(theme.surface, 8 * density));
+        group.setPadding((int) (2 * density), (int) (2 * density), (int) (2 * density), (int) (2 * density));
+
+        List<TextView> pills = new ArrayList<>();
+        final int[] currentIdx = new int[]{selectedIdx};
+
+        Runnable updatePills = () -> {
+            for (int i = 0; i < options.length; i++) {
+                boolean sel = (i == currentIdx[0]);
+                TextView p = pills.get(i);
+                p.setTextColor(sel ? theme.onPrimary : theme.textSecondary);
+                p.setBackground(createRoundedDrawable(sel ? theme.primary : Color.TRANSPARENT, 6 * density));
+            }
+        };
+
+        for (int i = 0; i < options.length; i++) {
+            final int idx = i;
+            TextView p = new TextView(activity);
+            p.setText(options[i]);
+            p.setTextSize(10f);
+            p.setTypeface(null, Typeface.BOLD);
+            p.setSingleLine(true);
+            p.setLines(1);
+            p.setIncludeFontPadding(false);
+            p.setGravity(Gravity.CENTER);
+            p.setClickable(true);
+            p.setFocusable(true);
+            p.setPadding((int) (8 * density), (int) (4 * density), (int) (8 * density), (int) (4 * density));
+            LinearLayout.LayoutParams pLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+            p.setLayoutParams(pLp);
+            p.setOnClickListener(v -> {
+                currentIdx[0] = idx;
+                updatePills.run();
+                if (listener != null) listener.onSelected(idx);
+            });
+            pills.add(p);
+            group.addView(p);
+        }
+        updatePills.run();
+        return group;
+    }
+
+    private static EditText createFilterStudioInput(Activity activity, String placeholder, String initialText, float density, Theme theme, SimpleConsumer onText, Runnable onFilterChanged) {
+        EditText et = new EditText(activity);
+        et.setHint(placeholder);
+        et.setHintTextColor(theme.textTertiary);
+        et.setTextColor(theme.textPrimary);
+        et.setTextSize(11f);
+        et.setSingleLine(true);
+        et.setBackground(createRoundedDrawable(theme.searchInputBg, 6 * density));
+        int padH = (int) (8 * density);
+        int padV = (int) (4 * density);
+        et.setPadding(padH, padV, padH, padV);
+        if (initialText != null && !initialText.isEmpty()) et.setText(initialText);
+        et.addTextChangedListener(new DebounceWatcher(onText, onFilterChanged));
+        return et;
+    }
+
+    private static void showTabletAlbumSelectionDialog(Activity activity, Theme theme, float density, Runnable onFilterChanged) {
+        Dialog d = new Dialog(activity);
+        d.requestWindowFeature(Window.FEATURE_NO_TITLE);
+
+        LinearLayout box = new LinearLayout(activity);
+        box.setOrientation(LinearLayout.VERTICAL);
+        box.setBackground(createRoundedDrawable(theme.surface, 16 * density));
+        int p = (int) (18 * density);
+        box.setPadding(p, p, p, (int) (14 * density));
+
+        TextView tvTitle = new TextView(activity);
+        tvTitle.setText("Select Target Albums");
+        tvTitle.setTextSize(15f);
+        tvTitle.setTypeface(null, Typeface.BOLD);
+        tvTitle.setTextColor(theme.textPrimary);
+        box.addView(tvTitle);
+
+        ScrollView scroll = new ScrollView(activity);
+        scroll.setLayoutParams(new LinearLayout.LayoutParams((int) (380 * density), (int) (300 * density)));
+        LinearLayout content = new LinearLayout(activity);
+        content.setOrientation(LinearLayout.VERTICAL);
+        scroll.addView(content);
+
+        populateAlbumCheckboxes(activity, theme, content, () -> {}, false, onFilterChanged);
+        box.addView(scroll);
+
+        TextView btnDone = new TextView(activity);
+        btnDone.setText("Done");
+        btnDone.setTextSize(12.5f);
+        btnDone.setTypeface(null, Typeface.BOLD);
+        btnDone.setTextColor(theme.onPrimary);
+        btnDone.setGravity(Gravity.CENTER);
+        btnDone.setBackground(createActionPillDrawable(theme.primary, 10 * density));
+        btnDone.setPadding((int) (16 * density), (int) (8 * density), (int) (16 * density), (int) (8 * density));
+        btnDone.setOnClickListener(v -> d.dismiss());
+        LinearLayout.LayoutParams btnLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        btnLp.topMargin = (int) (12 * density);
+        btnDone.setLayoutParams(btnLp);
+        box.addView(btnDone);
+
+        d.setContentView(box);
+        if (d.getWindow() != null) d.getWindow().setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
+        d.show();
+    }
+
+    private static void buildTabletStudioLayout(
+            Activity activity, LinearLayout root, float density, Theme theme,
+            TextView tvScanButtonLabel, TextView tvResultsStatus, LinearLayout resultsListContainer,
+            Map<String, TextView> actionButtonsMap, Set<String> selectedMediaKeys,
+            boolean[] isGridViewRef, int[] currentPageRef, Runnable[] runScanRef,
+            Runnable[] updateSelectionSummaryRef, Runnable[] onRefreshRef) {
+
+        int p16 = (int) (16 * density);
+        int p6 = (int) (6 * density);
+
+        Runnable onFilterChanged = () -> {
+            updateActionStates(currentCriteria.source, currentCriteria, actionButtonsMap);
+            if (runScanRef[0] != null) runScanRef[0].run();
+        };
+
+        // ─────────────────────────────────────────────────────────────────────
+        // STEP 1: CHOOSE SOURCE (7 Symmetrical Pills with Icons)
+        // ─────────────────────────────────────────────────────────────────────
+        LinearLayout sourceRow = new LinearLayout(activity);
+        sourceRow.setOrientation(LinearLayout.HORIZONTAL);
+        sourceRow.setGravity(Gravity.CENTER_VERTICAL);
+        sourceRow.setPadding(p16, p6, p16, p6);
+        sourceRow.setBackgroundColor(theme.surfaceContainer);
+
+        LinearLayout step1Header = createStepBadgeWithLabel(activity, "1", "SOURCE", density, theme);
+        LinearLayout.LayoutParams s1HdrLp = new LinearLayout.LayoutParams((int) (96 * density), ViewGroup.LayoutParams.WRAP_CONTENT);
+        step1Header.setLayoutParams(s1HdrLp);
+        sourceRow.addView(step1Header);
+
+        LinearLayout pillsContainer = new LinearLayout(activity);
+        pillsContainer.setOrientation(LinearLayout.HORIZONTAL);
+        pillsContainer.setLayoutParams(new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+
+        final StorageScanner.SourceType[] sources = StorageScanner.SourceType.values();
+        final int[] sourceIcons = new int[]{
+                MaterialVectorDrawable.TYPE_PHOTO,
+                MaterialVectorDrawable.TYPE_SEARCH,
+                MaterialVectorDrawable.TYPE_FOLDER,
+                MaterialVectorDrawable.TYPE_SHARE,
+                MaterialVectorDrawable.TYPE_STAR,
+                MaterialVectorDrawable.TYPE_DELETE,
+                MaterialVectorDrawable.TYPE_LOCK
+        };
+
+        final List<TextView> sourceViews = new ArrayList<>();
+        Runnable updateSourceStyles = () -> {
+            for (int i = 0; i < sources.length; i++) {
+                boolean isSelected = (sources[i] == currentCriteria.source);
+                TextView pill = sourceViews.get(i);
+                pill.setTextColor(isSelected ? theme.onPrimary : theme.textSecondary);
+                pill.setBackground(createRoundedDrawable(isSelected ? theme.primary : theme.surface, 10 * density));
+                MaterialVectorDrawable d = new MaterialVectorDrawable(sourceIcons[i], isSelected ? theme.onPrimary : theme.textSecondary);
+                d.setBounds(0, 0, (int) (13 * density), (int) (13 * density));
+                pill.setCompoundDrawables(d, null, null, null);
+            }
+        };
+
+        for (int i = 0; i < sources.length; i++) {
+            final StorageScanner.SourceType src = sources[i];
+            TextView pill = new TextView(activity);
+            pill.setText(src.displayName);
+            pill.setTextSize(11f);
+            pill.setTypeface(null, Typeface.BOLD);
+            pill.setGravity(Gravity.CENTER);
+            pill.setClickable(true);
+            pill.setFocusable(true);
+            pill.setSingleLine(true);
+            pill.setEllipsize(TextUtils.TruncateAt.END);
+            pill.setMinHeight((int) (32 * density));
+            pill.setCompoundDrawablePadding((int) (4 * density));
+            int padH = (int) (4 * density);
+            int padV = (int) (4 * density);
+            pill.setPadding(padH, padV, padH, padV);
+
+            LinearLayout.LayoutParams pLp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+            if (i < sources.length - 1) pLp.rightMargin = (int) (5 * density);
+            pill.setLayoutParams(pLp);
+
+            sourceViews.add(pill);
+            pillsContainer.addView(pill);
+
+            pill.setOnClickListener(v -> {
+                currentCriteria.source = src;
+                updateSourceStyles.run();
+                updateActionStates(src, currentCriteria, actionButtonsMap);
+                onFilterChanged.run();
+            });
+        }
+        updateSourceStyles.run();
+        sourceRow.addView(pillsContainer);
+        root.addView(sourceRow);
+
+        View div1 = new View(activity);
+        div1.setBackgroundColor(theme.outline);
+        div1.setLayoutParams(new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, (int) (1 * density)));
+        root.addView(div1);
+
+        // ─────────────────────────────────────────────────────────────────────
+        // STEP 2: FILTERS STUDIO (4 Category Tabs & Compact Inspector Panel)
+        // ─────────────────────────────────────────────────────────────────────
+        LinearLayout filterStudioContainer = new LinearLayout(activity);
+        filterStudioContainer.setOrientation(LinearLayout.VERTICAL);
+        filterStudioContainer.setPadding(p16, (int) (6 * density), p16, (int) (6 * density));
+
+        LinearLayout fsTopBar = new LinearLayout(activity);
+        fsTopBar.setOrientation(LinearLayout.HORIZONTAL);
+        fsTopBar.setGravity(Gravity.CENTER_VERTICAL);
+        LinearLayout.LayoutParams fsTbLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        fsTbLp.bottomMargin = (int) (6 * density);
+        fsTopBar.setLayoutParams(fsTbLp);
+
+        LinearLayout step2Header = createStepBadgeWithLabel(activity, "2", "FILTERS STUDIO", density, theme);
+        fsTopBar.addView(step2Header);
+
+        TextView tvStudioBadge = new TextView(activity);
+        tvStudioBadge.setText("18 Available • 0 Active");
+        tvStudioBadge.setTextSize(10f);
+        tvStudioBadge.setTypeface(null, Typeface.BOLD);
+        tvStudioBadge.setTextColor(theme.onPrimaryContainer);
+        tvStudioBadge.setBackground(createRoundedDrawable(theme.primaryContainer, 8 * density));
+        int sPadH = (int) (8 * density);
+        int sPadV = (int) (2.5f * density);
+        tvStudioBadge.setPadding(sPadH, sPadV, sPadH, sPadV);
+        LinearLayout.LayoutParams sbLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        sbLp.leftMargin = (int) (8 * density);
+        tvStudioBadge.setLayoutParams(sbLp);
+        fsTopBar.addView(tvStudioBadge);
+
+        TextView btnResetFilters = new TextView(activity);
+        btnResetFilters.setText("Reset");
+        btnResetFilters.setTextSize(10.5f);
+        btnResetFilters.setTypeface(null, Typeface.BOLD);
+        btnResetFilters.setTextColor(theme.primary);
+        btnResetFilters.setBackground(createActionPillDrawable(theme.surfaceContainer, 8 * density));
+        btnResetFilters.setPadding((int) (8 * density), (int) (2.5f * density), (int) (8 * density), (int) (2.5f * density));
+        btnResetFilters.setClickable(true);
+        LinearLayout.LayoutParams rfbLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        rfbLp.leftMargin = (int) (6 * density);
+        btnResetFilters.setLayoutParams(rfbLp);
+        fsTopBar.addView(btnResetFilters);
+
+        View fsSpacer = new View(activity);
+        fsTopBar.addView(fsSpacer, new LinearLayout.LayoutParams(0, 0, 1f));
+
+        LinearLayout categoryTabsGroup = new LinearLayout(activity);
+        categoryTabsGroup.setOrientation(LinearLayout.HORIZONTAL);
+        categoryTabsGroup.setBackground(createRoundedDrawable(theme.surfaceContainer, 10 * density));
+        categoryTabsGroup.setPadding((int) (2 * density), (int) (2 * density), (int) (2 * density), (int) (2 * density));
+
+        String[] categoryTitles = new String[]{
+                "Time & Dimensions (4)",
+                "Media & Storage (4)",
+                "Status & Flags (6)",
+                "Search & Sort (4)"
+        };
+        int[] categoryIcons = new int[]{
+                MaterialVectorDrawable.TYPE_CALENDAR,
+                MaterialVectorDrawable.TYPE_TAG,
+                MaterialVectorDrawable.TYPE_SHIELD,
+                MaterialVectorDrawable.TYPE_SORT
+        };
+
+        final int[] activeTabIdx = new int[]{0};
+        final List<TextView> categoryTabViews = new ArrayList<>();
+        final List<View> categoryPanels = new ArrayList<>();
+
+        FrameLayout panelsContainer = new FrameLayout(activity);
+        panelsContainer.setBackground(createRoundedDrawable(theme.surfaceContainer, 12 * density));
+        panelsContainer.setPadding((int) (10 * density), (int) (8 * density), (int) (10 * density), (int) (8 * density));
+        panelsContainer.setLayoutParams(new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+
+        Runnable updateTabStyles = () -> {
+            for (int t = 0; t < categoryTitles.length; t++) {
+                boolean active = (t == activeTabIdx[0]);
+                TextView tabBtn = categoryTabViews.get(t);
+                tabBtn.setTextColor(active ? theme.onPrimary : theme.textSecondary);
+                tabBtn.setBackground(createRoundedDrawable(active ? theme.primary : Color.TRANSPARENT, 8 * density));
+                MaterialVectorDrawable d = new MaterialVectorDrawable(categoryIcons[t], active ? theme.onPrimary : theme.textSecondary);
+                d.setBounds(0, 0, (int) (12 * density), (int) (12 * density));
+                tabBtn.setCompoundDrawables(d, null, null, null);
+                categoryPanels.get(t).setVisibility(active ? View.VISIBLE : View.GONE);
+            }
+        };
+
+        for (int t = 0; t < categoryTitles.length; t++) {
+            final int tabIdx = t;
+            TextView tabBtn = new TextView(activity);
+            tabBtn.setText(categoryTitles[t]);
+            tabBtn.setTextSize(11f);
+            tabBtn.setTypeface(null, Typeface.BOLD);
+            tabBtn.setGravity(Gravity.CENTER);
+            tabBtn.setClickable(true);
+            tabBtn.setFocusable(true);
+            tabBtn.setCompoundDrawablePadding((int) (4 * density));
+            tabBtn.setPadding((int) (10 * density), (int) (5 * density), (int) (10 * density), (int) (5 * density));
+            categoryTabViews.add(tabBtn);
+            categoryTabsGroup.addView(tabBtn);
+
+            tabBtn.setOnClickListener(v -> {
+                activeTabIdx[0] = tabIdx;
+                updateTabStyles.run();
+            });
+        }
+        fsTopBar.addView(categoryTabsGroup);
+        filterStudioContainer.addView(fsTopBar);
+
+        Runnable updateFilterBadge = () -> {
+            int active = getActiveFilterList(currentCriteria).size();
+            tvStudioBadge.setText("18 Available • " + active + " Active");
+        };
+
+        // ── Panel 0: Time & Dimensions ──
+        LinearLayout panelTimeSize = new LinearLayout(activity);
+        panelTimeSize.setOrientation(LinearLayout.HORIZONTAL);
+        panelTimeSize.setLayoutParams(new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+
+        // Left 56%: Date Interval (Generous width to accommodate dual segmented groups & pickers)
+        LinearLayout p0Left = new LinearLayout(activity);
+        p0Left.setOrientation(LinearLayout.VERTICAL);
+        p0Left.setLayoutParams(new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1.25f));
+
+        LinearLayout p0DateHdr = new LinearLayout(activity);
+        p0DateHdr.setOrientation(LinearLayout.HORIZONTAL);
+        p0DateHdr.setGravity(Gravity.CENTER_VERTICAL);
+        p0DateHdr.setPadding(0, 0, 0, (int) (3 * density));
+
+        TextView tvDateIntervalTitle = new TextView(activity);
+        tvDateIntervalTitle.setText("Date Interval");
+        tvDateIntervalTitle.setTextSize(11f);
+        tvDateIntervalTitle.setTypeface(null, Typeface.BOLD);
+        tvDateIntervalTitle.setTextColor(theme.textPrimary);
+        MaterialVectorDrawable calIcn = new MaterialVectorDrawable(MaterialVectorDrawable.TYPE_CALENDAR, theme.primary);
+        calIcn.setBounds(0, 0, (int) (12 * density), (int) (12 * density));
+        tvDateIntervalTitle.setCompoundDrawables(calIcn, null, null, null);
+        tvDateIntervalTitle.setCompoundDrawablePadding((int) (4 * density));
+        p0DateHdr.addView(tvDateIntervalTitle);
+
+        View p0dHdrSpacer = new View(activity);
+        p0DateHdr.addView(p0dHdrSpacer, new LinearLayout.LayoutParams(0, 0, 1f));
+
+        LinearLayout grpRange = createSegmentedGroup(activity, new String[]{"Include", "Exclude"},
+                "exclude".equals(currentCriteria.intervalType) ? 1 : 0, density, theme, idx -> {
+                    currentCriteria.intervalType = (idx == 1) ? "exclude" : "include";
+                    updateFilterBadge.run();
+                    onFilterChanged.run();
+                });
+        LinearLayout.LayoutParams grpRangeLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        grpRangeLp.rightMargin = (int) (4 * density);
+        grpRange.setLayoutParams(grpRangeLp);
+        p0DateHdr.addView(grpRange);
+
+        LinearLayout grpDateType = createSegmentedGroup(activity, new String[]{"Taken", "Uploaded"},
+                "uploaded".equals(currentCriteria.dateType) ? 1 : 0, density, theme, idx -> {
+                    currentCriteria.dateType = (idx == 1) ? "uploaded" : "taken";
+                    updateFilterBadge.run();
+                    onFilterChanged.run();
+                });
+        p0DateHdr.addView(grpDateType);
+        p0Left.addView(p0DateHdr);
+
+        // Date Pickers Row (From -> To [Clear])
+        LinearLayout p0DateRow = new LinearLayout(activity);
+        p0DateRow.setOrientation(LinearLayout.HORIZONTAL);
+        p0DateRow.setGravity(Gravity.CENTER_VERTICAL);
+
+        SimpleDateFormat dFmt = new SimpleDateFormat("yyyy-MM-dd", Locale.getDefault());
+        SimpleDateFormat tFmt = new SimpleDateFormat("HH:mm", Locale.getDefault());
+
+        TextView btnFrom = new TextView(activity);
+        btnFrom.setText(currentCriteria.lowerBoundaryDate > 0
+                ? (dFmt.format(new Date(currentCriteria.lowerBoundaryDate)) + " " + tFmt.format(new Date(currentCriteria.lowerBoundaryDate)))
+                : "From: Any Date");
+        btnFrom.setTextSize(10.5f);
+        btnFrom.setTypeface(null, Typeface.BOLD);
+        btnFrom.setTextColor(currentCriteria.lowerBoundaryDate > 0 ? theme.primary : theme.textSecondary);
+        btnFrom.setBackground(createRoundedDrawable(theme.surface, 8 * density));
+        btnFrom.setGravity(Gravity.CENTER);
+        btnFrom.setPadding((int) (8 * density), (int) (5 * density), (int) (8 * density), (int) (5 * density));
+        btnFrom.setClickable(true);
+        LinearLayout.LayoutParams bfLp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+        bfLp.rightMargin = (int) (4 * density);
+        btnFrom.setLayoutParams(bfLp);
+        p0DateRow.addView(btnFrom);
+
+        TextView tvArrow = new TextView(activity);
+        tvArrow.setText("→");
+        tvArrow.setTextSize(11f);
+        tvArrow.setTypeface(null, Typeface.BOLD);
+        tvArrow.setTextColor(theme.textTertiary);
+        tvArrow.setPadding((int) (2 * density), 0, (int) (2 * density), 0);
+        p0DateRow.addView(tvArrow);
+
+        TextView btnTo = new TextView(activity);
+        btnTo.setText(currentCriteria.higherBoundaryDate > 0
+                ? (dFmt.format(new Date(currentCriteria.higherBoundaryDate)) + " " + tFmt.format(new Date(currentCriteria.higherBoundaryDate)))
+                : "To: Any Date");
+        btnTo.setTextSize(10.5f);
+        btnTo.setTypeface(null, Typeface.BOLD);
+        btnTo.setTextColor(currentCriteria.higherBoundaryDate > 0 ? theme.primary : theme.textSecondary);
+        btnTo.setBackground(createRoundedDrawable(theme.surface, 8 * density));
+        btnTo.setGravity(Gravity.CENTER);
+        btnTo.setPadding((int) (8 * density), (int) (5 * density), (int) (8 * density), (int) (5 * density));
+        btnTo.setClickable(true);
+        LinearLayout.LayoutParams btLp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+        btLp.leftMargin = (int) (4 * density);
+        btLp.rightMargin = (int) (6 * density);
+        btnTo.setLayoutParams(btLp);
+        p0DateRow.addView(btnTo);
+
+        TextView btnDateClear = new TextView(activity);
+        btnDateClear.setText("Clear");
+        btnDateClear.setTextSize(10.5f);
+        btnDateClear.setTypeface(null, Typeface.BOLD);
+        btnDateClear.setTextColor(theme.isDark ? 0xFFFFB4AB : 0xFFBA1A1A);
+        btnDateClear.setBackground(createActionPillDrawable(theme.surface, 8 * density));
+        btnDateClear.setPadding((int) (8 * density), (int) (5 * density), (int) (8 * density), (int) (5 * density));
+        btnDateClear.setClickable(true);
+        p0DateRow.addView(btnDateClear);
+
+        btnFrom.setOnClickListener(v -> {
+            Calendar c = Calendar.getInstance();
+            if (currentCriteria.lowerBoundaryDate > 0) c.setTimeInMillis(currentCriteria.lowerBoundaryDate);
+            DatePickerDialog dpd = new DatePickerDialog(activity, (view, year, month, dayOfMonth) -> {
+                c.set(Calendar.YEAR, year);
+                c.set(Calendar.MONTH, month);
+                c.set(Calendar.DAY_OF_MONTH, dayOfMonth);
+                TimePickerDialog tpd = new TimePickerDialog(activity, (view2, hourOfDay, minute) -> {
+                    c.set(Calendar.HOUR_OF_DAY, hourOfDay);
+                    c.set(Calendar.MINUTE, minute);
+                    currentCriteria.lowerBoundaryDate = c.getTimeInMillis();
+                    btnFrom.setText(dFmt.format(c.getTime()) + " " + tFmt.format(c.getTime()));
+                    btnFrom.setTextColor(theme.primary);
+                    updateFilterBadge.run();
+                    onFilterChanged.run();
+                }, c.get(Calendar.HOUR_OF_DAY), c.get(Calendar.MINUTE), true);
+                tpd.show();
+            }, c.get(Calendar.YEAR), c.get(Calendar.MONTH), c.get(Calendar.DAY_OF_MONTH));
+            dpd.show();
+        });
+
+        btnTo.setOnClickListener(v -> {
+            Calendar c = Calendar.getInstance();
+            if (currentCriteria.higherBoundaryDate > 0) c.setTimeInMillis(currentCriteria.higherBoundaryDate);
+            DatePickerDialog dpd = new DatePickerDialog(activity, (view, year, month, dayOfMonth) -> {
+                c.set(Calendar.YEAR, year);
+                c.set(Calendar.MONTH, month);
+                c.set(Calendar.DAY_OF_MONTH, dayOfMonth);
+                TimePickerDialog tpd = new TimePickerDialog(activity, (view2, hourOfDay, minute) -> {
+                    c.set(Calendar.HOUR_OF_DAY, hourOfDay);
+                    c.set(Calendar.MINUTE, minute);
+                    currentCriteria.higherBoundaryDate = c.getTimeInMillis();
+                    btnTo.setText(dFmt.format(c.getTime()) + " " + tFmt.format(c.getTime()));
+                    btnTo.setTextColor(theme.primary);
+                    updateFilterBadge.run();
+                    onFilterChanged.run();
+                }, c.get(Calendar.HOUR_OF_DAY), c.get(Calendar.MINUTE), true);
+                tpd.show();
+            }, c.get(Calendar.YEAR), c.get(Calendar.MONTH), c.get(Calendar.DAY_OF_MONTH));
+            dpd.show();
+        });
+
+        btnDateClear.setOnClickListener(v -> {
+            currentCriteria.lowerBoundaryDate = 0;
+            currentCriteria.higherBoundaryDate = 0;
+            btnFrom.setText("From: Any Date");
+            btnFrom.setTextColor(theme.textSecondary);
+            btnTo.setText("To: Any Date");
+            btnTo.setTextColor(theme.textSecondary);
+            updateFilterBadge.run();
+            onFilterChanged.run();
+        });
+
+        p0Left.addView(p0DateRow);
+        panelTimeSize.addView(p0Left);
+
+        View p0Div = new View(activity);
+        p0Div.setBackgroundColor(theme.outline);
+        LinearLayout.LayoutParams p0DivLp = new LinearLayout.LayoutParams((int) (1 * density), ViewGroup.LayoutParams.MATCH_PARENT);
+        p0DivLp.leftMargin = (int) (12 * density);
+        p0DivLp.rightMargin = (int) (12 * density);
+        p0Div.setLayoutParams(p0DivLp);
+        panelTimeSize.addView(p0Div);
+
+        // Right 50%: Size, Resolution, Duration (3 sub-columns)
+        LinearLayout p0Right = new LinearLayout(activity);
+        p0Right.setOrientation(LinearLayout.HORIZONTAL);
+        p0Right.setLayoutParams(new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1.0f));
+
+        // Subcol 1: Size (MB)
+        LinearLayout colSize = new LinearLayout(activity);
+        colSize.setOrientation(LinearLayout.VERTICAL);
+        colSize.setLayoutParams(new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        TextView tvSizeTitle = new TextView(activity);
+        tvSizeTitle.setText("Size (MB)");
+        tvSizeTitle.setTextSize(10.5f);
+        tvSizeTitle.setTypeface(null, Typeface.BOLD);
+        tvSizeTitle.setTextColor(theme.textPrimary);
+        colSize.addView(tvSizeTitle);
+        LinearLayout rowSizeIn = new LinearLayout(activity);
+        rowSizeIn.setOrientation(LinearLayout.HORIZONTAL);
+        rowSizeIn.setGravity(Gravity.CENTER_VERTICAL);
+        EditText etMinSize = createFilterStudioInput(activity, "> Min", currentCriteria.lowerBoundarySize > 0 ? StorageScanner.formatBytes(currentCriteria.lowerBoundarySize) : "", density, theme, s -> {
+            currentCriteria.lowerBoundarySize = parseBytesInput(s);
+            updateFilterBadge.run();
+        }, onFilterChanged);
+        EditText etMaxSize = createFilterStudioInput(activity, "< Max", currentCriteria.higherBoundarySize > 0 ? StorageScanner.formatBytes(currentCriteria.higherBoundarySize) : "", density, theme, s -> {
+            currentCriteria.higherBoundarySize = parseBytesInput(s);
+            updateFilterBadge.run();
+        }, onFilterChanged);
+        etMinSize.setLayoutParams(new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        etMaxSize.setLayoutParams(new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        rowSizeIn.addView(etMinSize);
+        TextView tvSizeDash = new TextView(activity);
+        tvSizeDash.setText("–");
+        tvSizeDash.setTextColor(theme.textTertiary);
+        tvSizeDash.setPadding((int) (2 * density), 0, (int) (2 * density), 0);
+        rowSizeIn.addView(tvSizeDash);
+        rowSizeIn.addView(etMaxSize);
+        colSize.addView(rowSizeIn);
+        LinearLayout.LayoutParams csLp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+        csLp.rightMargin = (int) (6 * density);
+        colSize.setLayoutParams(csLp);
+        p0Right.addView(colSize);
+
+        // Subcol 2: Resolution
+        LinearLayout colRes = new LinearLayout(activity);
+        colRes.setOrientation(LinearLayout.VERTICAL);
+        colRes.setLayoutParams(new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        TextView tvResTitle = new TextView(activity);
+        tvResTitle.setText("Resolution");
+        tvResTitle.setTextSize(10.5f);
+        tvResTitle.setTypeface(null, Typeface.BOLD);
+        tvResTitle.setTextColor(theme.textPrimary);
+        colRes.addView(tvResTitle);
+        LinearLayout rowResIn = new LinearLayout(activity);
+        rowResIn.setOrientation(LinearLayout.HORIZONTAL);
+        rowResIn.setGravity(Gravity.CENTER_VERTICAL);
+        EditText etMinRes = createFilterStudioInput(activity, "Min px", currentCriteria.minWidth > 0 ? String.valueOf(currentCriteria.minWidth) : "", density, theme, s -> {
+            try { currentCriteria.minWidth = Integer.parseInt(s); } catch (Exception e) { currentCriteria.minWidth = 0; }
+            updateFilterBadge.run();
+        }, onFilterChanged);
+        EditText etMaxRes = createFilterStudioInput(activity, "Max px", currentCriteria.maxWidth > 0 ? String.valueOf(currentCriteria.maxWidth) : "", density, theme, s -> {
+            try { currentCriteria.maxWidth = Integer.parseInt(s); } catch (Exception e) { currentCriteria.maxWidth = 0; }
+            updateFilterBadge.run();
+        }, onFilterChanged);
+        etMinRes.setLayoutParams(new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        etMaxRes.setLayoutParams(new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        rowResIn.addView(etMinRes);
+        TextView tvResX = new TextView(activity);
+        tvResX.setText("×");
+        tvResX.setTextColor(theme.textTertiary);
+        tvResX.setPadding((int) (2 * density), 0, (int) (2 * density), 0);
+        rowResIn.addView(tvResX);
+        rowResIn.addView(etMaxRes);
+        colRes.addView(rowResIn);
+        LinearLayout.LayoutParams crLp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+        crLp.rightMargin = (int) (6 * density);
+        colRes.setLayoutParams(crLp);
+        p0Right.addView(colRes);
+
+        // Subcol 3: Duration (s)
+        LinearLayout colDur = new LinearLayout(activity);
+        colDur.setOrientation(LinearLayout.VERTICAL);
+        colDur.setLayoutParams(new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        TextView tvDurTitle = new TextView(activity);
+        tvDurTitle.setText("Duration (s)");
+        tvDurTitle.setTextSize(10.5f);
+        tvDurTitle.setTypeface(null, Typeface.BOLD);
+        tvDurTitle.setTextColor(theme.textPrimary);
+        colDur.addView(tvDurTitle);
+        LinearLayout rowDurIn = new LinearLayout(activity);
+        rowDurIn.setOrientation(LinearLayout.HORIZONTAL);
+        rowDurIn.setGravity(Gravity.CENTER_VERTICAL);
+        EditText etMinDur = createFilterStudioInput(activity, "Min s", currentCriteria.minDuration > 0 ? String.valueOf(currentCriteria.minDuration) : "", density, theme, s -> {
+            try { currentCriteria.minDuration = Float.parseFloat(s); } catch (Exception e) { currentCriteria.minDuration = 0; }
+            updateFilterBadge.run();
+        }, onFilterChanged);
+        EditText etMaxDur = createFilterStudioInput(activity, "Max s", currentCriteria.maxDuration > 0 ? String.valueOf(currentCriteria.maxDuration) : "", density, theme, s -> {
+            try { currentCriteria.maxDuration = Float.parseFloat(s); } catch (Exception e) { currentCriteria.maxDuration = 0; }
+            updateFilterBadge.run();
+        }, onFilterChanged);
+        etMinDur.setLayoutParams(new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        etMaxDur.setLayoutParams(new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        rowDurIn.addView(etMinDur);
+        TextView tvDurDash = new TextView(activity);
+        tvDurDash.setText("–");
+        tvDurDash.setTextColor(theme.textTertiary);
+        tvDurDash.setPadding((int) (2 * density), 0, (int) (2 * density), 0);
+        rowDurIn.addView(tvDurDash);
+        rowDurIn.addView(etMaxDur);
+        colDur.addView(rowDurIn);
+        colDur.setLayoutParams(new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        p0Right.addView(colDur);
+
+        panelTimeSize.addView(p0Right);
+        categoryPanels.add(panelTimeSize);
+        panelsContainer.addView(panelTimeSize);
+
+        // ── Panel 1: Media & Storage (4 Columns) ──
+        LinearLayout panelMediaStorage = new LinearLayout(activity);
+        panelMediaStorage.setOrientation(LinearLayout.HORIZONTAL);
+        panelMediaStorage.setLayoutParams(new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+
+        // 1. Media Type
+        LinearLayout colType = new LinearLayout(activity);
+        colType.setOrientation(LinearLayout.VERTICAL);
+        TextView tvType = new TextView(activity);
+        tvType.setText("Media Type");
+        tvType.setTextSize(10.5f);
+        tvType.setTypeface(null, Typeface.BOLD);
+        tvType.setTextColor(theme.textPrimary);
+        colType.addView(tvType);
+        int typeIdx = "image".equals(currentCriteria.mediaType) ? 1 : "video".equals(currentCriteria.mediaType) ? 2 : "live".equals(currentCriteria.mediaType) ? 3 : 0;
+        colType.addView(createSegmentedGroup(activity, new String[]{"Any", "Photo", "Video", "Live"}, typeIdx, density, theme, idx -> {
+            currentCriteria.mediaType = (idx == 1) ? "image" : (idx == 2) ? "video" : (idx == 3) ? "live" : null;
+            updateFilterBadge.run();
+            onFilterChanged.run();
+        }));
+        LinearLayout.LayoutParams ctLp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+        ctLp.rightMargin = (int) (6 * density);
+        colType.setLayoutParams(ctLp);
+        panelMediaStorage.addView(colType);
+
+        // 2. Quality
+        LinearLayout colQuality = new LinearLayout(activity);
+        colQuality.setOrientation(LinearLayout.VERTICAL);
+        TextView tvQual = new TextView(activity);
+        tvQual.setText("Quality");
+        tvQual.setTextSize(10.5f);
+        tvQual.setTypeface(null, Typeface.BOLD);
+        tvQual.setTextColor(theme.textPrimary);
+        colQuality.addView(tvQual);
+        int qualIdx = "original".equals(currentCriteria.quality) ? 1 : "storage-saver".equals(currentCriteria.quality) ? 2 : 0;
+        colQuality.addView(createSegmentedGroup(activity, new String[]{"Any", "Original", "Saver"}, qualIdx, density, theme, idx -> {
+            currentCriteria.quality = (idx == 1) ? "original" : (idx == 2) ? "storage-saver" : null;
+            updateFilterBadge.run();
+            onFilterChanged.run();
+        }));
+        LinearLayout.LayoutParams cqLp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+        cqLp.rightMargin = (int) (6 * density);
+        colQuality.setLayoutParams(cqLp);
+        panelMediaStorage.addView(colQuality);
+
+        // 3. Storage Quota (Space)
+        LinearLayout colQuota = new LinearLayout(activity);
+        colQuota.setOrientation(LinearLayout.VERTICAL);
+        TextView tvQuota = new TextView(activity);
+        tvQuota.setText("Storage Quota");
+        tvQuota.setTextSize(10.5f);
+        tvQuota.setTypeface(null, Typeface.BOLD);
+        tvQuota.setTextColor(theme.textPrimary);
+        colQuota.addView(tvQuota);
+        int spaceIdx = (currentCriteria.space == StorageScanner.SpaceFilter.CONSUMING) ? 1 : (currentCriteria.space == StorageScanner.SpaceFilter.NON_CONSUMING) ? 2 : 0;
+        colQuota.addView(createSegmentedGroup(activity, new String[]{"Any", "Consuming", "Free"}, spaceIdx, density, theme, idx -> {
+            currentCriteria.space = (idx == 1) ? StorageScanner.SpaceFilter.CONSUMING : (idx == 2) ? StorageScanner.SpaceFilter.NON_CONSUMING : StorageScanner.SpaceFilter.ANY;
+            updateFilterBadge.run();
+            onFilterChanged.run();
+        }));
+        LinearLayout.LayoutParams cquLp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+        cquLp.rightMargin = (int) (6 * density);
+        colQuota.setLayoutParams(cquLp);
+        panelMediaStorage.addView(colQuota);
+
+        // 4. Similarity Threshold
+        LinearLayout colSim = new LinearLayout(activity);
+        colSim.setOrientation(LinearLayout.VERTICAL);
+        TextView tvSim = new TextView(activity);
+        tvSim.setText("Similarity Threshold");
+        tvSim.setTextSize(10.5f);
+        tvSim.setTypeface(null, Typeface.BOLD);
+        tvSim.setTextColor(theme.textPrimary);
+        colSim.addView(tvSim);
+        EditText etSim = createFilterStudioInput(activity, "0.01 - 1.0 (e.g. 0.90)", currentCriteria.similarityThreshold > 0 ? String.valueOf(currentCriteria.similarityThreshold) : "", density, theme, s -> {
+            try { currentCriteria.similarityThreshold = Float.parseFloat(s); } catch (Exception e) { currentCriteria.similarityThreshold = 0; }
+            updateFilterBadge.run();
+        }, onFilterChanged);
+        colSim.addView(etSim);
+        colSim.setLayoutParams(new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        panelMediaStorage.addView(colSim);
+
+        panelMediaStorage.setVisibility(View.GONE);
+        categoryPanels.add(panelMediaStorage);
+        panelsContainer.addView(panelMediaStorage);
+
+        // ── Panel 2: Status & Flags (6 Columns) ──
+        LinearLayout panelStatusFlags = new LinearLayout(activity);
+        panelStatusFlags.setOrientation(LinearLayout.HORIZONTAL);
+        panelStatusFlags.setLayoutParams(new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+
+        // 1. Backup
+        LinearLayout colBackup = new LinearLayout(activity);
+        colBackup.setOrientation(LinearLayout.VERTICAL);
+        TextView tvBkp = new TextView(activity);
+        tvBkp.setText("Backup");
+        tvBkp.setTextSize(10.5f);
+        tvBkp.setTypeface(null, Typeface.BOLD);
+        tvBkp.setTextColor(theme.textPrimary);
+        colBackup.addView(tvBkp);
+        int bkpIdx = "full".equals(currentCriteria.uploadStatus) ? 1 : 0;
+        colBackup.addView(createSegmentedGroup(activity, new String[]{"Any", "Cloud"}, bkpIdx, density, theme, idx -> {
+            currentCriteria.uploadStatus = (idx == 1) ? "full" : null;
+            updateFilterBadge.run();
+            onFilterChanged.run();
+        }));
+        LinearLayout.LayoutParams cbkLp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+        cbkLp.rightMargin = (int) (4 * density);
+        colBackup.setLayoutParams(cbkLp);
+        panelStatusFlags.addView(colBackup);
+
+        // 2. Archive
+        LinearLayout colArch = new LinearLayout(activity);
+        colArch.setOrientation(LinearLayout.VERTICAL);
+        TextView tvArch = new TextView(activity);
+        tvArch.setText("Archive");
+        tvArch.setTextSize(10.5f);
+        tvArch.setTypeface(null, Typeface.BOLD);
+        tvArch.setTextColor(theme.textPrimary);
+        colArch.addView(tvArch);
+        int archIdx = Boolean.TRUE.equals(currentCriteria.archived) ? 1 : 0;
+        colArch.addView(createSegmentedGroup(activity, new String[]{"Active", "Archived"}, archIdx, density, theme, idx -> {
+            currentCriteria.archived = (idx == 1) ? Boolean.TRUE : null;
+            updateFilterBadge.run();
+            onFilterChanged.run();
+        }));
+        LinearLayout.LayoutParams carLp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+        carLp.rightMargin = (int) (4 * density);
+        colArch.setLayoutParams(carLp);
+        panelStatusFlags.addView(colArch);
+
+        // 3. Favorites
+        LinearLayout colFav = new LinearLayout(activity);
+        colFav.setOrientation(LinearLayout.VERTICAL);
+        TextView tvFav = new TextView(activity);
+        tvFav.setText("Favorites");
+        tvFav.setTextSize(10.5f);
+        tvFav.setTypeface(null, Typeface.BOLD);
+        tvFav.setTextColor(theme.textPrimary);
+        colFav.addView(tvFav);
+        int favIdx = Boolean.TRUE.equals(currentCriteria.favorite) ? 1 : currentCriteria.excludeFavorites ? 2 : 0;
+        colFav.addView(createSegmentedGroup(activity, new String[]{"Any", "Only", "Omit"}, favIdx, density, theme, idx -> {
+            currentCriteria.favorite = (idx == 1) ? Boolean.TRUE : null;
+            currentCriteria.excludeFavorites = (idx == 2);
+            updateFilterBadge.run();
+            onFilterChanged.run();
+        }));
+        LinearLayout.LayoutParams cfvLp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+        cfvLp.rightMargin = (int) (4 * density);
+        colFav.setLayoutParams(cfvLp);
+        panelStatusFlags.addView(colFav);
+
+        // 4. Shared
+        LinearLayout colShared = new LinearLayout(activity);
+        colShared.setOrientation(LinearLayout.VERTICAL);
+        TextView tvSh = new TextView(activity);
+        tvSh.setText("Shared");
+        tvSh.setTextSize(10.5f);
+        tvSh.setTypeface(null, Typeface.BOLD);
+        tvSh.setTextColor(theme.textPrimary);
+        colShared.addView(tvSh);
+        int shIdx = currentCriteria.excludeShared ? 1 : 0;
+        colShared.addView(createSegmentedGroup(activity, new String[]{"Include", "Omit"}, shIdx, density, theme, idx -> {
+            currentCriteria.excludeShared = (idx == 1);
+            updateFilterBadge.run();
+            onFilterChanged.run();
+        }));
+        LinearLayout.LayoutParams cshLp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+        cshLp.rightMargin = (int) (4 * density);
+        colShared.setLayoutParams(cshLp);
+        panelStatusFlags.addView(colShared);
+
+        // 5. Ownership
+        LinearLayout colOwn = new LinearLayout(activity);
+        colOwn.setOrientation(LinearLayout.VERTICAL);
+        TextView tvOwn = new TextView(activity);
+        tvOwn.setText("Ownership");
+        tvOwn.setTextSize(10.5f);
+        tvOwn.setTypeface(null, Typeface.BOLD);
+        tvOwn.setTextColor(theme.textPrimary);
+        colOwn.addView(tvOwn);
+        int ownIdx = Boolean.TRUE.equals(currentCriteria.owned) ? 1 : 0;
+        colOwn.addView(createSegmentedGroup(activity, new String[]{"Any", "Mine"}, ownIdx, density, theme, idx -> {
+            currentCriteria.owned = (idx == 1) ? Boolean.TRUE : null;
+            updateFilterBadge.run();
+            onFilterChanged.run();
+        }));
+        LinearLayout.LayoutParams coLp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+        coLp.rightMargin = (int) (4 * density);
+        colOwn.setLayoutParams(coLp);
+        panelStatusFlags.addView(colOwn);
+
+        // 6. Location
+        LinearLayout colLoc = new LinearLayout(activity);
+        colLoc.setOrientation(LinearLayout.VERTICAL);
+        TextView tvLoc = new TextView(activity);
+        tvLoc.setText("Location");
+        tvLoc.setTextSize(10.5f);
+        tvLoc.setTypeface(null, Typeface.BOLD);
+        tvLoc.setTextColor(theme.textPrimary);
+        colLoc.addView(tvLoc);
+        int locIdx = Boolean.TRUE.equals(currentCriteria.hasLocation) ? 1 : 0;
+        colLoc.addView(createSegmentedGroup(activity, new String[]{"Any", "GPS"}, locIdx, density, theme, idx -> {
+            currentCriteria.hasLocation = (idx == 1) ? Boolean.TRUE : null;
+            updateFilterBadge.run();
+            onFilterChanged.run();
+        }));
+        colLoc.setLayoutParams(new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        panelStatusFlags.addView(colLoc);
+
+        panelStatusFlags.setVisibility(View.GONE);
+        categoryPanels.add(panelStatusFlags);
+        panelsContainer.addView(panelStatusFlags);
+
+        // ── Panel 3: Search & Sort (4 Columns) ──
+        LinearLayout panelSearchSort = new LinearLayout(activity);
+        panelSearchSort.setOrientation(LinearLayout.HORIZONTAL);
+        panelSearchSort.setLayoutParams(new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+
+        // 1. Sort Order
+        LinearLayout colSort = new LinearLayout(activity);
+        colSort.setOrientation(LinearLayout.VERTICAL);
+        TextView tvSo = new TextView(activity);
+        tvSo.setText("Sort Order");
+        tvSo.setTextSize(10.5f);
+        tvSo.setTypeface(null, Typeface.BOLD);
+        tvSo.setTextColor(theme.textPrimary);
+        colSort.addView(tvSo);
+        int sortIdx = currentCriteria.sortBySize ? 1 : 0;
+        colSort.addView(createSegmentedGroup(activity, new String[]{"Date", "Size (Desc)"}, sortIdx, density, theme, idx -> {
+            currentCriteria.sortBySize = (idx == 1);
+            updateFilterBadge.run();
+            onFilterChanged.run();
+        }));
+        LinearLayout.LayoutParams csoLp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+        csoLp.rightMargin = (int) (6 * density);
+        colSort.setLayoutParams(csoLp);
+        panelSearchSort.addView(colSort);
+
+        // 2. Search Query
+        LinearLayout colQuery = new LinearLayout(activity);
+        colQuery.setOrientation(LinearLayout.VERTICAL);
+        TextView tvQ = new TextView(activity);
+        tvQ.setText("Search Query");
+        tvQ.setTextSize(10.5f);
+        tvQ.setTypeface(null, Typeface.BOLD);
+        tvQ.setTextColor(theme.textPrimary);
+        colQuery.addView(tvQ);
+        EditText etQuery = createFilterStudioInput(activity, "Query keywords...", currentCriteria.searchQuery != null ? currentCriteria.searchQuery : "", density, theme, s -> {
+            currentCriteria.searchQuery = s;
+            updateFilterBadge.run();
+        }, onFilterChanged);
+        colQuery.addView(etQuery);
+        LinearLayout.LayoutParams cqyLp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+        cqyLp.rightMargin = (int) (6 * density);
+        colQuery.setLayoutParams(cqyLp);
+        panelSearchSort.addView(colQuery);
+
+        // 3. Filename Regex
+        LinearLayout colFile = new LinearLayout(activity);
+        colFile.setOrientation(LinearLayout.VERTICAL);
+        TextView tvFn = new TextView(activity);
+        tvFn.setText("Filename Regex");
+        tvFn.setTextSize(10.5f);
+        tvFn.setTypeface(null, Typeface.BOLD);
+        tvFn.setTextColor(theme.textPrimary);
+        colFile.addView(tvFn);
+        EditText etFile = createFilterStudioInput(activity, "e.g. IMG_.*\\.jpg", currentCriteria.fileNameRegex != null ? currentCriteria.fileNameRegex : "", density, theme, s -> {
+            currentCriteria.fileNameRegex = s;
+            updateFilterBadge.run();
+        }, onFilterChanged);
+        colFile.addView(etFile);
+        LinearLayout.LayoutParams cflLp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+        cflLp.rightMargin = (int) (6 * density);
+        colFile.setLayoutParams(cflLp);
+        panelSearchSort.addView(colFile);
+
+        // 4. Caption / Description & Album Selector
+        LinearLayout colDesc = new LinearLayout(activity);
+        colDesc.setOrientation(LinearLayout.VERTICAL);
+        TextView tvDc = new TextView(activity);
+        tvDc.setText("Caption / Target");
+        tvDc.setTextSize(10.5f);
+        tvDc.setTypeface(null, Typeface.BOLD);
+        tvDc.setTextColor(theme.textPrimary);
+        colDesc.addView(tvDc);
+
+        if (currentCriteria.source == StorageScanner.SourceType.ALBUMS) {
+            TextView btnAlbums = new TextView(activity);
+            btnAlbums.setText(!currentCriteria.albumsInclude.isEmpty() ? (currentCriteria.albumsInclude.size() + " Albums Selected") : "Select Albums...");
+            btnAlbums.setTextSize(11f);
+            btnAlbums.setTypeface(null, Typeface.BOLD);
+            btnAlbums.setTextColor(theme.primary);
+            btnAlbums.setBackground(createActionPillDrawable(theme.surface, 8 * density));
+            btnAlbums.setGravity(Gravity.CENTER);
+            btnAlbums.setPadding((int) (8 * density), (int) (4 * density), (int) (8 * density), (int) (4 * density));
+            btnAlbums.setOnClickListener(v -> showTabletAlbumSelectionDialog(activity, theme, density, onFilterChanged));
+            colDesc.addView(btnAlbums);
+        } else {
+            EditText etDesc = createFilterStudioInput(activity, "Caption text...", currentCriteria.descriptionRegex != null ? currentCriteria.descriptionRegex : "", density, theme, s -> {
+                currentCriteria.descriptionRegex = s;
+                updateFilterBadge.run();
+            }, onFilterChanged);
+            colDesc.addView(etDesc);
+        }
+        colDesc.setLayoutParams(new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        panelSearchSort.addView(colDesc);
+
+        panelSearchSort.setVisibility(View.GONE);
+        categoryPanels.add(panelSearchSort);
+        panelsContainer.addView(panelSearchSort);
+
+        filterStudioContainer.addView(panelsContainer);
+        root.addView(filterStudioContainer);
+
+        btnResetFilters.setOnClickListener(v -> {
+            currentCriteria = new StorageScanner.FilterCriteria();
+            updateSourceStyles.run();
+            updateTabStyles.run();
+            updateFilterBadge.run();
+            onFilterChanged.run();
+            Toast.makeText(activity, "Filters reset", Toast.LENGTH_SHORT).show();
+        });
+
+        View div2 = new View(activity);
+        div2.setBackgroundColor(theme.outline);
+        div2.setLayoutParams(new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, (int) (1 * density)));
+        root.addView(div2);
+
+        // ─────────────────────────────────────────────────────────────────────
+        // STEP 3: CHOOSE ACTION (BELOW FILTERS! 2 Symmetrical Rows x 7 Columns)
+        // ─────────────────────────────────────────────────────────────────────
+        LinearLayout actionsRow = new LinearLayout(activity);
+        actionsRow.setOrientation(LinearLayout.HORIZONTAL);
+        actionsRow.setGravity(Gravity.CENTER_VERTICAL);
+        actionsRow.setPadding(p16, (int) (6 * density), p16, (int) (6 * density));
+        actionsRow.setBackgroundColor(theme.surfaceContainer);
+
+        LinearLayout step3Header = createStepBadgeWithLabel(activity, "3", "ACTIONS", density, theme);
+        LinearLayout.LayoutParams s3HdrLp = new LinearLayout.LayoutParams((int) (96 * density), ViewGroup.LayoutParams.WRAP_CONTENT);
+        step3Header.setLayoutParams(s3HdrLp);
+        actionsRow.addView(step3Header);
+
+        updateSelectionSummaryRef[0] = () -> {
+            int selCount = selectedMediaKeys.size();
+            int total = allQueriedItems.size();
+            int consuming = 0;
+            long totalQuotaBytes = 0;
+            for (StorageScanner.MediaItem it : allQueriedItems) {
+                if (it.quotaBytes > 0) {
+                    consuming++;
+                    totalQuotaBytes += it.quotaBytes;
+                }
+            }
+            tvResultsStatus.setText(total + " matched • " + selCount + " selected • " + consuming + " consuming (" + StorageScanner.formatBytes(totalQuotaBytes) + ")");
+        };
+
+        LinearLayout actionsGrid = new LinearLayout(activity);
+        actionsGrid.setOrientation(LinearLayout.VERTICAL);
+        actionsGrid.setLayoutParams(new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+
+        String[][] actionDefsRow1 = new String[][]{
+                {"toNewAlbum", "New Album", String.valueOf(MaterialVectorDrawable.TYPE_ADD)},
+                {"toExistingAlbum", "Add to Album", String.valueOf(MaterialVectorDrawable.TYPE_FOLDER)},
+                {"removeFromAlbum", "Remove Album", String.valueOf(MaterialVectorDrawable.TYPE_COLLAPSE)},
+                {"setDateFromFilename", "Date Name", String.valueOf(MaterialVectorDrawable.TYPE_CALENDAR)},
+                {"toArchive", "Archive", String.valueOf(MaterialVectorDrawable.TYPE_ARCHIVE)},
+                {"unArchive", "Un-Archive", String.valueOf(MaterialVectorDrawable.TYPE_EXPAND)},
+                {"toFavorite", "Favorite", String.valueOf(MaterialVectorDrawable.TYPE_STAR)}
+        };
+
+        String[][] actionDefsRow2 = new String[][]{
+                {"unFavorite", "Un-Favorite", String.valueOf(MaterialVectorDrawable.TYPE_STAR)},
+                {"lock", "To Locker", String.valueOf(MaterialVectorDrawable.TYPE_LOCK)},
+                {"unLock", "Unlock", String.valueOf(MaterialVectorDrawable.TYPE_LOCK)},
+                {"toTrash", "Trash", String.valueOf(MaterialVectorDrawable.TYPE_DELETE)},
+                {"restoreTrash", "Restore", String.valueOf(MaterialVectorDrawable.TYPE_REFRESH)},
+                {"exportDcim", "Export DCIM", String.valueOf(MaterialVectorDrawable.TYPE_DOWNLOAD)},
+                {"exportMetadata", "Export CSV", String.valueOf(MaterialVectorDrawable.TYPE_EXPORT)}
+        };
+
+        ItemsProvider selectedItemsProvider = () -> {
+            List<StorageScanner.MediaItem> list = new ArrayList<>();
+            for (StorageScanner.MediaItem it : allQueriedItems) {
+                if (selectedMediaKeys.contains(getItemKey(it))) {
+                    list.add(it);
+                }
+            }
+            return list;
+        };
+
+        String[][][] allActionRows = new String[][][]{actionDefsRow1, actionDefsRow2};
+        for (int r = 0; r < 2; r++) {
+            LinearLayout gridRow = new LinearLayout(activity);
+            gridRow.setOrientation(LinearLayout.HORIZONTAL);
+            LinearLayout.LayoutParams grLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            if (r > 0) grLp.topMargin = (int) (4 * density);
+            gridRow.setLayoutParams(grLp);
+
+            String[][] rowDefs = allActionRows[r];
+            for (int c = 0; c < 7; c++) {
+                final String actionId = rowDefs[c][0];
+                final String actionLabel = rowDefs[c][1];
+                final int iconType = Integer.parseInt(rowDefs[c][2]);
+
+                TextView btn = new TextView(activity);
+                btn.setText(actionLabel);
+                btn.setTextSize(10.5f);
+                btn.setTypeface(null, Typeface.BOLD);
+                btn.setTextColor(theme.textPrimary);
+                btn.setGravity(Gravity.CENTER);
+                btn.setClickable(true);
+                btn.setFocusable(true);
+                btn.setSingleLine(true);
+                btn.setEllipsize(TextUtils.TruncateAt.END);
+                btn.setMinHeight((int) (28 * density));
+                btn.setBackground(createActionPillDrawable(theme.surface, 8 * density));
+                btn.setPadding((int) (3 * density), (int) (3 * density), (int) (3 * density), (int) (3 * density));
+
+                MaterialVectorDrawable d = new MaterialVectorDrawable(iconType, theme.primary);
+                d.setBounds(0, 0, (int) (12 * density), (int) (12 * density));
+                btn.setCompoundDrawables(d, null, null, null);
+                btn.setCompoundDrawablePadding((int) (3 * density));
+
+                LinearLayout.LayoutParams bLp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+                if (c < 6) bLp.rightMargin = (int) (5 * density);
+                btn.setLayoutParams(bLp);
+
+                btn.setOnClickListener(v -> {
+                    if (btn.getAlpha() < 0.6f) {
+                        String disabledHint = getActionDisabledHint(actionId, currentCriteria);
+                        Toast.makeText(activity, disabledHint != null ? disabledHint : "Action not applicable for current source", Toast.LENGTH_SHORT).show();
+                        return;
+                    }
+                    performActionClick(activity, actionId, actionLabel, selectedItemsProvider, runScanRef, density, theme);
+                });
+
+                actionButtonsMap.put(actionId, btn);
+                gridRow.addView(btn);
+            }
+            actionsGrid.addView(gridRow);
+        }
+        actionsRow.addView(actionsGrid);
+        root.addView(actionsRow);
+
+        updateActionStates(currentCriteria.source, currentCriteria, actionButtonsMap);
+
+        View div3 = new View(activity);
+        div3.setBackgroundColor(theme.outline);
+        div3.setLayoutParams(new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, (int) (1 * density)));
+        root.addView(div3);
+
+        // ─────────────────────────────────────────────────────────────────────
+        // STEP 4: MATCHED MEDIA RESULTS CANVAS (Below Actions Spanning 100% Width)
+        // ─────────────────────────────────────────────────────────────────────
+        LinearLayout resultsCanvas = new LinearLayout(activity);
+        resultsCanvas.setOrientation(LinearLayout.VERTICAL);
+        resultsCanvas.setPadding(p16, (int) (6 * density), p16, (int) (6 * density));
+        resultsCanvas.setLayoutParams(new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1.0f));
+
+        LinearLayout tb = new LinearLayout(activity);
+        tb.setOrientation(LinearLayout.HORIZONTAL);
+        tb.setGravity(Gravity.CENTER_VERTICAL);
+        tb.setPadding(0, 0, 0, (int) (4 * density));
+
+        LinearLayout step4Header = createStepBadgeWithLabel(activity, "4", "MATCHED MEDIA RESULTS", density, theme);
+        tb.addView(step4Header);
+
+        tvResultsStatus.setText("Scanning media...");
+        tvResultsStatus.setTextSize(11f);
+        tvResultsStatus.setTextColor(theme.textSecondary);
+        LinearLayout.LayoutParams rsLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        rsLp.leftMargin = (int) (10 * density);
+        tvResultsStatus.setLayoutParams(rsLp);
+        tb.addView(tvResultsStatus);
+
+        View tbSpacer = new View(activity);
+        tb.addView(tbSpacer, new LinearLayout.LayoutParams(0, 0, 1f));
+
+        TextView btnSort = createCanvasToolbarButton(activity, "↕ " + currentSortOrder.shortLabel, theme.textPrimary, density, theme);
+        TextView btnViewToggle = createCanvasToolbarButton(activity, isGridViewRef[0] ? "⊞ Grid" : "☰ List", theme.onPrimaryContainer, density, theme);
+        btnViewToggle.setBackground(createActionPillDrawable(theme.primaryContainer, 8 * density));
+
+        tb.addView(btnSort);
+        tb.addView(btnViewToggle);
+
+        TextView btnScan = new TextView(activity);
+        tvScanButtonLabel.setText("Apply & Scan");
+        tvScanButtonLabel.setTextSize(11.5f);
+        tvScanButtonLabel.setTypeface(null, Typeface.BOLD);
+        tvScanButtonLabel.setTextColor(theme.onPrimary);
+        btnScan.setText("Apply & Scan");
+        btnScan.setTextSize(11.5f);
+        btnScan.setTypeface(null, Typeface.BOLD);
+        btnScan.setTextColor(theme.onPrimary);
+        btnScan.setBackground(createActionPillDrawable(theme.primary, 10 * density));
+        btnScan.setPadding((int) (12 * density), (int) (5 * density), (int) (12 * density), (int) (5 * density));
+        btnScan.setClickable(true);
+        btnScan.setFocusable(true);
+        LinearLayout.LayoutParams sbtnLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        sbtnLp.leftMargin = (int) (8 * density);
+        btnScan.setLayoutParams(sbtnLp);
+        btnScan.setOnClickListener(v -> {
+            if (runScanRef[0] != null) runScanRef[0].run();
+        });
+        tb.addView(btnScan);
+        resultsCanvas.addView(tb);
+
+        sProgressBar = new ProgressBar(activity, null, android.R.attr.progressBarStyleHorizontal);
+        sProgressBar.setIndeterminate(true);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+            sProgressBar.setIndeterminateTintList(ColorStateList.valueOf(theme.primary));
+        }
+        sProgressBar.setVisibility(View.GONE);
+        LinearLayout.LayoutParams pbLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, (int) (3 * density));
+        pbLp.bottomMargin = (int) (4 * density);
+        sProgressBar.setLayoutParams(pbLp);
+        resultsCanvas.addView(sProgressBar);
+
+        ScrollView resultsScroll = new ScrollView(activity);
+        resultsScroll.setLayoutParams(new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        resultsScroll.setClipToPadding(false);
+        resultsScroll.addView(resultsListContainer);
+        resultsCanvas.addView(resultsScroll);
+
+        root.addView(resultsCanvas);
+
+        btnSort.setOnClickListener(v -> {
+            showSortPickerDialog(activity, () -> {
+                btnSort.setText("↕ " + currentSortOrder.shortLabel);
+                sortMediaItems(allQueriedItems, currentSortOrder);
+                currentPageRef[0] = 0;
+                renderResults(activity, resultsListContainer, allQueriedItems, selectedMediaKeys, isGridViewRef[0], updateSelectionSummaryRef[0], density, theme, currentPageRef);
+            }, density, theme);
+        });
+
+        btnViewToggle.setOnClickListener(v -> {
+            isGridViewRef[0] = !isGridViewRef[0];
+            btnViewToggle.setText(isGridViewRef[0] ? "⊞ Grid" : "☰ List");
+            renderResults(activity, resultsListContainer, allQueriedItems, selectedMediaKeys, isGridViewRef[0], updateSelectionSummaryRef[0], density, theme, currentPageRef);
+        });
+
+        onRefreshRef[0] = () -> {
+            currentCriteria = new StorageScanner.FilterCriteria();
+            currentSortOrder = SortOrder.DATE_DESC;
+            selectedMediaKeys.clear();
+            if (updateSelectionSummaryRef[0] != null) updateSelectionSummaryRef[0].run();
+            updateSourceStyles.run();
+            updateTabStyles.run();
+            updateFilterBadge.run();
+            btnSort.setText("↕ " + currentSortOrder.shortLabel);
+            updateActionStates(currentCriteria.source, currentCriteria, actionButtonsMap);
+            THREAD_POOL.execute(() -> {
+                if (currentAccount != null) {
+                    availableAlbums = StorageScanner.getAvailableAlbums(currentAccount);
+                    if (sRepopulateAlbumCardsRunnable != null) {
+                        sRepopulateAlbumCardsRunnable.run();
+                    }
+                }
+            });
+            if (runScanRef[0] != null) runScanRef[0].run();
+        };
     }
 
     private static List<Pair<String, Runnable>> getActiveFilterList(StorageScanner.FilterCriteria crit) {
@@ -1295,14 +2624,13 @@ public class NativeToolkitDialog {
                         updateBadge.run();
                         if (onFilterChanged != null) onFilterChanged.run();
                     });
-                    content.addView(rowFrom);
 
                     LinearLayout rowTo = createDateTimePickerRow(activity, density, theme, "To Date & Time:", currentCriteria.higherBoundaryDate, epochMs -> {
                         currentCriteria.higherBoundaryDate = epochMs;
                         updateBadge.run();
                         if (onFilterChanged != null) onFilterChanged.run();
                     });
-                    content.addView(rowTo);
+                    addHorizontalOrStackedInputs(activity, content, density, rowFrom, rowTo);
 
                     RadioGroup rgInt = createRadioGroup(activity, new String[]{"Include Range", "Exclude Range"},
                             "include".equals(currentCriteria.intervalType) ? 0 : 1, theme, idx -> {
@@ -1401,7 +2729,6 @@ public class NativeToolkitDialog {
                         try { currentCriteria.similarityThreshold = Float.parseFloat(s); } catch (Exception e) { currentCriteria.similarityThreshold = 0; }
                         updateBadge.run();
                     }, onFilterChanged));
-                    content.addView(etThresh);
 
                     EditText etH = createFilterInput(activity, density, theme, "Image Hash Size (default: 16)");
                     etH.setText(String.valueOf(currentCriteria.imageHeight));
@@ -1409,7 +2736,7 @@ public class NativeToolkitDialog {
                         try { currentCriteria.imageHeight = Integer.parseInt(s); } catch (Exception e) { currentCriteria.imageHeight = 16; }
                         updateBadge.run();
                     }, onFilterChanged));
-                    content.addView(etH);
+                    addHorizontalOrStackedInputs(activity, content, density, etThresh, etH);
                 }));
 
         // 9. Size
@@ -1432,7 +2759,6 @@ public class NativeToolkitDialog {
                         currentCriteria.lowerBoundarySize = parseBytesInput(s);
                         updateBadge.run();
                     }, onFilterChanged));
-                    content.addView(etMin);
 
                     EditText etMax = createFilterInput(activity, density, theme, "Less Than (e.g. 50MB, 50000000)");
                     if (currentCriteria.higherBoundarySize > 0) etMax.setText(StorageScanner.formatBytes(currentCriteria.higherBoundarySize));
@@ -1440,7 +2766,7 @@ public class NativeToolkitDialog {
                         currentCriteria.higherBoundarySize = parseBytesInput(s);
                         updateBadge.run();
                     }, onFilterChanged));
-                    content.addView(etMax);
+                    addHorizontalOrStackedInputs(activity, content, density, etMin, etMax);
                 }));
 
         // 10. Resolution
@@ -1454,7 +2780,6 @@ public class NativeToolkitDialog {
                         try { currentCriteria.minWidth = Integer.parseInt(s); } catch (Exception e) { currentCriteria.minWidth = 0; }
                         updateBadge.run();
                     }, onFilterChanged));
-                    content.addView(etMinW);
 
                     EditText etMaxW = createFilterInput(activity, density, theme, "Max Width (px)");
                     if (currentCriteria.maxWidth > 0) etMaxW.setText(String.valueOf(currentCriteria.maxWidth));
@@ -1462,7 +2787,7 @@ public class NativeToolkitDialog {
                         try { currentCriteria.maxWidth = Integer.parseInt(s); } catch (Exception e) { currentCriteria.maxWidth = 0; }
                         updateBadge.run();
                     }, onFilterChanged));
-                    content.addView(etMaxW);
+                    addHorizontalOrStackedInputs(activity, content, density, etMinW, etMaxW);
 
                     EditText etMinH = createFilterInput(activity, density, theme, "Min Height (px)");
                     if (currentCriteria.minHeight > 0) etMinH.setText(String.valueOf(currentCriteria.minHeight));
@@ -1470,7 +2795,6 @@ public class NativeToolkitDialog {
                         try { currentCriteria.minHeight = Integer.parseInt(s); } catch (Exception e) { currentCriteria.minHeight = 0; }
                         updateBadge.run();
                     }, onFilterChanged));
-                    content.addView(etMinH);
 
                     EditText etMaxH = createFilterInput(activity, density, theme, "Max Height (px)");
                     if (currentCriteria.maxHeight > 0) etMaxH.setText(String.valueOf(currentCriteria.maxHeight));
@@ -1478,7 +2802,7 @@ public class NativeToolkitDialog {
                         try { currentCriteria.maxHeight = Integer.parseInt(s); } catch (Exception e) { currentCriteria.maxHeight = 0; }
                         updateBadge.run();
                     }, onFilterChanged));
-                    content.addView(etMaxH);
+                    addHorizontalOrStackedInputs(activity, content, density, etMinH, etMaxH);
                 }));
 
         // 11. Duration
@@ -1492,7 +2816,6 @@ public class NativeToolkitDialog {
                         try { currentCriteria.minDuration = Float.parseFloat(s); } catch (Exception e) { currentCriteria.minDuration = 0; }
                         updateBadge.run();
                     }, onFilterChanged));
-                    content.addView(etMinD);
 
                     EditText etMaxD = createFilterInput(activity, density, theme, "Max Duration (s)");
                     if (currentCriteria.maxDuration > 0) etMaxD.setText(String.valueOf(currentCriteria.maxDuration));
@@ -1500,7 +2823,7 @@ public class NativeToolkitDialog {
                         try { currentCriteria.maxDuration = Float.parseFloat(s); } catch (Exception e) { currentCriteria.maxDuration = 0; }
                         updateBadge.run();
                     }, onFilterChanged));
-                    content.addView(etMaxD);
+                    addHorizontalOrStackedInputs(activity, content, density, etMinD, etMaxD);
                 }));
 
         // 12. Quality
@@ -1704,9 +3027,100 @@ public class NativeToolkitDialog {
         List<StorageScanner.MediaItem> get();
     }
 
+    private static void performActionClick(Activity activity, String actionId, String actionLabel,
+                                           ItemsProvider itemsProvider, Runnable[] refreshRunner,
+                                           float density, Theme theme) {
+        List<StorageScanner.MediaItem> items = itemsProvider.get();
+        if (items.isEmpty()) {
+            if ("toTrash".equals(actionId) && currentCriteria.source == StorageScanner.SourceType.ALBUMS && !currentCriteria.albumsInclude.isEmpty()) {
+                String param = TextUtils.join(",", currentCriteria.albumsInclude);
+                showActionConfirmDialog(activity, "Delete " + currentCriteria.albumsInclude.size() + " empty album(s)?", () -> {
+                    executeDbActionAsync(activity, actionId, items, param, refreshRunner);
+                }, density, theme);
+                return;
+            }
+            Toast.makeText(activity, "No matching items to perform " + actionLabel, Toast.LENGTH_SHORT).show();
+            return;
+        }
+
+        if ("exportDcim".equals(actionId)) {
+            exportItemsToDcim(activity, items, density, theme);
+        } else if ("exportMetadata".equals(actionId)) {
+            exportCsvFile(activity, items);
+        } else if ("toNewAlbum".equals(actionId)) {
+            showNewAlbumDialog(activity, items, refreshRunner, density, theme);
+        } else if ("toExistingAlbum".equals(actionId)) {
+            showAlbumPickerDialog(activity, items, refreshRunner, density, theme);
+        } else if ("removeFromAlbum".equals(actionId)) {
+            String param = (currentCriteria.source == StorageScanner.SourceType.ALBUMS && !currentCriteria.albumsInclude.isEmpty())
+                    ? TextUtils.join(",", currentCriteria.albumsInclude) : null;
+            showActionConfirmDialog(activity, "Remove " + items.size() + " item(s) from album?", () -> {
+                executeDbActionAsync(activity, actionId, items, param, refreshRunner);
+            }, density, theme);
+        } else if ("lock".equals(actionId)) {
+            int count = items.size();
+            String title = (count == 1) ? "Move to Locked Folder?" : ("Move " + count + " items to Locked Folder?");
+            int accountId = (currentAccount != null) ? currentAccount.accountId : -1;
+            boolean backupEnabled = StorageScanner.isLockedFolderBackupEnabled(activity, accountId);
+            String msg = backupEnabled
+                    ? "These photos & videos will be hidden and won’t show up as you scroll through Google Photos or in other apps."
+                    : "These photos & videos will be hidden and won’t show up as you scroll through Google Photos or in other apps, and won’t be backed up.";
+            showActionConfirmDialog(activity, title, msg, "Move", () -> {
+                executeDbActionAsync(activity, actionId, items, null, refreshRunner);
+            }, density, theme);
+        } else if ("unLock".equals(actionId)) {
+            int count = items.size();
+            String title = (count == 1) ? "Move out of Locked Folder?" : ("Move " + count + " items out of Locked Folder?");
+            int accountId = (currentAccount != null) ? currentAccount.accountId : -1;
+            boolean lockerBackupEnabled = StorageScanner.isLockedFolderBackupEnabled(activity, accountId);
+            int localCount = 0;
+            for (StorageScanner.MediaItem it : items) {
+                boolean backedUp = it.isCloudBackedUp || StorageScanner.isItemCloudBackedUp(it);
+                if (!lockerBackupEnabled || !backedUp) {
+                    localCount++;
+                }
+            }
+            StringBuilder msgBuilder = new StringBuilder();
+            if (localCount == 0) {
+                msgBuilder.append("These photos & videos will be moved out of Locked Folder and will appear in your Google Photos library.");
+            } else {
+                msgBuilder.append("These photos & videos will no longer be hidden and can now show up as you scroll through Google Photos or in other apps.");
+                msgBuilder.append("\n\n⚠️ Storage Notice:\n");
+                if (localCount == count) {
+                    msgBuilder.append("These items are stored locally only without cloud backup. Moving them out will place them into local device storage (under device folders, e.g. DCIM/Pictures) and will not appear in your cloud photos timeline until backed up.");
+                } else {
+                    msgBuilder.append(localCount).append(" of these items are stored locally only without cloud backup. Moving them out will place them into local device storage (under device folders, e.g. DCIM/Pictures) and will not appear in your cloud photos timeline until backed up.");
+                }
+            }
+            msgBuilder.append("\n\nBiometric or device PIN authentication is required to open Locked Folder and unlock.");
+            showActionConfirmDialog(activity, title, msgBuilder.toString(), "Move out", () -> {
+                executeDbActionAsync(activity, actionId, items, null, refreshRunner);
+            }, density, theme);
+        } else if ("setDateFromFilename".equals(actionId)) {
+            showActionConfirmDialog(activity, "Update date from filename for " + items.size() + " item(s)?", () -> {
+                executeDbActionAsync(activity, actionId, items, null, refreshRunner);
+            }, density, theme);
+        } else if ("toTrash".equals(actionId)) {
+            String param = null;
+            String confirmMsg;
+            if (currentCriteria.source == StorageScanner.SourceType.ALBUMS && !currentCriteria.albumsInclude.isEmpty()) {
+                param = TextUtils.join(",", currentCriteria.albumsInclude);
+                confirmMsg = "Move " + items.size() + " items to Trash and delete " + currentCriteria.albumsInclude.size() + " album(s)?";
+            } else {
+                confirmMsg = "Move " + items.size() + " items to Trash?";
+            }
+            final String targetAlbumKeys = param;
+            showActionConfirmDialog(activity, confirmMsg, () -> {
+                executeDbActionAsync(activity, actionId, items, targetAlbumKeys, refreshRunner);
+            }, density, theme);
+        } else {
+            executeDbActionAsync(activity, actionId, items, null, refreshRunner);
+        }
+    }
+
     private static LinearLayout buildActionButtonsGrid(Activity activity, float density, Theme theme,
-                                                       ItemsProvider itemsProvider, Runnable[] refreshRunner,
-                                                       Map<String, TextView> actionButtonsOut) {
+                                                        ItemsProvider itemsProvider, Runnable[] refreshRunner,
+                                                        Map<String, TextView> actionButtonsOut) {
         LinearLayout container = new LinearLayout(activity);
         container.setOrientation(LinearLayout.VERTICAL);
 
@@ -1727,13 +3141,16 @@ public class NativeToolkitDialog {
                 {"exportMetadata", "Export Metadata (CSV)"}
         };
 
+        boolean isLarge = PhenotypeFlagManager.isLargeScreen(activity);
+        boolean isLandscape = activity.getResources().getConfiguration().orientation == Configuration.ORIENTATION_LANDSCAPE;
+        int actionCols = isLarge ? (isLandscape ? 4 : 3) : 2;
+
         LinearLayout currentRow = null;
         for (int i = 0; i < actions.length; i++) {
             final String actionId = actions[i][0];
             final String actionLabel = actions[i][1];
-            boolean isSingleFullWidth = false;
 
-            if (i % 2 == 0) {
+            if (i % actionCols == 0) {
                 currentRow = new LinearLayout(activity);
                 currentRow.setOrientation(LinearLayout.HORIZONTAL);
                 currentRow.setLayoutParams(new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
@@ -1742,19 +3159,23 @@ public class NativeToolkitDialog {
 
             TextView btn = new TextView(activity);
             btn.setText(actionLabel);
-            btn.setTextSize(12.5f);
+            btn.setTextSize(isLarge && isLandscape ? 11f : 12.5f);
             btn.setTypeface(null, Typeface.BOLD);
             btn.setTextColor(theme.textPrimary);
             btn.setGravity(Gravity.CENTER);
             btn.setClickable(true);
             btn.setFocusable(true);
-            int padV = (int) (9 * density);
-            btn.setPadding((int) (8 * density), padV, (int) (8 * density), padV);
+            int padV = (int) ((isLarge && isLandscape ? 5 : 9) * density);
+            int padH = (int) ((isLarge && isLandscape ? 4 : 8) * density);
+            btn.setPadding(padH, padV, padH, padV);
+            if (isLarge && isLandscape) {
+                btn.setMinHeight((int) (32 * density));
+            }
             btn.setBackground(createActionPillDrawable(theme.surfaceContainer, 12 * density));
 
             LinearLayout.LayoutParams bLp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
-            bLp.bottomMargin = (int) (6 * density);
-            if (i % 2 == 0) bLp.rightMargin = (int) (6 * density);
+            bLp.bottomMargin = (int) ((isLarge && isLandscape ? 4 : 6) * density);
+            if (i % actionCols != actionCols - 1) bLp.rightMargin = (int) (6 * density);
             btn.setLayoutParams(bLp);
 
             btn.setOnClickListener(v -> {
@@ -1764,97 +3185,22 @@ public class NativeToolkitDialog {
                     Toast.makeText(activity, disabledHint != null ? disabledHint : "Action not applicable for current source", Toast.LENGTH_SHORT).show();
                     return;
                 }
-
-                List<StorageScanner.MediaItem> items = itemsProvider.get();
-                if (items.isEmpty()) {
-                    if ("toTrash".equals(actionId) && currentCriteria.source == StorageScanner.SourceType.ALBUMS && !currentCriteria.albumsInclude.isEmpty()) {
-                        String param = TextUtils.join(",", currentCriteria.albumsInclude);
-                        showActionConfirmDialog(activity, "Delete " + currentCriteria.albumsInclude.size() + " empty album(s)?", () -> {
-                            executeDbActionAsync(activity, actionId, items, param, refreshRunner);
-                        }, density, theme);
-                        return;
-                    }
-                    Toast.makeText(activity, "No matching items to perform " + actionLabel, Toast.LENGTH_SHORT).show();
-                    return;
-                }
-
-                if ("exportDcim".equals(actionId)) {
-                    exportItemsToDcim(activity, items, density, theme);
-                } else if ("exportMetadata".equals(actionId)) {
-                    exportCsvFile(activity, items);
-                } else if ("toNewAlbum".equals(actionId)) {
-                    showNewAlbumDialog(activity, items, refreshRunner, density, theme);
-                } else if ("toExistingAlbum".equals(actionId)) {
-                    showAlbumPickerDialog(activity, items, refreshRunner, density, theme);
-                } else if ("removeFromAlbum".equals(actionId)) {
-                    String param = (currentCriteria.source == StorageScanner.SourceType.ALBUMS && !currentCriteria.albumsInclude.isEmpty())
-                            ? TextUtils.join(",", currentCriteria.albumsInclude) : null;
-                    showActionConfirmDialog(activity, "Remove " + items.size() + " item(s) from album?", () -> {
-                        executeDbActionAsync(activity, actionId, items, param, refreshRunner);
-                    }, density, theme);
-                } else if ("lock".equals(actionId)) {
-                    int count = items.size();
-                    String title = (count == 1) ? "Move to Locked Folder?" : ("Move " + count + " items to Locked Folder?");
-                    int accountId = (currentAccount != null) ? currentAccount.accountId : -1;
-                    boolean backupEnabled = StorageScanner.isLockedFolderBackupEnabled(activity, accountId);
-                    String msg = backupEnabled
-                            ? "These photos & videos will be hidden and won’t show up as you scroll through Google Photos or in other apps."
-                            : "These photos & videos will be hidden and won’t show up as you scroll through Google Photos or in other apps, and won’t be backed up.";
-                    showActionConfirmDialog(activity, title, msg, "Move", () -> {
-                        executeDbActionAsync(activity, actionId, items, null, refreshRunner);
-                    }, density, theme);
-                } else if ("unLock".equals(actionId)) {
-                    int count = items.size();
-                    String title = (count == 1) ? "Move out of Locked Folder?" : ("Move " + count + " items out of Locked Folder?");
-                    int accountId = (currentAccount != null) ? currentAccount.accountId : -1;
-                    boolean lockerBackupEnabled = StorageScanner.isLockedFolderBackupEnabled(activity, accountId);
-                    int localCount = 0;
-                    for (StorageScanner.MediaItem it : items) {
-                        boolean backedUp = it.isCloudBackedUp || StorageScanner.isItemCloudBackedUp(it);
-                        if (!lockerBackupEnabled || !backedUp) {
-                            localCount++;
-                        }
-                    }
-                    StringBuilder msgBuilder = new StringBuilder();
-                    if (localCount == 0) {
-                        msgBuilder.append("These photos & videos will be moved out of Locked Folder and will appear in your Google Photos library.");
-                    } else {
-                        msgBuilder.append("These photos & videos will no longer be hidden and can now show up as you scroll through Google Photos or in other apps.");
-                        msgBuilder.append("\n\n⚠️ Storage Notice:\n");
-                        if (localCount == count) {
-                            msgBuilder.append("These items are stored locally only without cloud backup. Moving them out will place them into local device storage (under device folders, e.g. DCIM/Pictures) and will not appear in your cloud photos timeline until backed up.");
-                        } else {
-                            msgBuilder.append(localCount).append(" of these items are stored locally only without cloud backup. Moving them out will place them into local device storage (under device folders, e.g. DCIM/Pictures) and will not appear in your cloud photos timeline until backed up.");
-                        }
-                    }
-                    msgBuilder.append("\n\nBiometric or device PIN authentication is required to open Locked Folder and unlock.");
-                    showActionConfirmDialog(activity, title, msgBuilder.toString(), "Move out", () -> {
-                        executeDbActionAsync(activity, actionId, items, null, refreshRunner);
-                    }, density, theme);
-                } else if ("setDateFromFilename".equals(actionId)) {
-                    showActionConfirmDialog(activity, "Update date from filename for " + items.size() + " item(s)?", () -> {
-                        executeDbActionAsync(activity, actionId, items, null, refreshRunner);
-                    }, density, theme);
-                } else if ("toTrash".equals(actionId)) {
-                    String param = null;
-                    String confirmMsg;
-                    if (currentCriteria.source == StorageScanner.SourceType.ALBUMS && !currentCriteria.albumsInclude.isEmpty()) {
-                        param = TextUtils.join(",", currentCriteria.albumsInclude);
-                        confirmMsg = "Move " + items.size() + " items to Trash and delete " + currentCriteria.albumsInclude.size() + " album(s)?";
-                    } else {
-                        confirmMsg = "Move " + items.size() + " items to Trash?";
-                    }
-                    final String targetAlbumKeys = param;
-                    showActionConfirmDialog(activity, confirmMsg, () -> {
-                        executeDbActionAsync(activity, actionId, items, targetAlbumKeys, refreshRunner);
-                    }, density, theme);
-                } else {
-                    executeDbActionAsync(activity, actionId, items, null, refreshRunner);
-                }
+                performActionClick(activity, actionId, actionLabel, itemsProvider, refreshRunner, density, theme);
             });
 
             if (actionButtonsOut != null) actionButtonsOut.put(actionId, btn);
             if (currentRow != null) currentRow.addView(btn);
+        }
+
+        int remainder = actions.length % actionCols;
+        if (remainder != 0 && currentRow != null) {
+            for (int r = remainder; r < actionCols; r++) {
+                View emptySpacer = new View(activity);
+                LinearLayout.LayoutParams spLp = new LinearLayout.LayoutParams(0, 0, 1f);
+                if (r < actionCols - 1) spLp.rightMargin = (int) (6 * density);
+                emptySpacer.setLayoutParams(spLp);
+                currentRow.addView(emptySpacer);
+            }
         }
 
         return container;
@@ -2896,6 +4242,146 @@ public class NativeToolkitDialog {
         bar.setOrientation(LinearLayout.VERTICAL);
         bar.setPadding(0, (int) (4 * density), 0, (int) (6 * density));
 
+        boolean isLarge = PhenotypeFlagManager.isLargeScreen(activity);
+
+        // Count how many on this page are currently selected
+        int pageSelectedCount = 0;
+        for (int i = start; i < end; i++) {
+            if (selectedKeys.contains(getItemKey(items.get(i)))) {
+                pageSelectedCount++;
+            }
+        }
+        final boolean allPageSelected = (pageSelectedCount == (end - start)) && (end > start);
+
+        if (isLarge) {
+            LinearLayout singleRow = new LinearLayout(activity);
+            singleRow.setOrientation(LinearLayout.HORIZONTAL);
+            singleRow.setGravity(Gravity.CENTER_VERTICAL);
+            singleRow.setPadding((int) (4 * density), (int) (2 * density), (int) (4 * density), (int) (4 * density));
+
+            TextView tvInfo = new TextView(activity);
+            tvInfo.setText("Page " + (currentPageRef[0] + 1) + " of " + totalPages + " • " + (start + 1) + "–" + end + " of " + totalItems);
+            tvInfo.setTextSize(11f);
+            tvInfo.setTextColor(theme.textSecondary);
+            tvInfo.setTypeface(null, Typeface.BOLD);
+            singleRow.addView(tvInfo);
+
+            View spacerLeft = new View(activity);
+            singleRow.addView(spacerLeft, new LinearLayout.LayoutParams(0, 0, 1f));
+
+            if (totalPages > 1) {
+                TextView btnFirst = createNavButton(activity, "⇤ First", currentPageRef[0] > 0, density, theme);
+                btnFirst.setOnClickListener(v -> {
+                    if (currentPageRef[0] > 0) {
+                        currentPageRef[0] = 0;
+                        if (reRender != null) reRender.run();
+                    }
+                });
+                singleRow.addView(btnFirst);
+
+                TextView btnPrev = createNavButton(activity, "◀ Prev", currentPageRef[0] > 0, density, theme);
+                btnPrev.setOnClickListener(v -> {
+                    if (currentPageRef[0] > 0) {
+                        currentPageRef[0]--;
+                        if (reRender != null) reRender.run();
+                    }
+                });
+                singleRow.addView(btnPrev);
+
+                TextView tvPageLabel = new TextView(activity);
+                tvPageLabel.setText(" " + (currentPageRef[0] + 1) + " / " + totalPages + " ");
+                tvPageLabel.setTextSize(11.5f);
+                tvPageLabel.setTextColor(theme.textPrimary);
+                tvPageLabel.setTypeface(null, Typeface.BOLD);
+                tvPageLabel.setGravity(Gravity.CENTER);
+                tvPageLabel.setPadding((int) (6 * density), 0, (int) (6 * density), 0);
+                singleRow.addView(tvPageLabel);
+
+                TextView btnNext = createNavButton(activity, "Next ▶", currentPageRef[0] < totalPages - 1, density, theme);
+                btnNext.setOnClickListener(v -> {
+                    if (currentPageRef[0] < totalPages - 1) {
+                        currentPageRef[0]++;
+                        if (reRender != null) reRender.run();
+                    }
+                });
+                singleRow.addView(btnNext);
+
+                TextView btnLast = createNavButton(activity, "Last ⇥", currentPageRef[0] < totalPages - 1, density, theme);
+                btnLast.setOnClickListener(v -> {
+                    if (currentPageRef[0] < totalPages - 1) {
+                        currentPageRef[0] = totalPages - 1;
+                        if (reRender != null) reRender.run();
+                    }
+                });
+                singleRow.addView(btnLast);
+            }
+
+            View spacerRight = new View(activity);
+            singleRow.addView(spacerRight, new LinearLayout.LayoutParams(0, 0, 1f));
+
+            TextView btnAll = createCanvasToolbarButton(activity, "All", theme.primary, density, theme);
+            btnAll.setOnClickListener(v -> {
+                for (StorageScanner.MediaItem it : items) {
+                    selectedKeys.add(getItemKey(it));
+                }
+                if (onSelectionChanged != null) onSelectionChanged.run();
+                if (reRender != null) reRender.run();
+            });
+            singleRow.addView(btnAll);
+
+            TextView btnNone = createCanvasToolbarButton(activity, "None", theme.textSecondary, density, theme);
+            btnNone.setOnClickListener(v -> {
+                selectedKeys.clear();
+                if (onSelectionChanged != null) onSelectionChanged.run();
+                if (reRender != null) reRender.run();
+            });
+            singleRow.addView(btnNone);
+
+            TextView btnInvert = createCanvasToolbarButton(activity, "Invert", theme.textSecondary, density, theme);
+            btnInvert.setOnClickListener(v -> {
+                Set<String> inverted = new HashSet<>();
+                for (StorageScanner.MediaItem it : items) {
+                    String key = getItemKey(it);
+                    if (!selectedKeys.contains(key)) inverted.add(key);
+                }
+                selectedKeys.clear();
+                selectedKeys.addAll(inverted);
+                if (onSelectionChanged != null) onSelectionChanged.run();
+                if (reRender != null) reRender.run();
+            });
+            singleRow.addView(btnInvert);
+
+            TextView btnPageSelect = new TextView(activity);
+            btnPageSelect.setText(allPageSelected ? "Clear Page (" + (end - start) + ")" : "Select Page (" + (end - start) + ")");
+            btnPageSelect.setTextSize(11f);
+            btnPageSelect.setTextColor(allPageSelected ? theme.primary : theme.textPrimary);
+            btnPageSelect.setTypeface(null, Typeface.BOLD);
+            btnPageSelect.setPadding((int) (8 * density), (int) (4 * density), (int) (8 * density), (int) (4 * density));
+            btnPageSelect.setBackground(createActionPillDrawable(theme.surfaceContainer, 8 * density));
+            btnPageSelect.setClickable(true);
+            btnPageSelect.setFocusable(true);
+            LinearLayout.LayoutParams psLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            psLp.leftMargin = (int) (4 * density);
+            btnPageSelect.setLayoutParams(psLp);
+            btnPageSelect.setOnClickListener(v -> {
+                for (int i = start; i < end; i++) {
+                    String key = getItemKey(items.get(i));
+                    if (allPageSelected) {
+                        selectedKeys.remove(key);
+                    } else {
+                        selectedKeys.add(key);
+                    }
+                }
+                if (onSelectionChanged != null) onSelectionChanged.run();
+                if (reRender != null) reRender.run();
+            });
+            singleRow.addView(btnPageSelect);
+
+            bar.addView(singleRow);
+            return bar;
+        }
+
+        // Phone: 2-row layout unchanged
         // Row 1: Item counts and "Select Page" / "Clear Page"
         LinearLayout row1 = new LinearLayout(activity);
         row1.setOrientation(LinearLayout.HORIZONTAL);
@@ -2909,15 +4395,6 @@ public class NativeToolkitDialog {
         tvInfo.setTypeface(null, Typeface.BOLD);
         LinearLayout.LayoutParams infoLp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
         row1.addView(tvInfo, infoLp);
-
-        // Count how many on this page are currently selected
-        int pageSelectedCount = 0;
-        for (int i = start; i < end; i++) {
-            if (selectedKeys.contains(getItemKey(items.get(i)))) {
-                pageSelectedCount++;
-            }
-        }
-        final boolean allPageSelected = (pageSelectedCount == (end - start)) && (end > start);
 
         TextView btnPageSelect = new TextView(activity);
         btnPageSelect.setText(allPageSelected ? "Clear Page (" + (end - start) + ")" : "Select Page (" + (end - start) + ")");
@@ -3046,8 +4523,12 @@ public class NativeToolkitDialog {
         container.addView(topBar);
 
         if (isGrid) {
-            // 3-Column Square Tile Grid
+            // Adaptive Square Tile Grid (3 cols on phone, 4 cols on tablet portrait, 8 cols on tablet landscape)
             int colCount = 3;
+            if (PhenotypeFlagManager.isLargeScreen(activity)) {
+                boolean isLandscape = activity.getResources().getConfiguration().orientation == Configuration.ORIENTATION_LANDSCAPE;
+                colCount = isLandscape ? 8 : 4;
+            }
             LinearLayout currentRow = null;
             for (int i = start; i < end; i++) {
                 if (i >= items.size()) break;
@@ -3776,14 +5257,18 @@ public class NativeToolkitDialog {
     private static View addFilterCard(Activity activity, LinearLayout container, float density, Theme theme,
                                       Set<String> expandedSet, String title, String subtitle,
                                       FilterStateProvider stateProvider, CardContentBuilder builder) {
+        boolean isLarge = PhenotypeFlagManager.isLargeScreen(activity);
+        boolean isLandscape = activity != null && activity.getResources().getConfiguration().orientation == Configuration.ORIENTATION_LANDSCAPE;
+        boolean isCompact = isLarge && isLandscape;
+
         LinearLayout card = new LinearLayout(activity);
         card.setOrientation(LinearLayout.VERTICAL);
-        int padH = (int) (14 * density);
-        int padV = (int) (10 * density);
+        int padH = (int) ((isCompact ? 9 : 14) * density);
+        int padV = (int) ((isCompact ? 5.5f : 10) * density);
         card.setPadding(padH, padV, padH, padV);
         card.setBackground(createCardDrawable(false, density, theme));
         LinearLayout.LayoutParams cardLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        cardLp.bottomMargin = (int) (6 * density);
+        cardLp.bottomMargin = (int) ((isCompact ? 3.5f : 6) * density);
         card.setLayoutParams(cardLp);
 
         LinearLayout topRow = new LinearLayout(activity);
@@ -3792,21 +5277,21 @@ public class NativeToolkitDialog {
 
         TextView tvT = new TextView(activity);
         tvT.setText(title);
-        tvT.setTextSize(13.5f);
+        tvT.setTextSize(isCompact ? 11.5f : 13.5f);
         tvT.setTypeface(null, Typeface.BOLD);
         tvT.setTextColor(theme.textPrimary);
         topRow.addView(tvT, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
 
         TextView tvBadge = new TextView(activity);
-        tvBadge.setTextSize(10.5f);
+        tvBadge.setTextSize(isCompact ? 9.5f : 10.5f);
         tvBadge.setTypeface(null, Typeface.BOLD);
         tvBadge.setTextColor(theme.onPrimary);
         tvBadge.setBackground(createActionPillDrawable(theme.primary, 10 * density));
-        int bPadH = (int) (8 * density);
-        int bPadV = (int) (2.5f * density);
+        int bPadH = (int) ((isCompact ? 6 : 8) * density);
+        int bPadV = (int) ((isCompact ? 2 : 2.5f) * density);
         tvBadge.setPadding(bPadH, bPadV, bPadH, bPadV);
         LinearLayout.LayoutParams bLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        bLp.rightMargin = (int) (8 * density);
+        bLp.rightMargin = (int) ((isCompact ? 5 : 8) * density);
         tvBadge.setLayoutParams(bLp);
         tvBadge.setVisibility(View.GONE);
         topRow.addView(tvBadge);
@@ -3816,17 +5301,24 @@ public class NativeToolkitDialog {
         ivChev.setContentDescription("expand/collapse");
         int chevType = expandedSet.contains(title) ? MaterialVectorDrawable.TYPE_CHEVRON_UP : MaterialVectorDrawable.TYPE_CHEVRON_DOWN;
         ivChev.setImageDrawable(new MaterialVectorDrawable(chevType, theme.textSecondary));
-        ivChev.setLayoutParams(new LinearLayout.LayoutParams((int) (20 * density), (int) (20 * density)));
+        int chevSize = (int) ((isCompact ? 16 : 20) * density);
+        ivChev.setLayoutParams(new LinearLayout.LayoutParams(chevSize, chevSize));
         topRow.addView(ivChev);
         card.addView(topRow);
 
+        final TextView tvS;
         if (subtitle != null && !subtitle.isEmpty()) {
-            TextView tvS = new TextView(activity);
+            tvS = new TextView(activity);
             tvS.setText(subtitle);
             tvS.setTextSize(11.5f);
             tvS.setTextColor(theme.textSecondary);
             tvS.setPadding(0, (int) (2 * density), 0, 0);
+            if (isCompact) {
+                tvS.setVisibility(expandedSet.contains(title) ? View.VISIBLE : View.GONE);
+            }
             card.addView(tvS);
+        } else {
+            tvS = null;
         }
 
         LinearLayout content = new LinearLayout(activity);
@@ -3853,6 +5345,7 @@ public class NativeToolkitDialog {
         Runnable collapseThis = () -> {
             expandedSet.remove(title);
             content.setVisibility(View.GONE);
+            if (tvS != null && isCompact) tvS.setVisibility(View.GONE);
             ivChev.setImageDrawable(new MaterialVectorDrawable(MaterialVectorDrawable.TYPE_CHEVRON_DOWN, theme.textSecondary));
         };
         card.setTag(collapseThis);
@@ -3867,22 +5360,53 @@ public class NativeToolkitDialog {
                     Object tag = child.getTag();
                     if (tag instanceof Runnable) {
                         ((Runnable) tag).run();
+                    } else if (child instanceof ViewGroup) {
+                        ViewGroup vg = (ViewGroup) child;
+                        for (int j = 0; j < vg.getChildCount(); j++) {
+                            Object cTag = vg.getChildAt(j).getTag();
+                            if (cTag instanceof Runnable) {
+                                ((Runnable) cTag).run();
+                            }
+                        }
                     }
                 }
                 expandedSet.clear();
                 expandedSet.add(title);
                 content.setVisibility(View.VISIBLE);
+                if (tvS != null && isCompact) tvS.setVisibility(View.VISIBLE);
                 ivChev.setImageDrawable(new MaterialVectorDrawable(MaterialVectorDrawable.TYPE_CHEVRON_UP, theme.textSecondary));
             }
         };
 
         card.setClickable(true);
         card.setOnClickListener(toggle);
-        container.addView(card);
         return card;
     }
 
-    private static int updateFilterVisibility(StorageScanner.SourceType src, Map<String, View> filterCards) {
+    private static void addHorizontalOrStackedInputs(Activity activity, LinearLayout content, float density, View v1, View v2) {
+        boolean isLarge = PhenotypeFlagManager.isLargeScreen(activity);
+        boolean isLandscape = activity != null && activity.getResources().getConfiguration().orientation == Configuration.ORIENTATION_LANDSCAPE;
+        if (isLarge && isLandscape) {
+            LinearLayout row = new LinearLayout(activity);
+            row.setOrientation(LinearLayout.HORIZONTAL);
+            LinearLayout.LayoutParams p1 = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1.0f);
+            p1.rightMargin = (int) (4 * density);
+            v1.setLayoutParams(p1);
+            row.addView(v1);
+
+            LinearLayout.LayoutParams p2 = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1.0f);
+            p2.leftMargin = (int) (4 * density);
+            v2.setLayoutParams(p2);
+            row.addView(v2);
+
+            content.addView(row);
+        } else {
+            content.addView(v1);
+            content.addView(v2);
+        }
+    }
+
+    private static int updateFilterVisibility(Activity activity, StorageScanner.SourceType src, Map<String, View> filterCards, LinearLayout container, float density) {
         if (filterCards == null || filterCards.isEmpty()) return 0;
 
         // Hide all initially
@@ -3938,6 +5462,61 @@ public class NativeToolkitDialog {
             if (src != StorageScanner.SourceType.SHARED) {
                 if ((v = filterCards.get("excludeShared")) != null) v.setVisibility(View.VISIBLE);
             }
+        }
+
+        boolean isLarge = PhenotypeFlagManager.isLargeScreen(activity);
+        boolean isLandscape = activity != null && activity.getResources().getConfiguration().orientation == Configuration.ORIENTATION_LANDSCAPE;
+
+        if (container != null) {
+            container.removeAllViews();
+            List<View> visibleCards = new ArrayList<>();
+            for (View card : filterCards.values()) {
+                if (card != null && card.getVisibility() == View.VISIBLE) {
+                    ViewGroup p = (ViewGroup) card.getParent();
+                    if (p != null) p.removeView(card);
+                    visibleCards.add(card);
+                }
+            }
+
+            if (isLarge && isLandscape) {
+                for (int i = 0; i < visibleCards.size(); i += 2) {
+                    LinearLayout row = new LinearLayout(activity);
+                    row.setOrientation(LinearLayout.HORIZONTAL);
+                    LinearLayout.LayoutParams rLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+                    row.setLayoutParams(rLp);
+
+                    View c1 = visibleCards.get(i);
+                    LinearLayout.LayoutParams c1Lp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1.0f);
+                    c1Lp.rightMargin = (int) (3 * density);
+                    c1Lp.bottomMargin = (int) (3.5f * density);
+                    c1.setLayoutParams(c1Lp);
+                    row.addView(c1);
+
+                    if (i + 1 < visibleCards.size()) {
+                        View c2 = visibleCards.get(i + 1);
+                        LinearLayout.LayoutParams c2Lp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1.0f);
+                        c2Lp.leftMargin = (int) (3 * density);
+                        c2Lp.bottomMargin = (int) (3.5f * density);
+                        c2.setLayoutParams(c2Lp);
+                        row.addView(c2);
+                    } else {
+                        View spacer = new View(activity);
+                        LinearLayout.LayoutParams spLp = new LinearLayout.LayoutParams(0, 0, 1.0f);
+                        spLp.leftMargin = (int) (3 * density);
+                        spacer.setLayoutParams(spLp);
+                        row.addView(spacer);
+                    }
+                    container.addView(row);
+                }
+            } else {
+                for (View card : visibleCards) {
+                    LinearLayout.LayoutParams cLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+                    cLp.bottomMargin = (int) (6 * density);
+                    card.setLayoutParams(cLp);
+                    container.addView(card);
+                }
+            }
+            return visibleCards.size();
         }
 
         int visibleCount = 0;
@@ -4095,41 +5674,101 @@ public class NativeToolkitDialog {
 
     private static RadioGroup createRadioGroup(Activity activity, String[] labels, int defaultIdx, Theme theme, OnRadioSelected listener) {
         RadioGroup rg = new RadioGroup(activity);
-        rg.setOrientation(RadioGroup.VERTICAL);
-        int selectedId = -1;
+        boolean isLarge = PhenotypeFlagManager.isLargeScreen(activity);
+        boolean isLandscape = activity != null && activity.getResources().getConfiguration().orientation == Configuration.ORIENTATION_LANDSCAPE;
         float density = activity.getResources().getDisplayMetrics().density;
-        int padV = (int) (6 * density);
-        for (int i = 0; i < labels.length; i++) {
-            RadioButton rb = new RadioButton(activity);
-            int id = View.generateViewId();
-            rb.setId(id);
-            rb.setTag(i);
-            rb.setText(labels[i]);
-            rb.setTextSize(13f);
-            rb.setTextColor(theme.textPrimary);
-            rb.setPadding(rb.getPaddingLeft(), padV, rb.getPaddingRight(), padV);
-            rg.addView(rb);
-            if (i == defaultIdx) {
-                selectedId = id;
-            }
-        }
-        if (selectedId != -1) {
-            rg.check(selectedId);
-        }
-        rg.setOnCheckedChangeListener((group, checkedId) -> {
-            View v = group.findViewById(checkedId);
-            if (v != null && v.getTag() instanceof Integer) {
-                int idx = (Integer) v.getTag();
-                listener.onSelected(idx);
-            } else {
-                for (int i = 0; i < group.getChildCount(); i++) {
-                    if (group.getChildAt(i).getId() == checkedId) {
-                        listener.onSelected(i);
-                        break;
-                    }
+
+        if (isLarge && isLandscape) {
+            rg.setOrientation(RadioGroup.HORIZONTAL);
+            LinearLayout.LayoutParams rgLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            rgLp.topMargin = (int) (4 * density);
+            rgLp.bottomMargin = (int) (4 * density);
+            rg.setLayoutParams(rgLp);
+
+            int selectedId = -1;
+            for (int i = 0; i < labels.length; i++) {
+                RadioButton rb = new RadioButton(activity);
+                int id = View.generateViewId();
+                rb.setId(id);
+                rb.setTag(i);
+                rb.setText(labels[i]);
+                rb.setTextSize(labels.length > 3 ? 10.5f : 11.5f);
+                rb.setTypeface(null, Typeface.BOLD);
+                rb.setGravity(Gravity.CENTER);
+                rb.setButtonDrawable(new ColorDrawable(Color.TRANSPARENT));
+
+                int padV = (int) (6.5f * density);
+                int padH = (int) (4 * density);
+                rb.setPadding(padH, padV, padH, padV);
+
+                boolean isChecked = (i == defaultIdx);
+                rb.setTextColor(isChecked ? theme.onPrimaryContainer : theme.textSecondary);
+                rb.setBackground(createActionPillDrawable(isChecked ? theme.primaryContainer : theme.surfaceContainer, 10 * density));
+
+                RadioGroup.LayoutParams rLp = new RadioGroup.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1.0f);
+                if (i > 0) rLp.leftMargin = (int) (4 * density);
+                rb.setLayoutParams(rLp);
+
+                rg.addView(rb);
+                if (isChecked) {
+                    selectedId = id;
                 }
             }
-        });
+
+            if (selectedId != -1) {
+                rg.check(selectedId);
+            }
+
+            rg.setOnCheckedChangeListener((group, checkedId) -> {
+                for (int c = 0; c < group.getChildCount(); c++) {
+                    View child = group.getChildAt(c);
+                    if (child instanceof RadioButton) {
+                        boolean checked = (child.getId() == checkedId);
+                        child.setBackground(createActionPillDrawable(checked ? theme.primaryContainer : theme.surfaceContainer, 10 * density));
+                        ((RadioButton) child).setTextColor(checked ? theme.onPrimaryContainer : theme.textSecondary);
+                    }
+                }
+                View v = group.findViewById(checkedId);
+                if (v != null && v.getTag() instanceof Integer) {
+                    listener.onSelected((Integer) v.getTag());
+                }
+            });
+        } else {
+            rg.setOrientation(RadioGroup.VERTICAL);
+            int selectedId = -1;
+            int padV = (int) (6 * density);
+            for (int i = 0; i < labels.length; i++) {
+                RadioButton rb = new RadioButton(activity);
+                int id = View.generateViewId();
+                rb.setId(id);
+                rb.setTag(i);
+                rb.setText(labels[i]);
+                rb.setTextSize(13f);
+                rb.setTextColor(theme.textPrimary);
+                rb.setPadding(rb.getPaddingLeft(), padV, rb.getPaddingRight(), padV);
+                rg.addView(rb);
+                if (i == defaultIdx) {
+                    selectedId = id;
+                }
+            }
+            if (selectedId != -1) {
+                rg.check(selectedId);
+            }
+            rg.setOnCheckedChangeListener((group, checkedId) -> {
+                View v = group.findViewById(checkedId);
+                if (v != null && v.getTag() instanceof Integer) {
+                    int idx = (Integer) v.getTag();
+                    listener.onSelected(idx);
+                } else {
+                    for (int i = 0; i < group.getChildCount(); i++) {
+                        if (group.getChildAt(i).getId() == checkedId) {
+                            listener.onSelected(i);
+                            break;
+                        }
+                    }
+                }
+            });
+        }
         return rg;
     }
 
