@@ -105,6 +105,103 @@ public final class PhenotypeFlagManager {
     private static final ExecutorService IO_EXECUTOR = Executors.newSingleThreadExecutor();
     private static final Handler MAIN_HANDLER = new Handler(Looper.getMainLooper());
 
+    public static final int DOCK_TAB_FLAGS = 0;
+    public static final int DOCK_TAB_TOOLKIT = 1;
+    public static final int DOCK_TAB_LOGS = 2;
+    private static int sActiveDockTab = DOCK_TAB_FLAGS;
+    private static Dialog sCurrentOpenDialog = null;
+
+    public static void setCurrentOpenDialog(Dialog dialog) {
+        sCurrentOpenDialog = dialog;
+    }
+
+    public static Dialog getCurrentOpenDialog() {
+        return sCurrentOpenDialog;
+    }
+
+    public static void dismissCurrentOpenDialog() {
+        if (sCurrentOpenDialog != null) {
+            try {
+                if (sCurrentOpenDialog.isShowing()) {
+                    sCurrentOpenDialog.dismiss();
+                }
+            } catch (Throwable ignored) {}
+            sCurrentOpenDialog = null;
+        }
+    }
+
+    public static void updateDockTabState(Activity activity, int activeTab) {
+        if (activity == null) return;
+        activity.runOnUiThread(() -> {
+            try {
+                sActiveDockTab = activeTab;
+                FrameLayout content = activity.findViewById(android.R.id.content);
+                if (content == null) return;
+                View dockView = content.findViewWithTag(SETTINGS_PILL_TAG);
+                if (!(dockView instanceof ViewGroup)) return;
+                ViewGroup dock = (ViewGroup) dockView;
+                Theme theme = Theme.get(activity);
+
+                View itemFlags = dock.findViewWithTag("dock_item_flags");
+                View itemToolkit = dock.findViewWithTag("dock_item_toolkit");
+                View itemLogs = dock.findViewWithTag("dock_item_logs");
+
+                if (itemFlags instanceof ViewGroup) {
+                    boolean active = (activeTab == DOCK_TAB_FLAGS);
+                    ViewGroup vg = (ViewGroup) itemFlags;
+                    if (vg.getBackground() instanceof GradientDrawable) {
+                        ((GradientDrawable) vg.getBackground()).setColor(active ? theme.primaryContainer : Color.TRANSPARENT);
+                    }
+                    if (vg.getChildCount() > 0 && vg.getChildAt(0) instanceof ImageView) {
+                        ((ImageView) vg.getChildAt(0)).setImageDrawable(new MaterialVectorDrawable(
+                                MaterialVectorDrawable.TYPE_TUNE,
+                                active ? theme.onPrimaryContainer : theme.textPrimary
+                        ));
+                    }
+                    if (vg.getChildCount() > 1 && vg.getChildAt(1) instanceof TextView) {
+                        ((TextView) vg.getChildAt(1)).setTextColor(active ? theme.onPrimaryContainer : theme.textPrimary);
+                    }
+                }
+
+                if (itemToolkit instanceof ViewGroup) {
+                    boolean active = (activeTab == DOCK_TAB_TOOLKIT);
+                    ViewGroup vg = (ViewGroup) itemToolkit;
+                    if (vg.getBackground() instanceof GradientDrawable) {
+                        ((GradientDrawable) vg.getBackground()).setColor(active ? theme.primaryContainer : Color.TRANSPARENT);
+                    }
+                    if (vg.getChildCount() > 0 && vg.getChildAt(0) instanceof ImageView) {
+                        ((ImageView) vg.getChildAt(0)).setImageDrawable(new MaterialVectorDrawable(
+                                MaterialVectorDrawable.TYPE_TOOLKIT,
+                                active ? theme.onPrimaryContainer : theme.textPrimary
+                        ));
+                    }
+                    if (vg.getChildCount() > 1 && vg.getChildAt(1) instanceof TextView) {
+                        ((TextView) vg.getChildAt(1)).setTextColor(active ? theme.onPrimaryContainer : theme.textPrimary);
+                    }
+                }
+
+                if (itemLogs instanceof ViewGroup) {
+                    boolean active = (activeTab == DOCK_TAB_LOGS);
+                    ViewGroup vg = (ViewGroup) itemLogs;
+                    if (vg.getBackground() instanceof GradientDrawable) {
+                        ((GradientDrawable) vg.getBackground()).setColor(active ? theme.primaryContainer : Color.TRANSPARENT);
+                    }
+                    if (vg.getChildCount() > 0 && vg.getChildAt(0) instanceof ImageView) {
+                        ((ImageView) vg.getChildAt(0)).setImageDrawable(new MaterialVectorDrawable(
+                                MaterialVectorDrawable.TYPE_LOGS,
+                                active ? theme.onPrimaryContainer : theme.textPrimary
+                        ));
+                    }
+                    if (vg.getChildCount() > 1 && vg.getChildAt(1) instanceof TextView) {
+                        ((TextView) vg.getChildAt(1)).setTextColor(active ? theme.onPrimaryContainer : theme.textPrimary);
+                    }
+                }
+            } catch (Throwable t) {
+                Logger.printException(() -> "Error updating dock tab state", t);
+            }
+        });
+    }
+
     // ─────────────────────────────────────────────────────────────────────────
     // Programmatic Material 3 Vector Icons (Resolution-Independent)
     // ─────────────────────────────────────────────────────────────────────────
@@ -839,6 +936,7 @@ public final class PhenotypeFlagManager {
 
         // Segment 1: Flags
         LinearLayout itemFlags = new LinearLayout(activity);
+        itemFlags.setTag("dock_item_flags");
         itemFlags.setOrientation(LinearLayout.HORIZONTAL);
         itemFlags.setGravity(Gravity.CENTER);
         itemFlags.setClickable(true);
@@ -868,7 +966,14 @@ public final class PhenotypeFlagManager {
         labelFlags.setTextColor(theme.onPrimaryContainer);
         labelFlags.setTypeface(null, Typeface.BOLD);
         itemFlags.addView(labelFlags);
-        itemFlags.setOnClickListener(v -> showFlagManagerDialog(activity));
+        itemFlags.setOnClickListener(v -> {
+            if (sActiveDockTab == DOCK_TAB_FLAGS && sCurrentOpenDialog != null && sCurrentOpenDialog.isShowing()) {
+                return;
+            }
+            dismissCurrentOpenDialog();
+            updateDockTabState(activity, DOCK_TAB_FLAGS);
+            showFlagManagerDialog(activity);
+        });
 
         // Divider 1
         View divider1 = new View(activity);
@@ -879,6 +984,7 @@ public final class PhenotypeFlagManager {
 
         // Segment 2: Toolkit (in between Flags and Logs)
         LinearLayout itemToolkit = new LinearLayout(activity);
+        itemToolkit.setTag("dock_item_toolkit");
         itemToolkit.setOrientation(LinearLayout.HORIZONTAL);
         itemToolkit.setGravity(Gravity.CENTER);
         itemToolkit.setClickable(true);
@@ -909,6 +1015,11 @@ public final class PhenotypeFlagManager {
         labelToolkit.setTypeface(null, Typeface.BOLD);
         itemToolkit.addView(labelToolkit);
         itemToolkit.setOnClickListener(v -> {
+            if (sActiveDockTab == DOCK_TAB_TOOLKIT && sCurrentOpenDialog != null && sCurrentOpenDialog.isShowing()) {
+                return;
+            }
+            dismissCurrentOpenDialog();
+            updateDockTabState(activity, DOCK_TAB_TOOLKIT);
             app.morphe.extension.shared.patches.toolkit.NativeToolkitDialog.show(activity);
         });
 
@@ -932,11 +1043,6 @@ public final class PhenotypeFlagManager {
         }
 
         if (showToolkit) {
-            if (!showFlags) {
-                bgToolkit.setColor(theme.primaryContainer);
-                iconToolkit.setImageDrawable(new MaterialVectorDrawable(MaterialVectorDrawable.TYPE_TOOLKIT, theme.onPrimaryContainer));
-                labelToolkit.setTextColor(theme.onPrimaryContainer);
-            }
             dock.addView(itemToolkit);
         }
 
@@ -946,6 +1052,7 @@ public final class PhenotypeFlagManager {
 
         // Segment 3: Logs
         LinearLayout itemLogs = new LinearLayout(activity);
+        itemLogs.setTag("dock_item_logs");
         itemLogs.setOrientation(LinearLayout.HORIZONTAL);
         itemLogs.setGravity(Gravity.CENTER);
         itemLogs.setClickable(true);
@@ -1009,6 +1116,11 @@ public final class PhenotypeFlagManager {
                     longPressHandler.removeCallbacks(resetMemories5s);
                     itemLogs.setPressed(false);
                     if (!longPressTriggered[0]) {
+                        if (sActiveDockTab == DOCK_TAB_LOGS && sCurrentOpenDialog != null && sCurrentOpenDialog.isShowing()) {
+                            return true;
+                        }
+                        dismissCurrentOpenDialog();
+                        updateDockTabState(activity, DOCK_TAB_LOGS);
                         app.morphe.extension.shared.diagnostics.DiagnosticsDialog.show(activity);
                     }
                     return true;
@@ -1020,6 +1132,11 @@ public final class PhenotypeFlagManager {
             return false;
         });
         dock.addView(itemLogs);
+
+        if (!showFlags && showToolkit) {
+            sActiveDockTab = DOCK_TAB_TOOLKIT;
+        }
+        updateDockTabState(activity, sActiveDockTab);
 
         return dock;
     }
@@ -2376,6 +2493,9 @@ public final class PhenotypeFlagManager {
         });
 
         dialog.setOnDismissListener(d -> {
+            if (sCurrentOpenDialog == dialog) {
+                sCurrentOpenDialog = null;
+            }
             InputMethodManager imm = (InputMethodManager) activity.getSystemService(Context.INPUT_METHOD_SERVICE);
             if (imm != null && activity.getCurrentFocus() != null) {
                 imm.hideSoftInputFromWindow(activity.getCurrentFocus().getWindowToken(), 0);
@@ -2385,6 +2505,8 @@ public final class PhenotypeFlagManager {
         refreshUi.run();
         dialog.setContentView(root);
         dialog.show();
+        setCurrentOpenDialog(dialog);
+        updateDockTabState(activity, DOCK_TAB_FLAGS);
 
         // Window size - popup-friendly (94% width, 88% height)
         Window window = dialog.getWindow();

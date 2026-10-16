@@ -38,6 +38,7 @@ import android.util.TypedValue;
 import java.util.ArrayList;
 import java.util.List;
 
+import app.morphe.extension.shared.patches.PhenotypeFlagManager;
 import app.morphe.extension.shared.patches.PhenotypeFlagManager.MaterialVectorDrawable;
 import app.morphe.extension.shared.patches.PhenotypeFlagManager.Theme;
 
@@ -569,6 +570,9 @@ public final class DiagnosticsDialog {
         });
 
         dialog.setOnDismissListener(d -> {
+            if (PhenotypeFlagManager.getCurrentOpenDialog() == dialog) {
+                PhenotypeFlagManager.setCurrentOpenDialog(null);
+            }
             InputMethodManager imm = (InputMethodManager) activity.getSystemService(Context.INPUT_METHOD_SERVICE);
             if (imm != null && activity.getCurrentFocus() != null) {
                 imm.hideSoftInputFromWindow(activity.getCurrentFocus().getWindowToken(), 0);
@@ -578,6 +582,8 @@ public final class DiagnosticsDialog {
         reloadSessions.run();
         dialog.setContentView(root);
         dialog.show();
+        PhenotypeFlagManager.setCurrentOpenDialog(dialog);
+        PhenotypeFlagManager.updateDockTabState(activity, PhenotypeFlagManager.DOCK_TAB_LOGS);
 
         // Responsive popup window sizing with clean rounded geometry
         Window window = dialog.getWindow();

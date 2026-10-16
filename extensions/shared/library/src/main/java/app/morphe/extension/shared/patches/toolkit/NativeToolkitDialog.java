@@ -280,7 +280,7 @@ public class NativeToolkitDialog {
         // ─────────────────────────────────────────────────────────────────────
         ScrollView mainScrollView = new ScrollView(activity);
         mainScrollView.setLayoutParams(new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
-        mainScrollView.setPadding(tbPad, (int) (8 * density), tbPad, (int) (16 * density));
+        mainScrollView.setPadding(tbPad, (int) (8 * density), tbPad, (int) (76 * density));
         mainScrollView.setClipToPadding(false);
 
         LinearLayout workflowLayout = new LinearLayout(activity);
@@ -1042,6 +1042,9 @@ public class NativeToolkitDialog {
         // Window size - popup-friendly (94% width, 88% height)
         dialog.setContentView(root);
         dialog.setOnDismissListener(d -> {
+            if (PhenotypeFlagManager.getCurrentOpenDialog() == dialog) {
+                PhenotypeFlagManager.setCurrentOpenDialog(null);
+            }
             sProgressBar = null;
             sTvProgressInfo = null;
             allQueriedItems.clear();
@@ -1051,6 +1054,8 @@ public class NativeToolkitDialog {
             clearCache();
         });
         dialog.show();
+        PhenotypeFlagManager.setCurrentOpenDialog(dialog);
+        PhenotypeFlagManager.updateDockTabState(activity, PhenotypeFlagManager.DOCK_TAB_TOOLKIT);
 
         Window window = dialog.getWindow();
         if (window != null) {
