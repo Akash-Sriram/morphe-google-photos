@@ -1,3 +1,10 @@
+## [1.15.3](https://github.com/Akash-Sriram/morphe-google-photos/compare/v1.15.2...v1.15.3) (2026-10-16)
+
+### 🐛 Bug Fixes
+
+* **Google Photos - Toolkit:** restore unlocked Locked Folder items to cloud library and fix dialog warning ([834a370](https://github.com/Akash-Sriram/morphe-google-photos/commit/834a37027e266863fc5ad8b0ae909a776f18165f))
+* **Google Photos - Ui:** introduce tablet studio layout and filter controls ([6ed8e1f](https://github.com/Akash-Sriram/morphe-google-photos/commit/6ed8e1f77a8b97af82172e61108fa57e7c9ea3fb))
+
 ## [1.15.2](https://github.com/Akash-Sriram/morphe-google-photos/compare/v1.15.1...v1.15.2) (2026-10-16)
 
 ### 🐛 Bug Fixes
