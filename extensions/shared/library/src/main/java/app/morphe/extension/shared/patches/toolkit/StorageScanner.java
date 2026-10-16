@@ -2062,26 +2062,64 @@ public class StorageScanner {
     private static volatile Object sDefaultFeaturesRequest = null;
     private static volatile boolean sCoreLoaderResolved = false;
 
+    private static boolean isValidCoreLoader(Class<?> c) {
+        if (c == null) return false;
+        for (Method m : c.getMethods()) {
+            if (java.lang.reflect.Modifier.isStatic(m.getModifiers()) &&
+                List.class.isAssignableFrom(m.getReturnType()) &&
+                m.getParameterCount() >= 2 &&
+                m.getParameterTypes()[0] == Context.class) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     private static synchronized void resolveCoreLoader() {
         if (sCoreLoaderResolved) return;
-        for (String name : new String[]{"yxq", "yul", "zap", "wrl"}) {
+        for (String name : new String[]{"yul", "yxq", "zap", "wrl"}) {
             Class<?> c = ReflectionCache.findClassOrNull(name);
-            if (c != null) {
+            if (c != null && isValidCoreLoader(c)) {
                 sCoreMediaLoaderClass = c;
+                Logger.printInfo(() -> "Resolved sCoreMediaLoaderClass via: " + name);
                 break;
             }
         }
-        for (String name : new String[]{"yvp", "ytc", "yyr", "wqb"}) {
-            Class<?> c = ReflectionCache.findClassOrNull(name);
-            if (c != null) {
-                try {
-                    Field f = c.getField("a");
-                    Object val = f.get(null);
-                    if (val != null) {
-                        sDefaultFeaturesRequest = val;
-                        break;
-                    }
-                } catch (Throwable ignored) {}
+
+        if (sCoreMediaLoaderClass != null) {
+            for (Method m : sCoreMediaLoaderClass.getMethods()) {
+                if (java.lang.reflect.Modifier.isStatic(m.getModifiers()) &&
+                    List.class.isAssignableFrom(m.getReturnType()) &&
+                    m.getParameterCount() >= 3 &&
+                    m.getParameterTypes()[0] == Context.class) {
+                    Class<?> pClass = m.getParameterTypes()[2];
+                    try {
+                        Field f = pClass.getField("a");
+                        Object val = f.get(null);
+                        if (val != null) {
+                            sDefaultFeaturesRequest = val;
+                            Logger.printInfo(() -> "Resolved sDefaultFeaturesRequest via loader parameter: " + pClass.getName());
+                            break;
+                        }
+                    } catch (Throwable ignored) {}
+                }
+            }
+        }
+
+        if (sDefaultFeaturesRequest == null) {
+            for (String name : new String[]{"ytc", "yyr", "wqb", "yvp"}) {
+                Class<?> c = ReflectionCache.findClassOrNull(name);
+                if (c != null && android.os.Parcelable.class.isAssignableFrom(c)) {
+                    try {
+                        Field f = c.getField("a");
+                        Object val = f.get(null);
+                        if (val != null) {
+                            sDefaultFeaturesRequest = val;
+                            Logger.printInfo(() -> "Resolved sDefaultFeaturesRequest via candidate: " + name);
+                            break;
+                        }
+                    } catch (Throwable ignored) {}
+                }
             }
         }
         sCoreLoaderResolved = true;
@@ -2145,10 +2183,28 @@ public class StorageScanner {
 
     private static Object buildCoreFeaturesRequest(Context context) {
         try {
-            Class<?> wqaClass = Class.forName("wqa");
+            Class<?> wqaClass = null;
+            Class<?> wqbClass = null;
+            String[][] builderPairs = new String[][]{
+                {"yta", "ytc"},
+                {"yyq", "yyr"},
+                {"wqa", "wqb"}
+            };
+            for (String[] pair : builderPairs) {
+                Class<?> b = ReflectionCache.findClassOrNull(pair[0]);
+                Class<?> r = ReflectionCache.findClassOrNull(pair[1]);
+                if (b != null && r != null) {
+                    wqaClass = b;
+                    wqbClass = r;
+                    break;
+                }
+            }
+            if (wqaClass == null || wqbClass == null) {
+                return sDefaultFeaturesRequest;
+            }
             Constructor<?> wqaCtor = wqaClass.getConstructor(boolean.class);
             Object builder = wqaCtor.newInstance(true);
-            Method dMethod = wqaClass.getMethod("d", Class.forName("wqb"));
+            Method dMethod = wqaClass.getMethod("d", wqbClass);
 
             // 1. Core Trash Features: neb.a (contains zon, bams, Axdq, Laflw)
             try {
@@ -2217,12 +2273,7 @@ public class StorageScanner {
             return aMethod.invoke(builder);
         } catch (Throwable t) {
             Logger.printException(() -> "Error constructing composite FeaturesRequest", t);
-            try {
-                Class<?> wqbClass = Class.forName("wqb");
-                return wqbClass.getField("a").get(null);
-            } catch (Throwable ignored) {
-                return null;
-            }
+            return sDefaultFeaturesRequest;
         }
     }
 
@@ -2264,14 +2315,18 @@ public class StorageScanner {
         File dbf = context != null ? context.getDatabasePath("gphotos" + accountId + ".db") : null;
         if (dbf == null || !dbf.exists()) return ids;
         try (SQLiteDatabase db = SQLiteDatabase.openDatabase(dbf.getAbsolutePath(), null, SQLiteDatabase.OPEN_READONLY | SQLiteDatabase.ENABLE_WRITE_AHEAD_LOGGING)) {
-            if (!hasTable(db, "media")) return ids;
+            String[] candidateTables = new String[]{"media", "account_local_locked_media", "remote_locked_media"};
             for (MediaItem it : items) {
                 if (it.dedupKey == null || it.dedupKey.trim().isEmpty()) continue;
-                try (Cursor c = db.rawQuery("SELECT _id FROM media WHERE dedup_key = ? LIMIT 1", new String[]{it.dedupKey.trim()})) {
-                    if (c != null && c.moveToFirst()) {
-                        ids.add(c.getLong(0));
-                    }
-                } catch (Throwable ignored) {}
+                for (String tbl : candidateTables) {
+                    if (!hasTable(db, tbl)) continue;
+                    try (Cursor c = db.rawQuery("SELECT _id FROM " + tbl + " WHERE dedup_key = ? LIMIT 1", new String[]{it.dedupKey.trim()})) {
+                        if (c != null && c.moveToFirst()) {
+                            ids.add(c.getLong(0));
+                            break;
+                        }
+                    } catch (Throwable ignored) {}
+                }
             }
         } catch (Throwable t) {
             Log.w("morphe: StorageScanner", "Error resolving media ids from database", t);
@@ -3251,6 +3306,7 @@ public class StorageScanner {
             if (marsColl != null) {
                 List<?> allLoaded = loadMediaCollection(context, marsColl);
                 if (allLoaded != null && !allLoaded.isEmpty()) {
+                    Logger.printInfo(() -> "loadDirectMarsMedia: loaded " + allLoaded.size() + " items from MarsCollection");
                     if (items == null || items.isEmpty() || items.size() == allLoaded.size()) {
                         matched.addAll(allLoaded);
                     } else {
