@@ -1,3 +1,10 @@
+## [1.15.1](https://github.com/Akash-Sriram/morphe-google-photos/compare/v1.15.0...v1.15.1) (2026-10-16)
+
+### 🐛 Bug Fixes
+
+* **Google Photos - Gms:** resolve Official package name patch conflict with GmsCore support ([#35](https://github.com/Akash-Sriram/morphe-google-photos/issues/35)) ([5ef31c9](https://github.com/Akash-Sriram/morphe-google-photos/commit/5ef31c925606b40745253ea345e694531ebe8e40))
+* **Google Photos - Ui:** dynamically update active navigation dock tab and dialog switching ([#34](https://github.com/Akash-Sriram/morphe-google-photos/issues/34)) ([9b99977](https://github.com/Akash-Sriram/morphe-google-photos/commit/9b9997712c137b7869023f7daedc0f74433638b3))
+
 ## [1.15.0](https://github.com/Akash-Sriram/morphe-google-photos/compare/v1.14.4...v1.15.0) (2026-10-15)
 
 ### 🚀 Updated App Support
