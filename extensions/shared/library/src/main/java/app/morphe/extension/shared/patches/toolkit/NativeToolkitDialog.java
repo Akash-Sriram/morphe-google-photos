@@ -21,8 +21,11 @@ import android.graphics.drawable.ColorDrawable;
 import android.graphics.drawable.Drawable;
 import android.graphics.drawable.GradientDrawable;
 import android.graphics.drawable.RippleDrawable;
+import android.app.KeyguardManager;
+import android.hardware.biometrics.BiometricPrompt;
 import android.net.Uri;
 import android.os.Build;
+import android.os.CancellationSignal;
 import android.os.Environment;
 import android.os.Handler;
 import android.os.Looper;
@@ -133,6 +136,7 @@ public class NativeToolkitDialog {
     private static List<StorageScanner.AlbumInfo> availableAlbums = new ArrayList<>();
     private static final AtomicInteger sScanSequence = new AtomicInteger(0);
     private static Runnable sRepopulateAlbumCardsRunnable = null;
+    private static volatile boolean sLockedFolderAuthenticated = false;
     public enum SortOrder {
         DATE_DESC("Date (Newest first)", "Newest"),
         DATE_ASC("Date (Oldest first)", "Oldest"),
@@ -664,19 +668,32 @@ public class NativeToolkitDialog {
             final StorageScanner.SourceType src = sources[i];
             TextView pill = sourceViews.get(i);
             pill.setOnClickListener(v -> {
-                currentCriteria.source = src;
-                tvSourceActiveBadge.setText(src.displayName);
-                for (int j = 0; j < sources.length; j++) {
-                    boolean sel = (sources[j] == currentCriteria.source);
-                    sourceViews.get(j).setTextColor(sel ? theme.onPrimaryContainer : theme.textSecondary);
-                    sourceViews.get(j).setBackground(createRoundedDrawable(sel ? theme.primaryContainer : theme.surfaceContainer, 12 * density));
+                Runnable applySourceChange = () -> {
+                    currentCriteria.source = src;
+                    tvSourceActiveBadge.setText(src.displayName);
+                    for (int j = 0; j < sources.length; j++) {
+                        boolean sel = (sources[j] == currentCriteria.source);
+                        sourceViews.get(j).setTextColor(sel ? theme.onPrimaryContainer : theme.textSecondary);
+                        sourceViews.get(j).setBackground(createRoundedDrawable(sel ? theme.primaryContainer : theme.surfaceContainer, 12 * density));
+                    }
+                    int count = updateFilterVisibility(activity, src, filterCardsRef[0], filtersAccordionContainerRef[0], density);
+                    if (tvFiltersTitleRef[0] != null) {
+                        tvFiltersTitleRef[0].setText("Configure Filters (" + count + ")");
+                    }
+                    updateActionStates(src, currentCriteria, actionButtonsMap);
+                    onFilterChanged.run();
+                };
+
+                if (src == StorageScanner.SourceType.LOCKED && !sLockedFolderAuthenticated) {
+                    authenticateLockedFolderAccess(activity, () -> {
+                        sLockedFolderAuthenticated = true;
+                        applySourceChange.run();
+                    }, () -> {
+                        Toast.makeText(activity, "Biometric authentication required to view Locked Folder", Toast.LENGTH_SHORT).show();
+                    });
+                    return;
                 }
-                int count = updateFilterVisibility(activity, src, filterCardsRef[0], filtersAccordionContainerRef[0], density);
-                if (tvFiltersTitleRef[0] != null) {
-                    tvFiltersTitleRef[0].setText("Configure Filters (" + count + ")");
-                }
-                updateActionStates(src, currentCriteria, actionButtonsMap);
-                onFilterChanged.run();
+                applySourceChange.run();
             });
         }
 
@@ -1173,6 +1190,7 @@ public class NativeToolkitDialog {
             sRepopulateAlbumCardsRunnable = null;
             currentCriteria = new StorageScanner.FilterCriteria();
             clearCache();
+            sLockedFolderAuthenticated = false;
         });
         dialog.show();
         PhenotypeFlagManager.setCurrentOpenDialog(dialog);
@@ -1421,10 +1439,23 @@ public class NativeToolkitDialog {
             pillsContainer.addView(pill);
 
             pill.setOnClickListener(v -> {
-                currentCriteria.source = src;
-                updateSourceStyles.run();
-                updateActionStates(src, currentCriteria, actionButtonsMap);
-                onFilterChanged.run();
+                Runnable applySourceChange = () -> {
+                    currentCriteria.source = src;
+                    updateSourceStyles.run();
+                    updateActionStates(src, currentCriteria, actionButtonsMap);
+                    onFilterChanged.run();
+                };
+
+                if (src == StorageScanner.SourceType.LOCKED && !sLockedFolderAuthenticated) {
+                    authenticateLockedFolderAccess(activity, () -> {
+                        sLockedFolderAuthenticated = true;
+                        applySourceChange.run();
+                    }, () -> {
+                        Toast.makeText(activity, "Biometric authentication required to view Locked Folder", Toast.LENGTH_SHORT).show();
+                    });
+                    return;
+                }
+                applySourceChange.run();
             });
         }
         updateSourceStyles.run();
@@ -3092,7 +3123,6 @@ public class NativeToolkitDialog {
                     msgBuilder.append(localCount).append(" of these items are stored locally only without cloud backup. Moving them out will place them into local device storage (under device folders, e.g. DCIM/Pictures) and will not appear in your cloud photos timeline until backed up.");
                 }
             }
-            msgBuilder.append("\n\nBiometric or device PIN authentication is required to open Locked Folder and unlock.");
             showActionConfirmDialog(activity, title, msgBuilder.toString(), "Move out", () -> {
                 executeDbActionAsync(activity, actionId, items, null, refreshRunner);
             }, density, theme);
@@ -3475,15 +3505,6 @@ public class NativeToolkitDialog {
                 }
                 Toast.makeText(activity, res.message, Toast.LENGTH_SHORT).show();
                 if (res.success) {
-                    if ("unLock".equals(actionId)) {
-                        StorageScanner.sPendingUnlockCallback = () -> {
-                            MAIN_HANDLER.post(() -> {
-                                if (refreshRunner != null && refreshRunner[0] != null) {
-                                    refreshRunner[0].run();
-                                }
-                            });
-                        };
-                    }
                     if ("toTrash".equals(actionId) && currentCriteria.source == StorageScanner.SourceType.ALBUMS) {
                         currentCriteria.albumsInclude.clear();
                     }
@@ -3493,7 +3514,7 @@ public class NativeToolkitDialog {
                             sRepopulateAlbumCardsRunnable.run();
                         }
                     }
-                    if (!"unLock".equals(actionId) && refreshRunner != null && refreshRunner[0] != null) {
+                    if (refreshRunner != null && refreshRunner[0] != null) {
                         refreshRunner[0].run();
                     }
                 }
@@ -5950,5 +5971,69 @@ public class NativeToolkitDialog {
 
     private static View createHeaderIconButton(Activity activity, String iconText, int color, int touchSizePx) {
         return createHeaderIconButton(activity, new MaterialVectorDrawable(MaterialVectorDrawable.TYPE_CLOSE, color), touchSizePx, (int) (touchSizePx * 0.5f));
+    }
+
+    private static void authenticateLockedFolderAccess(Activity activity, Runnable onSuccess, Runnable onCancelled) {
+        if (activity == null || activity.isFinishing() || activity.isDestroyed()) {
+            if (onCancelled != null) onCancelled.run();
+            return;
+        }
+
+        try {
+            KeyguardManager km = (KeyguardManager) activity.getSystemService(Context.KEYGUARD_SERVICE);
+            if (km != null && !km.isDeviceSecure()) {
+                if (onSuccess != null) onSuccess.run();
+                return;
+            }
+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                BiometricPrompt.Builder builder = new BiometricPrompt.Builder(activity)
+                        .setTitle("Locked Folder")
+                        .setDescription("Authenticate to view private media in Locked Folder");
+
+                java.util.concurrent.Executor executor = r -> MAIN_HANDLER.post(r);
+
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                    builder.setAllowedAuthenticators(
+                            android.hardware.biometrics.BiometricManager.Authenticators.BIOMETRIC_STRONG |
+                            android.hardware.biometrics.BiometricManager.Authenticators.DEVICE_CREDENTIAL
+                    );
+                } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    builder.setDeviceCredentialAllowed(true);
+                } else {
+                    builder.setNegativeButton("Cancel", executor, (d, w) -> {
+                        if (onCancelled != null) onCancelled.run();
+                    });
+                }
+
+                CancellationSignal signal = new CancellationSignal();
+                BiometricPrompt prompt = builder.build();
+                prompt.authenticate(signal, executor, new BiometricPrompt.AuthenticationCallback() {
+                    @Override
+                    public void onAuthenticationSucceeded(BiometricPrompt.AuthenticationResult result) {
+                        MAIN_HANDLER.post(() -> {
+                            if (onSuccess != null) onSuccess.run();
+                        });
+                    }
+
+                    @Override
+                    public void onAuthenticationError(int errorCode, CharSequence errString) {
+                        MAIN_HANDLER.post(() -> {
+                            if (onCancelled != null) onCancelled.run();
+                        });
+                    }
+
+                    @Override
+                    public void onAuthenticationFailed() {
+                        // Let biometric prompt handle retry on mismatches
+                    }
+                });
+                return;
+            }
+        } catch (Throwable t) {
+            Logger.printException(() -> "Biometric authentication error", t);
+        }
+
+        if (onSuccess != null) onSuccess.run();
     }
 }

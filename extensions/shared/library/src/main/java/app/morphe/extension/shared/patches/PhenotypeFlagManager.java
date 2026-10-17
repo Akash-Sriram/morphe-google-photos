@@ -838,21 +838,36 @@ public final class PhenotypeFlagManager {
         return context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE);
     }
 
+    private static volatile String sPatchComponentsMode = "flags";
+
+    public static void setComponentsMode(String mode) {
+        if (mode != null && !mode.trim().isEmpty()) {
+            sPatchComponentsMode = mode.trim().toLowerCase();
+        }
+    }
+
     public static String getComponentsMode() {
-        return "flags";
+        return sPatchComponentsMode;
     }
 
     public static String getEffectiveComponentsMode(Context context) {
+        String baseMode = getComponentsMode();
+        if (baseMode != null && !"both".equalsIgnoreCase(baseMode.trim())) {
+            return baseMode.trim().toLowerCase();
+        }
         try {
             if (context != null) {
                 SharedPreferences prefs = getPrefs(context);
-                String saved = prefs.getString("_components_mode", null);
-                if (saved != null && !saved.trim().isEmpty()) {
-                    return saved.trim().toLowerCase();
+                boolean userExplicit = prefs.getBoolean("_components_mode_user_explicit", false);
+                if (userExplicit) {
+                    String saved = prefs.getString("_components_mode", null);
+                    if (saved != null && !saved.trim().isEmpty()) {
+                        return saved.trim().toLowerCase();
+                    }
                 }
             }
         } catch (Throwable ignored) {}
-        return getComponentsMode();
+        return "both";
     }
 
     public static void refreshFloatingPill(Activity activity) {
@@ -1000,6 +1015,21 @@ public final class PhenotypeFlagManager {
     // ─────────────────────────────────────────────────────────────────────────
     // Settings Activity Floating Pill Injection
     // ─────────────────────────────────────────────────────────────────────────
+
+    public static void injectSettingsCardFlags(Activity activity) {
+        setComponentsMode("flags");
+        injectSettingsCard(activity);
+    }
+
+    public static void injectSettingsCardToolkit(Activity activity) {
+        setComponentsMode("toolkit");
+        injectSettingsCard(activity);
+    }
+
+    public static void injectSettingsCardBoth(Activity activity) {
+        setComponentsMode("both");
+        injectSettingsCard(activity);
+    }
 
     public static void injectSettingsCard(Activity activity) {
         if (activity == null || activity.isFinishing() || activity.isDestroyed()) return;
@@ -2960,7 +2990,7 @@ public final class PhenotypeFlagManager {
             row.addView(tvSub);
 
             row.setOnClickListener(v -> {
-                getPrefs(activity).edit().putString("_components_mode", modeKey).apply();
+                getPrefs(activity).edit().putString("_components_mode", modeKey).putBoolean("_components_mode_user_explicit", true).apply();
                 refreshFloatingPill(activity);
                 d.dismiss();
                 Toast.makeText(activity, "Dock mode set to: " + title, Toast.LENGTH_SHORT).show();

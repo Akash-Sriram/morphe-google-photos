@@ -27,9 +27,15 @@ val phenotypeFlagManagerPatch = bytecodePatch(
     )
 
     execute {
+        val selected = (componentsOption.value ?: componentsOption.default ?: "flags").lowercase()
+        val injectMethod = when (selected) {
+            "flags" -> "injectSettingsCardFlags"
+            "toolkit" -> "injectSettingsCardToolkit"
+            else -> "injectSettingsCardBoth"
+        }
         SettingsActivityV2OnCreateFingerprint.method.addInstruction(
             0,
-            "invoke-static {p0}, Lapp/morphe/extension/shared/patches/PhenotypeFlagManager;->injectSettingsCard(Landroid/app/Activity;)V"
+            "invoke-static {p0}, Lapp/morphe/extension/shared/patches/PhenotypeFlagManager;->$injectMethod(Landroid/app/Activity;)V"
         )
         if (PhotosAboutSettingsActivityV2OnCreateFingerprint.methodOrNull != null) {
             PhotosAboutSettingsActivityV2OnCreateFingerprint.method.addInstruction(
@@ -37,10 +43,5 @@ val phenotypeFlagManagerPatch = bytecodePatch(
                 "invoke-static {p0}, Lapp/morphe/extension/shared/patches/PhenotypeFlagManager;->hookAboutActivity(Landroid/app/Activity;)V"
             )
         }
-    }
-
-    finalize {
-        val selected = componentsOption.value ?: componentsOption.default ?: "flags"
-        PhenotypeComponentsModeFingerprint.method.returnEarly(selected)
     }
 }

@@ -4411,16 +4411,18 @@ public class StorageScanner {
         }
 
         if ("unLock".equals(actionId)) {
-            sPendingUnlockItems = (items != null) ? new ArrayList<>(items) : new ArrayList<>();
-            sPendingUnlockAccountId = account.accountId;
-            boolean launched = launchMarsUnlockIntent(context, account.accountId);
-            Logger.printInfo(() -> "launchMarsUnlockIntent result: " + launched);
+            java.util.function.Consumer<String> cb = sActionProgressCallback;
+            if (cb != null) {
+                cb.accept("Unlocking " + ((items != null) ? items.size() : 0) + " items from Locked Folder...");
+            }
+            boolean ok = executeOnlineMarsRemoveTask(context, account.accountId, items);
+            Logger.printInfo(() -> "executeOnlineMarsRemoveTask result: " + ok);
             triggerOnlineSync(context, account.accountId);
             notifyUiChanges(context, account.accountId);
             int count = (items != null) ? items.size() : 0;
-            return new ActionResult(launched, count, launched
-                    ? "Opening Locked Folder to unlock " + count + " items. Authenticate to proceed."
-                    : "Failed to launch Locked Folder authentication.");
+            return new ActionResult(ok, count, ok
+                    ? "Successfully moved " + count + " items out of Locked Folder to Cloud Library"
+                    : "Failed to unlock items from Locked Folder");
         }
 
         if ("removeFromAlbum".equals(actionId)) {
