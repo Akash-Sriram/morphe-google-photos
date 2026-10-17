@@ -10,13 +10,24 @@ body:
 
         Before creating a new feature request, please keep the following in mind:
 
-        - We are currently only accept feature requests for YouTube, YT Music, and Reddit.
-        - **Do not submit a duplicate feature request**: Search for existing feature requests, including closed issues, [here](https://github.com/MorpheApp/morphe-patches/issues?q=is%3Aissue).
+        - **Do not submit a duplicate feature request**: Search for existing feature requests, including closed issues, [here](https://github.com/Akash-Sriram/morphe-google-photos/issues?q=is%3Aissue).
   - type: textarea
     attributes:
       label: Feature description
       description: |
         - Describe your feature in detail
+  - type: textarea
+    id: screenshots
+    attributes:
+      label: Screenshots / Mockups (Optional)
+      description: |
+        Attach any relevant screenshots or mockups.
+        **Image size**: Keep screenshots compact for scrolling rather than filling the whole screen:
+        - Resize image with `<img width="300" src="...">` (remove `height="..."` if auto-inserted).
+        - Or wrap screenshots in a collapsible section:
+          `<details><summary>Screenshots</summary>...<img width="300" src="...">...</details>`
+      placeholder: |
+        <!-- Tip: When pasting images, resize with: <img width="300" src="..."> -->
   - type: textarea
     attributes:
       label: Motivation
@@ -36,6 +47,4 @@ body:
       description: Your feature request will be closed if you don't follow the checklist below.
       options:
         - label: I have checked all open and closed feature requests and this is not a duplicate
-          required: true
-        - label: This is a feature request for YouTube, YT Music, or Reddit
           required: true
