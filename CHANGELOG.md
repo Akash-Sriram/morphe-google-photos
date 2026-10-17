@@ -1,3 +1,9 @@
+## [1.15.4](https://github.com/Akash-Sriram/morphe-google-photos/compare/v1.15.3...v1.15.4) (2026-10-17)
+
+### 🐛 Bug Fixes
+
+* **Google Photos - Toolkit:** gate Locked Folder behind biometric prompt, enable silent unlock, and enforce components mode ([761d43f](https://github.com/Akash-Sriram/morphe-google-photos/commit/761d43ff5dcc06fb991bdb3ce9df0dd756818969)), closes [#37](https://github.com/Akash-Sriram/morphe-google-photos/issues/37)
+
 ## [1.15.3](https://github.com/Akash-Sriram/morphe-google-photos/compare/v1.15.2...v1.15.3) (2026-10-16)
 
 ### 🐛 Bug Fixes
