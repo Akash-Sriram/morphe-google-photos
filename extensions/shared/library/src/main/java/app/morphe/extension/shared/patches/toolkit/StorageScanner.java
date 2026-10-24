@@ -375,9 +375,19 @@ public class StorageScanner {
         try (Cursor c = db.rawQuery("PRAGMA temp_store = MEMORY", null)) { if (c != null) c.moveToFirst(); } catch (Throwable ignored) {}
     }
 
+    private static final java.util.Set<String> sArchiveCheckedAccounts = java.util.Collections.synchronizedSet(new java.util.HashSet<>());
+
     public static void ensureArchiveSyncTriggers(SQLiteDatabase db) {
         if (db == null || !hasTable(db, "remote_media") || !hasTable(db, "media") || !hasTable(db, "collections")) return;
         try {
+            boolean hasTrigger = false;
+            try (Cursor c = db.rawQuery("SELECT 1 FROM sqlite_master WHERE type='trigger' AND name='trg_main_library_sync' LIMIT 1", null)) {
+                if (c != null && c.moveToFirst()) {
+                    hasTrigger = true;
+                }
+            } catch (Throwable ignored) {}
+            if (hasTrigger) return;
+
             db.execSQL("DROP TRIGGER IF EXISTS trg_main_archive;");
             db.execSQL("DROP TRIGGER IF EXISTS trg_album_insert_archive;");
             db.execSQL("DROP TRIGGER IF EXISTS trg_album_update_archive;");
@@ -463,6 +473,7 @@ public class StorageScanner {
 
     public static void ensureArchiveConsistency(AccountInfo account) {
         if (account == null || account.dbPath == null) return;
+        if (!sArchiveCheckedAccounts.add(account.dbPath)) return;
         File dbFile = new File(account.dbPath);
         if (!dbFile.exists()) return;
         new Thread(() -> {
@@ -471,32 +482,38 @@ public class StorageScanner {
                 db = SQLiteDatabase.openDatabase(dbFile.getAbsolutePath(), null, SQLiteDatabase.OPEN_READWRITE | SQLiteDatabase.ENABLE_WRITE_AHEAD_LOGGING);
                 ensureArchiveSyncTriggers(db);
                 if (hasTable(db, "remote_media") && hasTable(db, "media") && hasTable(db, "collections")) {
-                    db.execSQL("UPDATE remote_media SET is_archived = ( " +
-                            "    SELECT is_archived FROM remote_media rm2 " +
-                            "    WHERE rm2.dedup_key = remote_media.dedup_key " +
-                            "      AND rm2.collection_id NOT IN (SELECT collection_media_key FROM collections) " +
-                            "    LIMIT 1 " +
-                            ") " +
-                            "WHERE collection_id IN (SELECT collection_media_key FROM collections) " +
-                            "  AND EXISTS ( " +
-                            "    SELECT 1 FROM remote_media rm2 " +
-                            "    WHERE rm2.dedup_key = remote_media.dedup_key " +
-                            "      AND rm2.collection_id NOT IN (SELECT collection_media_key FROM collections) " +
-                            "      AND rm2.is_archived != remote_media.is_archived " +
-                            ");");
+                    db.beginTransactionNonExclusive();
+                    try {
+                        db.execSQL("UPDATE remote_media SET is_archived = ( " +
+                                "    SELECT is_archived FROM remote_media rm2 " +
+                                "    WHERE rm2.dedup_key = remote_media.dedup_key " +
+                                "      AND rm2.collection_id NOT IN (SELECT collection_media_key FROM collections) " +
+                                "    LIMIT 1 " +
+                                ") " +
+                                "WHERE collection_id IN (SELECT collection_media_key FROM collections) " +
+                                "  AND EXISTS ( " +
+                                "    SELECT 1 FROM remote_media rm2 " +
+                                "    WHERE rm2.dedup_key = remote_media.dedup_key " +
+                                "      AND rm2.collection_id NOT IN (SELECT collection_media_key FROM collections) " +
+                                "      AND rm2.is_archived != remote_media.is_archived " +
+                                ");");
 
-                    db.execSQL("UPDATE media SET is_archived = ( " +
-                            "    SELECT is_archived FROM remote_media " +
-                            "    WHERE remote_media.dedup_key = media.dedup_key " +
-                            "      AND remote_media.collection_id NOT IN (SELECT collection_media_key FROM collections) " +
-                            "    LIMIT 1 " +
-                            ") " +
-                            "WHERE EXISTS ( " +
-                            "    SELECT 1 FROM remote_media " +
-                            "    WHERE remote_media.dedup_key = media.dedup_key " +
-                            "      AND remote_media.collection_id NOT IN (SELECT collection_media_key FROM collections) " +
-                            "      AND remote_media.is_archived != media.is_archived " +
-                            ");");
+                        db.execSQL("UPDATE media SET is_archived = ( " +
+                                "    SELECT is_archived FROM remote_media " +
+                                "    WHERE remote_media.dedup_key = media.dedup_key " +
+                                "      AND remote_media.collection_id NOT IN (SELECT collection_media_key FROM collections) " +
+                                "    LIMIT 1 " +
+                                ") " +
+                                "WHERE EXISTS ( " +
+                                "    SELECT 1 FROM remote_media " +
+                                "    WHERE remote_media.dedup_key = media.dedup_key " +
+                                "      AND remote_media.collection_id NOT IN (SELECT collection_media_key FROM collections) " +
+                                "      AND remote_media.is_archived != media.is_archived " +
+                                ");");
+                        db.setTransactionSuccessful();
+                    } finally {
+                        db.endTransaction();
+                    }
                 }
             } catch (Throwable ignored) {
             } finally {
@@ -515,7 +532,7 @@ public class StorageScanner {
 
         SQLiteDatabase db = null;
         try {
-            db = SQLiteDatabase.openDatabase(dbFile.getAbsolutePath(), null, SQLiteDatabase.OPEN_READONLY);
+            db = SQLiteDatabase.openDatabase(dbFile.getAbsolutePath(), null, SQLiteDatabase.OPEN_READONLY | SQLiteDatabase.ENABLE_WRITE_AHEAD_LOGGING);
             tuneDatabasePerformance(db);
             Map<String, AlbumInfo> albumMap = new LinkedHashMap<>();
 
@@ -608,7 +625,7 @@ public class StorageScanner {
 
         SQLiteDatabase db = null;
         try {
-            db = SQLiteDatabase.openDatabase(dbFile.getAbsolutePath(), null, SQLiteDatabase.OPEN_READONLY);
+            db = SQLiteDatabase.openDatabase(dbFile.getAbsolutePath(), null, SQLiteDatabase.OPEN_READONLY | SQLiteDatabase.ENABLE_WRITE_AHEAD_LOGGING);
             tuneDatabasePerformance(db);
             String targetTable = "remote_media";
             if (crit.source == SourceType.SHARED) {
@@ -1246,8 +1263,37 @@ public class StorageScanner {
     private static volatile Method sTaskRunnerAsyncMethod = null;
     private static volatile boolean sTaskRunnerResolved = false;
 
+    private static boolean tryBindTaskRunner(Class<?> clazz, Class<?> taskBase) {
+        if (clazz == null) return false;
+        Method syncM = null;
+        Method asyncM = null;
+        for (Method m : clazz.getMethods()) {
+            if (java.lang.reflect.Modifier.isStatic(m.getModifiers())) {
+                Class<?>[] p = m.getParameterTypes();
+                if (p.length == 2 && Context.class.isAssignableFrom(p[0]) &&
+                    (taskBase == null || p[1].isAssignableFrom(taskBase) || taskBase.isAssignableFrom(p[1]))) {
+                    if (m.getReturnType() != void.class && syncM == null) {
+                        m.setAccessible(true);
+                        syncM = m;
+                    } else if (m.getReturnType() == void.class && asyncM == null) {
+                        m.setAccessible(true);
+                        asyncM = m;
+                    }
+                }
+            }
+        }
+        if (syncM != null) {
+            sTaskRunnerSyncMethod = syncM;
+            if (asyncM != null) {
+                sTaskRunnerAsyncMethod = asyncM;
+            }
+            return true;
+        }
+        return false;
+    }
+
     public static synchronized void resolveTaskRunner() {
-        if (sTaskRunnerResolved) return;
+        if (sTaskRunnerResolved && sTaskRunnerSyncMethod != null) return;
         sTaskRunnerResolved = true;
         try {
             Class<?> taskBase = null;
@@ -1256,6 +1302,7 @@ public class StorageScanner {
             } catch (Throwable ignored) {}
 
             String[] candidateRunners = new String[]{
+                "bztw", // 7.98.0 (52589059)
                 "cbsq", // 7.97.0 (52547221 arm64)
                 "cagl", // 7.97.0 (52547203 universal)
                 "cant", // 7.97.0 (52547233 universal)
@@ -1264,29 +1311,43 @@ public class StorageScanner {
 
             for (String name : candidateRunners) {
                 Class<?> clazz = ReflectionCache.findClassOrNull(name);
-                if (clazz != null) {
-                    for (Method m : clazz.getMethods()) {
+                if (clazz != null && tryBindTaskRunner(clazz, taskBase)) {
+                    final String resolvedName = name;
+                    Logger.printInfo(() -> "Resolved TaskRunner via candidate: " + resolvedName);
+                    return;
+                }
+            }
+
+            // Dynamic discovery via UpdateFolderStatusTask (references TaskRunner in static helper)
+            try {
+                Class<?> updateTask = ReflectionCache.findClassOrNull("com.google.android.apps.photos.folderstatus.mixin.UpdateFolderStatusTask");
+                if (updateTask != null) {
+                    for (Method m : updateTask.getDeclaredMethods()) {
                         if (java.lang.reflect.Modifier.isStatic(m.getModifiers())) {
                             Class<?>[] p = m.getParameterTypes();
-                            if (p.length == 2 && Context.class.isAssignableFrom(p[0]) &&
-                                (taskBase == null || p[1].isAssignableFrom(taskBase) || taskBase.isAssignableFrom(p[1]))) {
-                                if (m.getReturnType() != void.class && sTaskRunnerSyncMethod == null) {
-                                    m.setAccessible(true);
-                                    sTaskRunnerSyncMethod = m;
-                                } else if (m.getReturnType() == void.class && sTaskRunnerAsyncMethod == null) {
-                                    m.setAccessible(true);
-                                    sTaskRunnerAsyncMethod = m;
-                                }
+                            if (p.length >= 1 && tryBindTaskRunner(p[0], taskBase)) {
+                                Logger.printInfo(() -> "Dynamically resolved TaskRunner via UpdateFolderStatusTask: " + p[0].getName());
+                                return;
                             }
                         }
                     }
-                    if (sTaskRunnerSyncMethod != null) {
-                        final String resolvedName = name;
-                        Logger.printInfo(() -> "Resolved TaskRunner via: " + resolvedName);
-                        break;
+                }
+            } catch (Throwable tDyn) {
+                Logger.printInfo(() -> "Dynamic TaskRunner discovery error: " + tDyn.getMessage());
+            }
+
+            // Dynamic discovery via AlbumActivity
+            try {
+                Class<?> albumAct = ReflectionCache.findClassOrNull("com.google.android.apps.photos.envelope.AlbumActivity");
+                if (albumAct != null) {
+                    for (Field f : albumAct.getDeclaredFields()) {
+                        if (tryBindTaskRunner(f.getType(), taskBase)) {
+                            Logger.printInfo(() -> "Dynamically resolved TaskRunner via AlbumActivity field " + f.getName() + ": " + f.getType().getName());
+                            return;
+                        }
                     }
                 }
-            }
+            } catch (Throwable ignored) {}
         } catch (Throwable t) {
             Logger.printException(() -> "Error resolving TaskRunner", t);
         }
@@ -1478,7 +1539,11 @@ public class StorageScanner {
                                 Logger.printInfo(() -> "Method 1 AddMediaToAlbumTask error: status=" + statusCode + ", msg=" + msg + ", exc=" + exc);
                             } catch (Throwable ignored) {}
                         }
+                    } else {
+                        Logger.printInfo(() -> "Method 1 AddMediaToAlbumTask: runTaskSync returned null");
                     }
+                } else {
+                    Logger.printInfo(() -> "Method 1 AddMediaToAlbumTask: builder.a() returned null");
                 }
             } catch (Throwable tMethod1) {
                 Logger.printException(() -> "Method 1 AddMediaToAlbumTask failed, falling back to Method 2", tMethod1);
@@ -1491,11 +1556,15 @@ public class StorageScanner {
                 try {
                     Class<?> bemfClass = ReflectionCache.findClassOrNull("bemf");
                     if (bemfClass != null) {
-                        Constructor<?> bemfCtor = bemfClass.getConstructor(long.class);
-                        Object builder = bemfCtor.newInstance(System.currentTimeMillis());
+                        Constructor<?> bemfCtor = null;
+                        try {
+                            bemfCtor = bemfClass.getConstructor(long.class);
+                        } catch (Throwable ignored) {}
+                        if (bemfCtor != null) {
+                            Object builder = bemfCtor.newInstance(System.currentTimeMillis());
 
-                        Field fX = bemfClass.getField("x");
-                        fX.setInt(builder, 4); // 4 = ENVELOPE_TYPE_ALBUM_EMPTY (required by adwr.e)
+                            Field fX = bemfClass.getField("x");
+                            fX.setInt(builder, 4); // 4 = ENVELOPE_TYPE_ALBUM_EMPTY (required by adwr.e)
 
                         Field fG = bemfClass.getField("g");
                         fG.set(builder, title);
@@ -1537,6 +1606,7 @@ public class StorageScanner {
                             if (mediaKeys != null && !mediaKeys.isEmpty()) {
                                 totalAdded = addMediaToCloudAlbum(context, accountId, createdKey, mediaKeys);
                             }
+                        }
                         }
                     }
                 } catch (Throwable tMethodB) {
@@ -1858,7 +1928,7 @@ public class StorageScanner {
             try {
                 File f = context.getDatabasePath("gphotos" + accountId + ".db");
                 if (f != null && f.exists()) {
-                    SQLiteDatabase checkDb = SQLiteDatabase.openDatabase(f.getAbsolutePath(), null, SQLiteDatabase.OPEN_READONLY);
+                    SQLiteDatabase checkDb = SQLiteDatabase.openDatabase(f.getAbsolutePath(), null, SQLiteDatabase.OPEN_READONLY | SQLiteDatabase.ENABLE_WRITE_AHEAD_LOGGING);
                     try (Cursor c = checkDb.rawQuery("SELECT owner_actor_id, viewer_actor_id FROM envelopes WHERE media_key = ? LIMIT 1", new String[]{albumMediaKey})) {
                         if (c != null && c.moveToFirst()) {
                             isSharedEnvelope = true;
@@ -2425,7 +2495,7 @@ public class StorageScanner {
 
                 // Self-healing: clear trash_timestamp on items marked as archived
                 try {
-                    SQLiteDatabase healDb = SQLiteDatabase.openDatabase(dbf.getAbsolutePath(), null, SQLiteDatabase.OPEN_READWRITE);
+                    SQLiteDatabase healDb = SQLiteDatabase.openDatabase(dbf.getAbsolutePath(), null, SQLiteDatabase.OPEN_READWRITE | SQLiteDatabase.ENABLE_WRITE_AHEAD_LOGGING);
                     try {
                         healDb.execSQL("UPDATE remote_media SET trash_timestamp = 0 WHERE is_archived = 1 AND trash_timestamp > 0;");
                         if (hasTable(healDb, "media")) {
@@ -2451,7 +2521,7 @@ public class StorageScanner {
                     Logger.printInfo(() -> "Heal query skipped: " + tHeal.getMessage());
                 }
 
-                db = SQLiteDatabase.openDatabase(dbf.getAbsolutePath(), null, SQLiteDatabase.OPEN_READONLY);
+                db = SQLiteDatabase.openDatabase(dbf.getAbsolutePath(), null, SQLiteDatabase.OPEN_READONLY | SQLiteDatabase.ENABLE_WRITE_AHEAD_LOGGING);
                 if (!hasTable(db, "remote_media")) return;
 
                 List<MediaItem> pendingItems = new ArrayList<>();
@@ -2737,7 +2807,7 @@ public class StorageScanner {
             File dbf = new File(account.dbPath);
             if (!dbf.exists()) return;
 
-            SQLiteDatabase db = SQLiteDatabase.openDatabase(dbf.getAbsolutePath(), null, SQLiteDatabase.OPEN_READWRITE);
+            SQLiteDatabase db = SQLiteDatabase.openDatabase(dbf.getAbsolutePath(), null, SQLiteDatabase.OPEN_READWRITE | SQLiteDatabase.ENABLE_WRITE_AHEAD_LOGGING);
             try {
                 db.beginTransaction();
                 long now = System.currentTimeMillis();
@@ -3718,7 +3788,7 @@ public class StorageScanner {
             try {
                 File dbf = context.getDatabasePath("gphotos" + accountId + ".db");
                 if (dbf != null && dbf.exists()) {
-                    try (SQLiteDatabase db = SQLiteDatabase.openDatabase(dbf.getAbsolutePath(), null, SQLiteDatabase.OPEN_READONLY)) {
+                    try (SQLiteDatabase db = SQLiteDatabase.openDatabase(dbf.getAbsolutePath(), null, SQLiteDatabase.OPEN_READONLY | SQLiteDatabase.ENABLE_WRITE_AHEAD_LOGGING)) {
                         if (hasTable(db, "remote_locked_media")) {
                             long count = DatabaseUtils.queryNumEntries(db, "remote_locked_media");
                             if (count > 0) return true;
@@ -5093,7 +5163,7 @@ public class StorageScanner {
         if (!dbFile.exists()) return null;
         SQLiteDatabase db = null;
         try {
-            db = SQLiteDatabase.openDatabase(dbFile.getAbsolutePath(), null, SQLiteDatabase.OPEN_READONLY);
+            db = SQLiteDatabase.openDatabase(dbFile.getAbsolutePath(), null, SQLiteDatabase.OPEN_READONLY | SQLiteDatabase.ENABLE_WRITE_AHEAD_LOGGING);
             if (hasTable(db, "local_media")) {
                 String pathCol = null;
                 if (hasColumn(db, "local_media", "filepath")) pathCol = "filepath";
