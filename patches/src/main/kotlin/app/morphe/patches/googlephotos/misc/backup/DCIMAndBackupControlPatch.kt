@@ -1,6 +1,8 @@
 package app.morphe.patches.googlephotos.misc.backup
 
+import app.morphe.patcher.extensions.InstructionExtensions.addInstruction
 import app.morphe.patcher.extensions.InstructionExtensions.addInstructions
+import app.morphe.patcher.extensions.InstructionExtensions.getInstruction
 import app.morphe.patcher.patch.PatchException
 import app.morphe.patcher.patch.bytecodePatch
 import app.morphe.patches.googlephotos.misc.extension.sharedExtensionPatch
@@ -11,8 +13,11 @@ import app.morphe.patches.shared.compat.AppCompatibilities
 import app.morphe.util.cloneMutable
 import app.morphe.util.findMutableMethodOf
 import app.morphe.util.getReference
+import app.morphe.util.indexOfFirstInstructionOrThrow
+import app.morphe.util.indexOfFirstStringInstructionOrThrow
 import com.android.tools.smali.dexlib2.AccessFlags
 import com.android.tools.smali.dexlib2.Opcode
+import com.android.tools.smali.dexlib2.iface.instruction.OneRegisterInstruction
 import com.android.tools.smali.dexlib2.iface.instruction.ReferenceInstruction
 import com.android.tools.smali.dexlib2.iface.reference.FieldReference
 import com.android.tools.smali.dexlib2.iface.reference.StringReference
@@ -74,12 +79,19 @@ val dcimAndBackupControlPatch = bytecodePatch(
                     add("const-string v${N+1}, \"/dcim/\"")
                     add("invoke-virtual {v$N, v${N+1}}, Ljava/lang/String;->contains(Ljava/lang/CharSequence;)Z")
                     add("move-result v${N+1}")
-                    add("if-nez v${N+1}, :cond_set_false")
+                    add("if-eqz v${N+1}, :cond_skip")
+                    add("const-string v${N+1}, \"/camera\"")
+                    add("invoke-virtual {v$N, v${N+1}}, Ljava/lang/String;->contains(Ljava/lang/CharSequence;)Z")
+                    add("move-result v${N+1}")
+                    add("if-nez v${N+1}, :cond_skip")
+                    add("const-string v${N+1}, \"/100\"")
+                    add("invoke-virtual {v$N, v${N+1}}, Ljava/lang/String;->contains(Ljava/lang/CharSequence;)Z")
+                    add("move-result v${N+1}")
+                    add("if-nez v${N+1}, :cond_skip")
                     add("const-string v${N+1}, \"/dcim\"")
                     add("invoke-virtual {v$N, v${N+1}}, Ljava/lang/String;->endsWith(Ljava/lang/String;)Z")
                     add("move-result v$N")
-                    add("if-eqz v$N, :cond_skip")
-                    add(":cond_set_false")
+                    add("if-nez v$N, :cond_skip")
                     add("const/4 p1, 0")
                     add(":cond_skip")
                 }
@@ -117,12 +129,19 @@ val dcimAndBackupControlPatch = bytecodePatch(
                 add("const-string v${legacyN+1}, \"/dcim/\"")
                 add("invoke-virtual {v$legacyN, v${legacyN+1}}, Ljava/lang/String;->contains(Ljava/lang/CharSequence;)Z")
                 add("move-result v${legacyN+1}")
-                add("if-nez v${legacyN+1}, :cond_return_false")
+                add("if-eqz v${legacyN+1}, :cond_skip")
+                add("const-string v${legacyN+1}, \"/camera\"")
+                add("invoke-virtual {v$legacyN, v${legacyN+1}}, Ljava/lang/String;->contains(Ljava/lang/CharSequence;)Z")
+                add("move-result v${legacyN+1}")
+                add("if-nez v${legacyN+1}, :cond_skip")
+                add("const-string v${legacyN+1}, \"/100\"")
+                add("invoke-virtual {v$legacyN, v${legacyN+1}}, Ljava/lang/String;->contains(Ljava/lang/CharSequence;)Z")
+                add("move-result v${legacyN+1}")
+                add("if-nez v${legacyN+1}, :cond_skip")
                 add("const-string v${legacyN+1}, \"/dcim\"")
                 add("invoke-virtual {v$legacyN, v${legacyN+1}}, Ljava/lang/String;->endsWith(Ljava/lang/String;)Z")
                 add("move-result v$legacyN")
-                add("if-eqz v$legacyN, :cond_skip")
-                add(":cond_return_false")
+                add("if-nez v$legacyN, :cond_skip")
                 add("const/4 v$legacyN, 0")
                 add("return v$legacyN")
                 add(":cond_skip")
@@ -142,6 +161,22 @@ val dcimAndBackupControlPatch = bytecodePatch(
 
         // 3. Make BackupNotificationManager safe from null-pointer crashes during sync scheduling
         BackupNotificationManagerFingerprint.methodOrNull?.addInstructions(0, "return-void")
+
+        // 4. Decouple backup query from in_camera_folder so Camera photos do not auto-upload by default
+        val backupQueryMethod = BackupEligibilityQueryFingerprint.methodOrNull
+        if (backupQueryMethod != null) {
+            val queryClassDef = mutableClassDefBy(backupQueryMethod.definingClass)
+            val mutableQueryMethod = queryClassDef.findMutableMethodOf(backupQueryMethod)
+
+            val stringIndex = mutableQueryMethod.indexOfFirstStringInstructionOrThrow(" OR backup_folders.bucket_id IS NOT NULL ")
+            val moveResultInstr = mutableQueryMethod.getInstruction(stringIndex - 1) as OneRegisterInstruction
+            val folderCondRegister = moveResultInstr.registerA
+
+            mutableQueryMethod.addInstruction(
+                stringIndex,
+                "const-string v$folderCondRegister, \"\""
+            )
+        }
 
         // =========================================================================
         // 2. Local Creation Downloader

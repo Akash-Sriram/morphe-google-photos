@@ -47,3 +47,9 @@ internal object BackupNotificationManagerFingerprint : Fingerprint(
     }
 )
 
+internal object BackupEligibilityQueryFingerprint : Fingerprint(
+    returnType = "Ljava/lang/String;",
+    strings = listOf(" OR backup_folders.bucket_id IS NOT NULL "),
+)
+
+
