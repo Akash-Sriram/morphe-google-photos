@@ -2514,6 +2514,10 @@ public class StorageScanner {
                                 healDb.execSQL("UPDATE media SET is_archived = 1 WHERE (is_archived IS NULL OR is_archived = 0) AND dedup_key IN (SELECT dedup_key FROM remote_media WHERE is_archived = 1);");
                             }
                         }
+                        // Self-healing: purge ghost local media rows from media table where local file no longer exists in local_media
+                        if (hasTable(healDb, "media") && hasTable(healDb, "local_media")) {
+                            healDb.execSQL("DELETE FROM media WHERE has_local = 1 AND dedup_key NOT IN (SELECT dedup_key FROM local_media);");
+                        }
                     } finally {
                         healDb.close();
                     }
