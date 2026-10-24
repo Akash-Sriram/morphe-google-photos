@@ -2517,6 +2517,8 @@ public class StorageScanner {
                         // Self-healing: purge ghost local media rows from media table where local file no longer exists in local_media
                         if (hasTable(healDb, "media") && hasTable(healDb, "local_media")) {
                             healDb.execSQL("DELETE FROM media WHERE has_local = 1 AND dedup_key NOT IN (SELECT dedup_key FROM local_media);");
+                            // Self-healing: resync in_camera_folder state from local_media to media table so non-camera items never linger in home feed
+                            healDb.execSQL("UPDATE media SET in_camera_folder = (SELECT l.in_camera_folder FROM local_media l WHERE l.dedup_key = media.dedup_key) WHERE has_local = 1 AND dedup_key IN (SELECT dedup_key FROM local_media) AND in_camera_folder != (SELECT l.in_camera_folder FROM local_media l WHERE l.dedup_key = media.dedup_key);");
                         }
                     } finally {
                         healDb.close();
