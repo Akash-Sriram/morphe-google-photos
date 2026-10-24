@@ -3,6 +3,8 @@ package app.morphe.patches.googlephotos.misc.backup
 import app.morphe.patcher.extensions.InstructionExtensions.addInstruction
 import app.morphe.patcher.extensions.InstructionExtensions.addInstructions
 import app.morphe.patcher.extensions.InstructionExtensions.getInstruction
+import app.morphe.patcher.extensions.InstructionExtensions.removeInstruction
+import app.morphe.patcher.extensions.InstructionExtensions.replaceInstruction
 import app.morphe.patcher.patch.PatchException
 import app.morphe.patcher.patch.bytecodePatch
 import app.morphe.patches.googlephotos.misc.extension.sharedExtensionPatch
@@ -19,8 +21,11 @@ import com.android.tools.smali.dexlib2.AccessFlags
 import com.android.tools.smali.dexlib2.Opcode
 import com.android.tools.smali.dexlib2.iface.instruction.OneRegisterInstruction
 import com.android.tools.smali.dexlib2.iface.instruction.ReferenceInstruction
+import com.android.tools.smali.dexlib2.iface.instruction.TwoRegisterInstruction
 import com.android.tools.smali.dexlib2.iface.reference.FieldReference
+import com.android.tools.smali.dexlib2.iface.reference.MethodReference
 import com.android.tools.smali.dexlib2.iface.reference.StringReference
+import com.android.tools.smali.dexlib2.iface.reference.TypeReference
 
 @Suppress("unused")
 val dcimAndBackupControlPatch = bytecodePatch(
@@ -178,6 +183,45 @@ val dcimAndBackupControlPatch = bytecodePatch(
             )
         }
 
+        // 5. Fix overlay badge so un-backed camera photos display the cloud-off (not uploaded) badge
+        val uploadStatusClassDef = UploadStatusModelViewModelFingerprint.methodOrNull?.let { mutableClassDefBy(it.definingClass) }
+        if (uploadStatusClassDef != null) {
+            val badgeMethod = uploadStatusClassDef.methods.firstOrNull {
+                it.parameterTypes.size == 3 && it.parameterTypes[1] == "Z"
+            }
+            if (badgeMethod != null) {
+                val mutableBadgeMethod = uploadStatusClassDef.findMutableMethodOf(badgeMethod)
+                val instructions = badgeMethod.implementation?.instructions?.toList() ?: emptyList()
+
+                // Find Lasym.g reference (photos_quantum_gm_ic_cloud_off_vd_theme_18)
+                var lasymGRef: FieldReference? = null
+                val lasymSgetIndices = mutableListOf<Int>()
+                for (idx in instructions.indices) {
+                    val instr = instructions[idx]
+                    if (instr.opcode == Opcode.SGET_OBJECT) {
+                        val ref = (instr as? ReferenceInstruction)?.reference as? FieldReference
+                        if (ref != null && ref.type.endsWith("asym;")) {
+                            lasymSgetIndices.add(idx)
+                            if (ref.name == "g") {
+                                lasymGRef = ref
+                            }
+                        }
+                    }
+                }
+
+                // The second-to-last SGET of Lasym is index 124 (stock loads Lasym.b when account backup is enabled and status is NONE)
+                if (lasymGRef != null && lasymSgetIndices.size >= 2) {
+                    val targetIdx = lasymSgetIndices[lasymSgetIndices.size - 2]
+                    val targetInstr = instructions[targetIdx] as OneRegisterInstruction
+                    val reg = targetInstr.registerA
+                    mutableBadgeMethod.replaceInstruction(
+                        targetIdx,
+                        "sget-object v$reg, ${lasymGRef.definingClass}->${lasymGRef.name}:${lasymGRef.type}"
+                    )
+                }
+            }
+        }
+
         // =========================================================================
         // 2. Local Creation Downloader
         // =========================================================================
@@ -304,6 +348,203 @@ val dcimAndBackupControlPatch = bytecodePatch(
                 )
             }
         }
+
+        // 3. Fix Create tab save ClassCastException in koo.a
+        val createItemMethod = CreateItemUpdateFingerprint.methodOrNull
+        if (createItemMethod != null) {
+            val createItemClassDef = mutableClassDefBy(createItemMethod.definingClass)
+            val mutableMethod = createItemClassDef.findMutableMethodOf(createItemMethod)
+            val instructions = createItemMethod.implementation?.instructions?.toList() ?: emptyList()
+
+            // 1. Locate check-cast vX, Lslm; immediately preceding instance-of vX, vX, Lsll;
+            for (idx in 0 until instructions.size - 1) {
+                val curr = instructions[idx]
+                val next = instructions[idx + 1]
+                if (curr.opcode == Opcode.CHECK_CAST && next.opcode == Opcode.INSTANCE_OF) {
+                    val nextTypeRef = (next as? ReferenceInstruction)?.reference as? TypeReference
+                    if (nextTypeRef?.type == "Lsll;") {
+                        mutableMethod.replaceInstruction(idx, "nop")
+                        break
+                    }
+                }
+            }
+
+            // 2. Locate check-cast vY, Lslm; following Map.get(item.id) and preceding iget-object ..., skm->f
+            val updatedInstructions = mutableMethod.implementation!!.instructions.toList()
+            for (idx in 0 until updatedInstructions.size - 1) {
+                val curr = updatedInstructions[idx]
+                val next = updatedInstructions[idx + 1]
+                if (curr.opcode == Opcode.CHECK_CAST && next.opcode == Opcode.IGET_OBJECT) {
+                    val fieldRef = (next as? ReferenceInstruction)?.reference as? FieldReference
+                    if (fieldRef != null && fieldRef.name == "f" && fieldRef.type.endsWith("slm;")) {
+                        val castInstr = curr as OneRegisterInstruction
+                        val targetReg = castInstr.registerA
+                        val nextInstr = next as TwoRegisterInstruction
+                        val itemReg = nextInstr.registerB
+                        mutableMethod.removeInstruction(idx)
+                        mutableMethod.addInstructions(
+                            idx,
+                            """
+                            invoke-static { v$targetReg, v$itemReg }, Lapp/morphe/extension/shared/patches/LocalCreationDownloader;->safeSlm(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;
+                            move-result-object v$targetReg
+                            """.trimIndent()
+                        )
+                        break
+                    }
+                }
+            }
+        }
+
+        // =========================================================================
+        // 4. Device Folders Camera Listing & Independent Toggle Control
+        // =========================================================================
+
+        // 6. Include Camera folder in "Back up device folders" screen by NOP'ing ztw.k(false) in amty.a
+        val deviceFoldersSettingsQueryMethod = DeviceFoldersSettingsQueryFingerprint.methodOrNull
+        if (deviceFoldersSettingsQueryMethod != null) {
+            val amtyClassDef = mutableClassDefBy(deviceFoldersSettingsQueryMethod.definingClass)
+            val mutableAmtyMethod = amtyClassDef.findMutableMethodOf(deviceFoldersSettingsQueryMethod)
+            val instructions = deviceFoldersSettingsQueryMethod.implementation?.instructions?.toList() ?: emptyList()
+            for (idx in instructions.indices) {
+                val ins = instructions[idx]
+                if (ins is ReferenceInstruction) {
+                    val mr = ins.reference as? MethodReference
+                    if (mr != null && mr.name == "k" && mr.parameterTypes.size == 1 && mr.parameterTypes[0] == "Z") {
+                        mutableAmtyMethod.replaceInstruction(idx, "nop")
+                        break
+                    }
+                }
+            }
+        }
+
+        // 7. Make Camera folder feature independent and assignable to backup_folders
+        val featureMethod = InCameraFolderFeatureFingerprint.methodOrNull
+        if (featureMethod != null) {
+            val featureClassDef = mutableClassDefBy(featureMethod.definingClass)
+
+            // Patch <init>(Integer, Z)
+            val ctorMethod = featureClassDef.methods.find {
+                it.name == "<init>" && it.parameterTypes.size == 2 &&
+                it.parameterTypes[0] == "Ljava/lang/Integer;" && it.parameterTypes[1] == "Z"
+            }
+            if (ctorMethod != null) {
+                val mutableCtor = featureClassDef.findMutableMethodOf(ctorMethod)
+                mutableCtor.addInstructions(
+                    1,
+                    """
+                    invoke-static { p1 }, Lapp/morphe/extension/shared/patches/LocalCreationDownloader;->resolveBucketId(Ljava/lang/Integer;)Ljava/lang/Integer;
+                    move-result-object p1
+                    const/4 p2, 0
+                    """.trimIndent()
+                )
+            }
+
+            // Patch <init>(Parcel)
+            val parcelCtorMethod = featureClassDef.methods.find {
+                it.name == "<init>" && it.parameterTypes.size == 1 &&
+                it.parameterTypes[0] == "Landroid/os/Parcel;"
+            }
+            if (parcelCtorMethod != null) {
+                val mutableParcelCtor = featureClassDef.findMutableMethodOf(parcelCtorMethod)
+                val instructions = parcelCtorMethod.implementation?.instructions?.toList() ?: emptyList()
+                for (idx in instructions.indices) {
+                    val ins = instructions[idx]
+                    if (ins.opcode == Opcode.IPUT_BOOLEAN) {
+                        val ref = (ins as? ReferenceInstruction)?.reference as? FieldReference
+                        if (ref != null && ref.name == "a") {
+                            val reg = (ins as OneRegisterInstruction).registerA
+                            mutableParcelCtor.addInstruction(idx, "const/4 v$reg, 0")
+                            break
+                        }
+                    }
+                }
+            }
+
+            // Patch a()I to return resolveBucketIdInt(b) cleanly without branches
+            val mutableMethodA = featureClassDef.findMutableMethodOf(featureMethod)
+            val instrCount = mutableMethodA.implementation!!.instructions.toList().size
+            for (i in (instrCount - 1) downTo 0) {
+                mutableMethodA.removeInstruction(i)
+            }
+            mutableMethodA.addInstructions(
+                0,
+                """
+                iget-object v0, p0, ${featureClassDef.type}->b:Ljava/lang/Integer;
+                invoke-static { v0 }, Lapp/morphe/extension/shared/patches/LocalCreationDownloader;->resolveBucketIdInt(Ljava/lang/Integer;)I
+                move-result v0
+                return v0
+                """.trimIndent()
+            )
+        }
+
+        // 8. Prevent NoWhenBranchMatchedException (cthu) in Create tab button renderer
+        val buttonTextMethod = CreateItemButtonTextFingerprint.methodOrNull
+        if (buttonTextMethod != null) {
+            val classDef = mutableClassDefBy(buttonTextMethod.definingClass)
+            val mutableMethod = classDef.findMutableMethodOf(buttonTextMethod)
+            val instructions = buttonTextMethod.implementation?.instructions?.toList() ?: emptyList()
+            for (idx in instructions.indices) {
+                val ins = instructions[idx]
+                if (ins.opcode == Opcode.NEW_INSTANCE) {
+                    val typeRef = (ins as? ReferenceInstruction)?.reference as? TypeReference
+                    if (typeRef?.type?.endsWith("cthu;") == true) {
+                        mutableMethod.replaceInstruction(idx, "nop")
+                        if (idx + 1 < instructions.size) mutableMethod.replaceInstruction(idx + 1, "nop")
+                        if (idx + 2 < instructions.size) mutableMethod.replaceInstruction(idx + 2, "nop")
+                        break
+                    }
+                }
+            }
+        }
+
+        // 9. Aura Tab Made For You Section Enablement
+        val auraTabMethod = AuraTabViewModelFingerprint.methodOrNull
+        if (auraTabMethod != null) {
+            val auraTabClassDef = mutableClassDefBy(auraTabMethod.definingClass)
+            val isMfyEnabledMethod = auraTabClassDef.methods.find {
+                it.returnType == "Z" && it.parameterTypes.isEmpty()
+            }
+            if (isMfyEnabledMethod != null) {
+                val mutableMethod = auraTabClassDef.findMutableMethodOf(isMfyEnabledMethod)
+                val instrCount = mutableMethod.implementation!!.instructions.toList().size
+                for (i in (instrCount - 1) downTo 0) {
+                    mutableMethod.removeInstruction(i)
+                }
+                mutableMethod.addInstructions(
+                    0,
+                    """
+                    const/4 v0, 0x1
+                    return v0
+                    """.trimIndent()
+                )
+
+                // Also patch <init> to unconditionally call shp.n()
+                val ctor = auraTabClassDef.methods.find { it.name == "<init>" }
+                if (ctor != null) {
+                    val mutableCtor = auraTabClassDef.findMutableMethodOf(ctor)
+                    val ctorInstructions = ctor.implementation?.instructions?.toList() ?: emptyList()
+                    for (idx in ctorInstructions.indices) {
+                        val ins = ctorInstructions[idx]
+                        if (ins is ReferenceInstruction) {
+                            val mr = ins.reference as? MethodReference
+                            if (mr != null && mr.definingClass == auraTabClassDef.type && mr.name == isMfyEnabledMethod.name) {
+                                if (idx + 2 < ctorInstructions.size && ctorInstructions[idx + 2].opcode == Opcode.IF_EQZ) {
+                                    mutableCtor.replaceInstruction(idx + 2, "nop")
+                                }
+                                for (j in (idx + 3) until minOf(idx + 10, ctorInstructions.size)) {
+                                    if (ctorInstructions[j].opcode == Opcode.IF_NEZ) {
+                                        mutableCtor.replaceInstruction(j, "nop")
+                                        break
+                                    }
+                                }
+                                break
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
 
         if (!patchedSaveMixin) {
             throw PatchException("Could not find SaveCreationMixin or its save execution method.")
