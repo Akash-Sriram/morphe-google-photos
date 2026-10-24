@@ -1249,7 +1249,7 @@ public class StorageScanner {
         } catch (Throwable t) {
             Logger.printInfo(() -> "Could not resolve builder from AddMediaToAlbumTask: " + t.getMessage());
         }
-        for (String name : new String[]{"otz", "orn", "ovo", "mtl", "mqw"}) {
+        for (String name : ToolkitMappings.ADD_MEDIA_TO_ALBUM_BUILDER_CLASSES) {
             Class<?> found = ReflectionCache.findClassOrNull(name);
             if (found != null) {
                 sAddMediaToAlbumBuilderClass = found;
@@ -1301,15 +1301,7 @@ public class StorageScanner {
                 taskBase = ReflectionCache.findClass("com.google.android.apps.photos.actionqueue.ActionWrapper").getSuperclass();
             } catch (Throwable ignored) {}
 
-            String[] candidateRunners = new String[]{
-                "bztw", // 7.98.0 (52589059)
-                "cbsq", // 7.97.0 (52547221 arm64)
-                "cagl", // 7.97.0 (52547203 universal)
-                "cant", // 7.97.0 (52547233 universal)
-                "bxue"  // 7.96.0
-            };
-
-            for (String name : candidateRunners) {
+            for (String name : ToolkitMappings.TASK_RUNNER_CLASSES) {
                 Class<?> clazz = ReflectionCache.findClassOrNull(name);
                 if (clazz != null && tryBindTaskRunner(clazz, taskBase)) {
                     final String resolvedName = name;
@@ -1402,6 +1394,40 @@ public class StorageScanner {
             return (Bundle) m.invoke(result);
         } catch (Throwable ignored) {}
         return null;
+    }
+
+    public static Object getServiceLocator(Context context, Class<?> serviceClass) {
+        if (context == null || serviceClass == null) return null;
+        for (String slName : ToolkitMappings.SERVICE_LOCATOR_CLASSES) {
+            try {
+                Class<?> slClass = ReflectionCache.findClassOrNull(slName);
+                if (slClass != null) {
+                    Method m = ReflectionCache.getMethod(slClass, ToolkitMappings.SERVICE_LOCATOR_METHOD, Context.class, Class.class);
+                    if (m != null) {
+                        Object res = m.invoke(null, context, serviceClass);
+                        if (res != null) return res;
+                    }
+                }
+            } catch (Throwable ignored) {}
+        }
+        return null;
+    }
+
+    public static void flushActionQueue(Context context, int accountId, long actionId) {
+        if (context == null || actionId <= 0) return;
+        for (String flusherName : ToolkitMappings.ACTION_FLUSHER_CLASSES) {
+            try {
+                Class<?> flusherClass = ReflectionCache.findClassOrNull(flusherName);
+                if (flusherClass != null) {
+                    Constructor<?> ctor = flusherClass.getConstructor(int.class, long.class);
+                    Object inst = ctor.newInstance(accountId, actionId);
+                    Method m = flusherClass.getMethod("a", Context.class);
+                    m.invoke(inst, context);
+                    Logger.printInfo(() -> "ActionQueue flushed via " + flusherName + " for actionId=" + actionId);
+                    return;
+                }
+            } catch (Throwable ignored) {}
+        }
     }
 
     public static Object resolveMediaKey(String key) {
@@ -1674,12 +1700,7 @@ public class StorageScanner {
                     Bundle bundle = getTaskResultBundle(res);
                     long actionId = bundle != null ? bundle.getLong("LocalResult__action_id", -1L) : -1L;
                     if (actionId != -1L) {
-                        Class<?> aokqClass = Class.forName("aokq");
-                        Constructor<?> aokqCtor = aokqClass.getConstructor(int.class, long.class);
-                        Object aokqInst = aokqCtor.newInstance(accountId, actionId);
-                        Method aMethod = aokqClass.getMethod("a", Context.class);
-                        aMethod.invoke(aokqInst, context);
-                        Logger.printInfo(() -> "Successfully flushed title mutation via aokq!");
+                        flushActionQueue(context, accountId, actionId);
                         ok = true;
                     }
                 }
@@ -1697,10 +1718,8 @@ public class StorageScanner {
                 Constructor<?> mmsCtor = mmsClass.getConstructor(ahnvClass, String.class, int.class);
                 Object mmsRpc = mmsCtor.newInstance(ahnvInst, title, 2);
 
-                Class<?> bzoqClass = Class.forName("bzoq");
                 Class<?> cetrClass = Class.forName("cetr");
-                Method getServiceMethod = bzoqClass.getMethod("e", Context.class, Class.class);
-                Object cetrInst = getServiceMethod.invoke(null, context, cetrClass);
+                Object cetrInst = getServiceLocator(context, cetrClass);
                 if (cetrInst != null) {
                     Class<?> ceupClass = Class.forName("ceup");
                     Method bMethod = cetrClass.getMethod("b", Integer.class, ceupClass);
@@ -1844,7 +1863,7 @@ public class StorageScanner {
                 Logger.printInfo(() -> "Adding chunk of " + chunk.size() + " items to cloud album " + envelopeMediaKey + " for account " + accountId);
 
                 Class<?> lamwaClass = null;
-                for (String name : new String[]{"aphh", "apfz", "apjt", "amwa"}) {
+                for (String name : ToolkitMappings.ADD_MEDIA_TO_ENVELOPE_BUILDER_CLASSES) {
                     lamwaClass = ReflectionCache.findClassOrNull(name);
                     if (lamwaClass != null) break;
                 }
@@ -2115,13 +2134,7 @@ public class StorageScanner {
     private static Object createMediaCollectionForKeys(int accountId, List<String> mediaKeys) {
         if (mediaKeys == null || mediaKeys.isEmpty()) return null;
         // 1. Static factory f(int accountId, List mediaKeys)
-        String[][] factoryClasses = new String[][]{
-            {"pyk", "f"},    // 7.97.0 (52547221 arm64)
-            {"pvv", "f"},    // 7.97.0 (52547203 univ)
-            {"pzv", "f"},    // 7.97.0 (52547233 univ)
-            {"num", "f"}     // 7.96.0
-        };
-        for (String[] pair : factoryClasses) {
+        for (String[] pair : ToolkitMappings.KEYS_COLLECTION_FACTORIES) {
             try {
                 Class<?> clazz = ReflectionCache.findClassOrNull(pair[0]);
                 if (clazz != null) {
@@ -2133,9 +2146,8 @@ public class StorageScanner {
             } catch (Throwable ignored) {}
         }
 
-        // 2. Builder classes (pyj, pvu, pzu, nul)
-        String[] builderClasses = new String[]{"pyj", "pvu", "pzu", "nul"};
-        for (String bName : builderClasses) {
+        // 2. Builder classes
+        for (String bName : ToolkitMappings.KEYS_COLLECTION_BUILDERS) {
             try {
                 Class<?> bClass = ReflectionCache.findClassOrNull(bName);
                 if (bClass != null) {
@@ -2171,7 +2183,7 @@ public class StorageScanner {
 
     private static synchronized void resolveCoreLoader() {
         if (sCoreLoaderResolved) return;
-        for (String name : new String[]{"yul", "yxq", "zap", "wrl"}) {
+        for (String name : ToolkitMappings.CORE_MEDIA_LOADER_CLASSES) {
             Class<?> c = ReflectionCache.findClassOrNull(name);
             if (c != null && isValidCoreLoader(c)) {
                 sCoreMediaLoaderClass = c;
@@ -2279,12 +2291,7 @@ public class StorageScanner {
         try {
             Class<?> wqaClass = null;
             Class<?> wqbClass = null;
-            String[][] builderPairs = new String[][]{
-                {"yta", "ytc"},
-                {"yyq", "yyr"},
-                {"wqa", "wqb"}
-            };
-            for (String[] pair : builderPairs) {
+            for (String[] pair : ToolkitMappings.FEATURES_REQUEST_PAIRS) {
                 Class<?> b = ReflectionCache.findClassOrNull(pair[0]);
                 Class<?> r = ReflectionCache.findClassOrNull(pair[1]);
                 if (b != null && r != null) {
@@ -2299,6 +2306,27 @@ public class StorageScanner {
             Constructor<?> wqaCtor = wqaClass.getConstructor(boolean.class);
             Object builder = wqaCtor.newInstance(true);
             Method dMethod = wqaClass.getMethod("d", wqbClass);
+
+            // Add DedupKeyFeature and RemoteMediaKeyFeature directly to builder
+            try {
+                Method bMethod = wqaClass.getMethod("b", Class.class);
+                for (String featName : ToolkitMappings.DEDUP_KEY_FEATURE_CLASSES) {
+                    Class<?> fc = ReflectionCache.findClassOrNull(featName);
+                    if (fc != null) {
+                        bMethod.invoke(builder, fc);
+                        break;
+                    }
+                }
+                for (String featName : ToolkitMappings.REMOTE_MEDIA_KEY_FEATURE_CLASSES) {
+                    Class<?> fc = ReflectionCache.findClassOrNull(featName);
+                    if (fc != null) {
+                        bMethod.invoke(builder, fc);
+                        break;
+                    }
+                }
+            } catch (Throwable tFeat) {
+                Logger.printInfo(() -> "Could not add direct feature classes: " + tFeat.getMessage());
+            }
 
             // 1. Core Trash Features: neb.a (contains zon, bams, Axdq, Laflw)
             try {
@@ -2343,14 +2371,17 @@ public class StorageScanner {
                 }
             }
 
-            // 5. Archive Features: psu.a (contains zon, Lakka)
-            try {
-                Class<?> psuClass = Class.forName("psu");
-                Field f = psuClass.getField("a");
-                Object fVal = f.get(null);
-                if (fVal != null) dMethod.invoke(builder, fVal);
-            } catch (Throwable t) {
-                Logger.printInfo(() -> "psu.a not resolved: " + t.getMessage());
+            // 5. Archive Features
+            for (String psuCandidate : ToolkitMappings.ARCHIVE_SERVICE_CLASSES) {
+                try {
+                    Class<?> psuClass = Class.forName(psuCandidate);
+                    Field f = psuClass.getField("a");
+                    Object fVal = f.get(null);
+                    if (fVal != null) {
+                        dMethod.invoke(builder, fVal);
+                        break;
+                    }
+                } catch (Throwable ignored) {}
             }
 
             // 6. Core Mars Features: ajbk.b (contains bams, Lakka, Laflw, Lrkz, Lzon, Lankt)
@@ -2632,7 +2663,14 @@ public class StorageScanner {
                     List<String> chunkDedupKeys = new ArrayList<>(uniqueChunkDedupKeys);
 
                     if (!chunkMediaKeys.isEmpty() || !chunkDedupKeys.isEmpty()) {
-                        Class<?> bjirClass = Class.forName("bjir");
+                        Class<?> bjirClass = null;
+                        for (String cand : ToolkitMappings.MOVE_TO_TRASH_ACTION_CLASSES) {
+                            bjirClass = ReflectionCache.findClassOrNull(cand);
+                            if (bjirClass != null) break;
+                        }
+                        if (bjirClass == null) {
+                            throw new ClassNotFoundException("MoveToTrashAction class not found");
+                        }
                         Class<?> cjizClass = Class.forName("cjiz");
                         Class<?> romClass = Class.forName("rom");
                         Method romMethod = romClass.getMethod("b", Context.class);
@@ -2697,6 +2735,13 @@ public class StorageScanner {
         try {
             Object feat = getMediaFeature(media, zonClass);
             if (feat != null) {
+                try {
+                    Method aM = ReflectionCache.getMethodOrNull(feat.getClass(), "a");
+                    if (aM != null && aM.getReturnType() == String.class) {
+                        String s = (String) aM.invoke(feat);
+                        if (s != null && !s.isEmpty()) return s;
+                    }
+                } catch (Throwable ignored) {}
                 Field af = ReflectionCache.getDeclaredField(feat.getClass(), "a");
                 Object opt = af.get(feat);
                 if (opt != null) {
@@ -2730,13 +2775,17 @@ public class StorageScanner {
             Object feat = getMediaFeature(media, bamsClass);
             if (feat != null) {
                 Field af = ReflectionCache.getDeclaredField(feat.getClass(), "a");
-                List<?> keys = (List<?>) af.get(feat);
-                if (keys != null) {
-                    for (Object k : keys) {
+                Object val = af.get(feat);
+                if (val instanceof List) {
+                    for (Object k : (List<?>) val) {
                         if (k != null) {
                             res.add(k.toString());
                         }
                     }
+                } else if (val instanceof String) {
+                    res.add((String) val);
+                } else if (val != null) {
+                    res.add(val.toString());
                 }
             }
         } catch (Throwable ignored) {}
@@ -2744,14 +2793,16 @@ public class StorageScanner {
     }
 
     private static Object createTrashMediaCollection(int accountId) {
-        String[] trashClasses = new String[]{
-            "bnew", // 7.97.0 (52547221 arm64)
-            "blvo", // 7.97.0 (52547203 univ)
-            "bmcu", // 7.97.0 (52547233 univ)
-            "bjjo", // 7.97.0 alternate
-            "bjjq"  // 7.96.0 fallback
-        };
-        for (String tName : trashClasses) {
+        try {
+            Class<?> fClass = ReflectionCache.findClassOrNull(ToolkitMappings.TRASH_FACTORY_CLASS);
+            if (fClass != null) {
+                Method m = fClass.getMethod(ToolkitMappings.TRASH_FACTORY_METHOD, int.class);
+                Object coll = m.invoke(null, accountId);
+                if (coll != null) return coll;
+            }
+        } catch (Throwable ignored) {}
+
+        for (String tName : ToolkitMappings.TRASH_COLLECTION_CLASSES) {
             try {
                 Class<?> tClass = ReflectionCache.findClassOrNull(tName);
                 if (tClass != null) {
@@ -2762,6 +2813,11 @@ public class StorageScanner {
                     } catch (Throwable ignored) {}
                     try {
                         Method m = tClass.getMethod("a", int.class);
+                        Object coll = m.invoke(null, accountId);
+                        if (coll != null) return coll;
+                    } catch (Throwable ignored) {}
+                    try {
+                        Method m = tClass.getMethod("b", int.class);
                         Object coll = m.invoke(null, accountId);
                         if (coll != null) return coll;
                     } catch (Throwable ignored) {}
@@ -2788,12 +2844,12 @@ public class StorageScanner {
 
             Log.i("morphe: StorageScanner", "syncCloudTrashToLocalDb: Loaded " + allTrashMedia.size() + " items from trash collection");
 
-            String[] zonCandidates = new String[] {"zon", "zoi", "zog", "zkr"};
+            String[] zonCandidates = ToolkitMappings.DEDUP_KEY_FEATURE_CLASSES;
             Class<?> zonClass = null;
             for (String zc : zonCandidates) {
                 try { zonClass = Class.forName(zc); break; } catch (Throwable ignored) {}
             }
-            String[] bamsCandidates = new String[] {"bams", "bamo", "bamk", "azxs"};
+            String[] bamsCandidates = ToolkitMappings.REMOTE_MEDIA_KEY_FEATURE_CLASSES;
             Class<?> bamsClass = null;
             for (String bc : bamsCandidates) {
                 try { bamsClass = Class.forName(bc); break; } catch (Throwable ignored) {}
@@ -2878,12 +2934,12 @@ public class StorageScanner {
                 }
             }
 
-            String[] zonCandidates = new String[] {"zon", "zoi", "zog", "zkr"};
+            String[] zonCandidates = ToolkitMappings.DEDUP_KEY_FEATURE_CLASSES;
             Class<?> zonClass = null;
             for (String zc : zonCandidates) {
                 try { zonClass = Class.forName(zc); break; } catch (Throwable ignored) {}
             }
-            String[] bamsCandidates = new String[] {"bams", "bamo", "bamk", "azxs"};
+            String[] bamsCandidates = ToolkitMappings.REMOTE_MEDIA_KEY_FEATURE_CLASSES;
             Class<?> bamsClass = null;
             for (String bc : bamsCandidates) {
                 try { bamsClass = Class.forName(bc); break; } catch (Throwable ignored) {}
@@ -2987,9 +3043,7 @@ public class StorageScanner {
                     if (!chunkSuccess) {
                         try {
                             Class<?> bjimClass = Class.forName("bjim");
-                            Class<?> bzoqClass = Class.forName("bzoq");
-                            Method eMethod = bzoqClass.getMethod("e", Context.class, Class.class);
-                            Object bjimImpl = eMethod.invoke(null, context, bjimClass);
+                            Object bjimImpl = getServiceLocator(context, bjimClass);
 
                             Class<?> cjizClass = Class.forName("cjiz");
                             Class<?> romClass = Class.forName("rom");
@@ -3074,19 +3128,22 @@ public class StorageScanner {
                         }
                     } catch (Throwable tTask) {
                         Log.w("morphe: StorageScanner", "Error running MediaUndoActionTask chunk " + chunkIndex + ": " + tTask.getMessage());
-                        // Fallback: direct psu.a invocation
-                        try {
-                            Class<?> psuClass = Class.forName("psu");
-                            Class<?> bzoqClass = Class.forName("bzoq");
-                            Method eMethod = bzoqClass.getMethod("e", Context.class, Class.class);
-                            Object psuInst = eMethod.invoke(null, context, psuClass);
-                            if (psuInst != null) {
-                                Method aMethod = psuClass.getMethod("a", int.class, List.class, boolean.class, int.class);
-                                Object res = aMethod.invoke(psuInst, accountId, coreItems, archive, 2);
-                                if (res != null) chunkSuccess = true;
+                        // Fallback: direct archive service invocation (rsr.a / psu.a)
+                        for (String psuCandidate : ToolkitMappings.ARCHIVE_SERVICE_CLASSES) {
+                            try {
+                                Class<?> psuClass = Class.forName(psuCandidate);
+                                Object psuInst = getServiceLocator(context, psuClass);
+                                if (psuInst != null) {
+                                    Method aMethod = psuClass.getMethod("a", int.class, List.class, boolean.class, int.class);
+                                    Object res = aMethod.invoke(psuInst, accountId, coreItems, archive, 2);
+                                    if (res != null) {
+                                        chunkSuccess = true;
+                                        break;
+                                    }
+                                }
+                            } catch (Throwable tPsu) {
+                                Log.w("morphe: StorageScanner", "Error in " + psuCandidate + ".a fallback: " + tPsu.getMessage());
                             }
-                        } catch (Throwable tPsu) {
-                            Log.w("morphe: StorageScanner", "Error in psu.a fallback: " + tPsu.getMessage());
                         }
                     }
                 }
@@ -3094,7 +3151,16 @@ public class StorageScanner {
                 // 2. Dispatch online mutation RPC and ActionQueue via psz
                 if (!chunkRemoteKeys.isEmpty()) {
                     try {
-                        Class<?> psyClass = Class.forName("psy");
+                        Class<?> psyClass = null;
+                        for (String psyCandidate : ToolkitMappings.ARCHIVE_BUILDER_CLASSES) {
+                            try {
+                                psyClass = Class.forName(psyCandidate);
+                                if (psyClass != null) break;
+                            } catch (Throwable ignored) {}
+                        }
+                        if (psyClass == null) {
+                            throw new ClassNotFoundException("Archive builder class not found");
+                        }
                         Object builder = psyClass.getConstructor().newInstance();
                         Method dMethod = psyClass.getMethod("d", int.class);
                         dMethod.invoke(builder, accountId);
@@ -3122,7 +3188,7 @@ public class StorageScanner {
                             Log.w("morphe: StorageScanner", "Error invoking psz.h RPC chunk " + chunkIndex + ": " + tRpc.getMessage());
                         }
 
-                        // Enqueue via ActionWrapper & flush with aokq
+                        // Enqueue via ActionWrapper & flush with flusher
                         try {
                             Class<?> wrapperClass = Class.forName("com.google.android.apps.photos.actionqueue.ActionWrapper");
                             Class<?> ltyClass = Class.forName("lty");
@@ -3135,17 +3201,13 @@ public class StorageScanner {
                                 Bundle bundle = getTaskResultBundle(res);
                                 long actionId = bundle != null ? bundle.getLong("LocalResult__action_id", -1L) : -1L;
                                 if (actionId != -1L) {
-                                    Class<?> aokqClass = Class.forName("aokq");
-                                    Constructor<?> aokqCtor = aokqClass.getConstructor(int.class, long.class);
-                                    Object aokqInst = aokqCtor.newInstance(accountId, actionId);
-                                    Method aMethod = aokqClass.getMethod("a", Context.class);
-                                    aMethod.invoke(aokqInst, context);
+                                    flushActionQueue(context, accountId, actionId);
                                     chunkSuccess = true;
-                                    Log.i("morphe: StorageScanner", "ActionQueue flushed via aokq chunk " + chunkIndex + "/" + totalChunks);
+                                    Log.i("morphe: StorageScanner", "ActionQueue flushed chunk " + chunkIndex + "/" + totalChunks);
                                 }
                             }
                         } catch (Throwable tQueue) {
-                            Log.w("morphe: StorageScanner", "Error in ActionWrapper/aokq chunk " + chunkIndex + ": " + tQueue.getMessage());
+                            Log.w("morphe: StorageScanner", "Error in ActionWrapper/flusher chunk " + chunkIndex + ": " + tQueue.getMessage());
                         }
                     } catch (Throwable tPsz) {
                         Log.w("morphe: StorageScanner", "Error constructing psz chunk " + chunkIndex + ": " + tPsz.getMessage());
@@ -3383,12 +3445,7 @@ public class StorageScanner {
     private static List<?> loadDirectMarsMedia(Context context, int accountId, List<MediaItem> items) {
         List<Object> matched = new ArrayList<>();
         try {
-            String[] marsCollClasses = new String[] {
-                "alsd", // 7.97.0 (52547221 arm64)
-                "alqt", // 7.97.0 (52547203 univ)
-                "alww", // 7.97.0 (52547233 univ)
-                "ajhx"  // 7.96.0 (52511175 nodpi)
-            };
+            String[] marsCollClasses = ToolkitMappings.MARS_COLLECTION_CLASSES;
             Object marsColl = null;
             for (String cn : marsCollClasses) {
                 try {
@@ -3415,7 +3472,7 @@ public class StorageScanner {
                             if (mi.dedupKey != null && !mi.dedupKey.isEmpty()) targetKeys.add(mi.dedupKey);
                             if (mi.mediaKey != null && !mi.mediaKey.isEmpty()) targetKeys.add(mi.mediaKey);
                         }
-                        String[] zonCandidates = new String[] {"zon", "zoi", "zog", "zkr"};
+                        String[] zonCandidates = ToolkitMappings.DEDUP_KEY_FEATURE_CLASSES;
                         Class<?> zonClass = null;
                         for (String zc : zonCandidates) {
                             try { zonClass = Class.forName(zc); break; } catch (Throwable ignored) {}
@@ -3489,12 +3546,7 @@ public class StorageScanner {
                 String taskName = "com.google." + "android.apps.photos.mars.actionhandler.impl.MarsMoveHandlerImpl.MarsRemoveTask";
 
                 Object task = null;
-                String[][] configs = new String[][] {
-                    {"odi", "bdft", "ms", "stk", "s"}, // 7.97.0 arm64 (52547221)
-                    {"oax", "bbzi", "ms", "sgz", "n"}, // 7.97.0 univ (52547203)
-                    {"ofl", "bcdu", "ms", "tfb", "p"}, // 7.97.0 univ (52547233)
-                    {"mbj", "azlk", "mu", "rga", "l"}  // 7.96.0 nodpi (52511175)
-                };
+                String[][] configs = ToolkitMappings.MARS_REMOVE_CONFIGS;
 
                 for (String[] cfg : configs) {
                     try {
@@ -3584,9 +3636,8 @@ public class StorageScanner {
                 // Fallback to direct ajac.a if rga.l did not complete
                 if (!chunkSuccess) {
                     try {
-                        Class<?> bzoqClass = Class.forName("bzoq");
                         Class<?> ajacClass = Class.forName("ajac");
-                        Object ajac = bzoqClass.getMethod("e", Context.class, Class.class).invoke(null, context, ajacClass);
+                        Object ajac = getServiceLocator(context, ajacClass);
                         if (ajac != null) {
                             Method aMethod = ajacClass.getMethod("a", int.class, Collection.class, java.util.concurrent.Executor.class);
                             java.util.concurrent.Executor directExecutor = Runnable::run;
@@ -4036,35 +4087,29 @@ public class StorageScanner {
                     Object collection = createAlbumCollection(context, accountId, albumMediaKey);
                     Object task = null;
 
-                    // Try 1: osi.c(int accountId, camh collection, List coreItems) [Google Photos 7.97]
+                    // Strategy 1: Static task factory via ToolkitMappings.PRIVATE_ALBUM_REMOVE_CLASSES (omn.a / osi.c / iyo.r)
                     if (collection != null) {
-                        try {
-                            Class<?> osiClass = Class.forName("osi");
-                            for (Method m : osiClass.getMethods()) {
-                                if ("c".equals(m.getName()) && m.getParameterTypes().length == 3 && m.getParameterTypes()[0] == int.class) {
-                                    task = m.invoke(null, accountId, collection, coreItems);
-                                    Log.i("morphe: StorageScanner", "Created RemoveMediaFromPrivateAlbumTask via osi.c: " + task);
-                                    break;
+                        for (String rClassCandidate : ToolkitMappings.PRIVATE_ALBUM_REMOVE_CLASSES) {
+                            try {
+                                Class<?> rClazz = ReflectionCache.findClassOrNull(rClassCandidate);
+                                if (rClazz != null) {
+                                    for (Method m : rClazz.getMethods()) {
+                                        if (java.lang.reflect.Modifier.isStatic(m.getModifiers()) &&
+                                            m.getParameterTypes().length == 3 &&
+                                            m.getParameterTypes()[0] == int.class &&
+                                            (m.getParameterTypes()[2] == List.class || m.getParameterTypes()[2] == Collection.class)) {
+                                            task = m.invoke(null, accountId, collection, coreItems);
+                                            if (task != null) {
+                                                Log.i("morphe: StorageScanner", "Created RemoveMediaFromPrivateAlbumTask via " + rClassCandidate + "." + m.getName() + ": " + task);
+                                                break;
+                                            }
+                                        }
+                                    }
+                                    if (task != null) break;
                                 }
+                            } catch (Throwable tRemove) {
+                                Log.w("morphe: StorageScanner", rClassCandidate + " reflection failed: " + tRemove.getMessage());
                             }
-                        } catch (Throwable tOsi) {
-                            Log.w("morphe: StorageScanner", "osi.c reflection failed: " + tOsi.getMessage());
-                        }
-                    }
-
-                    // Try 2: iyo.r(int accountId, bwpg collection, List coreItems) [Google Photos 7.96]
-                    if (task == null && collection != null) {
-                        try {
-                            Class<?> iyoClass = Class.forName("iyo");
-                            for (Method m : iyoClass.getMethods()) {
-                                if ("r".equals(m.getName()) && m.getParameterTypes().length == 3 && m.getParameterTypes()[0] == int.class) {
-                                    task = m.invoke(null, accountId, collection, coreItems);
-                                    Log.i("morphe: StorageScanner", "Created RemoveMediaFromPrivateAlbumTask via iyo.r: " + task);
-                                    break;
-                                }
-                            }
-                        } catch (Throwable tIyo) {
-                            Log.w("morphe: StorageScanner", "iyo.r reflection failed: " + tIyo.getMessage());
                         }
                     }
 
