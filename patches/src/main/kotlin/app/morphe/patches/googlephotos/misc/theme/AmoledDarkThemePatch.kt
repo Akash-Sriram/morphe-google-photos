@@ -13,75 +13,50 @@ private const val AMOLED_CARD_SURFACE = "#ff18181b"
 private const val AMOLED_CARD_SURFACE_HIGH = "#ff222226"
 private const val AMOLED_CARD_SURFACE_HIGHEST = "#ff2a2a2e"
 
-private val amoledColorsLow = setOf(
-    "colorSurfaceContainerLow",
+// Explicitly named dark colors (safe across all files including values-v31 / values-v34)
+private val amoledDarkColorsLow = setOf(
     "gm3_sys_color_dark_surface_container_low",
     "gm3_sys_color_dynamic_dark_surface_container_low",
     "m3_sys_color_dark_surface_container_low",
     "m3_sys_color_dynamic_dark_surface_container_low",
     "sud_system_surface_container_low_dark",
-    "photos_daynight_white_elevation_1dp",
 )
 
-private val amoledColorsCard = setOf(
+private val amoledDarkColorsCard = setOf(
     "cardview_dark_background",
     "color_surface_elevation_plus_two_dark",
-    "colorSurfaceContainer",
     "gm3_sys_color_dark_surface_container",
     "gm3_sys_color_dynamic_dark_surface_container",
-    "gm3_ref_palette_dynamic_neutral20",
-    "gm3_ref_palette_dynamic_neutral_variant12",
-    "gm3_ref_palette_dynamic_neutral_variant17",
-    "gm3_ref_palette_dynamic_neutral_variant20",
     "m3_sys_color_dark_surface_container",
     "m3_sys_color_dynamic_dark_surface_container",
-    "settingslib_materialColorSurfaceContainer",
-    "settingslib_materialColorSurfaceVariant",
-    "settingslib_neutral_variant12",
-    "settingslib_neutral_variant17",
-    "settingslib_neutral_variant20",
     "sud_system_surface_container_dark",
-    "photos_daynight_white_elevation_3dp",
-    "photosSurface2",
 )
 
-private val amoledColorsHigh = setOf(
+private val amoledDarkColorsHigh = setOf(
     "background_floating_material_dark",
-    "colorSurfaceContainerHigh",
-    "colorBackgroundFloating",
     "gm3_sys_color_dark_surface_container_high",
     "gm3_sys_color_dynamic_dark_surface_container_high",
-    "gm3_ref_palette_dynamic_neutral_variant22",
-    "gm3_ref_palette_dynamic_neutral_variant24",
     "m3_sys_color_dark_surface_container_high",
     "m3_sys_color_dynamic_dark_surface_container_high",
-    "settingslib_materialColorSurfaceContainerHigh",
-    "settingslib_neutral_variant22",
     "sud_glif_v3_dialog_background_color_dark",
     "sud_system_surface_container_high_dark",
-    "photos_daynight_white_elevation_8dp",
 )
 
-private val amoledColorsHighest = setOf(
-    "colorSurfaceContainerHighest",
-    "colorSurfaceBright",
+private val amoledDarkColorsHighest = setOf(
     "gm3_sys_color_dark_surface_container_highest",
     "gm3_sys_color_dark_surface_bright",
     "gm3_sys_color_dynamic_dark_surface_container_highest",
     "gm3_sys_color_dynamic_dark_surface_bright",
-    "gm3_ref_palette_dynamic_neutral_variant30",
     "m3_sys_color_dark_surface_container_highest",
     "m3_sys_color_dark_surface_bright",
     "m3_sys_color_dynamic_dark_surface_container_highest",
     "m3_sys_color_dynamic_dark_surface_bright",
-    "settingslib_materialColorSurfaceContainerHighest",
     "sud_glif_edit_text_bg_dark_color",
     "sud_system_surface_container_highest_dark",
     "sud_system_surface_bright_dark",
-    "photos_daynight_white_elevation_12dp",
 )
 
-private val amoledColorsBackgroundAnyFile = setOf(
+private val amoledDarkColorsBackground = setOf(
     "background_material_dark",
     "design_dark_default_color_background",
     "design_dark_default_color_surface",
@@ -94,10 +69,6 @@ private val amoledColorsBackgroundAnyFile = setOf(
     "gm3_sys_color_dynamic_dark_surface",
     "gm3_sys_color_dynamic_dark_surface_dim",
     "gm3_sys_color_dynamic_dark_surface_container_lowest",
-    "gm3_ref_palette_dynamic_neutral10",
-    "gm3_ref_palette_dynamic_neutral_variant4",
-    "gm3_ref_palette_dynamic_neutral_variant6",
-    "gm3_ref_palette_dynamic_neutral_variant10",
     "gm_sys_color_dark_background",
     "gm_sys_color_dark_surface",
     "google_dark_default_color_background",
@@ -121,11 +92,37 @@ private val amoledColorsBackgroundAnyFile = setOf(
     "sud_system_surface_dark",
     "sud_system_surface_dim_dark",
     "sud_system_surface_container_lowest_dark",
-    "sud_system_background_surface",
-    "sud_system_surface",
 )
 
-private val amoledColorsBackgroundNightOnly = setOf(
+// Night-only colors (STRICTLY patched in values-night* ONLY!)
+private val amoledNightOnlyColorsLow = setOf(
+    "colorSurfaceContainerLow",
+    "photos_daynight_white_elevation_1dp",
+)
+
+private val amoledNightOnlyColorsCard = setOf(
+    "colorSurfaceContainer",
+    "photosSurface2",
+    "photos_daynight_white_elevation_3dp",
+    "settingslib_materialColorSurfaceContainer",
+    "settingslib_materialColorSurfaceVariant",
+)
+
+private val amoledNightOnlyColorsHigh = setOf(
+    "colorSurfaceContainerHigh",
+    "colorBackgroundFloating",
+    "photos_daynight_white_elevation_8dp",
+    "settingslib_materialColorSurfaceContainerHigh",
+)
+
+private val amoledNightOnlyColorsHighest = setOf(
+    "colorSurfaceContainerHighest",
+    "colorSurfaceBright",
+    "photos_daynight_white_elevation_12dp",
+    "settingslib_materialColorSurfaceContainerHighest",
+)
+
+private val amoledNightOnlyColorsBackground = setOf(
     "material_grey_white_1000",
     "photos_daynight_white",
     "photos_pager_background_daynight_white",
@@ -136,6 +133,11 @@ private val amoledColorsBackgroundNightOnly = setOf(
     "photos_theme_activity_background",
     "photos_theme_bottom_nav_background",
     "photos_theme_dark_translucent_system_ui_color",
+    "colorSurface",
+    "colorSurfaceDim",
+    "colorSurfaceContainerLowest",
+    "sud_system_background_surface",
+    "sud_system_surface",
 )
 
 private val neutralDarkSurfaceRgb = setOf(
@@ -219,15 +221,6 @@ private val mc3DarkSchemeItems = mapOf(
     "mc3_surface_bright" to AMOLED_CARD_SURFACE_HIGHEST,
 )
 
-private val mc3PaletteItems = mapOf(
-    "mc3_neutral_0" to AMOLED_BLACK,
-    "mc3_neutral_10" to AMOLED_BLACK,
-    "mc3_neutral_20" to AMOLED_CARD_SURFACE,
-    "mc3_neutral_variant_0" to AMOLED_BLACK,
-    "mc3_neutral_variant_10" to AMOLED_BLACK,
-    "mc3_neutral_variant_20" to AMOLED_CARD_SURFACE,
-)
-
 @Suppress("unused")
 val amoledDarkThemePatch = resourcePatch(
     name = "AMOLED dark theme",
@@ -301,11 +294,6 @@ private fun Document.forceAmoledThemeItems(isNightFile: Boolean): Int {
                     style.ensureStyleItem(this, name, value)?.let { changed++ }
                 }
             }
-            "mc3_palette" -> {
-                mc3PaletteItems.forEach { (name, value) ->
-                    style.ensureStyleItem(this, name, value)?.let { changed++ }
-                }
-            }
             else -> {
                 if (!style.isAmoledTargetThemeStyle(isNightFile)) continue
                 amoledStyleItems.forEach { (name, value) ->
@@ -321,12 +309,24 @@ private fun getAmoledReplacementColor(colorName: String, isNightFile: Boolean, v
     val nameLower = colorName.lowercase()
     if (ignoredColorNameParts.any(nameLower::contains)) return null
 
-    if (nameLower in amoledColorsHighest) return AMOLED_CARD_SURFACE_HIGHEST
-    if (nameLower in amoledColorsHigh) return AMOLED_CARD_SURFACE_HIGH
-    if (nameLower in amoledColorsCard) return AMOLED_CARD_SURFACE
-    if (nameLower in amoledColorsLow) return AMOLED_CARD_SURFACE_LOW
-    if (nameLower in amoledColorsBackgroundAnyFile) return AMOLED_BLACK
-    if (isNightFile && nameLower in amoledColorsBackgroundNightOnly) return AMOLED_BLACK
+    // STRICT ISOLATION: In non-night files (values, values-v31, values-v34), NEVER touch any color unless it is explicitly dark!
+    if (!isNightFile && "dark" !in nameLower) return null
+
+    // 1. Explicitly dark tokens (safe across all files)
+    if (nameLower in amoledDarkColorsHighest) return AMOLED_CARD_SURFACE_HIGHEST
+    if (nameLower in amoledDarkColorsHigh) return AMOLED_CARD_SURFACE_HIGH
+    if (nameLower in amoledDarkColorsCard) return AMOLED_CARD_SURFACE
+    if (nameLower in amoledDarkColorsLow) return AMOLED_CARD_SURFACE_LOW
+    if (nameLower in amoledDarkColorsBackground) return AMOLED_BLACK
+
+    // 2. Night-only tokens (ONLY matched when isNightFile == true)
+    if (isNightFile) {
+        if (nameLower in amoledNightOnlyColorsHighest) return AMOLED_CARD_SURFACE_HIGHEST
+        if (nameLower in amoledNightOnlyColorsHigh) return AMOLED_CARD_SURFACE_HIGH
+        if (nameLower in amoledNightOnlyColorsCard) return AMOLED_CARD_SURFACE
+        if (nameLower in amoledNightOnlyColorsLow) return AMOLED_CARD_SURFACE_LOW
+        if (nameLower in amoledNightOnlyColorsBackground) return AMOLED_BLACK
+    }
 
     val valLower = value.lowercase().trim()
     if ("system_surface_container_highest" in valLower || "system_surface_bright" in valLower) {
@@ -357,12 +357,9 @@ private fun getAmoledReplacementColor(colorName: String, isNightFile: Boolean, v
         if ("container_high" in nameLower || "dialog" in nameLower) return AMOLED_CARD_SURFACE_HIGH
         if ("container_low" in nameLower) return AMOLED_CARD_SURFACE_LOW
         if ("container" in nameLower || "card" in nameLower) return AMOLED_CARD_SURFACE
-        if ("dark" in nameLower || isNightFile || "surface" in nameLower || "background" in nameLower) {
-            return AMOLED_BLACK
-        }
+        return AMOLED_BLACK
     }
 
-    if (!isNightFile && "dark" !in nameLower) return null
     if (!listOf("background", "surface", "container", "canvas", "panel", "sheet", "bar", "card", "dialog").any(nameLower::contains)) {
         return null
     }
