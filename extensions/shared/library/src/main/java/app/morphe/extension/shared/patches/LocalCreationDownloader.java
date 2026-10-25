@@ -1516,10 +1516,22 @@ public class LocalCreationDownloader {
             for (Method m : glideClass.getMethods()) {
                 if (Modifier.isStatic(m.getModifiers()) &&
                     m.getParameterTypes().length == 1 &&
-                    m.getParameterTypes()[0] == Context.class) {
+                    m.getParameterTypes()[0] == Context.class &&
+                    !m.getReturnType().equals(glideClass) &&
+                    !m.getReturnType().equals(void.class)) {
                     withMethod = m;
                     break;
                 }
+            }
+            if (withMethod == null) {
+                try {
+                    withMethod = glideClass.getMethod("e", Context.class);
+                } catch (Throwable ignored) {}
+            }
+            if (withMethod == null) {
+                try {
+                    withMethod = glideClass.getMethod("with", Context.class);
+                } catch (Throwable ignored) {}
             }
             if (withMethod == null) {
                 Log.w(TAG, "Glide.with method not found");
@@ -1531,6 +1543,7 @@ public class LocalCreationDownloader {
                 Log.w(TAG, "Glide.with(context) returned null");
                 return false;
             }
+            Log.d(TAG, "Resolved Glide requestManager: " + requestManager.getClass().getName());
 
             // 1. Try asFile() -> meu
             Method asFileMethod = null;
@@ -1739,7 +1752,30 @@ public class LocalCreationDownloader {
                 options.putString("androidPackageName", context.getPackageName());
             } catch (Throwable ignored) {}
 
+            String activeEmail = null;
+            try {
+                SharedPreferences photosAccounts = context.getSharedPreferences("accounts", Context.MODE_PRIVATE);
+                int activeKey = photosAccounts.getInt("key.active-account-key", -99);
+                if (activeKey >= 0) {
+                    activeEmail = photosAccounts.getString(activeKey + ".account_name", null);
+                }
+            } catch (Throwable ignored) {}
+
+            List<Account> orderedAccounts = new ArrayList<>();
+            if (activeEmail != null) {
+                for (Account acc : accounts) {
+                    if (acc.name != null && acc.name.equalsIgnoreCase(activeEmail.trim())) {
+                        orderedAccounts.add(acc);
+                    }
+                }
+            }
             for (Account acc : accounts) {
+                if (!orderedAccounts.contains(acc)) {
+                    orderedAccounts.add(acc);
+                }
+            }
+
+            for (Account acc : orderedAccounts) {
                 for (String scope : scopes) {
                     try {
                         AccountManagerFuture<Bundle> future = am.getAuthToken(acc, scope, options, false, null, null);
