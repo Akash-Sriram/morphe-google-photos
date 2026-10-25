@@ -330,22 +330,35 @@ val dcimAndBackupControlPatch = bytecodePatch(
                 )
             }
 
-            val heroSaveMethod = delegateClassDef.methods.find { m ->
-                m.parameterTypes.size == 1 &&
-                m.parameterTypes[0] != "Z" &&
-                m.parameterTypes[0] != "I" &&
-                m.parameterTypes[0] != "Ljava/lang/String;" &&
-                cardMethod != null && m.parameterTypes[0] != cardMethod.returnType &&
-                m.returnType == "V"
+            // Prevent empty storefront / MFY creation sync from wiping out existing creations in proto
+            val saveCreationsMethod = delegateClassDef.methods.find { m ->
+                m.parameterTypes.size == 4 && m.parameterTypes[0] == "Ljava/util/List;"
             }
-            if (heroSaveMethod != null) {
-                val mutableHeroSaveMethod = delegateClassDef.findMutableMethodOf(heroSaveMethod)
-                mutableHeroSaveMethod.addInstructions(
-                    0,
-                    """
-                    invoke-static/range { p0 .. p1 }, Lapp/morphe/extension/shared/patches/LocalCreationDownloader;->onCreateHeroSaveRequested(Ljava/lang/Object;Ljava/lang/Object;)V
-                    """.trimIndent(),
-                )
+            if (saveCreationsMethod != null) {
+                val mutableSaveCreationsMethod = delegateClassDef.findMutableMethodOf(saveCreationsMethod)
+                val unitFieldRef = mutableSaveCreationsMethod.implementation?.instructions
+                    ?.filterIsInstance<ReferenceInstruction>()
+                    ?.mapNotNull { it.reference as? FieldReference }
+                    ?.findLast { it.type == it.definingClass }
+                if (unitFieldRef != null) {
+                    val fieldStr = "${unitFieldRef.definingClass}->${unitFieldRef.name}:${unitFieldRef.type}"
+                    mutableSaveCreationsMethod.addInstructions(
+                        0,
+                        """
+                        if-nez p1, :cond_check_empty
+                        :cond_empty
+                        sget-object v0, $fieldStr
+                        return-object v0
+                        :cond_check_empty
+                        move-object/16 v0, p1
+                        invoke-interface { v0 }, Ljava/util/List;->isEmpty()Z
+                        move-result v0
+                        if-nez v0, :cond_proceed
+                        goto :cond_empty
+                        :cond_proceed
+                        """.trimIndent(),
+                    )
+                }
             }
         }
 
