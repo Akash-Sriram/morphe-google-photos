@@ -132,7 +132,6 @@ private val amoledNightOnlyColorsBackground = setOf(
     "photos_printingskus_storefront_config_contentrow_alpha50",
     "photos_theme_activity_background",
     "photos_theme_bottom_nav_background",
-    "photos_theme_dark_translucent_system_ui_color",
     "colorSurface",
     "colorSurfaceDim",
     "colorSurfaceContainerLowest",
@@ -188,6 +187,20 @@ private val ignoredColorNameParts = listOf(
     "text",
     "tint",
     "warning",
+)
+
+private val excludedThemeKeywords = listOf(
+    "bottomsheet",
+    "bottomdialog",
+    "dialog",
+    "translucent",
+    "transparent",
+    "expander",
+    "floating",
+    "sheet",
+    "snackbar",
+    "particle",
+    "chipactivity",
 )
 
 private val amoledStyleItems = mapOf(
@@ -308,6 +321,7 @@ private fun Document.forceAmoledThemeItems(isNightFile: Boolean): Int {
 private fun getAmoledReplacementColor(colorName: String, isNightFile: Boolean, value: String): String? {
     val nameLower = colorName.lowercase()
     if (ignoredColorNameParts.any(nameLower::contains)) return null
+    if ("translucent" in nameLower || "transparent" in nameLower) return null
 
     // STRICT ISOLATION: In non-night files (values, values-v31, values-v34), NEVER touch any color unless it is explicitly dark!
     if (!isNightFile && "dark" !in nameLower) return null
@@ -388,6 +402,14 @@ private fun Element.isAmoledTargetThemeStyle(isNightFile: Boolean): Boolean {
     if ("light" in name && "dark" !in name && "daynight" !in name) return false
     if ("light" in parent && "dark" !in parent && "daynight" !in parent) return false
 
+    // Widgets, text appearances, animations are not window themes
+    if (name.startsWith("widget.") || name.startsWith("textappearance.") || name.startsWith("animation.")) return false
+    if (parent.startsWith("@android:style/widget") || parent.startsWith("@style/widget.") || parent.startsWith("@style/textappearance.") || parent.startsWith("@style/animation.")) return false
+
+    // Bottom sheets, dialogs, translucent/floating windows must never have their window backgrounds clobbered
+    if (excludedThemeKeywords.any { it in name || it in parent }) return false
+    if (hasTranslucentOrFloatingAttribute()) return false
+
     if (isNightFile) {
         // In values-night*, we safely style all DayNight and Dark themes, as well as Theme.Photos variants
         return "dark" in name ||
@@ -408,6 +430,20 @@ private fun Element.isAmoledTargetThemeStyle(isNightFile: Boolean): Boolean {
     }
 }
 
+private fun Element.hasTranslucentOrFloatingAttribute(): Boolean {
+    val children = childNodes
+    for (i in 0 until children.length) {
+        val item = children.item(i) as? Element ?: continue
+        if (item.tagName != "item") continue
+        val itemName = item.getAttribute("name")
+        val itemVal = item.textContent.lowercase().trim()
+        if (itemName == "android:windowIsTranslucent" && itemVal == "true") return true
+        if (itemName == "android:windowIsFloating" && itemVal == "true") return true
+        if (itemName == "android:windowBackground" && ("transparent" in itemVal || itemVal == "@null" || itemVal == "#00000000")) return true
+    }
+    return false
+}
+
 private fun Element.hasDarkThemeItem(): Boolean {
     val children = childNodes
     for (i in 0 until children.length) {
@@ -421,7 +457,6 @@ private fun Element.hasDarkThemeItem(): Boolean {
             "gm_sys_color_dark" in value ||
             "m3_sys_color_dark" in value ||
             "photos_daynight_white" in value ||
-            "photos_theme_dark_translucent_system_ui_color" in value ||
             "system_background_dark" in value ||
             "system_surface_dark" in value ||
             "gm3_sys_color_dynamic_dark" in value ||
