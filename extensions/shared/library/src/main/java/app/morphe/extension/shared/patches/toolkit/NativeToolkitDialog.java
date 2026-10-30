@@ -3828,10 +3828,25 @@ public class NativeToolkitDialog {
                     if (!copied && currentAccount != null) {
                         String localDbPath = StorageScanner.resolveLocalFilePath(currentAccount, item.dedupKey);
                         if (localDbPath != null) {
-                            File lf = new File(localDbPath);
-                            if (lf.exists() && lf.canRead()) {
-                                copyFile(lf, destFile);
-                                copied = destFile.exists() && destFile.length() > 0;
+                            if (localDbPath.startsWith("content://")) {
+                                try (InputStream is = activity.getContentResolver().openInputStream(Uri.parse(localDbPath));
+                                     FileOutputStream fos = new FileOutputStream(destFile)) {
+                                    if (is != null) {
+                                        byte[] buf = new byte[65536];
+                                        int r;
+                                        while ((r = is.read(buf)) != -1) {
+                                            fos.write(buf, 0, r);
+                                        }
+                                        fos.flush();
+                                        copied = destFile.exists() && destFile.length() > 0;
+                                    }
+                                } catch (Throwable ignored) {}
+                            } else {
+                                File lf = new File(localDbPath);
+                                if (lf.exists() && lf.canRead()) {
+                                    copyFile(lf, destFile);
+                                    copied = destFile.exists() && destFile.length() > 0;
+                                }
                             }
                         }
                     }
@@ -3957,7 +3972,7 @@ public class NativeToolkitDialog {
         previewFrame.addView(previewIv);
 
         int accId = currentAccount != null ? currentAccount.accountId : 0;
-        loadThumbAsync(activity, previewIv, currentItem.remoteUrl, accId);
+        loadThumbAsync(activity, previewIv, currentItem.remoteUrl, currentItem.dedupKey, accId);
 
         if (currentItem.duration > 0 || (currentItem.mimeType != null && currentItem.mimeType.contains("video"))) {
             TextView tvVid = new TextView(activity);
@@ -4093,7 +4108,7 @@ public class NativeToolkitDialog {
                     cThumb.setScaleType(ImageView.ScaleType.CENTER_CROP);
                     cThumb.setBackground(createRoundedDrawable(theme.surfaceContainer, 6 * density));
                     cThumb.setClipToOutline(true);
-                    loadThumbAsync(activity, cThumb, cand.remoteUrl, accId);
+                    loadThumbAsync(activity, cThumb, cand.remoteUrl, cand.dedupKey, accId);
                     cCol.addView(cThumb);
 
                     TextView tvCandSize = new TextView(activity);
@@ -4669,7 +4684,7 @@ public class NativeToolkitDialog {
                     return true;
                 });
 
-                loadThumbAsync(activity, thumb, item.remoteUrl, accId);
+                loadThumbAsync(activity, thumb, item.remoteUrl, item.dedupKey, accId);
                 currentRow.addView(tile);
             }
 
@@ -4798,7 +4813,7 @@ public class NativeToolkitDialog {
                     return true;
                 });
 
-                loadThumbAsync(activity, thumb, item.remoteUrl, accId);
+                loadThumbAsync(activity, thumb, item.remoteUrl, item.dedupKey, accId);
                 container.addView(card);
             }
         }
@@ -5141,13 +5156,48 @@ public class NativeToolkitDialog {
     private static Bitmap loadLocalThumbnail(Context context, String urlStr) {
         if (urlStr == null || context == null) return null;
         try {
-            if (urlStr.startsWith("content://") || urlStr.startsWith("file://") || urlStr.startsWith("/")) {
+            if (urlStr.startsWith("content://")) {
+                Uri uri = Uri.parse(urlStr);
                 if (Build.VERSION.SDK_INT >= 29) {
-                    Uri uri = urlStr.startsWith("content://") ? Uri.parse(urlStr) : Uri.fromFile(new File(urlStr));
-                    return context.getContentResolver().loadThumbnail(uri, new Size(128, 128), null);
-                } else {
-                    String path = urlStr.startsWith("file://") ? Uri.parse(urlStr).getPath() : urlStr;
-                    return ThumbnailUtils.createImageThumbnail(path, MediaStore.Images.Thumbnails.MINI_KIND);
+                    try {
+                        Bitmap bm = context.getContentResolver().loadThumbnail(uri, new Size(384, 384), null);
+                        if (bm != null) return bm;
+                    } catch (Throwable ignored) {}
+                }
+                try (InputStream is = context.getContentResolver().openInputStream(uri)) {
+                    if (is != null) {
+                        BitmapFactory.Options opts = new BitmapFactory.Options();
+                        opts.inPreferredConfig = Bitmap.Config.RGB_565;
+                        return BitmapFactory.decodeStream(is, null, opts);
+                    }
+                } catch (Throwable ignored) {}
+            } else if (urlStr.startsWith("file://") || urlStr.startsWith("/")) {
+                String path = urlStr.startsWith("file://") ? Uri.parse(urlStr).getPath() : urlStr;
+                if (path == null) return null;
+                File f = new File(path);
+                if (f.exists() && f.canRead()) {
+                    if (Build.VERSION.SDK_INT >= 29) {
+                        try {
+                            Bitmap b = ThumbnailUtils.createImageThumbnail(f, new Size(384, 384), null);
+                            if (b != null) return b;
+                        } catch (Throwable ignored) {}
+                    }
+
+                    BitmapFactory.Options opts = new BitmapFactory.Options();
+                    opts.inJustDecodeBounds = true;
+                    BitmapFactory.decodeFile(path, opts);
+                    if (opts.outWidth > 0 && opts.outHeight > 0) {
+                        int sampleSize = 1;
+                        int halfH = opts.outHeight / 2;
+                        int halfW = opts.outWidth / 2;
+                        while ((halfH / sampleSize) >= 192 && (halfW / sampleSize) >= 192) {
+                            sampleSize *= 2;
+                        }
+                        opts.inSampleSize = sampleSize;
+                        opts.inJustDecodeBounds = false;
+                        opts.inPreferredConfig = Bitmap.Config.RGB_565;
+                        return BitmapFactory.decodeFile(path, opts);
+                    }
                 }
             }
         } catch (Throwable ignored) {}
@@ -5197,26 +5247,30 @@ public class NativeToolkitDialog {
     }
 
     private static void loadThumbAsync(Activity activity, ImageView iv, String urlStr, int accountId) {
+        loadThumbAsync(activity, iv, urlStr, null, accountId);
+    }
+
+    private static void loadThumbAsync(Activity activity, ImageView iv, String urlStr, String dedupKey, int accountId) {
         iv.setImageDrawable(null);
-        iv.setTag(urlStr);
+        String tag = (urlStr != null && !urlStr.trim().isEmpty()) ? urlStr : (dedupKey != null ? dedupKey : "");
+        iv.setTag(tag);
         if (activity == null || activity.isFinishing() || activity.isDestroyed()) return;
-        if (urlStr == null || urlStr.trim().isEmpty()) return;
 
         // 1. Memory cache check
-        Bitmap cached = THUMB_CACHE.get(urlStr);
+        Bitmap cached = THUMB_CACHE.get(tag);
         if (cached != null) {
             iv.setImageBitmap(cached);
             return;
         }
 
-        // 2. Instant local media loading for on-device photos
-        if (urlStr.startsWith("content://") || urlStr.startsWith("file://") || urlStr.startsWith("/")) {
+        // 2. Direct local media check (if urlStr is already content:// or file:// or /...)
+        if (urlStr != null && (urlStr.startsWith("content://") || urlStr.startsWith("file://") || urlStr.startsWith("/"))) {
             THREAD_POOL.execute(() -> {
                 Bitmap bm = loadLocalThumbnail(activity, urlStr);
                 if (bm != null) {
-                    THUMB_CACHE.put(urlStr, bm);
+                    THUMB_CACHE.put(tag, bm);
                     MAIN_HANDLER.post(() -> {
-                        if (urlStr.equals(iv.getTag())) {
+                        if (tag.equals(iv.getTag())) {
                             iv.setImageBitmap(bm);
                         }
                     });
@@ -5225,7 +5279,42 @@ public class NativeToolkitDialog {
             return;
         }
 
-        // 3. Native Google Photos Glide loading
+        // 3. Fast-path: Check on-device local photo via dedupKey (instant zero-network display)
+        if (dedupKey != null && !dedupKey.trim().isEmpty() && currentAccount != null) {
+            THREAD_POOL.execute(() -> {
+                String localUriOrPath = StorageScanner.resolveLocalFilePath(currentAccount, dedupKey);
+                if (localUriOrPath != null && !localUriOrPath.isEmpty()) {
+                    Bitmap bm = loadLocalThumbnail(activity, localUriOrPath);
+                    if (bm != null) {
+                        THUMB_CACHE.put(tag, bm);
+                        MAIN_HANDLER.post(() -> {
+                            if (tag.equals(iv.getTag())) {
+                                iv.setImageBitmap(bm);
+                            }
+                        });
+                        return;
+                    }
+                }
+
+                // If on-device decode is unavailable, proceed with authenticated Glide loading on Main thread
+                if (urlStr != null && !urlStr.trim().isEmpty()) {
+                    MAIN_HANDLER.post(() -> {
+                        if (!tag.equals(iv.getTag())) return;
+                        bindGlideOrBackgroundFetch(activity, iv, urlStr, dedupKey, accountId, tag);
+                    });
+                }
+            });
+            return;
+        }
+
+        // 4. Remote media (no dedupKey or cloud-only)
+        if (urlStr != null && !urlStr.trim().isEmpty()) {
+            bindGlideOrBackgroundFetch(activity, iv, urlStr, dedupKey, accountId, tag);
+        }
+    }
+
+    private static void bindGlideOrBackgroundFetch(Activity activity, ImageView iv, String urlStr, String dedupKey, int accountId, String tag) {
+        if (activity == null || activity.isFinishing() || activity.isDestroyed()) return;
         try {
             Object rm = getGlideRequestManager(activity);
             if (rm != null) {
@@ -5238,14 +5327,21 @@ public class NativeToolkitDialog {
             Logger.printInfo(() -> "Glide loadThumbAsync error: " + tGlide.getMessage());
         }
 
-        // 4. Background fetch fallback
+        // Background fetch fallback
         THREAD_POOL.execute(() -> {
             Bitmap bm = fetchThumbSync(activity, urlStr, accountId);
+            if (bm == null && dedupKey != null && currentAccount != null) {
+                String localPath = StorageScanner.resolveLocalFilePath(currentAccount, dedupKey);
+                if (localPath != null) {
+                    bm = loadLocalThumbnail(activity, localPath);
+                }
+            }
             if (bm != null) {
-                THUMB_CACHE.put(urlStr, bm);
+                THUMB_CACHE.put(tag, bm);
+                Bitmap finalBm = bm;
                 MAIN_HANDLER.post(() -> {
-                    if (urlStr.equals(iv.getTag())) {
-                        iv.setImageBitmap(bm);
+                    if (tag.equals(iv.getTag())) {
+                        iv.setImageBitmap(finalBm);
                     }
                 });
             }

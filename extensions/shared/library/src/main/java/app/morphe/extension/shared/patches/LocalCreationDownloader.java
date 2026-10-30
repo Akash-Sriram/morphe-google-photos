@@ -333,45 +333,56 @@ public class LocalCreationDownloader {
         }
     }
 
+    private static volatile boolean sStatusInterfaceResolved = false;
+    private static Class<?> sCachedStatusInterface = null;
+
+    private static Class<?> getStatusInterface(ClassLoader cl) {
+        if (sStatusInterfaceResolved) return sCachedStatusInterface;
+        try {
+            sCachedStatusInterface = Class.forName("soc", true, cl);
+        } catch (Throwable t1) {
+            try {
+                sCachedStatusInterface = Class.forName("slm", true, cl);
+            } catch (Throwable t2) {
+                sCachedStatusInterface = null;
+            }
+        }
+        sStatusInterfaceResolved = true;
+        return sCachedStatusInterface;
+    }
+
     private static Object resolveStatusObject(boolean saved) {
         ClassLoader cl = LocalCreationDownloader.class.getClassLoader();
+        Class<?> statusInterface = getStatusInterface(cl);
         if (saved) {
-            try {
-                Class<?> cls = Class.forName("slj", true, cl);
-                if (android.os.Parcelable.class.isAssignableFrom(cls)) {
-                    Constructor<?> ctor = cls.getDeclaredConstructor(int.class);
-                    ctor.setAccessible(true);
-                    return ctor.newInstance(4);
-                }
-            } catch (Throwable ignored) {}
-        } else {
-            try {
-                Class<?> cls = Class.forName("sll", true, cl);
-                if (android.os.Parcelable.class.isAssignableFrom(cls)) {
-                    Field f = cls.getDeclaredField("a");
-                    f.setAccessible(true);
-                    Object val = f.get(null);
-                    if (val instanceof android.os.Parcelable) {
-                        return val;
+            String[] savedClasses = new String[]{"snz", "slj"};
+            for (String clsName : savedClasses) {
+                try {
+                    Class<?> cls = Class.forName(clsName, true, cl);
+                    if (android.os.Parcelable.class.isAssignableFrom(cls) &&
+                            (statusInterface == null || statusInterface.isAssignableFrom(cls))) {
+                        Constructor<?> ctor = cls.getDeclaredConstructor(int.class);
+                        ctor.setAccessible(true);
+                        return ctor.newInstance(4);
                     }
-                }
-            } catch (Throwable ignored) {}
-        }
-        // Fallback candidates with STRICT Parcelable validation
-        String[] classCandidates = saved
-                ? new String[]{"slj", "qlq", "qoe", "qod"}
-                : new String[]{"sll", "slk", "qlp", "qoc"};
-        for (String clsName : classCandidates) {
-            try {
-                Class<?> c = Class.forName(clsName, true, cl);
-                if (!android.os.Parcelable.class.isAssignableFrom(c)) continue;
-                Field aField = c.getDeclaredField("a");
-                if (Modifier.isStatic(aField.getModifiers())) {
-                    aField.setAccessible(true);
-                    Object val = aField.get(null);
-                    if (val instanceof android.os.Parcelable) return val;
-                }
-            } catch (Throwable ignored) {}
+                } catch (Throwable ignored) {}
+            }
+        } else {
+            String[] pendingClasses = new String[]{"sob", "soa", "sll", "slk"};
+            for (String clsName : pendingClasses) {
+                try {
+                    Class<?> cls = Class.forName(clsName, true, cl);
+                    if (android.os.Parcelable.class.isAssignableFrom(cls) &&
+                            (statusInterface == null || statusInterface.isAssignableFrom(cls))) {
+                        Field f = cls.getDeclaredField("a");
+                        f.setAccessible(true);
+                        Object val = f.get(null);
+                        if (val != null && (statusInterface == null || statusInterface.isInstance(val))) {
+                            return val;
+                        }
+                    }
+                } catch (Throwable ignored) {}
+            }
         }
         return null;
     }
@@ -415,11 +426,23 @@ public class LocalCreationDownloader {
                     if (getVal != null) {
                         Object cur = getVal.invoke(flow);
                         Map<Object, Object> newMap = (cur instanceof Map) ? new HashMap<>((Map<?, ?>) cur) : new HashMap<>();
-                        // Purge any corrupted non-Parcelable objects from map
+                        // Purge any corrupted or non-status objects from map
+                        ClassLoader cl = LocalCreationDownloader.class.getClassLoader();
+                        Class<?> statusInterface = getStatusInterface(cl);
                         Iterator<Map.Entry<Object, Object>> it = newMap.entrySet().iterator();
                         while (it.hasNext()) {
                             Map.Entry<Object, Object> entry = it.next();
-                            if (!(entry.getValue() instanceof android.os.Parcelable)) {
+                            Object val = entry.getValue();
+                            if (val == null || !(val instanceof android.os.Parcelable)) {
+                                it.remove();
+                                continue;
+                            }
+                            if (statusInterface != null && !statusInterface.isInstance(val)) {
+                                it.remove();
+                                continue;
+                            }
+                            String valCls = val.getClass().getName();
+                            if (valCls.equals("qlq") || valCls.equals("qlp") || valCls.equals("qoe") || valCls.equals("qod") || valCls.equals("qoc")) {
                                 it.remove();
                             }
                         }
@@ -493,11 +516,23 @@ public class LocalCreationDownloader {
                     if (getVal != null) {
                         Object cur = getVal.invoke(flow);
                         Map<Object, Object> newMap = (cur instanceof Map) ? new HashMap<>((Map<?, ?>) cur) : new HashMap<>();
-                        // Purge any corrupted non-Parcelable objects from map
+                        // Purge any corrupted or non-status objects from map
+                        ClassLoader cl = LocalCreationDownloader.class.getClassLoader();
+                        Class<?> statusInterface = getStatusInterface(cl);
                         Iterator<Map.Entry<Object, Object>> it = newMap.entrySet().iterator();
                         while (it.hasNext()) {
                             Map.Entry<Object, Object> entry = it.next();
-                            if (!(entry.getValue() instanceof android.os.Parcelable)) {
+                            Object val = entry.getValue();
+                            if (val == null || !(val instanceof android.os.Parcelable)) {
+                                it.remove();
+                                continue;
+                            }
+                            if (statusInterface != null && !statusInterface.isInstance(val)) {
+                                it.remove();
+                                continue;
+                            }
+                            String valCls = val.getClass().getName();
+                            if (valCls.equals("qlq") || valCls.equals("qlp") || valCls.equals("qoe") || valCls.equals("qod") || valCls.equals("qoc")) {
                                 it.remove();
                             }
                         }
@@ -2240,8 +2275,15 @@ public class LocalCreationDownloader {
      * so that the equality check Intrinsics.areEqual(newSlm, skm.f) evaluates to true and safely skips updating.
      */
     public static Object safeSlm(Object candidate, Object skm) {
+        ClassLoader cl = LocalCreationDownloader.class.getClassLoader();
+        Class<?> statusInterface = getStatusInterface(cl);
         if (candidate instanceof android.os.Parcelable) {
-            return candidate;
+            if (statusInterface == null || statusInterface.isInstance(candidate)) {
+                String clsName = candidate.getClass().getName();
+                if (!clsName.equals("qlq") && !clsName.equals("qlp") && !clsName.equals("qoe") && !clsName.equals("qod") && !clsName.equals("qoc")) {
+                    return candidate;
+                }
+            }
         }
         if (skm != null) {
             try {
@@ -2250,7 +2292,9 @@ public class LocalCreationDownloader {
                         f.setAccessible(true);
                         Object original = f.get(skm);
                         if (original instanceof android.os.Parcelable) {
-                            return original;
+                            if (statusInterface == null || statusInterface.isInstance(original)) {
+                                return original;
+                            }
                         }
                     }
                 }
