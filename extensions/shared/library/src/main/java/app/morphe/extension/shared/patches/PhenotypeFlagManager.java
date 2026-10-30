@@ -1793,14 +1793,11 @@ public final class PhenotypeFlagManager {
             layout.addView(tvMsg);
 
             createM3ActionDialog(activity, "Clear All Custom Flags?", layout, "Clear all", () -> {
-                SharedPreferences.Editor ed = prefs.edit();
-                for (String k : customKeysSet) {
-                    ed.remove(k);
-                }
-                ed.remove(CUSTOM_FLAGS_KEY).apply();
+                PhenotypeSeedData.restoreOfficialFlags(activity, prefs, customKeysSet);
+                prefs.edit().remove(CUSTOM_FLAGS_KEY).apply();
                 selectedTab = TAB_CURATED;
                 reloadData();
-                Toast.makeText(activity, "Cleared all custom flags", Toast.LENGTH_SHORT).show();
+                Toast.makeText(activity, "Reverted custom flags to official baseline", Toast.LENGTH_SHORT).show();
             }, true).show();
         }
 
@@ -1813,19 +1810,19 @@ public final class PhenotypeFlagManager {
             layout.setPadding(mPad, (int) (4 * density), mPad, (int) (12 * density));
 
             TextView tvMsg = new TextView(activity);
-            tvMsg.setText("Are you sure you want to delete custom override \"" + key + "\"?");
+            tvMsg.setText("Are you sure you want to delete custom override \"" + key + "\"?\n\nIt will revert to the official baseline value.");
             tvMsg.setTextSize(13);
             tvMsg.setTextColor(theme.textPrimary);
             tvMsg.setLineSpacing(0, 1.25f);
             layout.addView(tvMsg);
 
             createM3ActionDialog(activity, "Delete Custom Flag?", layout, "Delete", () -> {
-                prefs.edit().remove(key).apply();
+                PhenotypeSeedData.restoreOfficialFlags(activity, prefs, Collections.singleton(key));
                 Set<String> set = new HashSet<>(prefs.getStringSet(CUSTOM_FLAGS_KEY, Collections.emptySet()));
                 set.remove(key);
                 prefs.edit().putStringSet(CUSTOM_FLAGS_KEY, set).apply();
                 reloadData();
-                Toast.makeText(activity, "Removed custom override: " + key, Toast.LENGTH_SHORT).show();
+                Toast.makeText(activity, "Reverted to official baseline: " + key, Toast.LENGTH_SHORT).show();
             }, true).show();
         }
 
