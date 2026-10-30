@@ -1279,34 +1279,35 @@ public final class PhenotypeFlagManager {
         Handler longPressHandler = new Handler(Looper.getMainLooper());
         boolean[] longPressTriggered = new boolean[]{false};
         float[] downPos = new float[2];
-        Runnable resetMemories5s = () -> {
+        Runnable resetCreationsRegistry = () -> {
             longPressTriggered[0] = true;
             try {
                 itemLogs.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS);
             } catch (Throwable ignored) {}
             LocalCreationDownloader.clearSavedRegistry(activity);
-            Toast.makeText(activity, "Morphe: Saved memories registry reset", Toast.LENGTH_SHORT).show();
+            Toast.makeText(activity, "Morphe: Saved creations registry cleared", Toast.LENGTH_SHORT).show();
         };
 
+        itemLogs.setContentDescription("Logs (Long press to clear saved creations registry)");
         itemLogs.setOnTouchListener((v, event) -> {
             switch (event.getAction()) {
                 case MotionEvent.ACTION_DOWN:
                     longPressTriggered[0] = false;
                     downPos[0] = event.getX();
                     downPos[1] = event.getY();
-                    longPressHandler.postDelayed(resetMemories5s, 5000);
+                    longPressHandler.postDelayed(resetCreationsRegistry, 2500);
                     itemLogs.setPressed(true);
                     return true;
                 case MotionEvent.ACTION_MOVE:
                     float dx = Math.abs(event.getX() - downPos[0]);
                     float dy = Math.abs(event.getY() - downPos[1]);
                     if (dx > 24 * density || dy > 24 * density) {
-                        longPressHandler.removeCallbacks(resetMemories5s);
+                        longPressHandler.removeCallbacks(resetCreationsRegistry);
                         itemLogs.setPressed(false);
                     }
                     return true;
                 case MotionEvent.ACTION_UP:
-                    longPressHandler.removeCallbacks(resetMemories5s);
+                    longPressHandler.removeCallbacks(resetCreationsRegistry);
                     itemLogs.setPressed(false);
                     if (!longPressTriggered[0]) {
                         if (sActiveDockTab == DOCK_TAB_LOGS && sCurrentOpenDialog != null && sCurrentOpenDialog.isShowing()) {
@@ -1318,7 +1319,7 @@ public final class PhenotypeFlagManager {
                     }
                     return true;
                 case MotionEvent.ACTION_CANCEL:
-                    longPressHandler.removeCallbacks(resetMemories5s);
+                    longPressHandler.removeCallbacks(resetCreationsRegistry);
                     itemLogs.setPressed(false);
                     return true;
             }
@@ -3110,7 +3111,27 @@ public final class PhenotypeFlagManager {
             }
         }));
 
-        // 7. Reset All Flags
+        // 7. Clear Saved Creations Registry
+        items.add(new MenuItem(MaterialVectorDrawable.TYPE_DELETE, "Clear Saved Creations Registry", "Reset local MFY and creations cache so previously saved collages and memories can be re-saved", () -> {
+            LinearLayout msgLayout = new LinearLayout(activity);
+            msgLayout.setOrientation(LinearLayout.VERTICAL);
+            int mPad = (int) (18 * density);
+            msgLayout.setPadding(mPad, (int) (4 * density), mPad, (int) (12 * density));
+
+            TextView tvMsg = new TextView(activity);
+            tvMsg.setText("Are you sure you want to clear the saved creations registry?\n\n• Resets local tracking of saved collages, animations, and Made For You creations.\n• Allows previously saved creations to be saved and downloaded again.\n• Cleans up temporary test creations from DCIM/Google Photos.");
+            tvMsg.setTextSize(13);
+            tvMsg.setTextColor(theme.textPrimary);
+            tvMsg.setLineSpacing(0, 1.25f);
+            msgLayout.addView(tvMsg);
+
+            createM3ActionDialog(activity, "Clear Saved Creations Registry?", msgLayout, "Clear registry", () -> {
+                LocalCreationDownloader.clearSavedRegistry(activity);
+                Toast.makeText(activity, "Morphe: Saved creations registry cleared", Toast.LENGTH_SHORT).show();
+            }, true).show();
+        }));
+
+        // 8. Reset All Flags
         items.add(new MenuItem(MaterialVectorDrawable.TYPE_DELETE, "Reset All Flags", "Remove all flags from list and restore stock photos mode", () -> {
             LinearLayout msgLayout = new LinearLayout(activity);
             msgLayout.setOrientation(LinearLayout.VERTICAL);
