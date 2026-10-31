@@ -1764,7 +1764,11 @@ public class LocalCreationDownloader {
         return false;
     }
 
-    private static String getAuthToken(Context context) {
+    public static String getAuthToken(Context context) {
+        return getAuthToken(context, null);
+    }
+
+    public static String getAuthToken(Context context, String preferredAccountName) {
         if (context == null) context = sAppContext != null ? sAppContext : getApplicationContext();
         if (context == null) return null;
         try {
@@ -1787,14 +1791,16 @@ public class LocalCreationDownloader {
                 options.putString("androidPackageName", context.getPackageName());
             } catch (Throwable ignored) {}
 
-            String activeEmail = null;
-            try {
-                SharedPreferences photosAccounts = context.getSharedPreferences("accounts", Context.MODE_PRIVATE);
-                int activeKey = photosAccounts.getInt("key.active-account-key", -99);
-                if (activeKey >= 0) {
-                    activeEmail = photosAccounts.getString(activeKey + ".account_name", null);
-                }
-            } catch (Throwable ignored) {}
+            String activeEmail = preferredAccountName;
+            if (activeEmail == null || activeEmail.trim().isEmpty()) {
+                try {
+                    SharedPreferences photosAccounts = context.getSharedPreferences("accounts", Context.MODE_PRIVATE);
+                    int activeKey = photosAccounts.getInt("key.active-account-key", -99);
+                    if (activeKey >= 0) {
+                        activeEmail = photosAccounts.getString(activeKey + ".account_name", null);
+                    }
+                } catch (Throwable ignored) {}
+            }
 
             List<Account> orderedAccounts = new ArrayList<>();
             if (activeEmail != null) {
