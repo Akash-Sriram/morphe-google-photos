@@ -1,3 +1,9 @@
+## [1.17.2](https://github.com/Akash-Sriram/morphe-google-photos/compare/v1.17.1...v1.17.2) (2026-11-01)
+
+### 🐛 Bug Fixes
+
+* **Google Photos - Creations:** restore MFY save check state on registry clear and fix sync branch ([efe12b8](https://github.com/Akash-Sriram/morphe-google-photos/commit/efe12b8fc22275db406b92dc5dfab91e5d2c45ea))
+
 ## [1.17.1](https://github.com/Akash-Sriram/morphe-google-photos/compare/v1.17.0...v1.17.1) (2026-11-01)
 
 ### 🐛 Bug Fixes
