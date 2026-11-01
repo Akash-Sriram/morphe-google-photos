@@ -1,3 +1,9 @@
+## [1.17.3](https://github.com/Akash-Sriram/morphe-google-photos/compare/v1.17.2...v1.17.3) (2026-11-01)
+
+### 🐛 Bug Fixes
+
+* **Google Photos - Mfy:** enable Made For You feature flags in Photos Features to restore creations carousel ([a501946](https://github.com/Akash-Sriram/morphe-google-photos/commit/a5019468442b6f27051dc4baa513575c70f08020))
+
 ## [1.17.2](https://github.com/Akash-Sriram/morphe-google-photos/compare/v1.17.1...v1.17.2) (2026-11-01)
 
 ### 🐛 Bug Fixes
