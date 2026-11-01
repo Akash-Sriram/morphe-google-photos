@@ -23,6 +23,7 @@ import android.view.Window;
 import android.view.WindowInsets;
 import android.view.WindowManager;
 import android.widget.FrameLayout;
+import android.widget.HorizontalScrollView;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
@@ -270,18 +271,24 @@ public final class MorpheSettingsScreen {
         overviewCard.addView(ovHeader);
 
         // Stats summary chips row
+        HorizontalScrollView chipsScroll = new HorizontalScrollView(activity);
+        chipsScroll.setHorizontalScrollBarEnabled(false);
+        chipsScroll.setOverScrollMode(View.OVER_SCROLL_NEVER);
+        LinearLayout.LayoutParams chipsScrollLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        chipsScrollLp.setMargins(0, (int) (12 * density), 0, 0);
+        chipsScroll.setLayoutParams(chipsScrollLp);
+
         LinearLayout chipsRow = new LinearLayout(activity);
         chipsRow.setOrientation(LinearLayout.HORIZONTAL);
         chipsRow.setGravity(Gravity.CENTER_VERTICAL);
-        LinearLayout.LayoutParams chipsRowLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        chipsRowLp.setMargins(0, (int) (12 * density), 0, 0);
-        chipsRow.setLayoutParams(chipsRowLp);
+        chipsRow.setLayoutParams(new ViewGroup.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
         chipsRow.addView(createMiniChip(activity, density, theme, "Flags: " + activeOverrides + " active"));
         chipsRow.addView(createMiniChip(activity, density, theme, "Toolkit: Ready"));
         chipsRow.addView(createMiniChip(activity, density, theme, "On-Device AI: OK"));
 
-        overviewCard.addView(chipsRow);
+        chipsScroll.addView(chipsRow);
+        overviewCard.addView(chipsScroll);
         content.addView(overviewCard);
 
         // ─────────────────────────────────────────────────────────────────────
@@ -598,15 +605,17 @@ public final class MorpheSettingsScreen {
     private static TextView createMiniChip(Activity activity, float density, Theme theme, String text) {
         TextView chip = new TextView(activity);
         chip.setText(text);
-        chip.setTextSize(11.5f);
+        chip.setTextSize(11f);
+        chip.setSingleLine(true);
+        chip.setGravity(Gravity.CENTER);
         chip.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
         chip.setTextColor(theme.primary);
         chip.setBackground(createRoundedDrawable(theme.isDark ? 0x264CDAC6 : 0x1E006A60, 10 * density));
-        int pH = (int) (10 * density);
+        int pH = (int) (8 * density);
         int pV = (int) (5 * density);
         chip.setPadding(pH, pV, pH, pV);
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        lp.setMargins(0, 0, (int) (8 * density), 0);
+        lp.setMargins(0, 0, (int) (6 * density), 0);
         chip.setLayoutParams(lp);
         return chip;
     }
