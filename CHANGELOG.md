@@ -1,3 +1,10 @@
+## [1.17.1](https://github.com/Akash-Sriram/morphe-google-photos/compare/v1.17.0...v1.17.1) (2026-11-01)
+
+### 🐛 Bug Fixes
+
+* **Google Photos - Mdd:** prevent fatal bvrh MDD_MODEL_CONTROL crash and harden manifest seeding ([d9f88a3](https://github.com/Akash-Sriram/morphe-google-photos/commit/d9f88a3ec85932602f1ec86fe0bb6283705e0446))
+* **Google Photos - Toolkit:** fix DCIM export failures, add bearer auth download, error inspection and retry ([31ab08f](https://github.com/Akash-Sriram/morphe-google-photos/commit/31ab08f9779ac4129e0057631d4d61a5f070ac3d))
+
 ## [1.17.0](https://github.com/Akash-Sriram/morphe-google-photos/compare/v1.16.1...v1.17.0) (2026-10-30)
 
 ### 🐛 Bug Fixes
