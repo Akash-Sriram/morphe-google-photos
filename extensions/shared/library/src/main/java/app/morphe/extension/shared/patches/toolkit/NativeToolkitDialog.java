@@ -3812,7 +3812,8 @@ public class NativeToolkitDialog {
     }
 
     private static void showExportResultsDialog(Activity activity, int successCount, int unchangedCount, List<ExportFailure> failures, float density, Theme theme) {
-        if (activity == null || activity.isFinishing() || activity.isDestroyed() || failures == null || failures.isEmpty()) return;
+        if (activity == null || activity.isFinishing() || activity.isDestroyed() || failures == null
+                || (failures.isEmpty() && unchangedCount <= 0)) return;
 
         Dialog dialog = new Dialog(activity);
         dialog.requestWindowFeature(Window.FEATURE_NO_TITLE);
@@ -3932,6 +3933,7 @@ public class NativeToolkitDialog {
         // Retry button
         TextView btnRetry = new TextView(activity);
         btnRetry.setText("Retry Failed (" + failures.size() + ")");
+        btnRetry.setVisibility(failures.isEmpty() ? View.GONE : View.VISIBLE);
         btnRetry.setTextSize(12f);
         btnRetry.setTypeface(null, Typeface.BOLD);
         btnRetry.setTextColor(theme.onPrimary);
@@ -4224,11 +4226,8 @@ public class NativeToolkitDialog {
 
             MAIN_HANDLER.post(() -> {
                 if (progressDialog.isShowing()) progressDialog.dismiss();
-                if (failures.isEmpty()) {
+                if (failures.isEmpty() && unchangedPaths.isEmpty()) {
                     String msg = "Exported " + finalSuccess + " item(s) to Pictures/GooglePhotos_Export";
-                    if (!unchangedPaths.isEmpty()) {
-                        msg += "\n" + unchangedPaths.size() + " file(s) exported unchanged. Backing them up will re-link to the quota-using original.";
-                    }
                     Toast.makeText(activity, msg, Toast.LENGTH_LONG).show();
                 } else {
                     showExportResultsDialog(activity, finalSuccess, unchangedPaths.size(), failures, density, theme);

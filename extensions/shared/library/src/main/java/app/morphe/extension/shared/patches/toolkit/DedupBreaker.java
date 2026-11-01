@@ -1,7 +1,6 @@
 package app.morphe.extension.shared.patches.toolkit;
 
 import java.io.File;
-import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.RandomAccessFile;
@@ -21,7 +20,7 @@ public final class DedupBreaker {
             @Override
             boolean tag(File file, String token) throws IOException {
                 long insertion = 2;
-                try (RandomAccessFile input = new RandomAccessFile(file, "r")) {
+                try (RandomAccessFile input = new RandomAccessFile(file, "rw")) {
                     while (true) {
                         input.seek(insertion);
                         if (input.read() != 0xFF) return false;
@@ -37,43 +36,28 @@ public final class DedupBreaker {
                         if (marker < 0xE0 || marker > 0xEF) break;
                         insertion = input.getFilePointer() + length - 2;
                     }
-                }
 
-                byte[] payload = token.getBytes(StandardCharsets.UTF_8);
-                int payloadLength = Math.min(payload.length, 65533);
-                File temp = File.createTempFile("morphe-tag-", ".tmp", file.getAbsoluteFile().getParentFile());
-                try {
-                    try (FileInputStream input = new FileInputStream(file);
-                         FileOutputStream output = new FileOutputStream(temp)) {
-                        byte[] buffer = new byte[65536];
-                        long remaining = insertion;
-                        while (remaining > 0) {
-                            int read = input.read(buffer, 0, (int) Math.min(buffer.length, remaining));
-                            if (read < 0) throw new IOException("JPEG ended before insertion point");
-                            output.write(buffer, 0, read);
-                            remaining -= read;
-                        }
-                        output.write(0xFF);
-                        output.write(0xFE);
-                        output.write((payloadLength + 2) >>> 8);
-                        output.write((payloadLength + 2) & 0xFF);
-                        output.write(payload, 0, payloadLength);
-                        int read;
-                        while ((read = input.read(buffer)) != -1) output.write(buffer, 0, read);
+                    byte[] payload = token.getBytes(StandardCharsets.UTF_8);
+                    int payloadLength = Math.min(payload.length, 65533);
+                    int segmentLength = payloadLength + 4;
+                    byte[] buffer = new byte[65536];
+                    long length = input.length();
+                    input.setLength(length + segmentLength);
+                    long position = length;
+                    while (position > insertion) {
+                        int size = (int) Math.min(buffer.length, position - insertion);
+                        position -= size;
+                        input.seek(position);
+                        input.readFully(buffer, 0, size);
+                        input.seek(position + segmentLength);
+                        input.write(buffer, 0, size);
                     }
-                    File backup = File.createTempFile("morphe-original-", ".tmp", file.getAbsoluteFile().getParentFile());
-                    if (!backup.delete()) throw new IOException("Could not prepare JPEG backup");
-                    if (!file.renameTo(backup)) throw new IOException("Could not preserve original JPEG");
-                    if (!temp.renameTo(file)) {
-                        if (!backup.renameTo(file)) {
-                            throw new IOException("Could not restore original JPEG from " + backup);
-                        }
-                        throw new IOException("Could not replace JPEG");
-                    }
-                    backup.delete();
+                    input.seek(insertion);
+                    input.write(0xFF);
+                    input.write(0xFE);
+                    input.writeShort(payloadLength + 2);
+                    input.write(payload, 0, payloadLength);
                     return true;
-                } finally {
-                    temp.delete();
                 }
             }
         },
