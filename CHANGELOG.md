@@ -1,3 +1,9 @@
+## [1.17.5](https://github.com/Akash-Sriram/morphe-google-photos/compare/v1.17.4...v1.17.5) (2026-11-01)
+
+### 🐛 Bug Fixes
+
+* **Google Photos - Creations:** separate MFY and story save reset, redirect exports to Pictures, and refine settings UI ([67c2208](https://github.com/Akash-Sriram/morphe-google-photos/commit/67c22085ee67774eddc2f0fc789edb5916a7b000))
+
 ## [1.17.4](https://github.com/Akash-Sriram/morphe-google-photos/compare/v1.17.3...v1.17.4) (2026-11-01)
 
 ### 🐛 Bug Fixes
