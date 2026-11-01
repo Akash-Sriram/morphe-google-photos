@@ -342,7 +342,12 @@ val dcimAndBackupControlPatch = bytecodePatch(
                 mutableCardMethod.addInstructions(
                     0,
                     """
-                    invoke-static/range { p0 .. p2 }, Lapp/morphe/extension/shared/patches/LocalCreationDownloader;->onCheckHeroCardSaved(Ljava/lang/Object;Ljava/lang/String;Ljava/lang/Object;)V
+                    invoke-static/range { p0 .. p2 }, Lapp/morphe/extension/shared/patches/LocalCreationDownloader;->shouldFilterMfyCard(Ljava/lang/Object;Ljava/lang/String;Ljava/lang/Object;)Z
+                    move-result v0
+                    if-eqz v0, :cond_proceed_q
+                    const/4 v0, 0
+                    return-object v0
+                    :cond_proceed_q
                     """.trimIndent(),
                 )
             }
@@ -375,6 +380,33 @@ val dcimAndBackupControlPatch = bytecodePatch(
                         """.trimIndent(),
                     )
                 }
+            }
+
+            // Fallback to all assistant cards if proto/14-day window has < 3 creations
+            val loadCreationsMethod = delegateClassDef.methods.find { m ->
+                m.parameterTypes.size == 1 && m.parameterTypes[0] == "Lctwl;" && m.returnType == "Ljava/lang/Object;"
+            }
+            if (loadCreationsMethod != null) {
+                val mutableLoadCreationsMethod = delegateClassDef.findMutableMethodOf(loadCreationsMethod)
+                val instructions = mutableLoadCreationsMethod.implementation?.instructions ?: emptyList()
+                val returnIdx = instructions.indexOfLast { it.opcode == Opcode.RETURN_OBJECT }
+                if (returnIdx != -1) {
+                    val returnReg = (instructions.elementAt(returnIdx) as OneRegisterInstruction).registerA
+                    mutableLoadCreationsMethod.addInstructions(
+                        returnIdx,
+                        """
+                        invoke-static { p0, v$returnReg }, Lapp/morphe/extension/shared/patches/LocalCreationDownloader;->onMfyLoadCreations(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;
+                        move-result-object v$returnReg
+                        """.trimIndent(),
+                    )
+                }
+                // Record the real delegate at the start of the method before p0 can be reassigned
+                mutableLoadCreationsMethod.addInstructions(
+                    0,
+                    """
+                    invoke-static { p0 }, Lapp/morphe/extension/shared/patches/LocalCreationDownloader;->onMfyDelegateInit(Ljava/lang/Object;)V
+                    """.trimIndent(),
+                )
             }
         }
 

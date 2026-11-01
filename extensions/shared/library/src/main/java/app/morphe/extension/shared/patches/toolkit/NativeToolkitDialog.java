@@ -4029,8 +4029,8 @@ public class NativeToolkitDialog {
             int successCount = 0;
             List<ExportFailure> failures = new ArrayList<>();
             List<String> exportedPaths = new ArrayList<>();
-            File dcimDir = new File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DCIM), "GooglePhotos_Export");
-            if (!dcimDir.exists()) dcimDir.mkdirs();
+            File exportDir = new File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES), "GooglePhotos_Export");
+            if (!exportDir.exists()) exportDir.mkdirs();
 
             // Pre-fetch auth token for active Google Photos account
             String authToken = null;
@@ -4065,14 +4065,14 @@ public class NativeToolkitDialog {
                         baseName += (item.mimeType != null && item.mimeType.contains("video")) ? ".mp4" : ".jpg";
                     }
 
-                    File destFile = new File(dcimDir, baseName);
+                    File destFile = new File(exportDir, baseName);
                     int count = 1;
                     while (destFile.exists()) {
                         int dot = baseName.lastIndexOf('.');
                         if (dot > 0) {
-                            destFile = new File(dcimDir, baseName.substring(0, dot) + "_" + count + baseName.substring(dot));
+                            destFile = new File(exportDir, baseName.substring(0, dot) + "_" + count + baseName.substring(dot));
                         } else {
-                            destFile = new File(dcimDir, baseName + "_" + count);
+                            destFile = new File(exportDir, baseName + "_" + count);
                         }
                         count++;
                     }
@@ -4201,7 +4201,7 @@ public class NativeToolkitDialog {
                 String[] pathsArray = exportedPaths.toArray(new String[0]);
                 try {
                     MediaScannerConnection.scanFile(activity, pathsArray, null, (path, uri) -> {
-                        Logger.printInfo(() -> "Exported & indexed in DCIM: " + path);
+                        Logger.printInfo(() -> "Exported & indexed in Pictures: " + path);
                     });
                 } catch (Throwable t) {
                     Logger.printException(() -> "Error calling MediaScannerConnection", t);
@@ -4211,7 +4211,7 @@ public class NativeToolkitDialog {
             MAIN_HANDLER.post(() -> {
                 if (progressDialog.isShowing()) progressDialog.dismiss();
                 if (failures.isEmpty()) {
-                    String msg = "Exported " + finalSuccess + " item(s) to DCIM/GooglePhotos_Export";
+                    String msg = "Exported " + finalSuccess + " item(s) to Pictures/GooglePhotos_Export";
                     Toast.makeText(activity, msg, Toast.LENGTH_LONG).show();
                 } else {
                     showExportResultsDialog(activity, finalSuccess, failures, density, theme);
