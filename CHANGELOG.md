@@ -1,3 +1,9 @@
+## [1.17.4](https://github.com/Akash-Sriram/morphe-google-photos/compare/v1.17.3...v1.17.4) (2026-11-01)
+
+### 🐛 Bug Fixes
+
+* **Google Photos - Ui:** wrap overview chips in HorizontalScrollView and center single-line text ([328c526](https://github.com/Akash-Sriram/morphe-google-photos/commit/328c526c36b939297c9c3da182f739b964750ee9))
+
 ## [1.17.3](https://github.com/Akash-Sriram/morphe-google-photos/compare/v1.17.2...v1.17.3) (2026-11-01)
 
 ### 🐛 Bug Fixes
