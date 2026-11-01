@@ -1,3 +1,9 @@
+## [1.17.6](https://github.com/Akash-Sriram/morphe-google-photos/compare/v1.17.5...v1.17.6) (2026-11-01)
+
+### 🐛 Bug Fixes
+
+* **Google Photos - Toolkit:** make quota-item exports re-upload as new quota-free items ([#56](https://github.com/Akash-Sriram/morphe-google-photos/issues/56)) ([636440f](https://github.com/Akash-Sriram/morphe-google-photos/commit/636440f8de58941b0bf5f32a5077b30c0a9c4cb3))
+
 ## [1.17.5](https://github.com/Akash-Sriram/morphe-google-photos/compare/v1.17.4...v1.17.5) (2026-11-01)
 
 ### 🐛 Bug Fixes
