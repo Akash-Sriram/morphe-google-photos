@@ -4199,9 +4199,8 @@ public class NativeToolkitDialog {
                         successCount++;
                         exportedPaths.add(destFile.getAbsolutePath());
                     } else {
-                        String err = item.quotaBytes > 0
-                                ? "Original could not be downloaded (preview fallback is disabled for quota items)"
-                                : (lastError != null ? lastError : "Source media not found or inaccessible");
+                        String err = (lastError != null ? lastError : "Source media not found or inaccessible")
+                                + (item.quotaBytes > 0 ? " (preview fallback is disabled for quota items)" : "");
                         failures.add(new ExportFailure(item, item.filename, err));
                         Logger.printInfo(() -> "Export failed for " + item.filename + ": " + err);
                     }
