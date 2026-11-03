@@ -35,6 +35,10 @@ public final class DeviceSpoofHelper {
     private static volatile String cachedSettingProfile = null;
     public static final String DEFAULT_SETTING_PROFILE = PROFILE_AUTO;
 
+    public static String getDefaultProfile() {
+        return PROFILE_AUTO;
+    }
+
     // Strong reference to prevent GC of the listener
     private static SharedPreferences.OnSharedPreferenceChangeListener backupPrefsListener = null;
     private static int lastStoragePolicy = -1;
@@ -51,7 +55,7 @@ public final class DeviceSpoofHelper {
         if (context != null) {
             try {
                 SharedPreferences prefs = context.getSharedPreferences("morphe_settings", Context.MODE_PRIVATE);
-                cachedSettingProfile = prefs.getString(PREF_KEY_PROFILE, DEFAULT_SETTING_PROFILE);
+                cachedSettingProfile = prefs.getString(PREF_KEY_PROFILE, getDefaultProfile());
             } catch (Throwable ignored) {}
             syncPolicyForProfile(context, getSelectedProfile());
             registerBackupPrefsListener(context);
@@ -100,12 +104,12 @@ public final class DeviceSpoofHelper {
             Context ctx = Utils.getContextOrNull();
             if (ctx != null) {
                 SharedPreferences prefs = ctx.getSharedPreferences("morphe_settings", Context.MODE_PRIVATE);
-                cachedSettingProfile = prefs.getString(PREF_KEY_PROFILE, DEFAULT_SETTING_PROFILE);
+                cachedSettingProfile = prefs.getString(PREF_KEY_PROFILE, getDefaultProfile());
                 registerBackupPrefsListener(ctx);
                 return cachedSettingProfile;
             }
         } catch (Throwable ignored) {}
-        return DEFAULT_SETTING_PROFILE;
+        return getDefaultProfile();
     }
 
     public static boolean isOriginalDevice() {

@@ -14,6 +14,7 @@ Easily switch backup and identity profiles directly from **Morphe Settings $\rig
 * **Original Device (Disabled)**: Temporarily disables device spoofing and restores the physical hardware's authentic identity (`Build.MODEL`, `Build.DEVICE`, etc.).
   * **Video Boost Eligible**: Allows users on real Pixel devices (Pixel 8 Pro, 9 Pro) to trigger server-side **Video Boost** and **Night Sight Video** processing in Google Cloud without needing two separate app installations.
   * **Full Backup Control**: Re-enables all 3 authentic Google Photos backup quality tiers (**Original Quality**, **Storage Saver**, **Express**).
+* **Patch-Level Profile Selection (Minimal Builds)**: The `Spoof features` patch provides a patch-level option (`profile`: `auto`, `pixel-xl`, `pixel-5`). Users patching a minimal build without the Toolkit / Flag Manager can select their desired spoof profile right from initial installation.
 
 ---
 
