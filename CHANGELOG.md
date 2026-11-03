@@ -1,3 +1,9 @@
+## [1.17.8](https://github.com/Akash-Sriram/morphe-google-photos/compare/v1.17.7...v1.17.8) (2026-11-03)
+
+### ✨ New Features
+
+* **Google Photos:** add original device profile, fix crash on Android 12+, update documentation ([c763717](https://github.com/Akash-Sriram/morphe-google-photos/commit/c763717118e1a078e89ff0de450e96139f3ef018)), closes [#63](https://github.com/Akash-Sriram/morphe-google-photos/issues/63) [#64](https://github.com/Akash-Sriram/morphe-google-photos/issues/64) [#62](https://github.com/Akash-Sriram/morphe-google-photos/issues/62)
+
 ## [1.17.7](https://github.com/Akash-Sriram/morphe-google-photos/compare/v1.17.6...v1.17.7) (2026-11-02)
 
 ### ✨ New Features
