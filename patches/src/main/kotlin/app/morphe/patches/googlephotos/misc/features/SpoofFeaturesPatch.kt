@@ -98,9 +98,9 @@ val spoofFeaturesPatch = bytecodePatch(
     )
 
     execute {
-        val idOq = getResourceId(ResourceType.STRING, "photos_backup_settings_quality_oq_desc") ?: 0x7f140719L
-        val idSaver = getResourceId(ResourceType.STRING, "photos_devicesetup_basicstoragepolicy_impl_high_quality_photo_resolution") ?: 0x7f140b58L
-        val idExpress = getResourceId(ResourceType.STRING, "photos_devicesetup_basicstoragepolicy_impl_basic_quality_photo_resolution") ?: 0x7f140b54L
+        val idOq = getResourceId(ResourceType.STRING, "photos_backup_settings_quality_oq_desc")
+        val idSaver = getResourceId(ResourceType.STRING, "photos_devicesetup_basicstoragepolicy_impl_high_quality_photo_resolution")
+        val idExpress = getResourceId(ResourceType.STRING, "photos_devicesetup_basicstoragepolicy_impl_basic_quality_photo_resolution")
 
         classDefForEach { classDef ->
             if (classDef.type.startsWith("Lapp/morphe/")) return@classDefForEach
