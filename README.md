@@ -75,15 +75,15 @@ Replaced legacy floating overlays with a native, full-screen Material 3 settings
 ## 🩹 Patches List
 
 <!-- PATCHES_START EXPANDED -->
-> **[v1.17.10](https://github.com/Akash-Sriram/morphe-google-photos/releases/tag/v1.17.10)**&nbsp;&nbsp;•&nbsp;&nbsp;`main`&nbsp;&nbsp;•&nbsp;&nbsp;8 patches total
+> **[v1.18.0-dev.1](https://github.com/Akash-Sriram/morphe-google-photos/releases/tag/v1.18.0-dev.1)**&nbsp;&nbsp;•&nbsp;&nbsp;`dev`&nbsp;&nbsp;•&nbsp;&nbsp;8 patches total
 <details open>
 <summary>📦 Google Photos&nbsp;&nbsp;•&nbsp;&nbsp;8 patches</summary>
 <br>
 
 **🎯 Supported versions:**
 
-| 7.99.0.1007655401 |
-| :---: |
+| 8.0.0.1011730683 | 7.99.0.1007655401 |
+| :---: | :---: |
 
 | 💊&nbsp;Patch | 📜&nbsp;Description |
 |----------|----------------|

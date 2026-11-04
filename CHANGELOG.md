@@ -1,3 +1,24 @@
+## [1.18.0-dev.1](https://github.com/Akash-Sriram/morphe-google-photos/compare/v1.17.10...v1.18.0-dev.1) (2026-11-04)
+
+### 🐛 Bug Fixes
+
+* **Google Photos:** enable Compose Morphe settings entry unconditionally and index backup queries ([7d09a0a](https://github.com/Akash-Sriram/morphe-google-photos/commit/7d09a0acdeae652a3a0f0fa80fee68af31bcdbf6))
+* **Google Photos:** resolve tune icon dynamically and index skottie fingerprints ([aff2d57](https://github.com/Akash-Sriram/morphe-google-photos/commit/aff2d57e33f57aee57f1fa3789842e9d6e252ba3))
+* **Google Photos:** ensure backup quality row is visible in compose settings under auto mode ([591139c](https://github.com/Akash-Sriram/morphe-google-photos/commit/591139c97c4c662a42f2674951f7a9bc78b465df))
+* **Google Photos - Release:** remove package.json release block and use .releaserc for dev prereleases ([12cbdf2](https://github.com/Akash-Sriram/morphe-google-photos/commit/12cbdf23300707751cbdda38a1a4b4cd4e7f8c2d))
+
+### ✨ New Features
+
+* **Google Photos:** add support and fix fingerprints for 8.0.0.1011730683 ([2396a3b](https://github.com/Akash-Sriram/morphe-google-photos/commit/2396a3b9cc32cb071788a5502caf42f4d7f4fb78))
+
+### 🚀 Updated App Support
+
+* **Google Photos - Compat:** next app version release ([e2cef9a](https://github.com/Akash-Sriram/morphe-google-photos/commit/e2cef9a5439470f83dc7854ec429ddb6c8ea09ee))
+
+### 🔧 Improvements
+
+* **Google Photos - Engine:** anchor Skottie font loader and uri resolver via class fingerprints ([5601466](https://github.com/Akash-Sriram/morphe-google-photos/commit/56014664da91a781f3e605ef30a140f28fd8cbf7))
+
 ## [1.17.10](https://github.com/Akash-Sriram/morphe-google-photos/compare/v1.17.9...v1.17.10) (2026-11-04)
 
 ### 🐛 Bug Fixes
