@@ -42,6 +42,7 @@ public final class DeviceSpoofHelper {
     // Strong reference to prevent GC of the listener
     private static SharedPreferences.OnSharedPreferenceChangeListener backupPrefsListener = null;
     private static int lastStoragePolicy = -1;
+    private static volatile boolean sBuildSpoofApplied = false;
 
     static {
         try {
@@ -75,6 +76,7 @@ public final class DeviceSpoofHelper {
                     if (newPolicy != -1 && newPolicy != lastStoragePolicy) {
                         Logger.printInfo(() -> "Detected Photos backup storage policy change: " + lastStoragePolicy + " -> " + newPolicy);
                         lastStoragePolicy = newPolicy;
+                        sBuildSpoofApplied = false;
                         applyBuildSpoof();
                         if (PROFILE_AUTO.equalsIgnoreCase(getSelectedProfile())) {
                             new Handler(Looper.getMainLooper()).post(() -> {
@@ -279,6 +281,15 @@ public final class DeviceSpoofHelper {
      * Android 12+ devices. Do not rely on it for correctness (see issue #63).
      */
     public static void applyBuildSpoof() {
+        if (Build.VERSION.SDK_INT >= 31) {
+            // On Android 12+ (API 31+), mutating static final fields via reflection is
+            // prohibited by ART and throws IllegalAccessException. Identity spoofing is
+            // handled entirely by BaseSpoofBuildInfoPatch bytecode replacement.
+            return;
+        }
+        if (sBuildSpoofApplied) {
+            return;
+        }
         try {
             setBuildField("MODEL", getModel());
             setBuildField("DEVICE", getDevice());
@@ -286,8 +297,9 @@ public final class DeviceSpoofHelper {
             setBuildField("FINGERPRINT", getFingerprint());
             setBuildField("MANUFACTURER", getManufacturer());
             setBuildField("BRAND", getBrand());
+            sBuildSpoofApplied = true;
         } catch (Throwable t) {
-            Logger.printException(() -> "Error in applyBuildSpoof (no-op on Android 12+)", t);
+            Logger.printDebug(() -> "Error in applyBuildSpoof (no-op on Android 12+): " + t.getMessage());
         }
     }
 
@@ -298,7 +310,7 @@ public final class DeviceSpoofHelper {
             field.setAccessible(true);
             field.set(null, value);
         } catch (Throwable t) {
-            Logger.printException(() -> "Failed to spoof Build." + fieldName, t);
+            Logger.printDebug(() -> "Reflection spoof on Build." + fieldName + " unavailable: " + t.getMessage());
         }
     }
 
