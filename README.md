@@ -88,7 +88,7 @@ Replaced legacy floating overlays with a native, full-screen Material 3 settings
 | 💊&nbsp;Patch | 📜&nbsp;Description |
 |----------|----------------|
 | [AMOLED dark theme](#amoled-dark-theme) | Makes Google Photos dark surfaces true black while keeping light mode untouched. |
-| [Custom Morphe branding](#custom-morphe-branding) | Replaces the Google Photos icon and in-app logos with Morphe branding (violet / teal / indigo / slate pinwheel, hand-drawn style). |
+| [Custom branding](#custom-branding) | Replaces the Google Photos app name, launcher icon, and in-app logos with custom branding (violet / teal / indigo / slate pinwheel, hand-drawn style). |
 | [DCIM & backup control](#dcim-backup-control) | Disables always on backup for the Camera and other DCIM folders, allowing individual folder control, and exports memory collages and creations to DCIM/Google Photos for quota-free backup. |
 | [Flag manager & Toolkit](#flag-manager-toolkit) | Enables an in-app flag manager and Morphe toolkit in Photos Settings to toggle experimental UI redesigns, video editor tools, and feature flags. |
 | [GmsCore support](#gmscore-support) | Enables GmsCore / MicroG support and renames package for non-root installs. Leave enabled for standard non-root installs; disable only for rooted system installs using genuine Google Play Services. |
