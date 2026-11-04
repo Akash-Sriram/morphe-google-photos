@@ -1,3 +1,13 @@
+## [1.17.9](https://github.com/Akash-Sriram/morphe-google-photos/compare/v1.17.8...v1.17.9) (2026-11-04)
+
+### 🐛 Bug Fixes
+
+* **Google Photos - Location:** fix map re-entry ANR, optimize UI performance, and guard missing mapbox styles ([#67](https://github.com/Akash-Sriram/morphe-google-photos/issues/67)) ([32f34b4](https://github.com/Akash-Sriram/morphe-google-photos/commit/32f34b44b6ba5b540676954e493d3f893a27c506))
+
+### ✨ New Features
+
+* **Google Photos - Spoof:** add patch-level profile selection option for minimal builds ([47a5268](https://github.com/Akash-Sriram/morphe-google-photos/commit/47a5268990d4bea48b3aba3f45c2cb492ff1f389))
+
 ## [1.17.8](https://github.com/Akash-Sriram/morphe-google-photos/compare/v1.17.7...v1.17.8) (2026-11-03)
 
 ### ✨ New Features
