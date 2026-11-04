@@ -19,14 +19,5 @@
       "minimatch": "^11.0.3"
     },
     "handlebars": "4.7.10"
-  },
-  "release": {
-    "branches": [
-      "main",
-      {
-        "name": "dev",
-        "prerelease": "dev"
-      }
-    ]
   }
 }
