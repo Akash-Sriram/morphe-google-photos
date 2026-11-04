@@ -38,23 +38,6 @@ object StringResourceResolverFingerprint : Fingerprint(
     },
 )
 
-object SettingsMenuBuilderFingerprint : Fingerprint(
-    returnType = "V",
-    parameters = listOf("L"),
-    strings = listOf("LOAD_ELLMANN_READY_PROGRESS"),
-    custom = { method, classDef ->
-        method.name != "<init>" &&
-        method.implementation?.instructions?.any {
-            it is com.android.tools.smali.dexlib2.iface.instruction.ReferenceInstruction &&
-            it.reference.toString().contains("-><init>(Ljava/util/List;)V")
-        } == true &&
-        classDef.methods.any { it.name == "<clinit>" && it.implementation?.instructions?.any { ins ->
-            ins is com.android.tools.smali.dexlib2.iface.instruction.ReferenceInstruction &&
-            ins.reference.toString().contains("->r:L")
-        } == true }
-    },
-)
-
 object SettingsMenuBuilderClinitFingerprint : Fingerprint(
     name = "<clinit>",
     strings = listOf("LOAD_ELLMANN_READY_PROGRESS"),
@@ -65,6 +48,20 @@ object SettingsMenuBuilderClinitFingerprint : Fingerprint(
         } == true
     },
 )
+
+object SettingsMenuBuilderFingerprint : Fingerprint(
+    classFingerprint = SettingsMenuBuilderClinitFingerprint,
+    returnType = "V",
+    parameters = listOf("L"),
+    custom = { method, _ ->
+        method.name != "<init>" &&
+        method.implementation?.instructions?.any {
+            it is com.android.tools.smali.dexlib2.iface.instruction.ReferenceInstruction &&
+            it.reference.toString().contains("-><init>(Ljava/util/List;)V")
+        } == true
+    },
+)
+
 
 internal object SkottieFontUriResolverFingerprint : Fingerprint(
     returnType = "Landroid/net/Uri;",

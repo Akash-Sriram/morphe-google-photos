@@ -1062,11 +1062,22 @@ public final class PhenotypeFlagManager {
         if (resId <= 0) {
             return "";
         }
-        if (resId == sInternalStringResId || resId == 0x7f14210f) {
+        if (resId == sInternalStringResId || resId == 0x7f14210f || resId == 0x7f142188) {
             return "Morphe";
         }
+        try {
+            Context ctx = app.morphe.extension.shared.Utils.getContext();
+            if (ctx != null) {
+                String entryName = ctx.getResources().getResourceEntryName(resId);
+                if ("photos_settings_internal".equals(entryName)) {
+                    sInternalStringResId = resId;
+                    return "Morphe";
+                }
+            }
+        } catch (Throwable ignored) {}
         return null;
     }
+
 
     public static void hookInternalActivity(Activity activity) {
         if (activity == null || activity.isFinishing() || activity.isDestroyed()) return;

@@ -146,21 +146,7 @@
           ]
         }
       ],
-      "options": [
-        {
-          "key": "components",
-          "title": "Enabled components",
-          "description": "Choose which components to show: Flag Manager, Morphe Toolkit, or Both.",
-          "required": false,
-          "type": "kotlin.String",
-          "default": "flags",
-          "values": {
-            "flags": "Flag manager only",
-            "both": "Both (Flag manager & Toolkit)",
-            "toolkit": "Toolkit only"
-          }
-        }
-      ]
+      "options": []
     },
     {
       "name": "GmsCore support",

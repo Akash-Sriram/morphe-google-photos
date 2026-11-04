@@ -24,29 +24,12 @@ val phenotypeFlagManagerPatch = bytecodePatch(
 ) {
     compatibleWith(AppCompatibilities.GOOGLE_PHOTOS)
 
-    val componentsOption = stringOption(
-        key = "components",
-        default = "flags",
-        values = mapOf(
-            "flags" to "Flag manager only",
-            "both" to "Both (Flag manager & Toolkit)",
-            "toolkit" to "Toolkit only",
-        ),
-        title = "Enabled components",
-        description = "Choose which components to show: Flag Manager, Morphe Toolkit, or Both.",
-    )
-
     execute {
-        val selected = (componentsOption.value ?: componentsOption.default ?: "flags").lowercase()
-        val injectMethod = when (selected) {
-            "flags" -> "injectSettingsCardFlags"
-            "toolkit" -> "injectSettingsCardToolkit"
-            else -> "injectSettingsCardBoth"
-        }
         SettingsActivityV2OnCreateFingerprint.method.addInstruction(
             0,
-            "invoke-static {p0}, Lapp/morphe/extension/shared/patches/PhenotypeFlagManager;->$injectMethod(Landroid/app/Activity;)V"
+            "invoke-static {p0}, Lapp/morphe/extension/shared/patches/PhenotypeFlagManager;->injectSettingsCardBoth(Landroid/app/Activity;)V"
         )
+
 
         // 1. Unconditionally enable the 7th item (below Privacy) in the Settings Compose list
         val menuBuilderMethod = SettingsMenuBuilderFingerprint.methodOrNull
