@@ -41,6 +41,7 @@ object StringResourceResolverFingerprint : Fingerprint(
 object SettingsMenuBuilderFingerprint : Fingerprint(
     returnType = "V",
     parameters = listOf("L"),
+    strings = listOf("LOAD_ELLMANN_READY_PROGRESS"),
     custom = { method, classDef ->
         method.name != "<init>" &&
         method.implementation?.instructions?.any {
@@ -68,9 +69,11 @@ object SettingsMenuBuilderClinitFingerprint : Fingerprint(
 internal object SkottieFontUriResolverFingerprint : Fingerprint(
     returnType = "Landroid/net/Uri;",
     parameters = listOf("Ljava/lang/String;", "Landroid/os/CancellationSignal;"),
+    strings = listOf("com.google.android.gms.fonts"),
 )
 
 internal object SkottieFontLoaderDispatcherFingerprint : Fingerprint(
+    strings = listOf("SkottieRenderGraphUtil"),
     custom = { method, _ ->
         method.parameterTypes.size == 8 &&
             method.parameterTypes[0] == "Landroid/content/Context;" &&
@@ -78,4 +81,5 @@ internal object SkottieFontLoaderDispatcherFingerprint : Fingerprint(
             method.returnType != "V"
     },
 )
+
 

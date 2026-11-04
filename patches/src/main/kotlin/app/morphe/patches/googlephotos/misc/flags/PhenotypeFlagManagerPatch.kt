@@ -8,6 +8,9 @@ import app.morphe.util.returnEarly
 
 import app.morphe.patcher.extensions.InstructionExtensions.addInstructions
 import app.morphe.patcher.extensions.InstructionExtensions.replaceInstruction
+import app.morphe.patcher.resource.ResourceType
+import app.morphe.patcher.resource.hasResourceId
+import app.morphe.patcher.resource.resourceId
 import com.android.tools.smali.dexlib2.Opcode
 import com.android.tools.smali.dexlib2.iface.instruction.NarrowLiteralInstruction
 import com.android.tools.smali.dexlib2.iface.instruction.OneRegisterInstruction
@@ -65,7 +68,7 @@ val phenotypeFlagManagerPatch = bytecodePatch(
             }
         }
 
-        // 2. Patch <clinit> of the menu builder class to set the icon to tune icon (0x7f080b2b)
+        // 2. Patch <clinit> of the menu builder class to set the icon to tune icon
         val clinitMethod = SettingsMenuBuilderClinitFingerprint.methodOrNull
         if (clinitMethod != null) {
             val clinitInstructions = clinitMethod.implementation?.instructions
@@ -74,18 +77,28 @@ val phenotypeFlagManagerPatch = bytecodePatch(
                     it is ReferenceInstruction && it.reference.toString().contains("->r:L")
                 }
                 if (rInitIdx > 0) {
-                    for (i in (rInitIdx - 1) downTo 0) {
-                        val ins = clinitInstructions.elementAt(i)
-                        if (ins is NarrowLiteralInstruction &&
-                            ins is OneRegisterInstruction &&
-                            (ins.narrowLiteral.toLong() and 0xffff0000L) == 0x7f080000L) {
-                            clinitMethod.replaceInstruction(i, "const v${ins.registerA}, 0x7f080b2b")
-                            break
+                    val tuneIconId = when {
+                        hasResourceId(ResourceType.DRAWABLE, "quantum_gm_ic_tune_vd_theme_24") ->
+                            resourceId(ResourceType.DRAWABLE, "quantum_gm_ic_tune_vd_theme_24")
+                        hasResourceId(ResourceType.DRAWABLE, "gs_discover_tune_vd_theme_24") ->
+                            resourceId(ResourceType.DRAWABLE, "gs_discover_tune_vd_theme_24")
+                        else -> null
+                    }
+                    if (tuneIconId != null) {
+                        for (i in (rInitIdx - 1) downTo 0) {
+                            val ins = clinitInstructions.elementAt(i)
+                            if (ins is NarrowLiteralInstruction &&
+                                ins is OneRegisterInstruction &&
+                                (ins.narrowLiteral.toLong() and 0xffff0000L) == 0x7f080000L) {
+                                clinitMethod.replaceInstruction(i, "const v${ins.registerA}, 0x${tuneIconId.toString(16)}")
+                                break
+                            }
                         }
                     }
                 }
             }
         }
+
 
         // 2. Intercept Compose stringResource to display "Morphe" for the 7th settings item
         val stringMethod = StringResourceResolverFingerprint.methodOrNull
