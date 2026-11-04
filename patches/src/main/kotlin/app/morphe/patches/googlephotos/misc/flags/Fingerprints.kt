@@ -63,14 +63,24 @@ object SettingsMenuBuilderFingerprint : Fingerprint(
 )
 
 
+internal object SkottieFontUriResolverClassFingerprint : Fingerprint(
+    name = "<clinit>",
+    strings = listOf("TextRenderingUtils"),
+)
+
 internal object SkottieFontUriResolverFingerprint : Fingerprint(
+    classFingerprint = SkottieFontUriResolverClassFingerprint,
     returnType = "Landroid/net/Uri;",
     parameters = listOf("Ljava/lang/String;", "Landroid/os/CancellationSignal;"),
-    strings = listOf("com.google.android.gms.fonts"),
+)
+
+internal object SkottieFontLoaderDispatcherClassFingerprint : Fingerprint(
+    name = "<clinit>",
+    strings = listOf("SkottieRenderGraphUtil"),
 )
 
 internal object SkottieFontLoaderDispatcherFingerprint : Fingerprint(
-    strings = listOf("SkottieRenderGraphUtil"),
+    classFingerprint = SkottieFontLoaderDispatcherClassFingerprint,
     custom = { method, _ ->
         method.parameterTypes.size == 8 &&
             method.parameterTypes[0] == "Landroid/content/Context;" &&
@@ -78,5 +88,6 @@ internal object SkottieFontLoaderDispatcherFingerprint : Fingerprint(
             method.returnType != "V"
     },
 )
+
 
 
