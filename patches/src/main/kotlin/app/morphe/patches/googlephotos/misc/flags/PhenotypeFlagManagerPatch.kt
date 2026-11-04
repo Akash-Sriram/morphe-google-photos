@@ -51,7 +51,7 @@ val phenotypeFlagManagerPatch = bytecodePatch(
             val instructions = menuBuilderMethod.implementation?.instructions
             if (instructions != null) {
                 val rAddIdx = instructions.indexOfFirst {
-                    it is ReferenceInstruction && it.reference.toString().contains("->r:Lbgcj;")
+                    it is ReferenceInstruction && it.reference.toString().contains("->r:L")
                 }
                 if (rAddIdx > 0) {
                     for (i in (rAddIdx - 1) downTo 0) {
@@ -71,7 +71,7 @@ val phenotypeFlagManagerPatch = bytecodePatch(
             val clinitInstructions = clinitMethod.implementation?.instructions
             if (clinitInstructions != null) {
                 val rInitIdx = clinitInstructions.indexOfFirst {
-                    it is ReferenceInstruction && it.reference.toString().contains("->r:Lbgcj;")
+                    it is ReferenceInstruction && it.reference.toString().contains("->r:L")
                 }
                 if (rInitIdx > 0) {
                     for (i in (rInitIdx - 1) downTo 0) {

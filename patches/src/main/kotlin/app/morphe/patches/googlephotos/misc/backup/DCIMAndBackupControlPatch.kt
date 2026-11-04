@@ -423,7 +423,7 @@ val dcimAndBackupControlPatch = bytecodePatch(
                 val next = instructions[idx + 1]
                 if (curr.opcode == Opcode.CHECK_CAST && next.opcode == Opcode.INSTANCE_OF) {
                     val nextTypeRef = (next as? ReferenceInstruction)?.reference as? TypeReference
-                    if (nextTypeRef?.type == "Lsll;" || nextTypeRef?.type == "Lsob;") {
+                    if (nextTypeRef?.type == "Lsll;" || nextTypeRef?.type == "Lsob;" || nextTypeRef?.type == "Lssf;" || nextTypeRef?.type == "Lsse;") {
                         mutableMethod.replaceInstruction(idx, "nop")
                         break
                     }
@@ -437,7 +437,7 @@ val dcimAndBackupControlPatch = bytecodePatch(
                 val next = updatedInstructions[idx + 1]
                 if (curr.opcode == Opcode.CHECK_CAST && next.opcode == Opcode.IGET_OBJECT) {
                     val fieldRef = (next as? ReferenceInstruction)?.reference as? FieldReference
-                    if (fieldRef != null && fieldRef.name == "f" && (fieldRef.type.endsWith("slm;") || fieldRef.type.endsWith("soc;"))) {
+                    if (fieldRef != null && fieldRef.name == "f" && (fieldRef.type.endsWith("slm;") || fieldRef.type.endsWith("soc;") || fieldRef.type.endsWith("ssf;") || fieldRef.type.endsWith("ssg;"))) {
                         val castInstr = curr as OneRegisterInstruction
                         val targetReg = castInstr.registerA
                         val nextInstr = next as TwoRegisterInstruction
@@ -548,7 +548,7 @@ val dcimAndBackupControlPatch = bytecodePatch(
                 val ins = instructions[idx]
                 if (ins.opcode == Opcode.NEW_INSTANCE) {
                     val typeRef = (ins as? ReferenceInstruction)?.reference as? TypeReference
-                    if (typeRef?.type?.endsWith("cthu;") == true || typeRef?.type?.endsWith("cttj;") == true) {
+                    if (typeRef?.type?.endsWith("cthu;") == true || typeRef?.type?.endsWith("cttj;") == true || typeRef?.type?.endsWith("cvfa;") == true) {
                         mutableMethod.replaceInstruction(idx, "nop")
                         if (idx + 1 < instructions.size) mutableMethod.replaceInstruction(idx + 1, "nop")
                         if (idx + 2 < instructions.size) mutableMethod.replaceInstruction(idx + 2, "nop")

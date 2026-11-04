@@ -27,7 +27,7 @@ object InternalActivityOnCreateFingerprint : Fingerprint(
 )
 
 object StringResourceResolverFingerprint : Fingerprint(
-    parameters = listOf("I", "Lelp;"),
+    parameters = listOf("I", "L"),
     returnType = "Ljava/lang/String;",
     custom = { method, classDef ->
         classDef.methods.count() == 2 &&
@@ -40,23 +40,27 @@ object StringResourceResolverFingerprint : Fingerprint(
 
 object SettingsMenuBuilderFingerprint : Fingerprint(
     returnType = "V",
-    custom = { method, _ ->
+    parameters = listOf("L"),
+    custom = { method, classDef ->
         method.name != "<init>" &&
-        method.parameterTypes.size == 1 &&
         method.implementation?.instructions?.any {
             it is com.android.tools.smali.dexlib2.iface.instruction.ReferenceInstruction &&
-            it.reference.toString().contains("-><init>(Ljava/util/List;)V") &&
-            it.reference.toString().contains("bgcm")
-        } == true
+            it.reference.toString().contains("-><init>(Ljava/util/List;)V")
+        } == true &&
+        classDef.methods.any { it.name == "<clinit>" && it.implementation?.instructions?.any { ins ->
+            ins is com.android.tools.smali.dexlib2.iface.instruction.ReferenceInstruction &&
+            ins.reference.toString().contains("->r:L")
+        } == true }
     },
 )
 
 object SettingsMenuBuilderClinitFingerprint : Fingerprint(
     name = "<clinit>",
+    strings = listOf("LOAD_ELLMANN_READY_PROGRESS"),
     custom = { method, _ ->
         method.implementation?.instructions?.any {
             it is com.android.tools.smali.dexlib2.iface.instruction.ReferenceInstruction &&
-            it.reference.toString().contains("->r:Lbgcj;")
+            it.reference.toString().contains("->r:L")
         } == true
     },
 )
