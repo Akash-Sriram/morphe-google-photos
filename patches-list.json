@@ -20,7 +20,7 @@
             {
               "version": "8.0.0.1011730683",
               "versionCodes": null,
-              "isExperimental": false,
+              "isExperimental": true,
               "minSdk": null,
               "description": null
             },
@@ -54,7 +54,7 @@
             {
               "version": "8.0.0.1011730683",
               "versionCodes": null,
-              "isExperimental": false,
+              "isExperimental": true,
               "minSdk": null,
               "description": null
             },
@@ -98,7 +98,7 @@
             {
               "version": "8.0.0.1011730683",
               "versionCodes": null,
-              "isExperimental": false,
+              "isExperimental": true,
               "minSdk": null,
               "description": null
             },
@@ -132,7 +132,7 @@
             {
               "version": "8.0.0.1011730683",
               "versionCodes": null,
-              "isExperimental": false,
+              "isExperimental": true,
               "minSdk": null,
               "description": null
             },
@@ -166,7 +166,7 @@
             {
               "version": "8.0.0.1011730683",
               "versionCodes": null,
-              "isExperimental": false,
+              "isExperimental": true,
               "minSdk": null,
               "description": null
             },
@@ -200,7 +200,7 @@
             {
               "version": "8.0.0.1011730683",
               "versionCodes": null,
-              "isExperimental": false,
+              "isExperimental": true,
               "minSdk": null,
               "description": null
             },
@@ -234,7 +234,7 @@
             {
               "version": "8.0.0.1011730683",
               "versionCodes": null,
-              "isExperimental": false,
+              "isExperimental": true,
               "minSdk": null,
               "description": null
             },
@@ -268,7 +268,7 @@
             {
               "version": "8.0.0.1011730683",
               "versionCodes": null,
-              "isExperimental": false,
+              "isExperimental": true,
               "minSdk": null,
               "description": null
             },
