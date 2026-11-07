@@ -1,3 +1,9 @@
+## [1.18.0-dev.3](https://github.com/Akash-Sriram/morphe-google-photos/compare/v1.18.0-dev.2...v1.18.0-dev.3) (2026-11-07)
+
+### 🐛 Bug Fixes
+
+* **Google Photos:** resolve status enum type for camera unbacked badge ([#75](https://github.com/Akash-Sriram/morphe-google-photos/issues/75)) ([c859ffa](https://github.com/Akash-Sriram/morphe-google-photos/commit/c859ffa49ad0e797cae95e6ac6501de3bcf3ff19))
+
 ## [1.18.0-dev.2](https://github.com/Akash-Sriram/morphe-google-photos/compare/v1.18.0-dev.1...v1.18.0-dev.2) (2026-11-07)
 
 ### 🐛 Bug Fixes
