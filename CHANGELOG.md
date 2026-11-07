@@ -1,3 +1,9 @@
+## [1.18.0-dev.4](https://github.com/Akash-Sriram/morphe-google-photos/compare/v1.18.0-dev.3...v1.18.0-dev.4) (2026-11-07)
+
+### 🐛 Bug Fixes
+
+* **Google Photos:** mask modern pixel features for genuine pixels and preserve stock passthrough ([#75](https://github.com/Akash-Sriram/morphe-google-photos/issues/75)) ([d5cef7e](https://github.com/Akash-Sriram/morphe-google-photos/commit/d5cef7e174f25726738a576368be59af56bbbd28))
+
 ## [1.18.0-dev.3](https://github.com/Akash-Sriram/morphe-google-photos/compare/v1.18.0-dev.2...v1.18.0-dev.3) (2026-11-07)
 
 ### 🐛 Bug Fixes
