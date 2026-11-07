@@ -90,8 +90,7 @@ public final class PhotoFlagsRegistry {
         register("45835545", "Collage Grid Layout 45835545", "Controls multi-photo collage layout grids, cutout borders, and scrapbook art styles via Lcnzc.", "📑 Create Tab: Collage & Scrapbook (Stamp M2)", "Collage Template & Grid Engine", FlagType.BOOLEAN, Boolean.TRUE);
         register("45836696", "Collage Grid Layout 45836696", "Controls multi-photo collage layout grids, cutout borders, and scrapbook art styles via Lcnzc.", "📑 Create Tab: Collage & Scrapbook (Stamp M2)", "Collage Template & Grid Engine", FlagType.BOOLEAN, Boolean.TRUE);
 
-        // 📁 Collections V2 & Shelves (2 Flags)
-        register("45762698", "Collections V2 Shelves Layout", "Reorganizes the Library tab into modern categorized Collections V2 horizontal shelves (0=Off, 1=Legacy, 2=Full V2, 8=Modern Redesign).", "📁 Collections V2 & Shelves", "Collections Shelves Structure", FlagType.LONG, 8L);
+        // 📁 Collections V2 & Shelves (1 Flag)
         register("3226", "Bouquet Album Title Online", "Enables title string creation in CreateEnvelope RPC.", "📁 Collections V2 & Shelves", "Album Title Engine", FlagType.BOOLEAN, Boolean.TRUE);
 
         // 🤖 Gemini & Ask Photos Search (2 Flags)
