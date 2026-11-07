@@ -200,18 +200,24 @@ val dcimAndBackupControlPatch = bytecodePatch(
                 val mutableBadgeMethod = uploadStatusClassDef.findMutableMethodOf(badgeMethod)
                 val instructions = badgeMethod.implementation?.instructions?.toList() ?: emptyList()
 
-                // Find status enum reference with field "g" (photos_quantum_gm_ic_cloud_off_vd_theme_18)
-                var statusGRef: FieldReference? = null
-                for (idx in instructions.indices) {
-                    val instr = instructions[idx]
-                    if (instr.opcode == Opcode.SGET_OBJECT) {
-                        val ref = (instr as? ReferenceInstruction)?.reference as? FieldReference
-                        if (ref != null && ref.name == "g" && ref.type == ref.definingClass) {
-                            statusGRef = ref
-                            break
-                        }
+                // Resolve status enum type from return type constructor: <init>(StatusEnum, D)
+                val statusEnumType = instructions.filterIsInstance<ReferenceInstruction>()
+                    .mapNotNull { it.reference as? MethodReference }
+                    .firstOrNull {
+                        it.name == "<init>" &&
+                        it.definingClass == badgeMethod.returnType &&
+                        it.parameterTypes.size == 2 &&
+                        it.parameterTypes[1] == "D"
+                    }?.parameterTypes?.firstOrNull()
+
+                // Find status enum reference with field "g" (NOT_UPLOADED / cloud-off badge)
+                val statusGRef = instructions.filterIsInstance<ReferenceInstruction>()
+                    .mapNotNull { it.reference as? FieldReference }
+                    .firstOrNull {
+                        it.name == "g" &&
+                        (statusEnumType == null || it.type == statusEnumType) &&
+                        it.type == it.definingClass
                     }
-                }
 
                 if (statusGRef != null) {
                     val statusSgetIndices = mutableListOf<Int>()
@@ -225,7 +231,7 @@ val dcimAndBackupControlPatch = bytecodePatch(
                         }
                     }
 
-                    // The second-to-last SGET of the status enum is index 124 (stock loads NONE when account backup is enabled and status is NONE)
+                    // The second-to-last SGET of the status enum is index 124/149 (stock loads QUEUED when account backup is enabled and status is NONE)
                     if (statusSgetIndices.size >= 2) {
                         val targetIdx = statusSgetIndices[statusSgetIndices.size - 2]
                         val targetInstr = instructions[targetIdx] as OneRegisterInstruction
