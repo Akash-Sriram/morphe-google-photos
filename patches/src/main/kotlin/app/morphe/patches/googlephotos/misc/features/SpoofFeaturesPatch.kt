@@ -32,11 +32,10 @@ import com.android.tools.smali.dexlib2.iface.reference.MethodReference
 import com.android.tools.smali.dexlib2.iface.reference.StringReference
 
 // Features cleanly hooked to resolve dynamically via DeviceSpoofHelper for unlimited backup tier.
-private val BAKED_FEATURES_TO_ENABLE = setOf(
-    "com.google.android.apps.photos.NEXUS_PRELOAD",
-    "com.google.android.apps.photos.nexus_preload",
-    "com.google.android.feature.PIXEL_2020_EXPERIENCE",
-)
+private fun isPixelFeatureString(string: String): Boolean =
+    string.equals("com.google.android.apps.photos.NEXUS_PRELOAD", ignoreCase = true) ||
+    string.startsWith("com.google.android.feature.PIXEL_") ||
+    string.startsWith("com.google.android.apps.photos.PIXEL_")
 
 // Pixel XL system property overrides for native C/C++ checks.
 private val SYSTEM_PROPERTY_OVERRIDES = mapOf(
@@ -231,7 +230,7 @@ val spoofFeaturesPatch = bytecodePatch(
                     val string = ((instruction as? Instruction21c)?.reference as? StringReference)?.string
                         ?: continue
 
-                    if (string in BAKED_FEATURES_TO_ENABLE) {
+                    if (isPixelFeatureString(string)) {
                         val reg = (instruction as OneRegisterInstruction).registerA
                         val invoke = invokeStaticSingle(reg, "Lapp/morphe/extension/shared/patches/DeviceSpoofHelper;->resolveSystemFeature(Ljava/lang/String;)Ljava/lang/String;")
                         mutableMethod.addInstructions(
