@@ -1,3 +1,13 @@
+## [1.18.0-dev.2](https://github.com/Akash-Sriram/morphe-google-photos/compare/v1.18.0-dev.1...v1.18.0-dev.2) (2026-11-07)
+
+### 🐛 Bug Fixes
+
+* **Google Photos - Toolkit:** restore 7.99.0 symbol candidates to support older app versions ([#73](https://github.com/Akash-Sriram/morphe-google-photos/issues/73)) ([408a3dc](https://github.com/Akash-Sriram/morphe-google-photos/commit/408a3dc372db20921163b65003b50290f80b1518))
+
+### ✨ New Features
+
+* **Google Photos:** implement compact navigation bar in Morphe Settings ([#74](https://github.com/Akash-Sriram/morphe-google-photos/issues/74)) ([71f489e](https://github.com/Akash-Sriram/morphe-google-photos/commit/71f489ebc4c124fd2ef119f958977cfa605fd6eb))
+
 ## [1.18.0-dev.1](https://github.com/Akash-Sriram/morphe-google-photos/compare/v1.17.10...v1.18.0-dev.1) (2026-11-04)
 
 ### 🐛 Bug Fixes
