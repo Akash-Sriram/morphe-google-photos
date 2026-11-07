@@ -11,6 +11,8 @@ import app.morphe.patches.googlephotos.misc.gms.Constants.PHOTOS_PACKAGE_NAME
 import app.morphe.patches.googlephotos.misc.gms.HomeActivityOnCreateFingerprint
 import app.morphe.patches.shared.misc.gms.PackageNameConfig
 import app.morphe.patches.shared.misc.gms.gmsCoreSupportPatch
+import app.morphe.patcher.patch.InstallerType
+import app.morphe.patcher.patch.PatchAvailability
 import app.morphe.patches.shared.misc.settings.preference.BasePreferenceScreen
 import app.morphe.patches.shared.misc.settings.preference.PreferenceScreenPreference
 import app.morphe.patcher.extensions.InstructionExtensions.addInstruction
@@ -427,6 +429,13 @@ val gmsCoreSupportPatch = gmsCoreSupportPatch(
         }
     },
 ) {
+    availability { installer, _ ->
+        when (installer) {
+            InstallerType.MOUNT -> PatchAvailability.UNAVAILABLE
+            InstallerType.STANDARD, InstallerType.SHIZUKU -> PatchAvailability.REQUIRED
+        }
+    }
+
     dependsOn(
         deviceComplianceCheckPatch,
     )

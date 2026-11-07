@@ -36,6 +36,7 @@ import app.morphe.extension.shared.Logger;
 import app.morphe.extension.shared.Utils;
 import app.morphe.extension.shared.diagnostics.DiagnosticsDialog;
 import app.morphe.extension.shared.patches.DeviceSpoofHelper;
+import app.morphe.extension.shared.patches.FloatingTabBarHelper;
 import app.morphe.extension.shared.patches.LocalCreationDownloader;
 import app.morphe.extension.shared.patches.PhenotypeFlagManager;
 import app.morphe.extension.shared.patches.PhenotypeFlagManager.MaterialVectorDrawable;
@@ -287,6 +288,8 @@ public final class MorpheSettingsScreen {
 
         chipsRow.addView(createMiniChip(activity, density, theme, 
                 "Backup: " + DeviceSpoofHelper.getProfileChipName()));
+        chipsRow.addView(createMiniChip(activity, density, theme,
+                "Bar: " + FloatingTabBarHelper.getModeChipName(activity)));
         chipsRow.addView(createMiniChip(activity, density, theme, "Flags: " + activeOverrides + " active"));
         chipsRow.addView(createMiniChip(activity, density, theme, "Toolkit: Ready"));
         chipsRow.addView(createMiniChip(activity, density, theme, "On-Device AI: OK"));
@@ -309,6 +312,21 @@ public final class MorpheSettingsScreen {
                 () -> showBackupProfileDialog(activity, onBack, theme)));
 
         content.addView(backupGroup);
+
+        // ─────────────────────────────────────────────────────────────────────
+        // 1.8. Interface & Navigation
+        // ─────────────────────────────────────────────────────────────────────
+        content.addView(createSectionHeader(activity, density, theme, "Interface & Navigation"));
+        LinearLayout navGroup = createCardContainer(activity, density, theme);
+
+        navGroup.addView(createPreferenceItem(activity, density, theme,
+                "quantum_gm_ic_dock_to_bottom_vd_theme_24",
+                MaterialVectorDrawable.TYPE_PRESETS,
+                "Floating Menu Bar Style",
+                FloatingTabBarHelper.getModeDisplayName(activity),
+                () -> showFloatingBarModeDialog(activity, onBack, theme)));
+
+        content.addView(navGroup);
 
         // ─────────────────────────────────────────────────────────────────────
         // 2. Feature Flags & Experiments
@@ -844,6 +862,97 @@ public final class MorpheSettingsScreen {
                         Toast.makeText(activity, "Profile updated! Restarting Photos...", Toast.LENGTH_SHORT).show();
                         DeviceSpoofHelper.restartApp(activity);
                     }
+                }
+        ).show();
+    }
+
+    private static void showFloatingBarModeDialog(Activity activity, Runnable onBack, Theme theme) {
+        float density = activity.getResources().getDisplayMetrics().density;
+        String current = FloatingTabBarHelper.getCurrentMode(activity);
+        final String[] selected = new String[] { current };
+
+        LinearLayout layout = new LinearLayout(activity);
+        layout.setOrientation(LinearLayout.VERTICAL);
+        int padH = (int) (20 * density);
+        layout.setPadding(padH, (int) (4 * density), padH, (int) (12 * density));
+
+        TextView tvDesc = new TextView(activity);
+        tvDesc.setText("Choose how navigation tabs are displayed in the bottom floating menu bar:");
+        tvDesc.setTextSize(13f);
+        tvDesc.setTextColor(theme.textSecondary);
+        tvDesc.setLineSpacing(0, 1.2f);
+        layout.addView(tvDesc);
+
+        LinearLayout optionsContainer = new LinearLayout(activity);
+        optionsContainer.setOrientation(LinearLayout.VERTICAL);
+        LinearLayout.LayoutParams ocLp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        ocLp.setMargins(0, (int) (14 * density), 0, (int) (8 * density));
+        optionsContainer.setLayoutParams(ocLp);
+
+        View cardStock = createProfileOptionCard(
+                activity, density, theme,
+                "Stock (Expanded)",
+                "Classic Google Photos layout with text labels on all navigation tabs",
+                FloatingTabBarHelper.MODE_STOCK.equalsIgnoreCase(selected[0])
+        );
+
+        View cardCompact = createProfileOptionCard(
+                activity, density, theme,
+                "Compact (Modern UI) [Recommended]",
+                "Active tab shows icon and label, unselected tabs collapse into compact icons",
+                FloatingTabBarHelper.MODE_COMPACT.equalsIgnoreCase(selected[0])
+        );
+
+        View cardIconOnly = createProfileOptionCard(
+                activity, density, theme,
+                "Minimal (Icon Only)",
+                "Streamlined layout where all navigation tabs show icons only without labels",
+                FloatingTabBarHelper.MODE_ICON_ONLY.equalsIgnoreCase(selected[0])
+        );
+
+        Runnable refreshSelection = () -> {
+            updateOptionCardSelection(cardStock, FloatingTabBarHelper.MODE_STOCK.equalsIgnoreCase(selected[0]), theme);
+            updateOptionCardSelection(cardCompact, FloatingTabBarHelper.MODE_COMPACT.equalsIgnoreCase(selected[0]), theme);
+            updateOptionCardSelection(cardIconOnly, FloatingTabBarHelper.MODE_ICON_ONLY.equalsIgnoreCase(selected[0]), theme);
+        };
+
+        cardStock.setOnClickListener(v -> {
+            selected[0] = FloatingTabBarHelper.MODE_STOCK;
+            refreshSelection.run();
+        });
+
+        cardCompact.setOnClickListener(v -> {
+            selected[0] = FloatingTabBarHelper.MODE_COMPACT;
+            refreshSelection.run();
+        });
+
+        cardIconOnly.setOnClickListener(v -> {
+            selected[0] = FloatingTabBarHelper.MODE_ICON_ONLY;
+            refreshSelection.run();
+        });
+
+        optionsContainer.addView(cardStock);
+        optionsContainer.addView(cardCompact);
+        optionsContainer.addView(cardIconOnly);
+        layout.addView(optionsContainer);
+
+        TextView tvNotice = new TextView(activity);
+        tvNotice.setText("Note: The compact bar is also automatically triggered by Google Photos whenever system font or display size increases.");
+        tvNotice.setTextSize(11.5f);
+        tvNotice.setTextColor(theme.primary);
+        tvNotice.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
+        layout.addView(tvNotice);
+
+        PhenotypeFlagManager.createM3ActionDialog(
+                activity,
+                "Floating Menu Bar Style",
+                layout,
+                "Apply",
+                () -> {
+                    FloatingTabBarHelper.setBarMode(activity, selected[0]);
+                    Toast.makeText(activity, "Menu bar style updated: " + FloatingTabBarHelper.getModeChipName(activity), Toast.LENGTH_SHORT).show();
+                    if (onBack != null) onBack.run();
                 }
         ).show();
     }

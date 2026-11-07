@@ -100,7 +100,7 @@ fun gmsCoreSupportPatch(
     name = "GmsCore support",
     description = "Enables GmsCore / MicroG support and renames package for non-root installs. " +
         "Leave enabled for standard non-root installs; disable only for rooted system installs using genuine Google Play Services.",
-    default = true,
+    default = false,
 ) {
 
     availability { installer, _ ->

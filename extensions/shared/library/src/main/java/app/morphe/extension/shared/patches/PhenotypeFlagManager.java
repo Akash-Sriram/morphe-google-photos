@@ -881,7 +881,7 @@ public final class PhenotypeFlagManager {
         return context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE);
     }
 
-    private static volatile String sPatchComponentsMode = "flags";
+    private static volatile String sPatchComponentsMode = "both";
 
     public static void setComponentsMode(String mode) {
         if (mode != null && !mode.trim().isEmpty()) {

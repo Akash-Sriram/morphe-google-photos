@@ -2,11 +2,11 @@ package app.morphe.patches.googlephotos.misc.flags
 
 import app.morphe.patcher.extensions.InstructionExtensions.addInstruction
 import app.morphe.patcher.patch.bytecodePatch
-import app.morphe.patcher.patch.stringOption
 import app.morphe.patches.shared.compat.AppCompatibilities
 import app.morphe.util.returnEarly
 
 import app.morphe.patcher.extensions.InstructionExtensions.addInstructions
+import app.morphe.patcher.extensions.InstructionExtensions.instructions
 import app.morphe.patcher.extensions.InstructionExtensions.replaceInstruction
 import app.morphe.patcher.resource.ResourceType
 import app.morphe.patcher.resource.hasResourceId
@@ -15,6 +15,7 @@ import com.android.tools.smali.dexlib2.Opcode
 import com.android.tools.smali.dexlib2.iface.instruction.NarrowLiteralInstruction
 import com.android.tools.smali.dexlib2.iface.instruction.OneRegisterInstruction
 import com.android.tools.smali.dexlib2.iface.instruction.ReferenceInstruction
+import com.android.tools.smali.dexlib2.iface.reference.MethodReference
 
 @Suppress("unused")
 val phenotypeFlagManagerPatch = bytecodePatch(
@@ -116,6 +117,49 @@ val phenotypeFlagManagerPatch = bytecodePatch(
                 0,
                 "invoke-static {p0}, Lapp/morphe/extension/shared/patches/PhenotypeFlagManager;->hookAboutActivity(Landroid/app/Activity;)V"
             )
+        }
+
+        // 5. Hook FloatingTabBarLayout.onMeasure to enable dynamic Floating Menu Bar style switching
+        val layoutClassDef = mutableClassDefBy("Lcom/google/android/apps/photos/tabbar/FloatingTabBarLayout;")
+        val onMeasureMethod = layoutClassDef.methods.firstOrNull { it.name == "onMeasure" }
+        if (onMeasureMethod != null) {
+            val instructions = onMeasureMethod.instructions.toList()
+            var hookIndex = -1
+            var enumType: String? = null
+            var reg: Int? = null
+
+            for (i in instructions.indices) {
+                val instr = instructions[i]
+                if (instr.opcode == Opcode.INVOKE_VIRTUAL || instr.opcode == Opcode.INVOKE_VIRTUAL_RANGE) {
+                    val methodRef = (instr as? ReferenceInstruction)?.reference as? MethodReference ?: continue
+                    if (methodRef.definingClass == "Lcom/google/android/apps/photos/tabbar/FloatingTabBarLayout;" &&
+                        methodRef.parameterTypes.size == 1 &&
+                        methodRef.returnType == "V"
+                    ) {
+                        enumType = methodRef.parameterTypes[0].toString()
+                        for (j in (i - 1) downTo maxOf(0, i - 4)) {
+                            val prevInstr = instructions[j]
+                            if (prevInstr.opcode == Opcode.SGET_OBJECT) {
+                                reg = (prevInstr as OneRegisterInstruction).registerA
+                                hookIndex = i
+                                break
+                            }
+                        }
+                        break
+                    }
+                }
+            }
+
+            if (hookIndex != -1 && enumType != null && reg != null) {
+                onMeasureMethod.addInstructions(
+                    hookIndex,
+                    """
+                        invoke-static { v$reg, p0 }, Lapp/morphe/extension/shared/patches/FloatingTabBarHelper;->getInitialMode(Ljava/lang/Enum;Landroid/view/View;)Ljava/lang/Enum;
+                        move-result-object v$reg
+                        check-cast v$reg, $enumType
+                    """.trimIndent(),
+                )
+            }
         }
     }
 }

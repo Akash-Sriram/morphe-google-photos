@@ -13,7 +13,6 @@ import app.morphe.patcher.extensions.InstructionExtensions.getInstruction
 import app.morphe.patcher.extensions.InstructionExtensions.instructions
 import app.morphe.patcher.extensions.InstructionExtensions.replaceInstruction
 import app.morphe.patcher.patch.bytecodePatch
-import app.morphe.patcher.patch.stringOption
 import app.morphe.patcher.util.proxy.mutableTypes.MutableMethod
 import app.morphe.patcher.util.smali.ExternalLabel
 import app.morphe.patches.shared.misc.mapping.ResourceType
@@ -60,18 +59,6 @@ val spoofFeaturesPatch = bytecodePatch(
 ) {
     compatibleWith(AppCompatibilities.GOOGLE_PHOTOS)
 
-    val profileOption = stringOption(
-        key = "profile",
-        default = "auto",
-        values = mapOf(
-            "auto" to "Auto-Sync (dynamic Pixel XL / Pixel 5)",
-            "pixel-xl" to "Pixel XL (Original Quality)",
-            "pixel-5" to "Pixel 5 (Storage Saver)",
-        ),
-        title = "Default backup spoof profile",
-        description = "Select the default device profile to spoof for unlimited backup. Used as initial setting and fallback when Flag Manager / Toolkit is not included.",
-    )
-
     dependsOn(
         spoofBuildInfoPatch,
         app.morphe.patches.googlephotos.misc.extension.sharedExtensionPatch,
@@ -112,15 +99,10 @@ val spoofFeaturesPatch = bytecodePatch(
     )
 
     execute {
-        val selectedProfile = when (profileOption.value?.lowercase()) {
-            "pixel-xl" -> "pixel-xl"
-            "pixel-5" -> "pixel-5"
-            else -> "auto"
-        }
         val helperClassDef = classDefBy("Lapp/morphe/extension/shared/patches/DeviceSpoofHelper;")
         val mutableHelperClass = mutableClassDefBy(helperClassDef)
         val getDefaultProfileMethod = mutableHelperClass.methods.first { it.name == "getDefaultProfile" }
-        getDefaultProfileMethod.returnEarly(selectedProfile)
+        getDefaultProfileMethod.returnEarly("auto")
 
         val idOq = getResourceId(ResourceType.STRING, "photos_backup_settings_quality_oq_desc")
         val idSaver = getResourceId(ResourceType.STRING, "photos_devicesetup_basicstoragepolicy_impl_high_quality_photo_resolution")
