@@ -1,3 +1,9 @@
+## [1.18.0-dev.5](https://github.com/Akash-Sriram/morphe-google-photos/compare/v1.18.0-dev.4...v1.18.0-dev.5) (2026-11-09)
+
+### 🐛 Bug Fixes
+
+* **Google Photos - Lens:** spoof authentic caller package for OneLens IPC handshake ([#77](https://github.com/Akash-Sriram/morphe-google-photos/issues/77)) ([d27dec4](https://github.com/Akash-Sriram/morphe-google-photos/commit/d27dec4de071e9ccab9001a15b6602dea33a2ab7))
+
 ## [1.18.0-dev.4](https://github.com/Akash-Sriram/morphe-google-photos/compare/v1.18.0-dev.3...v1.18.0-dev.4) (2026-11-07)
 
 ### 🐛 Bug Fixes
