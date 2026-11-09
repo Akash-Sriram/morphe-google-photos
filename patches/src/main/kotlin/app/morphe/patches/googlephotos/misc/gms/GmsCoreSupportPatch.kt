@@ -378,6 +378,34 @@ val gmsCoreSupportPatch = gmsCoreSupportPatch(
                 }
             }
         }
+
+        // 9) Google Lens Activity Binder caller_package spoofing for renamed packages
+        val lensBinderMethod = LensActivityBinderHandshakeFingerprint.methodOrNull
+        if (lensBinderMethod != null) {
+            val mutableClass = mutableClassDefBy(lensBinderMethod.definingClass)
+            val mutableMethod = mutableClass.findMutableMethodOf(lensBinderMethod)
+            val instructions = lensBinderMethod.implementation?.instructions?.toList()
+            if (instructions != null) {
+                val getPkgIndex = instructions.indexOfFirst {
+                    val ref = (it as? ReferenceInstruction)?.reference as? MethodReference
+                    ref?.name == "getPackageName" && ref.definingClass == "Landroid/content/Context;"
+                }
+                if (getPkgIndex != -1 && getPkgIndex + 1 < instructions.size) {
+                    val moveResult = instructions[getPkgIndex + 1]
+                    if (moveResult.opcode == Opcode.MOVE_RESULT_OBJECT) {
+                        val reg = (moveResult as OneRegisterInstruction).registerA
+                        mutableMethod.replaceInstruction(
+                            getPkgIndex,
+                            "const-string v$reg, \"$PHOTOS_PACKAGE_NAME\"",
+                        )
+                        mutableMethod.replaceInstruction(
+                            getPkgIndex + 1,
+                            "nop",
+                        )
+                    }
+                }
+            }
+        }
     },
     finalizeBlock = {
         if (PackageNameConfig.isPackageNameChangeEnabled) {

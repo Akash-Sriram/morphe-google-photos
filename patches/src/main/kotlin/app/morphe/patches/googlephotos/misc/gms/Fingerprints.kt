@@ -194,5 +194,24 @@ internal object KillswitchInfoPanelMapFingerprint : Fingerprint(
     strings = listOf("photos.killswitch_info_panel_map"),
 )
 
+/**
+ * Matches the Google Lens activity binder challenge-response method in Lbwkq (onTransact).
+ *
+ * This method handles the IPC transaction from Google App (Google Lens) when OneLens starts.
+ * It responds to the challenge and sets "caller_package" to Context.getPackageName().
+ * For non-root installs with renamed package names (e.g. app.morphe.android.apps.photos),
+ * Google App rejects the session unless "caller_package" is spoofed back to com.google.android.apps.photos.
+ */
+internal object LensActivityBinderHandshakeFingerprint : Fingerprint(
+    name = "onTransact",
+    returnType = "Z",
+    parameters = listOf("I", "Landroid/os/Parcel;", "Landroid/os/Parcel;", "I"),
+    strings = listOf(
+        "challenge_reply",
+        "caller_package",
+    ),
+)
+
+
 
 
