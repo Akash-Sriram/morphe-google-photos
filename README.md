@@ -82,7 +82,7 @@ Replaced legacy floating overlays with a native, full-screen Material 3 settings
 
 **🎯 Supported versions:**
 
-| 🧪&nbsp;8.0.0.1011730683 | 7.99.0.1007655401 |
+| 🧪&nbsp;8.0.0.1011730683&nbsp;(experimental) | 7.99.0.1007655401 |
 | :---: | :---: |
 
 | 💊&nbsp;Patch | 📜&nbsp;Description |
