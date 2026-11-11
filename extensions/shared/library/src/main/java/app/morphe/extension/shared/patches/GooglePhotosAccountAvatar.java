@@ -19,6 +19,7 @@ import android.graphics.PorterDuff;
 import android.graphics.PorterDuffXfermode;
 import android.graphics.Rect;
 import android.graphics.drawable.BitmapDrawable;
+import android.graphics.drawable.Drawable;
 import android.os.Bundle;
 import android.os.SystemClock;
 import android.view.MotionEvent;
@@ -98,6 +99,7 @@ public final class GooglePhotosAccountAvatar {
     private static final long GLOBAL_LAYOUT_THROTTLE_MILLIS = 300L;
     private static volatile String activeSelectedEmail = null;
     private static boolean lifecycleRegistered = false;
+    private static SharedPreferences.OnSharedPreferenceChangeListener sAccountsListener;
 
     private GooglePhotosAccountAvatar() {
     }
@@ -150,23 +152,28 @@ public final class GooglePhotosAccountAvatar {
         }
 
         try {
-            activity.getSharedPreferences("accounts", Context.MODE_PRIVATE)
-                    .registerOnSharedPreferenceChangeListener((sp, key) -> {
-                        if ("key.active-account-key".equals(key)) {
-                            int newKey = sp.getInt(key, -99);
-                            if (newKey == -1) {
-                                activeSelectedEmail = NO_ACCOUNT_SENTINEL;
-                                Logger.printInfo(() -> "Native account key switched to: SIGNED_OUT");
-                            } else if (newKey >= 0) {
-                                String accName = sp.getString(newKey + ".account_name", null);
-                                if (accName != null && !accName.trim().isEmpty()) {
-                                    activeSelectedEmail = accName.trim();
-                                    Logger.printInfo(() -> "Native account key switched to: " + activeSelectedEmail);
-                                }
+            if (sAccountsListener == null) {
+                sAccountsListener = (sp, key) -> {
+                    if ("key.active-account-key".equals(key)) {
+                        int newKey = sp.getInt(key, -99);
+                        if (newKey == -1) {
+                            activeSelectedEmail = NO_ACCOUNT_SENTINEL;
+                            Logger.printInfo(() -> "Native account key switched to: SIGNED_OUT");
+                        } else if (newKey >= 0) {
+                            String accName = sp.getString(newKey + ".account_name", null);
+                            if (accName != null && !accName.trim().isEmpty()) {
+                                activeSelectedEmail = accName.trim();
+                                Logger.printInfo(() -> "Native account key switched to: " + activeSelectedEmail);
                             }
-                            Utils.runOnMainThread(() -> scanAllWindowRoots(activity, true));
                         }
-                    });
+                        APPLIED_AVATAR_HASHES.clear();
+                        Utils.runOnMainThread(() -> scanAllWindowRoots(activity, true));
+                    }
+                };
+                Context appContext = activity.getApplicationContext() != null ? activity.getApplicationContext() : activity;
+                appContext.getSharedPreferences("accounts", Context.MODE_PRIVATE)
+                        .registerOnSharedPreferenceChangeListener(sAccountsListener);
+            }
         } catch (Exception ignored) {}
 
         // Defer window decor view attachment to the main message queue so that
@@ -424,14 +431,32 @@ public final class GooglePhotosAccountAvatar {
         View v = root.findViewById(id);
         if (v == null) return;
 
+        // 1. Check live view first: AccountParticleDisc contentDescription / reflection
+        String liveEmail = findEmailOrAccountNearView(activity, v);
+        if (liveEmail != null && !sameEmail(liveEmail, activeSelectedEmail)) {
+            Logger.printInfo(() -> "Detected account switch from toolbar view: " + liveEmail);
+            activeSelectedEmail = liveEmail;
+            persistAccountSelection(activity, liveEmail);
+            APPLIED_AVATAR_HASHES.clear();
+        }
+
+        // 2. Check native prefs
+        String nativeEmail = getNativeActiveEmail(activity);
+        if (nativeEmail != null && !sameEmail(nativeEmail, activeSelectedEmail)) {
+            Logger.printInfo(() -> "Detected account switch from native prefs: " + nativeEmail);
+            activeSelectedEmail = nativeEmail;
+            persistAccountSelection(activity, nativeEmail);
+            APPLIED_AVATAR_HASHES.clear();
+        }
+
         // If signed out or "Use without an account", do not touch toolbar view
         if (NO_ACCOUNT_SENTINEL.equals(activeSelectedEmail) || isSignedOutToolbar(v)) {
             return;
         }
 
         String email = activeSelectedEmail;
-        if (email == null) email = resolveActiveEmail(activity);
-        if (email == null) email = findEmailOrAccountNearView(activity, v);
+        if (email == null) email = nativeEmail;
+        if (email == null) email = liveEmail;
         if (email == null || NO_ACCOUNT_SENTINEL.equals(email)) return;
 
         if (activeSelectedEmail == null) {
@@ -451,28 +476,18 @@ public final class GooglePhotosAccountAvatar {
         if (!WATCHED_TOOLBAR_VIEWS.add(toolbarView)) return;
 
         toolbarView.addOnLayoutChangeListener((v, l, t, r, b, ol, ot, or, ob) -> {
-            if (NO_ACCOUNT_SENTINEL.equals(activeSelectedEmail) || isSignedOutToolbar(v)) return;
-            String curEmail = activeSelectedEmail;
-            if (curEmail == null) curEmail = resolveActiveEmail(activity);
-            if (curEmail == null) curEmail = findEmailOrAccountNearView(activity, v);
-            if (curEmail == null || NO_ACCOUNT_SENTINEL.equals(curEmail)) return;
-
-            Bitmap bmp = getOrFetchAvatar(activity, root, curEmail);
-            if (bmp != null) setAvatarOnView(activity, v, bmp);
+            applyToolbarAvatar(activity, root);
         });
 
-        ViewParent parent = toolbarView.getParent();
-        if (parent instanceof View && WATCHED_TOOLBAR_VIEWS.add((View) parent)) {
-            ((View) parent).addOnLayoutChangeListener((v, l, t, r, b, ol, ot, or, ob) -> {
-                if (NO_ACCOUNT_SENTINEL.equals(activeSelectedEmail) || isSignedOutToolbar(toolbarView)) return;
-                String curEmail = activeSelectedEmail;
-                if (curEmail == null) curEmail = resolveActiveEmail(activity);
-                if (curEmail == null) curEmail = findEmailOrAccountNearView(activity, toolbarView);
-                if (curEmail == null || NO_ACCOUNT_SENTINEL.equals(curEmail)) return;
-
-                Bitmap bmp = getOrFetchAvatar(activity, root, curEmail);
-                if (bmp != null) setAvatarOnView(activity, toolbarView, bmp);
-            });
+        ViewParent p = toolbarView.getParent();
+        for (int depth = 0; depth < 3 && p instanceof View; depth++) {
+            View pv = (View) p;
+            if (WATCHED_TOOLBAR_VIEWS.add(pv)) {
+                pv.addOnLayoutChangeListener((v, l, t, r, b, ol, ot, or, ob) -> {
+                    applyToolbarAvatar(activity, root);
+                });
+            }
+            p = pv.getParent();
         }
     }
 
@@ -678,25 +693,37 @@ public final class GooglePhotosAccountAvatar {
     }
 
     @Nullable
-    private static String resolveActiveEmail(Activity activity) {
-        if (activeSelectedEmail != null) {
-            return NO_ACCOUNT_SENTINEL.equals(activeSelectedEmail) ? null : activeSelectedEmail;
-        }
+    private static String getNativeActiveEmail(Context context) {
+        if (context == null) return null;
         try {
-            SharedPreferences photosAccounts = activity.getSharedPreferences("accounts", Context.MODE_PRIVATE);
+            SharedPreferences photosAccounts = context.getSharedPreferences("accounts", Context.MODE_PRIVATE);
             int activeKey = photosAccounts.getInt("key.active-account-key", -99);
             if (activeKey == -1) {
-                activeSelectedEmail = NO_ACCOUNT_SENTINEL;
-                return null;
+                return NO_ACCOUNT_SENTINEL;
             }
             if (activeKey >= 0) {
                 String accountName = photosAccounts.getString(activeKey + ".account_name", null);
                 if (accountName != null && !accountName.trim().isEmpty()) {
-                    activeSelectedEmail = accountName.trim();
-                    return activeSelectedEmail;
+                    return accountName.trim();
                 }
             }
         } catch (Exception ignored) {}
+        return null;
+    }
+
+    @Nullable
+    private static String resolveActiveEmail(Activity activity) {
+        String nativeEmail = getNativeActiveEmail(activity);
+        if (nativeEmail != null) {
+            if (!sameEmail(nativeEmail, activeSelectedEmail)) {
+                activeSelectedEmail = nativeEmail;
+                APPLIED_AVATAR_HASHES.clear();
+            }
+            return NO_ACCOUNT_SENTINEL.equals(nativeEmail) ? null : nativeEmail;
+        }
+        if (activeSelectedEmail != null) {
+            return NO_ACCOUNT_SENTINEL.equals(activeSelectedEmail) ? null : activeSelectedEmail;
+        }
         return null;
     }
 
@@ -841,7 +868,15 @@ public final class GooglePhotosAccountAvatar {
         for (ImageView target : targets) {
             if (isExcluded(activity, target)) continue;
             Integer lastHash = APPLIED_AVATAR_HASHES.get(target);
-            if (lastHash != null && lastHash == bmpHash) {
+            Drawable curDrawable = target.getDrawable();
+            boolean isOurBitmap = false;
+            if (curDrawable instanceof BitmapDrawable) {
+                Bitmap curBmp = ((BitmapDrawable) curDrawable).getBitmap();
+                if (curBmp != null && (curBmp == bitmap || curBmp.hashCode() == bmpHash)) {
+                    isOurBitmap = true;
+                }
+            }
+            if (lastHash != null && lastHash == bmpHash && isOurBitmap) {
                 continue;
             }
 

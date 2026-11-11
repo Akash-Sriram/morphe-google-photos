@@ -168,7 +168,7 @@
     <boolean name="45810894" value="true" />
     <boolean name="45796061" value="true" />
     <boolean name="45786261" value="true" />
-    <long name="45789771" value="2" />
+    <long name="45789771" value="0" />
     <boolean name="45842449" value="false" />
     <boolean name="45420506" value="false" />
     <boolean name="3226" value="false" />
@@ -555,7 +555,7 @@
     <float name="45747085" value="0.6" />
     <float name="45747086" value="0.94" />
     <string name="45598536">CgoKCDQ1NTk4NTM3</string>
-    <boolean name="45802737" value="true" />
+    <boolean name="45802737" value="false" />
     <string name="45598538">winback_promo_asset</string>
     <boolean name="45743955" value="true" />
     <boolean name="45356686" value="true" />
@@ -612,7 +612,7 @@
     <long name="45355340" value="100" />
     <boolean name="2889" value="false" />
     <boolean name="45785343" value="true" />
-    <long name="45762698" value="8" />
+    <long name="45762698" value="2" />
     <boolean name="45785342" value="true" />
     <long name="2885" value="2147483647" />
     <boolean name="45844127" value="false" />
@@ -638,7 +638,7 @@
     <boolean name="45826703" value="true" />
     <boolean name="45802748" value="false" />
     <boolean name="2899" value="false" />
-    <boolean name="45802746" value="true" />
+    <boolean name="45802746" value="false" />
     <boolean name="45822344" value="false" />
     <boolean name="45849800" value="false" />
     <long name="45355327" value="60" />
@@ -692,7 +692,7 @@
     <boolean name="45673466" value="false" />
     <boolean name="45789621" value="false" />
     <boolean name="45626681" value="false" />
-    <long name="45802716" value="1" />
+    <long name="45802716" value="0" />
     <boolean name="45740387" value="false" />
     <boolean name="45730111" value="true" />
     <boolean name="45663653" value="false" />
@@ -912,7 +912,7 @@
     <boolean name="45805320" value="true" />
     <boolean name="45639164" value="true" />
     <boolean name="45476233" value="false" />
-    <boolean name="45802296" value="true" />
+    <boolean name="45802296" value="false" />
     <boolean name="45803143" value="false" />
     <boolean name="45863985" value="false" />
     <boolean name="45620544" value="true" />
@@ -1403,7 +1403,7 @@
     <long name="45723724" value="43200000" />
     <boolean name="4304" value="false" />
     <string name="45477266">CgoKCDQ1NDc3MjY3</string>
-    <boolean name="45753590" value="false" />
+    <boolean name="45753590" value="true" />
     <boolean name="4306" value="true" />
     <boolean name="45857708" value="true" />
     <boolean name="45626123" value="false" />
