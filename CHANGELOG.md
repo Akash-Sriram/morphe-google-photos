@@ -1,3 +1,9 @@
+## [1.18.0-dev.6](https://github.com/Akash-Sriram/morphe-google-photos/compare/v1.18.0-dev.5...v1.18.0-dev.6) (2026-11-11)
+
+### 🐛 Bug Fixes
+
+* **Google Photos - Avatar:** resolve account switch profile photo sync and restore collections v2 shelves ([b43384b](https://github.com/Akash-Sriram/morphe-google-photos/commit/b43384b7cd261eac65361cb11ded68ce7cd6e790))
+
 ## [1.18.0-dev.5](https://github.com/Akash-Sriram/morphe-google-photos/compare/v1.18.0-dev.4...v1.18.0-dev.5) (2026-11-09)
 
 ### 🐛 Bug Fixes
