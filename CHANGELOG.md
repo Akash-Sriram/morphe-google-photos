@@ -1,3 +1,9 @@
+## [1.18.0-dev.7](https://github.com/Akash-Sriram/morphe-google-photos/compare/v1.18.0-dev.6...v1.18.0-dev.7) (2026-11-11)
+
+### ✨ New Features
+
+* **Google Photos - Models:** add experimental support for low-tier phones in AI editing pipelines ([#72](https://github.com/Akash-Sriram/morphe-google-photos/issues/72)) ([72bfd1b](https://github.com/Akash-Sriram/morphe-google-photos/commit/72bfd1bb1de36159fa96b2d30b8ce8731c8e6534))
+
 ## [1.18.0-dev.6](https://github.com/Akash-Sriram/morphe-google-photos/compare/v1.18.0-dev.5...v1.18.0-dev.6) (2026-11-11)
 
 ### 🐛 Bug Fixes
