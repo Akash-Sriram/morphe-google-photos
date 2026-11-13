@@ -14,6 +14,16 @@
 
 * **Google Photos - Avatar,Notifications:** resolve v8 avatar click crash, restore Google One Blue Aura Ring, and suppress 24h notification nag ([#80](https://github.com/Akash-Sriram/morphe-google-photos/issues/80), [#81](https://github.com/Akash-Sriram/morphe-google-photos/issues/81)) ([1b30afc](https://github.com/Akash-Sriram/morphe-google-photos/commit/1b30afc8fa22ae39dbbdea0784a2050f63448108))
 
+### ✨ New Features
+
+* **Google Photos - Flags:** update base phenotype configuration to official Google Photos v8.0 snapshot ([e246d89](https://github.com/Akash-Sriram/morphe-google-photos/commit/e246d89872c49e56d0134ccb66edbcdac36b59a4))
+
+## [1.18.0-dev.8](https://github.com/Akash-Sriram/morphe-google-photos/compare/v1.18.0-dev.7...v1.18.0-dev.8) (2026-11-13)
+
+### 🐛 Bug Fixes
+
+* **Google Photos - Avatar,Notifications:** resolve v8 avatar click crash, restore Google One Blue Aura Ring, and suppress 24h notification nag ([#80](https://github.com/Akash-Sriram/morphe-google-photos/issues/80), [#81](https://github.com/Akash-Sriram/morphe-google-photos/issues/81)) ([1b30afc](https://github.com/Akash-Sriram/morphe-google-photos/commit/1b30afc8fa22ae39dbbdea0784a2050f63448108))
+
 ## [1.18.0-dev.7](https://github.com/Akash-Sriram/morphe-google-photos/compare/v1.18.0-dev.6...v1.18.0-dev.7) (2026-11-11)
 
 ### ✨ New Features
