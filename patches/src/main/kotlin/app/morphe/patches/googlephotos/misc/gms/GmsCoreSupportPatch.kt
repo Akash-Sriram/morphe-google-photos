@@ -59,6 +59,75 @@ val gmsCoreSupportPatch = gmsCoreSupportPatch(
             """.trimIndent(),
         )
 
+        // 1.1 OneGoogle Blue Aura Ring for Avatar & Account Switcher
+        classDefByOrNull("Lcom/google/android/libraries/onegoogle/account/disc/AccountParticleDisc;")?.let { apdClassDef ->
+            val mutableApd = mutableClassDefBy(apdClassDef)
+
+            // Hook 5-arg constructor: AccountParticleDisc(Context, AttributeSet, int, boolean, boolean)
+            // Register p5 is the boolean flag for Aura Blue Ring (q).
+            apdClassDef.methods.firstOrNull { method ->
+                method.name == "<init>" && method.parameterTypes.toList() == listOf(
+                    "Landroid/content/Context;",
+                    "Landroid/util/AttributeSet;",
+                    "I",
+                    "Z",
+                    "Z",
+                )
+            }?.let { apdInit5 ->
+                val mutableInit5 = mutableApd.findMutableMethodOf(apdInit5)
+                val superIndex = mutableInit5.implementation?.instructions?.indexOfFirst {
+                    it.opcode == Opcode.INVOKE_DIRECT &&
+                        (it as? ReferenceInstruction)?.reference is MethodReference &&
+                        ((it as ReferenceInstruction).reference as MethodReference).name == "<init>"
+                } ?: -1
+                val insertIndex = if (superIndex != -1) superIndex + 1 else 0
+                mutableInit5.addInstructions(
+                    insertIndex,
+                    """
+                    invoke-static {p1}, Lapp/morphe/extension/shared/patches/GooglePhotosAccountAvatar;->isBlueRingEnabled(Landroid/content/Context;)Z
+                    move-result p5
+                    """.trimIndent(),
+                )
+            }
+
+            // Hook 4-arg constructor: AccountParticleDisc(Context, AttributeSet, int, boolean)
+            // It calls csya.d(context) to pass z2 to the 5-arg constructor.
+            // Dynamically locate csya.d(Context) from this call.
+            apdClassDef.methods.firstOrNull { method ->
+                method.name == "<init>" && method.parameterTypes.toList() == listOf(
+                    "Landroid/content/Context;",
+                    "Landroid/util/AttributeSet;",
+                    "I",
+                    "Z",
+                )
+            }?.let { apdInit4 ->
+                val csyaCall = apdInit4.implementation?.instructions?.firstOrNull { instr ->
+                    instr.opcode == Opcode.INVOKE_STATIC &&
+                        (instr as? ReferenceInstruction)?.reference is MethodReference &&
+                        ((instr as ReferenceInstruction).reference as MethodReference).parameterTypes.toList() == listOf("Landroid/content/Context;") &&
+                        ((instr as ReferenceInstruction).reference as MethodReference).returnType == "Z"
+                }
+                val methodRef = (csyaCall as? ReferenceInstruction)?.reference as? MethodReference
+                if (methodRef != null) {
+                    classDefByOrNull(methodRef.definingClass)?.let { csyaClassDef ->
+                        val csyaMethod = csyaClassDef.methods.firstOrNull { it.name == methodRef.name }
+                        if (csyaMethod != null) {
+                            val mutableCsya = mutableClassDefBy(csyaClassDef).findMutableMethodOf(csyaMethod)
+                            mutableCsya.addInstructions(
+                                0,
+                                """
+                                invoke-static {p0}, Lapp/morphe/extension/shared/patches/GooglePhotosAccountAvatar;->isBlueRingEnabled(Landroid/content/Context;)Z
+                                move-result v0
+                                return v0
+                                """.trimIndent(),
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+
         // 2. Google One Bento Badge
         val targetBentoMethod = BentoModelBuilderFingerprint.methodOrNull
         if (targetBentoMethod != null) {
@@ -403,6 +472,34 @@ val gmsCoreSupportPatch = gmsCoreSupportPatch(
                             "nop",
                         )
                     }
+                }
+            }
+        }
+
+        // 10) Suppress repeated 24-hour notification permission prompt after denial
+        SecondChanceNotificationOptInFingerprint.methodOrNull?.let { clinitMethod ->
+            val arktClass = mutableClassDefBy(clinitMethod.definingClass)
+            for (method in arktClass.methods) {
+                if (method.name == "go" && method.parameterTypes.toList() == listOf("Landroid/os/Bundle;")) {
+                    method.addInstructions(
+                        0,
+                        """
+                        return-void
+                        """.trimIndent(),
+                    )
+                }
+                val hasPostNotif = method.implementation?.instructions?.any { instr ->
+                    (instr as? ReferenceInstruction)?.reference?.let { ref ->
+                        (ref as? StringReference)?.string == "android.permission.POST_NOTIFICATIONS"
+                    } == true
+                } == true
+                if (hasPostNotif) {
+                    method.addInstructions(
+                        0,
+                        """
+                        return-void
+                        """.trimIndent(),
+                    )
                 }
             }
         }

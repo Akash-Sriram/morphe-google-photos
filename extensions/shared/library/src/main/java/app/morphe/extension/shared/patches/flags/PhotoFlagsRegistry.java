@@ -68,7 +68,7 @@ public final class PhotoFlagsRegistry {
         CATEGORY_TRIGGERS.put("🪄 AI Photo & Video Editor Tools", "⚡ Triggers: Magic Editor lasso selection, AI Enhance V2 & Bluejay AI backend");
         CATEGORY_TRIGGERS.put("🎞️ Create Tab: Motion & Animation", "⚡ Triggers: Animation tool card, burst loop generator & motion photo stabilizer pill");
         CATEGORY_TRIGGERS.put("🧭 Modern Navigation & Filters", "⚡ Triggers: \"On this device\" media filter pill & local photo isolation");
-        CATEGORY_TRIGGERS.put("⭕ OneGoogle: Subscriber Avatar Rings", "⚡ Triggers: Multi-color metallic Google One subscriber ring around avatar");
+        CATEGORY_TRIGGERS.put("⭕ OneGoogle: Subscriber Avatar Rings", "⚡ Triggers: Modern Blue Gemini Aura subscriber ring around avatar");
         initFlags();
     }
 
@@ -110,9 +110,8 @@ public final class PhotoFlagsRegistry {
         // 🧭 Modern Navigation & Filters (1 Flag)
         register("45753590", "On This Device Filter Pill", "Adds top-bar filter button to isolate and display only photos physically stored on the device.", "🧭 Modern Navigation & Filters", "Local Media Filter", FlagType.BOOLEAN, Boolean.TRUE);
 
-        // ⭕ OneGoogle: Subscriber Avatar Rings (2 Flags)
-        register("45531621", "OneGoogle Avatar Ring Master", "Forces the Google One subscriber metallic ring and Bento profile card layout.", "⭕ OneGoogle: Subscriber Avatar Rings", "OneGoogle Bento & Avatar Ring", FlagType.BOOLEAN, Boolean.TRUE);
-        register("45531625", "Subscriber Ring Style (3 = Blue Pro)", "Controls the ring decoration visual style (3 = solid blue with Pro badge).", "⭕ OneGoogle: Subscriber Avatar Rings", "Avatar Ring Visual Style", FlagType.LONG, 3L);
+        // ⭕ OneGoogle: Subscriber Avatar Rings (1 Flag)
+        register("45781251", "Google One Blue Aura Ring (Gemini Style)", "Enables the modern blue gradient aura ring for Google One instead of the classic 4-color multi-color ring.", "⭕ OneGoogle: Subscriber Avatar Rings", "Google One Blue Ring", FlagType.BOOLEAN, Boolean.TRUE);
     }
 
     private static void register(String key, String title, String description, String category, String triggerTarget, FlagType type, Object defaultValue) {

@@ -212,6 +212,15 @@ internal object LensActivityBinderHandshakeFingerprint : Fingerprint(
     ),
 )
 
+/**
+ * Matches <clinit> of the class defining SECOND_CHANCE_NOTIFICATION_OPT_IN_GET_LAST_DENIAL_TIME.
+ * This class schedules repeated 24-hour notification permission requests after user denial.
+ */
+internal object SecondChanceNotificationOptInFingerprint : Fingerprint(
+    name = "<clinit>",
+    strings = listOf("SECOND_CHANCE_NOTIFICATION_OPT_IN_GET_LAST_DENIAL_TIME"),
+)
+
 
 
 

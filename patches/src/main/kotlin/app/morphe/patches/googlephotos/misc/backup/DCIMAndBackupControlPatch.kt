@@ -476,7 +476,7 @@ val dcimAndBackupControlPatch = bytecodePatch(
                 val ins = instructions[idx]
                 if (ins is ReferenceInstruction) {
                     val mr = ins.reference as? MethodReference
-                    if (mr != null && mr.name == "k" && mr.parameterTypes.size == 1 && mr.parameterTypes[0] == "Z") {
+                    if (mr != null && mr.parameterTypes.size == 1 && mr.parameterTypes[0] == "Z") {
                         mutableAmtyMethod.replaceInstruction(idx, "nop")
                         break
                     }

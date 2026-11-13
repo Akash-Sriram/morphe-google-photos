@@ -75,10 +75,10 @@ internal object CreateItemUpdateFingerprint : Fingerprint(
 internal object DeviceFoldersSettingsQueryFingerprint : Fingerprint(
     returnType = "Landroid/database/Cursor;",
     parameters = listOf("I"),
-    strings = listOf("getNonCameraBuckets, both filePath and folderName null. accountId=%s,bucketId=%s"),
-    custom = { method, _ ->
-        method.name == "a"
-    }
+    custom = { method, classDef ->
+        method.name == "a" &&
+            classDef.methods.any { it.referencesStringContaining("getNonCameraBuckets") }
+    },
 )
 
 
