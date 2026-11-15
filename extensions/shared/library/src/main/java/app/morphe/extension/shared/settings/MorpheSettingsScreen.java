@@ -22,11 +22,13 @@ import android.view.ViewOutlineProvider;
 import android.view.Window;
 import android.view.WindowInsets;
 import android.view.WindowManager;
+import android.widget.CompoundButton;
 import android.widget.FrameLayout;
 import android.widget.HorizontalScrollView;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
+import android.widget.Switch;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -42,6 +44,7 @@ import app.morphe.extension.shared.patches.PhenotypeFlagManager;
 import app.morphe.extension.shared.patches.PhenotypeFlagManager.MaterialVectorDrawable;
 import app.morphe.extension.shared.patches.PhenotypeFlagManager.Theme;
 import app.morphe.extension.shared.patches.PhotosModelSeeder;
+import app.morphe.extension.shared.patches.PhotosOnlyBackupFilter;
 import app.morphe.extension.shared.patches.flags.PhotoFlagsRegistry;
 import app.morphe.extension.shared.patches.toolkit.NativeToolkitDialog;
 
@@ -310,6 +313,22 @@ public final class MorpheSettingsScreen {
                 "Backup Storage Profile",
                 DeviceSpoofHelper.getProfileDisplayName(),
                 () -> showBackupProfileDialog(activity, onBack, theme)));
+
+        backupGroup.addView(createItemDivider(activity, density, theme));
+
+        backupGroup.addView(createSwitchPreferenceItem(activity, density, theme,
+                "quantum_gm_ic_image_vd_theme_24",
+                MaterialVectorDrawable.TYPE_PHOTO,
+                "Upload photos only",
+                "Automatic backup uploads photos but skips videos",
+                PhotosOnlyBackupFilter.isEnabled(),
+                (buttonView, isChecked) -> {
+                    PhotosOnlyBackupFilter.setEnabled(activity, isChecked);
+                    Toast.makeText(activity, isChecked
+                            ? "Upload photos only: ON — videos will not be backed up automatically"
+                            : "Upload photos only: OFF — videos will back up again",
+                            Toast.LENGTH_SHORT).show();
+                }));
 
         content.addView(backupGroup);
 
@@ -645,6 +664,86 @@ public final class MorpheSettingsScreen {
             ivChevron.setLayoutParams(chevLp);
             row.addView(ivChevron);
         }
+
+        return row;
+    }
+
+    private static LinearLayout createSwitchPreferenceItem(Activity activity, float density, Theme theme,
+                                                           String stockIcon, int fallbackType,
+                                                           String title, String subtitle,
+                                                           boolean checked,
+                                                           CompoundButton.OnCheckedChangeListener onCheckedChange) {
+        LinearLayout row = new LinearLayout(activity);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        int padH = (int) (16 * density);
+        int padV = (int) (12 * density);
+        row.setPadding(padH, padV, padH, padV);
+        row.setMinimumHeight((int) (58 * density));
+        row.setLayoutParams(new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        row.setClickable(true);
+        row.setFocusable(true);
+        row.setBackground(createItemRippleDrawable(Color.TRANSPARENT, theme.cardActive));
+
+        // Icon Container (same style as createPreferenceItem)
+        FrameLayout iconBox = new FrameLayout(activity);
+        int boxSize = (int) (38 * density);
+        LinearLayout.LayoutParams boxLp = new LinearLayout.LayoutParams(boxSize, boxSize);
+        boxLp.setMargins(0, 0, (int) (14 * density), 0);
+        iconBox.setLayoutParams(boxLp);
+        iconBox.setBackground(createRoundedDrawable(theme.card, 11 * density));
+
+        ImageView iv = new ImageView(activity);
+        Drawable iconDrawable = PhenotypeFlagManager.getStockDrawable(activity, stockIcon, theme.primary);
+        if (iconDrawable == null) {
+            iconDrawable = new MaterialVectorDrawable(fallbackType, theme.primary);
+        }
+        iv.setImageDrawable(iconDrawable);
+        int icSize = (int) (20 * density);
+        FrameLayout.LayoutParams icLp = new FrameLayout.LayoutParams(icSize, icSize);
+        icLp.gravity = Gravity.CENTER;
+        iv.setLayoutParams(icLp);
+        iconBox.addView(iv);
+        row.addView(iconBox);
+
+        // Text Column
+        LinearLayout textCol = new LinearLayout(activity);
+        textCol.setOrientation(LinearLayout.VERTICAL);
+        LinearLayout.LayoutParams textLp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+        textCol.setLayoutParams(textLp);
+
+        TextView tvTitle = new TextView(activity);
+        tvTitle.setText(title);
+        tvTitle.setTextSize(15.5f);
+        tvTitle.setTextColor(theme.textPrimary);
+        tvTitle.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
+        textCol.addView(tvTitle);
+
+        if (subtitle != null && !subtitle.isEmpty()) {
+            TextView tvSub = new TextView(activity);
+            tvSub.setText(subtitle);
+            tvSub.setTextSize(12.5f);
+            tvSub.setTextColor(theme.textSecondary);
+            tvSub.setLineSpacing(0, 1.15f);
+            LinearLayout.LayoutParams subLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            subLp.setMargins(0, (int) (2 * density), 0, 0);
+            tvSub.setLayoutParams(subLp);
+            textCol.addView(tvSub);
+        }
+        row.addView(textCol);
+
+        // Trailing Switch
+        Switch toggle = new Switch(activity);
+        toggle.setChecked(checked);
+        toggle.setOnCheckedChangeListener(onCheckedChange);
+        LinearLayout.LayoutParams switchLp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        switchLp.setMargins((int) (8 * density), 0, 0, 0);
+        toggle.setLayoutParams(switchLp);
+        row.addView(toggle);
+
+        // Tapping the row (outside the switch itself) toggles the switch.
+        row.setOnClickListener(v -> toggle.setChecked(!toggle.isChecked()));
 
         return row;
     }

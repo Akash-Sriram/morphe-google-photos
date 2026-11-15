@@ -31,6 +31,7 @@ import com.android.tools.smali.dexlib2.iface.reference.TypeReference
 val dcimAndBackupControlPatch = bytecodePatch(
     name = "DCIM & backup control",
     description = "Disables always on backup for the Camera and other DCIM folders, allowing individual folder control, " +
+        "adds an 'Upload photos only' toggle to Morphe Settings to skip videos in automatic backup, " +
         "and exports memory collages and creations to DCIM/Google Photos for quota-free backup.",
     default = true,
 ) {
@@ -188,6 +189,42 @@ val dcimAndBackupControlPatch = bytecodePatch(
                 stringIndex,
                 "const-string v$folderCondRegister, \"\""
             )
+
+            // Hook for "Upload photos only" (controlled by Morphe Settings -> Backup & Storage)
+            val implementation = mutableQueryMethod.implementation
+            if (implementation != null) {
+                // Exit hook: wrap finished WHERE clause through PhotosOnlyBackupFilter
+                val instructions = implementation.instructions.toList()
+                val returnIndex = instructions.indexOfLast { it.opcode == Opcode.RETURN_OBJECT }
+                if (returnIndex != -1) {
+                    val returnRegister = (instructions[returnIndex] as OneRegisterInstruction).registerA
+                    mutableQueryMethod.addInstructions(
+                        returnIndex,
+                        """
+                        invoke-static { v$returnRegister }, Lapp/morphe/extension/shared/patches/PhotosOnlyBackupFilter;->applyPhotosOnlyFilter(Ljava/lang/String;)Ljava/lang/String;
+                        move-result-object v$returnRegister
+                        """.trimIndent(),
+                    )
+                }
+
+                // Entry hook: pass table mapping (first parameter) to PhotosOnlyBackupFilter.
+                // The method allocates 36 registers so parameters live at v30-v35 (out of range for invoke-* 35c).
+                // We move the parameter into v0 (which is immediately overwritten by instruction 0 in stock code).
+                val isStatic = AccessFlags.STATIC.isSet(mutableQueryMethod.accessFlags)
+                var parameterRegisterCount = if (isStatic) 0 else 1
+                for (type in mutableQueryMethod.parameterTypes) {
+                    parameterRegisterCount += if (type == "J" || type == "D") 2 else 1
+                }
+                val firstParameterRegister = implementation.registerCount - parameterRegisterCount +
+                    if (isStatic) 0 else 1
+                mutableQueryMethod.addInstructions(
+                    0,
+                    """
+                    move-object/from16 v0, v$firstParameterRegister
+                    invoke-static { v0 }, Lapp/morphe/extension/shared/patches/PhotosOnlyBackupFilter;->onBackupQueryStart(Ljava/lang/Object;)V
+                    """.trimIndent(),
+                )
+            }
         }
 
         // 5. Fix overlay badge so un-backed camera photos display the cloud-off (not uploaded) badge
