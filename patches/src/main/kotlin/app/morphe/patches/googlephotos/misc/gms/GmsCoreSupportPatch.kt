@@ -642,12 +642,39 @@ private fun gmsCoreSupportResourcePatch() =
 
             document("AndroidManifest.xml").use { document ->
                 val manifest = document.getNode("manifest") as Element
-                val existingPerms = manifest.getElementsByTagName("uses-permission").asSequence()
+                val targetPackageName = if (PackageNameConfig.isPackageNameChangeEnabled) {
+                    PackageNameConfig.effectivePackageName.ifEmpty { MORPHE_PHOTOS_PACKAGE_NAME }
+                } else {
+                    PHOTOS_PACKAGE_NAME
+                }
+
+                // Fix for Issue #80: On Android < 13, AndroidX dynamic receivers require this permission in manifest.
+                val dynamicReceiverPerm = "$targetPackageName.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION"
+                val existingPerms = manifest.getElementsByTagName("permission").asSequence()
                     .map { (it as Element).getAttribute("android:name") }
                     .toSet()
-                if ("android.permission.MANAGE_EXTERNAL_STORAGE" !in existingPerms) {
-                    val permNode = document.createElement("uses-permission")
-                    permNode.setAttribute("android:name", "android.permission.MANAGE_EXTERNAL_STORAGE")
+                if (dynamicReceiverPerm !in existingPerms) {
+                    val permNode = document.createElement("permission").apply {
+                        setAttribute("android:name", dynamicReceiverPerm)
+                        setAttribute("android:protectionLevel", "signature")
+                    }
+                    manifest.appendChild(permNode)
+                }
+
+                val existingUsesPerms = manifest.getElementsByTagName("uses-permission").asSequence()
+                    .map { (it as Element).getAttribute("android:name") }
+                    .toSet()
+                if (dynamicReceiverPerm !in existingUsesPerms) {
+                    val usesPermNode = document.createElement("uses-permission").apply {
+                        setAttribute("android:name", dynamicReceiverPerm)
+                    }
+                    manifest.appendChild(usesPermNode)
+                }
+
+                if ("android.permission.MANAGE_EXTERNAL_STORAGE" !in existingUsesPerms) {
+                    val permNode = document.createElement("uses-permission").apply {
+                        setAttribute("android:name", "android.permission.MANAGE_EXTERNAL_STORAGE")
+                    }
                     manifest.appendChild(permNode)
                 }
             }

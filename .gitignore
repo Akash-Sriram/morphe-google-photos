@@ -50,3 +50,4 @@ scratch/
 # Local helper and build scripts
 fast-build.sh
 update-morphe-cli.sh
+outputs/

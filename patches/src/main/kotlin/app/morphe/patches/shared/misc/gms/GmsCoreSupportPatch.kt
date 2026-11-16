@@ -100,8 +100,15 @@ fun gmsCoreSupportPatch(
     name = "GmsCore support",
     description = "Enables GmsCore / MicroG support and renames package for non-root installs. " +
         "Leave enabled for standard non-root installs; disable only for rooted system installs using genuine Google Play Services.",
-    default = false,
+    default = true,
 ) {
+    val keepOfficialPackageNameOption = booleanOption(
+        key = "keepOfficialPackageName",
+        default = false,
+        title = "Keep official package name",
+        description = "Retains the official package name ($fromPackageName) instead of renaming to " +
+            "$toPackageName. Use this on non-root devices where the app is not preinstalled by the OEM.",
+    )
 
     availability { installer, _ ->
         when (installer) {
@@ -218,6 +225,8 @@ fun gmsCoreSupportPatch(
     }
 
     execute {
+        PackageNameConfig.useOfficialPackageName = keepOfficialPackageNameOption.value == true
+
         val transformations: List<(String) -> String?> = listOf(
             ::commonTransform,
             ::contentUrisTransform,
