@@ -89,5 +89,7 @@ internal object SkottieFontLoaderDispatcherFingerprint : Fingerprint(
     },
 )
 
-
-
+internal object MemoryViewBinderClinitFingerprint : Fingerprint(
+    name = "<clinit>",
+    strings = listOf("MemoryViewBinder"),
+)
