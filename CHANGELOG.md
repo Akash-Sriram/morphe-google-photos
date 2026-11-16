@@ -1,3 +1,16 @@
+## [1.18.0-dev.9](https://github.com/Akash-Sriram/morphe-google-photos/compare/v1.18.0-dev.8...v1.18.0-dev.9) (2026-11-16)
+
+### 🐛 Bug Fixes
+
+* **Google Photos - Theme:** prevent transparent Gemini consent dialog in AMOLED dark theme ([#86](https://github.com/Akash-Sriram/morphe-google-photos/issues/86)) ([936a933](https://github.com/Akash-Sriram/morphe-google-photos/commit/936a93328d2024fd71f69aae9778cf8ec6cf7e67))
+
+### ✨ New Features
+
+* **Google Photos - Backup:** add "Upload photos only" toggle — skip videos in automatic backup ([#82](https://github.com/Akash-Sriram/morphe-google-photos/issues/82)) ([c1af957](https://github.com/Akash-Sriram/morphe-google-photos/commit/c1af9571d3820bb9c1cb0b266d3928803883a2a0))
+* **Google Photos - Engine:** render organic wavy scrapbook shapes and Google Sans typography for memory cards ([dac931c](https://github.com/Akash-Sriram/morphe-google-photos/commit/dac931cae0875aa03cb186031623ae45720ddbcb))
+* **Google Photos - Gms:** enable MicroG-RE live Phenotype sync and remove hardcoded flag defaults ([7390ceb](https://github.com/Akash-Sriram/morphe-google-photos/commit/7390ceb2b072520967cedc2660a5fe24463b5392))
+* **Google Photos - Gms:** integrate 'Keep official package name' option into GmsCore support ([#87](https://github.com/Akash-Sriram/morphe-google-photos/issues/87), [#80](https://github.com/Akash-Sriram/morphe-google-photos/issues/80)) ([8f43d16](https://github.com/Akash-Sriram/morphe-google-photos/commit/8f43d16e64f8102a1e79b5cfcc98fb3b21f27627))
+
 ## [1.18.0-dev.8](https://github.com/Akash-Sriram/morphe-google-photos/compare/v1.18.0-dev.7...v1.18.0-dev.8) (2026-11-13)
 
 ### 🐛 Bug Fixes

@@ -75,7 +75,7 @@ Replaced legacy floating overlays with a native, full-screen Material 3 settings
 ## 🩹 Patches List
 
 <!-- PATCHES_START EXPANDED -->
-> **[v1.18.0-dev.8](https://github.com/Akash-Sriram/morphe-google-photos/releases/tag/v1.18.0-dev.8)**&nbsp;&nbsp;•&nbsp;&nbsp;`dev`&nbsp;&nbsp;•&nbsp;&nbsp;8 patches total
+> **[v1.18.0-dev.9](https://github.com/Akash-Sriram/morphe-google-photos/releases/tag/v1.18.0-dev.9)**&nbsp;&nbsp;•&nbsp;&nbsp;`dev`&nbsp;&nbsp;•&nbsp;&nbsp;7 patches total
 <details open>
 <summary>📦 Google Photos&nbsp;&nbsp;•&nbsp;&nbsp;7 patches</summary>
 <br>
@@ -89,9 +89,9 @@ Replaced legacy floating overlays with a native, full-screen Material 3 settings
 |----------|----------------|
 | [AMOLED dark theme](#amoled-dark-theme) | Makes Google Photos dark surfaces true black while keeping light mode untouched. |
 | [Custom branding](#custom-branding) | Replaces the Google Photos app name, launcher icon, and in-app logos with custom branding (violet / teal / indigo / slate pinwheel, hand-drawn style). |
-| [DCIM & backup control](#dcim-backup-control) | Disables always on backup for the Camera and other DCIM folders, allowing individual folder control, and exports memory collages and creations to DCIM/Google Photos for quota-free backup. |
+| [DCIM & backup control](#dcim-backup-control) | Disables always on backup for the Camera and other DCIM folders, allowing individual folder control, adds an 'Upload photos only' toggle to Morphe Settings to skip videos in automatic backup, and exports memory collages and creations to DCIM/Google Photos for quota-free backup. |
 | [Flag manager & Toolkit](#flag-manager-toolkit) | Enables an in-app flag manager and Morphe toolkit in Photos Settings to toggle experimental UI redesigns, video editor tools, and feature flags. |
-| [GmsCore support](#gmscore-support) | Enables GmsCore / MicroG support and renames package for non-root installs (includes an option to keep the official package name for devices where Photos is not preinstalled). Leave enabled for standard non-root installs; disable only for rooted system installs using genuine Google Play Services. |
+| [GmsCore support](#gmscore-support) | Enables GmsCore / MicroG support and renames package for non-root installs. Leave enabled for standard non-root installs; disable only for rooted system installs using genuine Google Play Services. |
 | [Media engine & AI fixes](#media-engine-ai-fixes) | Bypasses the 0MB Mobile Data Download check for AI models and fixes font loading across Stories and UI to prevent blank text and fallback fonts. |
 | [Spoof features](#spoof-features) | Spoofs the device to enable Google Pixel exclusive features, including unlimited storage. |
 
