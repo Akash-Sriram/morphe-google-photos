@@ -11,6 +11,7 @@ import android.content.Context;
 import android.content.DialogInterface;
 import android.content.Intent;
 import android.content.pm.PackageManager;
+import android.content.SharedPreferences;
 import android.net.Uri;
 import android.os.Build;
 import android.os.PowerManager;
@@ -22,10 +23,12 @@ import android.widget.LinearLayout;
 
 import androidx.annotation.Nullable;
 
+import java.lang.reflect.Method;
 import java.net.HttpURLConnection;
 import java.net.MalformedURLException;
 import java.net.URL;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Locale;
 import java.util.Set;
 
@@ -69,6 +72,94 @@ public class GmsCoreSupportPatch {
         String originalPackageName = getOriginalPackageName();
         return originalPackageName == null
                 || originalPackageName.equals(context.getPackageName());
+    }
+
+    public static int resolveRegisteredAccountId(Context context) {
+        return resolveRegisteredAccountId(context, null);
+    }
+
+    /**
+     * Resolves the registered Google account ID from Google Photos native prefs (accounts.xml)
+     * or the runtime AccountStore (cbeg).
+     * Used on MicroG / LineageOS / non-certified devices when GMS Core backup account is unavailable.
+     */
+    public static int resolveRegisteredAccountId(Context context, Object accountStore) {
+        if (context == null) return -1;
+        try {
+            SharedPreferences accountsPrefs = context.getSharedPreferences("accounts", Context.MODE_PRIVATE);
+            int activeKey = accountsPrefs.getInt("key.active-account-key", -1);
+            if (activeKey >= 0) {
+                if (accountStore != null) {
+                    try {
+                        Method pMethod = accountStore.getClass().getMethod("p", int.class);
+                        Boolean isValid = (Boolean) pMethod.invoke(accountStore, activeKey);
+                        if (isValid != null && isValid) {
+                            Logger.printInfo(() -> "Resolved registered active account key: " + activeKey);
+                            return activeKey;
+                        }
+                    } catch (Throwable ignored) {
+                        Logger.printInfo(() -> "Resolved active account key from prefs: " + activeKey);
+                        return activeKey;
+                    }
+                } else {
+                    Logger.printInfo(() -> "Resolved active account key from prefs: " + activeKey);
+                    return activeKey;
+                }
+            }
+
+            if (accountStore != null) {
+                try {
+                    Method hMethod = accountStore.getClass().getMethod("h");
+                    List<?> list = (List<?>) hMethod.invoke(accountStore);
+                    if (list != null && !list.isEmpty()) {
+                        Object first = list.get(0);
+                        if (first instanceof Integer) {
+                            Logger.printInfo(() -> "Resolved first registered account key: " + first);
+                            return (Integer) first;
+                        }
+                    }
+                } catch (Throwable ignored) {}
+            }
+        } catch (Throwable t) {
+            Logger.printException(() -> "Error resolving registered account ID", t);
+        }
+        return -1;
+    }
+
+    /**
+     * Resolves an account ID matching the given GMS Core email (case-insensitive) or falls back
+     * to the currently registered/active account in Google Photos.
+     */
+    public static int resolveRegisteredAccountFromEmail(String gmsEmail, Object accountStore, Context context) {
+        if (accountStore != null) {
+            try {
+                Method hMethod = accountStore.getClass().getMethod("h");
+                List<?> accountIds = (List<?>) hMethod.invoke(accountStore);
+                if (accountIds != null && !accountIds.isEmpty()) {
+                    Method eMethod = accountStore.getClass().getMethod("e", int.class);
+                    if (gmsEmail != null && !gmsEmail.trim().isEmpty()) {
+                        String cleanGms = gmsEmail.trim().toLowerCase(Locale.US);
+                        for (Object idObj : accountIds) {
+                            if (idObj instanceof Integer) {
+                                int id = (Integer) idObj;
+                                Object cbec = eMethod.invoke(accountStore, id);
+                                if (cbec != null) {
+                                    Method getStrMethod = cbec.getClass().getMethod("e", String.class);
+                                    String email = (String) getStrMethod.invoke(cbec, "account_name");
+                                    if (email != null && email.trim().toLowerCase(Locale.US).equals(cleanGms)) {
+                                        Logger.printInfo(() -> "Resolved GMS Core email " + gmsEmail + " to Photos account " + id);
+                                        return id;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            } catch (Throwable t) {
+                Logger.printException(() -> "Error resolving account from email", t);
+            }
+        }
+        return resolveRegisteredAccountId(context, accountStore);
     }
 
     private static void open(String queryOrLink) {

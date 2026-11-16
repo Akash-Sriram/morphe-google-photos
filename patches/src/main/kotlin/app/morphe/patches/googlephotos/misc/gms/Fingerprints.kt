@@ -221,6 +221,35 @@ internal object SecondChanceNotificationOptInFingerprint : Fingerprint(
     strings = listOf("SECOND_CHANCE_NOTIFICATION_OPT_IN_GET_LAST_DENIAL_TIME"),
 )
 
+/**
+ * Matches Luvq.p (GmsCore backup account synchronization method).
+ * References unique string "GMS Core backup account is not found in Photos".
+ */
+internal object GmsCoreBackupAccountSyncFingerprint : Fingerprint(
+    returnType = "Ljava/lang/Object;",
+    strings = listOf("GMS Core backup account is not found in Photos"),
+)
+
+/**
+ * Matches Lusl.b (the LaunchedEffect executed when entering Backup Settings).
+ * Its constructor takes: [boolean, uvk, List, cvcu, boolean, cvcu, cvcu, cvbh].
+ */
+internal object BackupSettingsEntryLaunchedEffectFingerprint : Fingerprint(
+    name = "b",
+    returnType = "Ljava/lang/Object;",
+    parameters = listOf("Ljava/lang/Object;"),
+    custom = { method, classDef ->
+        classDef.methods.any { m ->
+            m.name == "<init>" &&
+                m.parameterTypes.size == 8 &&
+                m.parameterTypes[0] == "Z" &&
+                m.parameterTypes[2] == "Ljava/util/List;" &&
+                m.parameterTypes[4] == "Z" &&
+                m.parameterTypes[7].contains("cvbh")
+        }
+    },
+)
+
 
 
 

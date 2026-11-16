@@ -35,6 +35,7 @@ import com.android.tools.smali.dexlib2.iface.instruction.ReferenceInstruction
 import com.android.tools.smali.dexlib2.iface.reference.FieldReference
 import com.android.tools.smali.dexlib2.iface.reference.MethodReference
 import com.android.tools.smali.dexlib2.iface.reference.StringReference
+import com.android.tools.smali.dexlib2.iface.reference.TypeReference
 import app.morphe.patcher.extensions.InstructionExtensions.addInstructions
 import app.morphe.patcher.util.smali.ExternalLabel
 import app.morphe.patches.googlephotos.misc.bento.BentoModelBuilderFingerprint
@@ -500,6 +501,176 @@ val gmsCoreSupportPatch = gmsCoreSupportPatch(
                         return-void
                         """.trimIndent(),
                     )
+                }
+            }
+        }
+
+        // 11) Backup Settings: Prevent LaunchedEffect from auto-opening account selector dialog on entry
+        BackupSettingsEntryLaunchedEffectFingerprint.methodOrNull?.let { effectMethod ->
+            val mutableClass = mutableClassDefBy(effectMethod.definingClass)
+            val mutableMethod = mutableClass.findMutableMethodOf(effectMethod)
+            val instructions = effectMethod.implementation?.instructions?.toList()
+            if (instructions != null) {
+                // Find all invoke-interface instructions targeting ->g()Z (uvk.g() isBackupEnabled)
+                val gInvocations = instructions.withIndex().filter { (_, inst) ->
+                    inst.opcode == Opcode.INVOKE_INTERFACE &&
+                        (inst as? ReferenceInstruction)?.reference?.toString()?.contains("->g()Z") == true
+                }.map { it.index }
+
+                if (gInvocations.isNotEmpty()) {
+                    // The second invocation guards the auto-popup on entry (Lusj.a trigger)
+                    val targetGIndex = gInvocations.last()
+                    val moveResultRel = instructions.drop(targetGIndex + 1).indexOfFirst {
+                        it.opcode == Opcode.MOVE_RESULT
+                    }
+                    if (moveResultRel != -1) {
+                        val moveResultIndex = targetGIndex + 1 + moveResultRel
+                        val reg = (instructions[moveResultIndex] as OneRegisterInstruction).registerA
+                        // Force boolean to true right after move-result so the subsequent if-nez always branches
+                        // to the exit block, preventing the auto-popup while keeping manual card clicks working.
+                        mutableMethod.addInstruction(
+                            moveResultIndex + 1,
+                            "const/4 v$reg, 0x1",
+                        )
+                    }
+                }
+            }
+        }
+
+        // 12) Backup Settings: Synchronize backup account from Photos registered account when GMS Core account is not found
+        GmsCoreBackupAccountSyncFingerprint.methodOrNull?.let { syncMethod ->
+            val syncClassDef = classDefBy(syncMethod.definingClass)
+            val mutableSyncClass = mutableClassDefBy(syncClassDef)
+            val mutableSyncMethod = mutableSyncClass.findMutableMethodOf(syncMethod)
+            val instructions = syncMethod.implementation?.instructions?.toList()
+            if (instructions != null) {
+                // Find the invoke-interface that resolves an account name to int: cbeg.a(String) -> int
+                val accountLookupIndex = instructions.indexOfFirst { inst ->
+                    inst.opcode == Opcode.INVOKE_INTERFACE &&
+                        ((inst as? ReferenceInstruction)?.reference as? MethodReference)?.let { ref ->
+                            ref.parameterTypes.size == 1 &&
+                                ref.parameterTypes[0] == "Ljava/lang/String;" &&
+                                ref.returnType == "I"
+                        } == true
+                }
+                if (accountLookupIndex != -1) {
+                    val moveResultRel = instructions.drop(accountLookupIndex + 1).indexOfFirst {
+                        it.opcode == Opcode.MOVE_RESULT
+                    }
+                    if (moveResultRel != -1) {
+                        val moveResultIndex = accountLookupIndex + 1 + moveResultRel
+                        val accountReg = (instructions[moveResultIndex] as OneRegisterInstruction).registerA
+
+                        // Find the if-eq check against -1 (which jumps to "GMS Core backup account is not found in Photos")
+                        val ifEqRel = instructions.drop(moveResultIndex + 1).indexOfFirst {
+                            it.opcode == Opcode.IF_EQ
+                        }
+                        if (ifEqRel != -1) {
+                            val ifEqIndex = moveResultIndex + 1 + ifEqRel
+                            val ifEqInst = instructions[ifEqIndex] as TwoRegisterInstruction
+                            val minusOneReg = if (ifEqInst.registerA == accountReg) ifEqInst.registerB else ifEqInst.registerA
+
+                            // Locate Context field on Luvq
+                            val contextField = syncClassDef.fields.firstOrNull { it.type == "Landroid/content/Context;" }?.name
+
+                            // Locate email IGET_OBJECT instruction before accountLookupIndex: iget-object v1, v10, Luyc;->a:Ljava/lang/String;
+                            val emailIgetInst = (accountLookupIndex downTo 0).mapNotNull {
+                                val inst = instructions[it]
+                                if (inst.opcode == Opcode.IGET_OBJECT &&
+                                    ((inst as? ReferenceInstruction)?.reference as? FieldReference)?.type == "Ljava/lang/String;"
+                                ) inst else null
+                            }.firstOrNull()
+
+                            val emailFr = (emailIgetInst as? ReferenceInstruction)?.reference as? FieldReference
+                            val checkCastType = emailFr?.definingClass
+                            val emailField = emailFr?.name
+                            val gmsSettingsReg = (emailIgetInst as? TwoRegisterInstruction)?.registerB
+
+                            // Locate accountStore (cbeg) supplier field on Luvq: iget-object v3, v9, Luvq;->n:Lcuye;
+                            val igetSupplierIndex = (accountLookupIndex downTo 0).firstOrNull {
+                                instructions[it].opcode == Opcode.IGET_OBJECT &&
+                                    ((instructions[it] as? ReferenceInstruction)?.reference as? FieldReference)?.definingClass == syncMethod.definingClass
+                            }
+                            val accountStoreField = igetSupplierIndex?.let {
+                                ((instructions[it] as? ReferenceInstruction)?.reference as? FieldReference)?.name
+                            }
+
+                            val thisReg = syncMethod.implementation!!.registerCount - syncMethod.parameters.size - 1
+
+                            if (contextField != null && gmsSettingsReg != null && emailField != null && accountStoreField != null && checkCastType != null) {
+                                mutableSyncMethod.addInstructions(
+                                    ifEqIndex,
+                                    """
+                                    if-ne v$accountReg, v$minusOneReg, :account_resolved
+                                    iget-object v5, v$gmsSettingsReg, $checkCastType->$emailField:Ljava/lang/String;
+                                    iget-object v6, v$thisReg, ${syncMethod.definingClass}->$accountStoreField:Lcuye;
+                                    invoke-interface {v6}, Lcuye;->a()Ljava/lang/Object;
+                                    move-result-object v6
+                                    iget-object v7, v$thisReg, ${syncMethod.definingClass}->$contextField:Landroid/content/Context;
+                                    invoke-static {v5, v6, v7}, Lapp/morphe/extension/shared/patches/GmsCoreSupportPatch;->resolveRegisteredAccountFromEmail(Ljava/lang/String;Ljava/lang/Object;Landroid/content/Context;)I
+                                    move-result v$accountReg
+                                    :account_resolved
+                                    """.trimIndent(),
+                                )
+                            }
+                        }
+                    }
+                }
+
+                // 13) Backup Preferences: In Ludi.c, resolve registered account if backup_prefs_account_id is -1
+                val ludiClassName = instructions.mapNotNull { inst ->
+                    ((inst as? ReferenceInstruction)?.reference as? MethodReference)?.let { ref ->
+                        if (ref.definingClass == syncMethod.definingClass && ref.returnType.startsWith("L") && ref.returnType != "V") {
+                            ref.returnType
+                        } else null
+                    }
+                }.firstOrNull { retType ->
+                    classDefByOrNull(retType)?.methods?.any { m ->
+                        m.name == "c" && m.parameterTypes.isEmpty() && m.implementation != null
+                    } == true
+                }
+
+                if (ludiClassName != null) {
+                    val ludiClassDef = classDefBy(ludiClassName)
+                    val mutableLudiClass = mutableClassDefBy(ludiClassDef)
+                    val ludiCMethod = ludiClassDef.methods.first { it.name == "c" && it.parameterTypes.isEmpty() }
+                    val mutableLudiCMethod = mutableLudiClass.findMutableMethodOf(ludiCMethod)
+                    val ludiInstructions = ludiCMethod.implementation?.instructions?.toList()
+                    if (ludiInstructions != null) {
+                        for (i in 0 until ludiInstructions.size - 2) {
+                            val inst = ludiInstructions[i]
+                            if (inst.opcode == Opcode.INVOKE_INTERFACE) {
+                                val mr = (inst as? ReferenceInstruction)?.reference as? MethodReference
+                                if (mr?.definingClass == "Landroid/content/SharedPreferences;" && mr.name == "getInt") {
+                                    val next1 = ludiInstructions[i + 1]
+                                    val next2 = ludiInstructions[i + 2]
+                                    if (next1.opcode == Opcode.MOVE_RESULT && next2.opcode == Opcode.IPUT) {
+                                        val fr = (next2 as? ReferenceInstruction)?.reference as? FieldReference
+                                        if (fr?.name == "a" && fr.type == "I") {
+                                            val accountIdReg = (next1 as OneRegisterInstruction).registerA
+                                            val ludiContextField = ludiClassDef.fields.firstOrNull { it.type == "Landroid/content/Context;" }?.name
+                                            val ludiThisReg = ludiCMethod.implementation!!.registerCount - ludiCMethod.parameters.size - 1
+                                            val minusOneReg = (inst as? FiveRegisterInstruction)?.registerE ?: 3
+
+                                            if (ludiContextField != null) {
+                                                mutableLudiCMethod.addInstructions(
+                                                    i + 2,
+                                                    """
+                                                    if-ne v$accountIdReg, v$minusOneReg, :has_account
+                                                    iget-object v14, v$ludiThisReg, $ludiClassName->$ludiContextField:Landroid/content/Context;
+                                                    invoke-static {v14}, Lapp/morphe/extension/shared/patches/GmsCoreSupportPatch;->resolveRegisteredAccountId(Landroid/content/Context;)I
+                                                    move-result v$accountIdReg
+                                                    :has_account
+                                                    """.trimIndent(),
+                                                )
+                                                break
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
             }
         }
