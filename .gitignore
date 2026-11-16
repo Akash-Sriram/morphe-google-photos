@@ -29,7 +29,6 @@ render.experimental.xml
 # Keystore files
 *.jks
 *.keystore
-!release.keystore
 
 # Google Services (e.g. APIs or Firebase)
 google-services.json
@@ -51,3 +50,37 @@ scratch/
 fast-build.sh
 update-morphe-cli.sh
 outputs/
+
+# Generated patch bundles and Android archives
+*.mpp
+*.apks
+*.apkm
+*.xapk
+*.idsig
+
+# Private signing keys and local credentials
+*.bks
+*.p12
+*.pfx
+*.pem
+*.key
+.env
+.env.*
+!.env.example
+
+# Local assistant state and generated working notes
+.agents/
+.codex/
+.claude/
+.cursor/
+.aider*
+**/AGENTS.local.md
+**/CLAUDE.local.md
+docs/SECURITY_HARDENING_SPEC.md
+docs/SECURITY_HARDENING_STATUS.md
+docs/DEVICE_SECURITY_TEST_REPORT.md
+
+# Temporary test and patcher output
+morphe-data/
+*.hprof
+*.heapdump
