@@ -4,7 +4,7 @@ import static app.morphe.extension.shared.settings.BaseSettings.DEBUG;
 import static app.morphe.extension.shared.settings.BaseSettings.DEBUG_STACKTRACE;
 import static app.morphe.extension.shared.settings.BaseSettings.DEBUG_TOAST_ON_ERROR;
 
-import android.util.Log;
+import app.morphe.extension.shared.diagnostics.SafeLog;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
@@ -13,6 +13,7 @@ import java.io.PrintWriter;
 import java.io.StringWriter;
 
 import app.morphe.extension.shared.settings.BaseSettings;
+import app.morphe.extension.shared.diagnostics.DiagnosticRedactor;
 import app.morphe.extension.shared.settings.preference.LogBufferManager;
 
 /**
@@ -114,27 +115,32 @@ public class Logger {
             logText += stackTrace.substring(loggerBegins);
         }
 
+        if (ex != null) {
+            StringWriter sw = new StringWriter();
+            ex.printStackTrace(new PrintWriter(sw));
+            logText += "\n" + sw;
+        }
+        // Sanitize before every output, including logcat, clipboard history, and toasts.
+        logText = DiagnosticRedactor.sanitize(logText);
+
         // Do not include "morphe:" prefix in clipboard logs.
         String managerToastString = className + ": " + logText;
         LogBufferManager.appendToLogBuffer(managerToastString);
 
         try {
-            app.morphe.extension.shared.diagnostics.SessionLogManager.appendLog(className, logLevel.name(), logText, ex);
+            app.morphe.extension.shared.diagnostics.SessionLogManager.appendLog(className, logLevel.name(), logText, null);
         } catch (Throwable ignored) {}
 
         String logTag = MORPHE_LOG_TAG_PREFIX + className;
         switch (logLevel) {
             case DEBUG:
-                if (ex == null) Log.d(logTag, logText);
-                else Log.d(logTag, logText, ex);
+                SafeLog.d(logTag, logText);
                 break;
             case INFO:
-                if (ex == null) Log.i(logTag, logText);
-                else Log.i(logTag, logText, ex);
+                SafeLog.i(logTag, logText);
                 break;
             case ERROR:
-                if (ex == null) Log.e(logTag, logText);
-                else Log.e(logTag, logText, ex);
+                SafeLog.e(logTag, logText);
                 break;
         }
 

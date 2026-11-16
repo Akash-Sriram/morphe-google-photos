@@ -410,6 +410,7 @@ public final class DiagnosticsDialog {
         // Share Button (Tonal Outlined Icon)
         FrameLayout btnShare = new FrameLayout(activity);
         btnShare.setBackground(createRoundedCardDrawable(theme.surfaceContainer, theme.outline, 22 * density));
+        btnShare.setContentDescription("Share diagnostics");
         btnShare.setClickable(true);
         btnShare.setFocusable(true);
         LinearLayout.LayoutParams shareLp = new LinearLayout.LayoutParams((int) (44 * density), (int) (44 * density));
@@ -428,6 +429,7 @@ public final class DiagnosticsDialog {
         int clearColor = theme.isDark ? 0xFFFFB4AB : 0xFFBA1A1A;
         int clearStroke = theme.isDark ? 0xFF5C2020 : 0xFFFFDAD6;
         btnClear.setBackground(createRoundedCardDrawable(theme.surfaceContainer, clearStroke, 22 * density));
+        btnClear.setContentDescription("Clear diagnostic sessions");
         btnClear.setClickable(true);
         btnClear.setFocusable(true);
         LinearLayout.LayoutParams clearLp = new LinearLayout.LayoutParams((int) (44 * density), (int) (44 * density));
@@ -911,11 +913,11 @@ public final class DiagnosticsDialog {
         root.addView(tvSub);
 
         // Option 1: Log file (.log)
-        String logTitle = isFiltered ? "Filtered Log (.log)" : "Raw Log File (.log)";
-        String logSubtitle = isFiltered ? "Saves matching lines for [" + filterDesc + "]" : "Standard log file containing complete terminal output & stack traces";
+        String logTitle = isFiltered ? "Filtered Log (.log)" : "Sanitized Log (.log)";
+        String logSubtitle = isFiltered ? "Saves matching lines for [" + filterDesc + "]" : "Redacted session log and stack traces";
         View optLog = createOptionCard(activity, theme, "📄", logTitle, logSubtitle, v -> {
             d.dismiss();
-            SessionLogManager.exportSessionToFile(activity, session, false, filterQuery, levelFilter);
+            SessionLogManager.previewAction(activity, session, false, filterQuery, levelFilter, snapshot -> SessionLogManager.exportSessionToFile(activity, session, false, filterQuery, levelFilter, snapshot));
         });
         root.addView(optLog);
 
@@ -924,7 +926,7 @@ public final class DiagnosticsDialog {
         String mdSubtitle = isFiltered ? "Formatted report containing filtered logs for [" + filterDesc + "]" : "Formatted report with device specs, crash summary & <details> tags";
         View optMd = createOptionCard(activity, theme, "🐙", mdTitle, mdSubtitle, v -> {
             d.dismiss();
-            SessionLogManager.exportSessionToFile(activity, session, true, filterQuery, levelFilter);
+            SessionLogManager.previewAction(activity, session, true, filterQuery, levelFilter, snapshot -> SessionLogManager.exportSessionToFile(activity, session, true, filterQuery, levelFilter, snapshot));
         });
         LinearLayout.LayoutParams optMdLp = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
@@ -935,9 +937,9 @@ public final class DiagnosticsDialog {
         // Option 3: Full Unfiltered Log (if filtered)
         if (isFiltered) {
             View optFull = createOptionCard(activity, theme, "📦", "Full Unfiltered Log (.log)",
-                    "Exports complete unmodified session log without filters", v -> {
+                    "Exports the complete redacted session without search filters", v -> {
                         d.dismiss();
-                        SessionLogManager.exportSessionToFile(activity, session, false, null, "ALL");
+                        SessionLogManager.previewAction(activity, session, false, null, "ALL", snapshot -> SessionLogManager.exportSessionToFile(activity, session, false, null, "ALL", snapshot));
                     });
             LinearLayout.LayoutParams optFullLp = new LinearLayout.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
@@ -1021,7 +1023,7 @@ public final class DiagnosticsDialog {
         String logSub = isFiltered ? "Sends filtered log (" + filterDesc + ") via Android share sheet" : "Sends actual .log file attachment via Android share sheet";
         View optLog = createOptionCard(activity, theme, "📄", logTitle, logSub, v -> {
             d.dismiss();
-            SessionLogManager.shareSessionFile(activity, session, false, filterQuery, levelFilter);
+            SessionLogManager.previewAction(activity, session, false, filterQuery, levelFilter, snapshot -> SessionLogManager.shareSessionFile(activity, session, false, filterQuery, levelFilter, snapshot));
         });
         root.addView(optLog);
 
@@ -1030,7 +1032,7 @@ public final class DiagnosticsDialog {
         String mdSub = isFiltered ? "Sends filtered Markdown report (" + filterDesc + ") via share sheet" : "Sends formatted Markdown report attachment via share sheet";
         View optMd = createOptionCard(activity, theme, "🐙", mdTitle, mdSub, v -> {
             d.dismiss();
-            SessionLogManager.shareSessionFile(activity, session, true, filterQuery, levelFilter);
+            SessionLogManager.previewAction(activity, session, true, filterQuery, levelFilter, snapshot -> SessionLogManager.shareSessionFile(activity, session, true, filterQuery, levelFilter, snapshot));
         });
         LinearLayout.LayoutParams optMdLp = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
@@ -1043,7 +1045,7 @@ public final class DiagnosticsDialog {
             View optFull = createOptionCard(activity, theme, "📦", "Share Full Log (.log)",
                     "Sends complete unmodified session log file", v -> {
                         d.dismiss();
-                        SessionLogManager.shareSessionFile(activity, session, false, null, "ALL");
+                        SessionLogManager.previewAction(activity, session, false, null, "ALL", snapshot -> SessionLogManager.shareSessionFile(activity, session, false, null, "ALL", snapshot));
                     });
             LinearLayout.LayoutParams optFullLp = new LinearLayout.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);

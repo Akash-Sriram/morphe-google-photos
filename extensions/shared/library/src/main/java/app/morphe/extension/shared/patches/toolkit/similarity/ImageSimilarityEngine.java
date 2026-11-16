@@ -3,7 +3,7 @@ package app.morphe.extension.shared.patches.toolkit.similarity;
 import android.graphics.Bitmap;
 import android.graphics.Color;
 import android.os.Build;
-import android.util.Log;
+import app.morphe.extension.shared.diagnostics.SafeLog;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -55,7 +55,7 @@ public final class ImageSimilarityEngine {
             }
             return hash;
         } catch (Throwable t) {
-            Log.e("morphe: ImageSimilarityEngine", "calculateDifferenceHash error: " + t.getMessage(), t);
+            SafeLog.e("morphe: ImageSimilarityEngine", "calculateDifferenceHash error: " + t.getMessage(), t);
             return 0;
         }
     }

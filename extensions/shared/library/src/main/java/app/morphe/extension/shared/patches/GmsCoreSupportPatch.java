@@ -913,7 +913,7 @@ public class GmsCoreSupportPatch {
                 data.enforceInterface("com.google.android.gms.maps.internal.ILocationSourceDelegate");
                 android.os.IBinder b = data.readStrongBinder();
                 this.listenerBinder = b;
-                android.util.Log.d("MorpheLocation", "LocationSourceBinder: activated with listener " + b + " (code " + code + ")");
+                app.morphe.extension.shared.diagnostics.SafeLog.d("MorpheLocation", "LocationSourceBinder: activated with listener " + b + " (code " + code + ")");
                 android.location.Location loc = sLastLocation;
                 if (loc == null) {
                     loc = getSafeLastKnownLocation(Utils.getContext());
@@ -926,7 +926,7 @@ public class GmsCoreSupportPatch {
                 return true;
             } else if (code == 2) { // deactivate()
                 data.enforceInterface("com.google.android.gms.maps.internal.ILocationSourceDelegate");
-                android.util.Log.d("MorpheLocation", "LocationSourceBinder: deactivate() received, cleared listener");
+                app.morphe.extension.shared.diagnostics.SafeLog.d("MorpheLocation", "LocationSourceBinder: deactivate() received, cleared listener");
                 this.listenerBinder = null;
                 if (reply != null) reply.writeNoException();
                 return true;
@@ -971,7 +971,7 @@ public class GmsCoreSupportPatch {
                     boolean sent = b.transact(code, p, reply, 0);
                     if (sent) {
                         reply.readException();
-                        android.util.Log.d("MorpheLocation", "Native Location pushed via transact " + code + ": "
+                        app.morphe.extension.shared.diagnostics.SafeLog.d("MorpheLocation", "Native Location pushed via transact " + code + ": "
                                 + pushLoc.getLatitude() + ", " + pushLoc.getLongitude()
                                 + " (acc=" + pushLoc.getAccuracy() + "m)");
                         break;
@@ -1026,14 +1026,14 @@ public class GmsCoreSupportPatch {
                     if (val instanceof android.os.IInterface) {
                         android.os.IBinder b = ((android.os.IInterface) val).asBinder();
                         if (isGoogleMapDelegateBinder(b)) {
-                            android.util.Log.d("MorpheLocation", "Found IGoogleMapDelegate directly: " + b);
+                            app.morphe.extension.shared.diagnostics.SafeLog.d("MorpheLocation", "Found IGoogleMapDelegate directly: " + b);
                             return b;
                         }
                         if (fallback == null && isValidBinderCandidate(b)) fallback = b;
                     } else if (val instanceof android.os.IBinder) {
                         android.os.IBinder b = (android.os.IBinder) val;
                         if (isGoogleMapDelegateBinder(b)) {
-                            android.util.Log.d("MorpheLocation", "Found IGoogleMapDelegate IBinder: " + b);
+                            app.morphe.extension.shared.diagnostics.SafeLog.d("MorpheLocation", "Found IGoogleMapDelegate IBinder: " + b);
                             return b;
                         }
                         if (fallback == null && isValidBinderCandidate(b)) fallback = b;
@@ -1045,7 +1045,7 @@ public class GmsCoreSupportPatch {
                             if (remoteObj instanceof android.os.IBinder) {
                                 android.os.IBinder b = (android.os.IBinder) remoteObj;
                                 if (isGoogleMapDelegateBinder(b)) {
-                                    android.util.Log.d("MorpheLocation", "Found IGoogleMapDelegate in mRemote: " + b);
+                                    app.morphe.extension.shared.diagnostics.SafeLog.d("MorpheLocation", "Found IGoogleMapDelegate in mRemote: " + b);
                                     return b;
                                 }
                                 if (fallback == null && isValidBinderCandidate(b)) fallback = b;
@@ -1058,14 +1058,14 @@ public class GmsCoreSupportPatch {
                             if (sval instanceof android.os.IBinder) {
                                 android.os.IBinder b = (android.os.IBinder) sval;
                                 if (isGoogleMapDelegateBinder(b)) {
-                                    android.util.Log.d("MorpheLocation", "Found IGoogleMapDelegate in subfield: " + b);
+                                    app.morphe.extension.shared.diagnostics.SafeLog.d("MorpheLocation", "Found IGoogleMapDelegate in subfield: " + b);
                                     return b;
                                 }
                                 if (fallback == null && isValidBinderCandidate(b)) fallback = b;
                             } else if (sval instanceof android.os.IInterface) {
                                 android.os.IBinder b = ((android.os.IInterface) sval).asBinder();
                                 if (isGoogleMapDelegateBinder(b)) {
-                                    android.util.Log.d("MorpheLocation", "Found IGoogleMapDelegate in subfield IInterface: " + b);
+                                    app.morphe.extension.shared.diagnostics.SafeLog.d("MorpheLocation", "Found IGoogleMapDelegate in subfield IInterface: " + b);
                                     return b;
                                 }
                                 if (fallback == null && isValidBinderCandidate(b)) fallback = b;
@@ -1075,11 +1075,11 @@ public class GmsCoreSupportPatch {
                 }
             }
             if (fallback != null) {
-                android.util.Log.w("MorpheLocation", "Using fallback binder: " + fallback);
+                app.morphe.extension.shared.diagnostics.SafeLog.w("MorpheLocation", "Using fallback binder: " + fallback);
                 return fallback;
             }
         } catch (Throwable t) {
-            android.util.Log.e("MorpheLocation", "Error extracting map binder", t);
+            app.morphe.extension.shared.diagnostics.SafeLog.e("MorpheLocation", "Error extracting map binder", t);
         }
         return null;
     }
@@ -1120,7 +1120,7 @@ public class GmsCoreSupportPatch {
                             Object listener = f.get(delegate);
                             if (listener != null) {
                                 sAppMapClickListener = listener;
-                                android.util.Log.d("MorpheLocation", "Discovered mapClickListener on delegate: " + listener);
+                                app.morphe.extension.shared.diagnostics.SafeLog.d("MorpheLocation", "Discovered mapClickListener on delegate: " + listener);
                                 return listener;
                             }
                         } catch (Throwable ignored) {}
@@ -1138,10 +1138,10 @@ public class GmsCoreSupportPatch {
             Object delegate = extractGoogleMapDelegate(mapObj);
             if (delegate != null) {
                 sGoogleMapDelegate = delegate;
-                android.util.Log.d("MorpheLocation", "Captured sGoogleMapDelegate: " + delegate.getClass().getName());
+                app.morphe.extension.shared.diagnostics.SafeLog.d("MorpheLocation", "Captured sGoogleMapDelegate: " + delegate.getClass().getName());
             }
         } catch (Throwable t) {
-            android.util.Log.e("MorpheLocation", "Failed to wrap GoogleMap delegate", t);
+            app.morphe.extension.shared.diagnostics.SafeLog.e("MorpheLocation", "Failed to wrap GoogleMap delegate", t);
         }
     }
 
@@ -1153,7 +1153,7 @@ public class GmsCoreSupportPatch {
 
     public static int adjustScrollPosition(int pos) {
         if (pos <= 1) {
-            android.util.Log.d("MorpheLocation", "adjustScrollPosition: adjusting pos " + pos + " to 0 (top header)");
+            app.morphe.extension.shared.diagnostics.SafeLog.d("MorpheLocation", "adjustScrollPosition: adjusting pos " + pos + " to 0 (top header)");
             return 0;
         }
         return pos;
@@ -1161,7 +1161,7 @@ public class GmsCoreSupportPatch {
 
     public static int adjustScrollOffset(int pos, int offset) {
         if (pos <= 1) {
-            android.util.Log.d("MorpheLocation", "adjustScrollOffset: resetting offset " + offset + " to 0 for pos " + pos);
+            app.morphe.extension.shared.diagnostics.SafeLog.d("MorpheLocation", "adjustScrollOffset: resetting offset " + offset + " to 0 for pos " + pos);
             return 0;
         }
         return offset;
@@ -1218,12 +1218,12 @@ public class GmsCoreSupportPatch {
             boolean success = mapBinder.transact(24, data, reply, 0);
             if (success) {
                 reply.readException();
-                android.util.Log.d("MorpheLocation", "Successfully called setLocationSource (transact 24)");
+                app.morphe.extension.shared.diagnostics.SafeLog.d("MorpheLocation", "Successfully called setLocationSource (transact 24)");
             } else {
-                android.util.Log.w("MorpheLocation", "transact 24 for setLocationSource returned false");
+                app.morphe.extension.shared.diagnostics.SafeLog.w("MorpheLocation", "transact 24 for setLocationSource returned false");
             }
         } catch (Throwable t) {
-            android.util.Log.w("MorpheLocation", "transact 24 for setLocationSource failed", t);
+            app.morphe.extension.shared.diagnostics.SafeLog.w("MorpheLocation", "transact 24 for setLocationSource failed", t);
         } finally {
             data.recycle();
             reply.recycle();
@@ -1240,7 +1240,7 @@ public class GmsCoreSupportPatch {
                 if ("setLocationSource".equals(m.getName()) && m.getParameterTypes().length == 1) {
                     m.setAccessible(true);
                     m.invoke(target, locationSource);
-                    android.util.Log.d("MorpheLocation", "Invoked setLocationSource directly on " + clazz.getSimpleName());
+                    app.morphe.extension.shared.diagnostics.SafeLog.d("MorpheLocation", "Invoked setLocationSource directly on " + clazz.getSimpleName());
                     break;
                 }
             }
@@ -1259,11 +1259,11 @@ public class GmsCoreSupportPatch {
                 Object currentEngine = fCurrent.get(target);
                 if (currentEngine != null) {
                     fDefault.set(target, currentEngine);
-                    android.util.Log.d("MorpheLocation", "Successfully replaced defaultLocationEngine with SourceLocationEngine on " + clazz.getSimpleName());
+                    app.morphe.extension.shared.diagnostics.SafeLog.d("MorpheLocation", "Successfully replaced defaultLocationEngine with SourceLocationEngine on " + clazz.getSimpleName());
                 }
             }
         } catch (Throwable t) {
-            android.util.Log.w("MorpheLocation", "Direct setLocationSource reflection failed", t);
+            app.morphe.extension.shared.diagnostics.SafeLog.w("MorpheLocation", "Direct setLocationSource reflection failed", t);
         }
     }
 
@@ -1279,10 +1279,10 @@ public class GmsCoreSupportPatch {
             boolean success = mapBinder.transact(22, data, reply, 0);
             if (success) {
                 reply.readException();
-                android.util.Log.d("MorpheLocation", "Successfully called setMyLocationEnabled (transact 22)");
+                app.morphe.extension.shared.diagnostics.SafeLog.d("MorpheLocation", "Successfully called setMyLocationEnabled (transact 22)");
             }
         } catch (Throwable t) {
-            android.util.Log.w("MorpheLocation", "transact 22 for setMyLocationEnabled failed", t);
+            app.morphe.extension.shared.diagnostics.SafeLog.w("MorpheLocation", "transact 22 for setMyLocationEnabled failed", t);
         } finally {
             data.recycle();
             reply.recycle();
@@ -1411,7 +1411,7 @@ public class GmsCoreSupportPatch {
                                         Object cu = invokeCameraUpdateFactory(candidate, latLng, zoom, latLngClass);
                                         if (cu != null) {
                                             sCachedCameraUpdateFactoryClass = candidate;
-                                            android.util.Log.d("MorpheLocation", "Discovered CameraUpdateFactory dynamically: " + className);
+                                            app.morphe.extension.shared.diagnostics.SafeLog.d("MorpheLocation", "Discovered CameraUpdateFactory dynamically: " + className);
                                             return cu;
                                         }
                                     } catch (Throwable ignored) {}
@@ -1421,7 +1421,7 @@ public class GmsCoreSupportPatch {
                     }
                 }
             } catch (Throwable t) {
-                android.util.Log.w("MorpheLocation", "Dynamic CameraUpdateFactory scan failed", t);
+                app.morphe.extension.shared.diagnostics.SafeLog.w("MorpheLocation", "Dynamic CameraUpdateFactory scan failed", t);
             }
         }
 
@@ -1485,12 +1485,12 @@ public class GmsCoreSupportPatch {
                     if (val != null) {
                         String valCls = val.getClass().getName().toLowerCase(Locale.ROOT);
                         if (valCls.contains("mapexplore")) {
-                            android.util.Log.d("MorpheLocation", "Found MapExploreController by name: " + f.getName() + " (" + val.getClass().getName() + ")");
+                            app.morphe.extension.shared.diagnostics.SafeLog.d("MorpheLocation", "Found MapExploreController by name: " + f.getName() + " (" + val.getClass().getName() + ")");
                             return val;
                         }
                         try {
                             val.getClass().getDeclaredMethod("ba");
-                            android.util.Log.d("MorpheLocation", "Found MapExploreController in field: " + f.getName() + " (" + val.getClass().getName() + ")");
+                            app.morphe.extension.shared.diagnostics.SafeLog.d("MorpheLocation", "Found MapExploreController in field: " + f.getName() + " (" + val.getClass().getName() + ")");
                             return val;
                         } catch (NoSuchMethodException ignored) {}
                     }
@@ -1508,7 +1508,7 @@ public class GmsCoreSupportPatch {
                         if (frags != null) {
                             for (Object frag : frags) {
                                 if (frag != null && frag.getClass().getName().toLowerCase(Locale.ROOT).contains("mapexplore")) {
-                                    android.util.Log.d("MorpheLocation", "Found MapExplore fragment: " + frag.getClass().getName());
+                                    app.morphe.extension.shared.diagnostics.SafeLog.d("MorpheLocation", "Found MapExplore fragment: " + frag.getClass().getName());
                                     return frag;
                                 }
                             }
@@ -1517,7 +1517,7 @@ public class GmsCoreSupportPatch {
                 }
             } catch (Throwable ignored) {}
         } catch (Throwable t) {
-            android.util.Log.e("MorpheLocation", "Error finding MapExploreController", t);
+            app.morphe.extension.shared.diagnostics.SafeLog.e("MorpheLocation", "Error finding MapExploreController", t);
         }
         return null;
     }
@@ -1568,7 +1568,7 @@ public class GmsCoreSupportPatch {
                 serverBinder = (android.os.IBinder) delegate;
             }
 
-            android.util.Log.d("MorpheLocation",
+            app.morphe.extension.shared.diagnostics.SafeLog.d("MorpheLocation",
                     "triggerGmsCameraIdle: serverBinder=" +
                     (serverBinder != null ? serverBinder.getClass().getName() : "null") +
                     " isLocalBinder=" + (serverBinder instanceof android.os.Binder));
@@ -1584,7 +1584,7 @@ public class GmsCoreSupportPatch {
                         sb.append(f.getName()).append("=").append(val == null ? "null" : val.getClass().getSimpleName()).append(", ");
                     }
                 }
-                android.util.Log.d("MorpheLocation", sb.toString());
+                app.morphe.extension.shared.diagnostics.SafeLog.d("MorpheLocation", sb.toString());
             }
 
             // Step 2: Walk GoogleMapImpl's fields (server side) for the stored listener.
@@ -1600,7 +1600,7 @@ public class GmsCoreSupportPatch {
                     if ("onCameraIdle".equals(m.getName()) && m.getParameterTypes().length == 0) {
                         m.setAccessible(true);
                         m.invoke(serverBinder);
-                        android.util.Log.d("MorpheLocation",
+                        app.morphe.extension.shared.diagnostics.SafeLog.d("MorpheLocation",
                                 "triggerGmsCameraIdle: called onCameraIdle() directly on GoogleMapImpl");
                         return;
                     }
@@ -1611,7 +1611,7 @@ public class GmsCoreSupportPatch {
                         if ("onCameraIdle".equals(m.getName()) && m.getParameterTypes().length == 0) {
                             m.setAccessible(true);
                             m.invoke(serverBinder);
-                            android.util.Log.d("MorpheLocation",
+                            app.morphe.extension.shared.diagnostics.SafeLog.d("MorpheLocation",
                                     "triggerGmsCameraIdle: called onCameraIdle() on superclass " + c.getSimpleName());
                             return;
                         }
@@ -1619,10 +1619,10 @@ public class GmsCoreSupportPatch {
                 }
             }
 
-            android.util.Log.w("MorpheLocation",
+            app.morphe.extension.shared.diagnostics.SafeLog.w("MorpheLocation",
                     "triggerGmsCameraIdle: could not fire camera-idle event");
         } catch (Throwable t) {
-            android.util.Log.e("MorpheLocation", "triggerGmsCameraIdle failed", t);
+            app.morphe.extension.shared.diagnostics.SafeLog.e("MorpheLocation", "triggerGmsCameraIdle failed", t);
         }
     }
 
@@ -1652,14 +1652,14 @@ public class GmsCoreSupportPatch {
                     String descriptor = null;
                     try { descriptor = binder.getInterfaceDescriptor(); } catch (Throwable ignored) {}
                     if (descriptor != null && descriptor.toLowerCase().contains("cameraidle")) {
-                        android.util.Log.d("MorpheLocation",
+                        app.morphe.extension.shared.diagnostics.SafeLog.d("MorpheLocation",
                                 "searchAndFire: found CameraIdle listener in field " + f.getName() +
                                 " descriptor=" + descriptor + " on " + c.getSimpleName());
                         // Try direct reflection first
                         try {
                             java.lang.reflect.Method m = val.getClass().getMethod("onCameraIdle");
                             m.invoke(val);
-                            android.util.Log.d("MorpheLocation", "searchAndFire: invoked via reflection");
+                            app.morphe.extension.shared.diagnostics.SafeLog.d("MorpheLocation", "searchAndFire: invoked via reflection");
                             return true;
                         } catch (NoSuchMethodException | IllegalAccessException | java.lang.reflect.InvocationTargetException ignored) {}
                         // Try binder transaction (code 1 = first method = onCameraIdle)
@@ -1670,14 +1670,14 @@ public class GmsCoreSupportPatch {
                                 data.writeInterfaceToken(descriptor);
                                 binder.transact(1, data, reply, 0);
                                 reply.readException();
-                                android.util.Log.d("MorpheLocation", "searchAndFire: invoked via transact(1)");
+                                app.morphe.extension.shared.diagnostics.SafeLog.d("MorpheLocation", "searchAndFire: invoked via transact(1)");
                             } finally {
                                 data.recycle();
                                 reply.recycle();
                             }
                             return true;
                         } catch (Throwable t) {
-                            android.util.Log.w("MorpheLocation", "searchAndFire: transact failed", t);
+                            app.morphe.extension.shared.diagnostics.SafeLog.w("MorpheLocation", "searchAndFire: transact failed", t);
                         }
                     }
                 }
@@ -1692,7 +1692,7 @@ public class GmsCoreSupportPatch {
             StackTraceElement[] stack = Thread.currentThread().getStackTrace();
             for (StackTraceElement elem : stack) {
                 if ("onClick".equals(elem.getMethodName())) {
-                    android.util.Log.d("MorpheLocation", "CurrentLocationMixin.b(false) invoked from onClick! Redirecting to handleCurrentLocation()");
+                    app.morphe.extension.shared.diagnostics.SafeLog.d("MorpheLocation", "CurrentLocationMixin.b(false) invoked from onClick! Redirecting to handleCurrentLocation()");
                     handleCurrentLocation(mixinObj);
                     return;
                 }
@@ -1704,10 +1704,10 @@ public class GmsCoreSupportPatch {
         if (mixinObj == null) return;
         try {
             if (!isMicroGLocationGranted(Utils.getContext())) {
-                android.util.Log.d("MorpheLocation", "initMapLocation skipped: MicroG location permission not granted");
+                app.morphe.extension.shared.diagnostics.SafeLog.d("MorpheLocation", "initMapLocation skipped: MicroG location permission not granted");
                 return;
             }
-            android.util.Log.d("MorpheLocation", "initMapLocation called for: " + mixinObj.getClass().getName());
+            app.morphe.extension.shared.diagnostics.SafeLog.d("MorpheLocation", "initMapLocation called for: " + mixinObj.getClass().getName());
 
             // Clean up any lingering continuous location listener from prior map session
             if (sContinuousListener != null) {
@@ -1717,7 +1717,7 @@ public class GmsCoreSupportPatch {
                         android.location.LocationManager lm = (android.location.LocationManager) ctx.getSystemService(Context.LOCATION_SERVICE);
                         if (lm != null) {
                             lm.removeUpdates(sContinuousListener);
-                            android.util.Log.d("MorpheLocation", "initMapLocation: unregistered previous sContinuousListener");
+                            app.morphe.extension.shared.diagnostics.SafeLog.d("MorpheLocation", "initMapLocation: unregistered previous sContinuousListener");
                         }
                     }
                 } catch (Throwable ignored) {}
@@ -1742,7 +1742,7 @@ public class GmsCoreSupportPatch {
             android.location.Location initLoc = getSafeLastKnownLocation(Utils.getContext());
             if (initLoc != null) {
                 sLastLocation = initLoc;
-                android.util.Log.d("MorpheLocation", "initMapLocation: seeded sLastLocation=" + initLoc.getLatitude() + "," + initLoc.getLongitude());
+                app.morphe.extension.shared.diagnostics.SafeLog.d("MorpheLocation", "initMapLocation: seeded sLastLocation=" + initLoc.getLatitude() + "," + initLoc.getLongitude());
             }
 
             final Object finalMixin = mixinObj;
@@ -1753,7 +1753,7 @@ public class GmsCoreSupportPatch {
                     try {
                         Object mapObj = findMapObject(finalMixin);
                         if (mapObj != null) {
-                            android.util.Log.d("MorpheLocation", "initMapLocation: mapObj found on attempt " + attempts);
+                            app.morphe.extension.shared.diagnostics.SafeLog.d("MorpheLocation", "initMapLocation: mapObj found on attempt " + attempts);
                             wrapGoogleMapIfNeeded(mapObj);
                             android.os.IBinder mapBinder = extractMapBinder(mapObj);
                             if (mapBinder != null) {
@@ -1770,14 +1770,14 @@ public class GmsCoreSupportPatch {
                             new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(this, 300);
                         }
                     } catch (Throwable t) {
-                        android.util.Log.e("MorpheLocation", "initMapLocation error in poll", t);
+                        app.morphe.extension.shared.diagnostics.SafeLog.e("MorpheLocation", "initMapLocation error in poll", t);
                     }
                 }
             };
             // Run attempt 0 immediately so locationSource is bound before map finishes loading
             pollRunnable.run();
         } catch (Throwable t) {
-            android.util.Log.e("MorpheLocation", "initMapLocation outer exception", t);
+            app.morphe.extension.shared.diagnostics.SafeLog.e("MorpheLocation", "initMapLocation outer exception", t);
         }
     }
 
@@ -1785,7 +1785,7 @@ public class GmsCoreSupportPatch {
     public static void handleCurrentLocation(Object currentLocMixinObj) {
         if (currentLocMixinObj == null) return;
         try {
-            android.util.Log.d("MorpheLocation", "handleCurrentLocation triggered with: " + currentLocMixinObj.getClass().getName());
+            app.morphe.extension.shared.diagnostics.SafeLog.d("MorpheLocation", "handleCurrentLocation triggered with: " + currentLocMixinObj.getClass().getName());
             Class<?> clazz = currentLocMixinObj.getClass();
             Context context = null;
             for (java.lang.reflect.Field f : clazz.getDeclaredFields()) {
@@ -1796,7 +1796,7 @@ public class GmsCoreSupportPatch {
                 }
             }
             if (context == null) {
-                android.util.Log.e("MorpheLocation", "Context not found on mixin");
+                app.morphe.extension.shared.diagnostics.SafeLog.e("MorpheLocation", "Context not found on mixin");
                 return;
             }
 
@@ -1807,7 +1807,7 @@ public class GmsCoreSupportPatch {
             boolean hasFine = context.checkCallingOrSelfPermission(android.Manifest.permission.ACCESS_FINE_LOCATION) == android.content.pm.PackageManager.PERMISSION_GRANTED;
             boolean hasCoarse = context.checkCallingOrSelfPermission(android.Manifest.permission.ACCESS_COARSE_LOCATION) == android.content.pm.PackageManager.PERMISSION_GRANTED;
             if (!hasFine && !hasCoarse) {
-                android.util.Log.w("MorpheLocation", "Location permission not granted to Google Photos");
+                app.morphe.extension.shared.diagnostics.SafeLog.w("MorpheLocation", "Location permission not granted to Google Photos");
                 Activity activity = null;
                 Context cur = context;
                 while (cur instanceof android.content.ContextWrapper) {
@@ -1829,7 +1829,7 @@ public class GmsCoreSupportPatch {
                                 }, 1001);
                             }
                         } catch (Throwable t) {
-                            android.util.Log.e("MorpheLocation", "Failed to request location permissions", t);
+                            app.morphe.extension.shared.diagnostics.SafeLog.e("MorpheLocation", "Failed to request location permissions", t);
                         }
                     });
                 }
@@ -1837,7 +1837,7 @@ public class GmsCoreSupportPatch {
             }
 
             if (!isMicroGLocationGranted(context)) {
-                android.util.Log.w("MorpheLocation", "Location permission not granted to MicroG");
+                app.morphe.extension.shared.diagnostics.SafeLog.w("MorpheLocation", "Location permission not granted to MicroG");
                 Activity activity = null;
                 Context cur = context;
                 while (cur instanceof android.content.ContextWrapper) {
@@ -1855,7 +1855,7 @@ public class GmsCoreSupportPatch {
 
             android.location.LocationManager lm = (android.location.LocationManager) context.getSystemService(Context.LOCATION_SERVICE);
             if (lm == null) {
-                android.util.Log.e("MorpheLocation", "LocationManager is null");
+                app.morphe.extension.shared.diagnostics.SafeLog.e("MorpheLocation", "LocationManager is null");
                 return;
             }
 
@@ -1875,7 +1875,7 @@ public class GmsCoreSupportPatch {
             } catch (Exception ignored) {}
 
             if (!isGpsEnabled && !isNetworkEnabled && !isFusedEnabled) {
-                android.util.Log.w("MorpheLocation", "Location providers are disabled on device");
+                app.morphe.extension.shared.diagnostics.SafeLog.w("MorpheLocation", "Location providers are disabled on device");
                 new android.os.Handler(android.os.Looper.getMainLooper()).post(() -> {
                     try {
                         android.widget.Toast.makeText(finalContext, "Please enable Location in device settings", android.widget.Toast.LENGTH_SHORT).show();
@@ -1923,13 +1923,13 @@ public class GmsCoreSupportPatch {
             LocationApplier applyLocation = (loc) -> {
                 if (loc == null) return;
                 sLastLocation = loc;
-                android.util.Log.d("MorpheLocation", "Applying location: " + loc.getLatitude() + ", " + loc.getLongitude());
+                app.morphe.extension.shared.diagnostics.SafeLog.d("MorpheLocation", "Applying location: " + loc.getLatitude() + ", " + loc.getLongitude());
 
                 new android.os.Handler(android.os.Looper.getMainLooper()).post(() -> {
                     try {
                         Object mapObj = findMapObject(finalMixin);
                         if (mapObj == null) {
-                            android.util.Log.e("MorpheLocation", "Map object not found on mixin");
+                            app.morphe.extension.shared.diagnostics.SafeLog.e("MorpheLocation", "Map object not found on mixin");
                             return;
                         }
                         wrapGoogleMapIfNeeded(mapObj);
@@ -1951,7 +1951,7 @@ public class GmsCoreSupportPatch {
                             for (java.lang.reflect.Method m : mapObj.getClass().getMethods()) {
                                 if (m.getName().equals("f") && m.getParameterTypes().length == 1 && m.getParameterTypes()[0] == boolean.class) {
                                     m.invoke(mapObj, true);
-                                    android.util.Log.d("MorpheLocation", "Invoked map.f(true)");
+                                    app.morphe.extension.shared.diagnostics.SafeLog.d("MorpheLocation", "Invoked map.f(true)");
                                     break;
                                 }
                             }
@@ -1967,7 +1967,7 @@ public class GmsCoreSupportPatch {
                             if (sContinuousListener != null) {
                                 try {
                                     lm.removeUpdates(sContinuousListener);
-                                    android.util.Log.d("MorpheLocation", "handleCurrentLocation: unregistered sContinuousListener after camera animation");
+                                    app.morphe.extension.shared.diagnostics.SafeLog.d("MorpheLocation", "handleCurrentLocation: unregistered sContinuousListener after camera animation");
                                 } catch (Throwable ignored) {}
                                 sContinuousListener = null;
                             }
@@ -1987,11 +1987,11 @@ public class GmsCoreSupportPatch {
                                             try {
                                                 m.setAccessible(true);
                                                 m.invoke(mapObj, camUpdate, 500);
-                                                android.util.Log.d("MorpheLocation", "Invoked map." + m.getName() + "(camUpdate, 500)");
+                                                app.morphe.extension.shared.diagnostics.SafeLog.d("MorpheLocation", "Invoked map." + m.getName() + "(camUpdate, 500)");
                                                 animated = true;
                                                 break;
                                             } catch (Throwable t) {
-                                                android.util.Log.w("MorpheLocation", "Failed invoking " + m.getName() + "(camUpdate, 500)", t);
+                                                app.morphe.extension.shared.diagnostics.SafeLog.w("MorpheLocation", "Failed invoking " + m.getName() + "(camUpdate, 500)", t);
                                             }
                                         }
                                     }
@@ -2002,18 +2002,18 @@ public class GmsCoreSupportPatch {
                                                 try {
                                                     m.setAccessible(true);
                                                     m.invoke(mapObj, camUpdate);
-                                                    android.util.Log.d("MorpheLocation", "Invoked map." + m.getName() + "(camUpdate)");
+                                                    app.morphe.extension.shared.diagnostics.SafeLog.d("MorpheLocation", "Invoked map." + m.getName() + "(camUpdate)");
                                                     animated = true;
                                                     break;
                                                 } catch (Throwable t) {
-                                                    android.util.Log.w("MorpheLocation", "Failed invoking " + m.getName() + "(camUpdate)", t);
+                                                    app.morphe.extension.shared.diagnostics.SafeLog.w("MorpheLocation", "Failed invoking " + m.getName() + "(camUpdate)", t);
                                                 }
                                             }
                                         }
                                     }
                                 }
                             } catch (Throwable t) {
-                                android.util.Log.w("MorpheLocation", "Camera animation failed", t);
+                                app.morphe.extension.shared.diagnostics.SafeLog.w("MorpheLocation", "Camera animation failed", t);
                             }
 
                             // Trigger camera idle fallback after animation time in case camera was already near target
@@ -2035,7 +2035,7 @@ public class GmsCoreSupportPatch {
                                     try {
                                         m.setAccessible(true);
                                         m.invoke(finalMixin, true);
-                                        android.util.Log.d("MorpheLocation", "Invoked mixin.b(true)");
+                                        app.morphe.extension.shared.diagnostics.SafeLog.d("MorpheLocation", "Invoked mixin.b(true)");
                                     } catch (Throwable ignored) {}
                                     break;
                                 }
@@ -2051,7 +2051,7 @@ public class GmsCoreSupportPatch {
                                             android.widget.ImageView fabView = (android.widget.ImageView) fab;
                                             if (fabView.getDrawable() != null) {
                                                 fabView.getDrawable().mutate().setTint(0xFF1A73E8);
-                                                android.util.Log.d("MorpheLocation", "Directly tinted FAB drawable to active blue");
+                                                app.morphe.extension.shared.diagnostics.SafeLog.d("MorpheLocation", "Directly tinted FAB drawable to active blue");
                                             }
                                         }
                                     } catch (Throwable ignored) {}
@@ -2063,7 +2063,7 @@ public class GmsCoreSupportPatch {
                             }, 600);
                         }
                     } catch (Throwable t) {
-                        android.util.Log.e("MorpheLocation", "Error applying location to map", t);
+                        app.morphe.extension.shared.diagnostics.SafeLog.e("MorpheLocation", "Error applying location to map", t);
                     }
                 });
             };
@@ -2095,7 +2095,7 @@ public class GmsCoreSupportPatch {
             }
 
             if (lastLoc != null) {
-                android.util.Log.d("MorpheLocation", "Found lastKnownLocation: " + lastLoc);
+                app.morphe.extension.shared.diagnostics.SafeLog.d("MorpheLocation", "Found lastKnownLocation: " + lastLoc);
                 applyLocation.onLocation(lastLoc);
             }
 
@@ -2119,7 +2119,7 @@ public class GmsCoreSupportPatch {
                                 // Unregister listener once a fresh fix is received
                                 try {
                                     lm.removeUpdates(this);
-                                    android.util.Log.d("MorpheLocation", "sContinuousListener: received fix, removed updates");
+                                    app.morphe.extension.shared.diagnostics.SafeLog.d("MorpheLocation", "sContinuousListener: received fix, removed updates");
                                 } catch (Throwable ignored) {}
                                 if (sContinuousListener == this) {
                                     sContinuousListener = null;
@@ -2144,14 +2144,14 @@ public class GmsCoreSupportPatch {
                                 lm.requestLocationUpdates(android.location.LocationManager.NETWORK_PROVIDER, 1000L, 1.0f, sContinuousListener, android.os.Looper.getMainLooper());
                             } catch (Throwable ignored) {}
                         }
-                        android.util.Log.d("MorpheLocation", "Registered single-burst LocationListener for map centering");
+                        app.morphe.extension.shared.diagnostics.SafeLog.d("MorpheLocation", "Registered single-burst LocationListener for map centering");
 
                         // Safety timeout: unregister after 10 seconds in case no GPS fix is received
                         new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(() -> {
                             if (sContinuousListener != null) {
                                 try {
                                     lm.removeUpdates(sContinuousListener);
-                                    android.util.Log.d("MorpheLocation", "LocationListener timed out after 10s, removed updates");
+                                    app.morphe.extension.shared.diagnostics.SafeLog.d("MorpheLocation", "LocationListener timed out after 10s, removed updates");
                                 } catch (Throwable ignored) {}
                                 sContinuousListener = null;
                             }
@@ -2159,7 +2159,7 @@ public class GmsCoreSupportPatch {
                         }, 10000);
                     }
                 } catch (Throwable t) {
-                    android.util.Log.w("MorpheLocation", "Failed to register location updates", t);
+                    app.morphe.extension.shared.diagnostics.SafeLog.w("MorpheLocation", "Failed to register location updates", t);
                 }
             });
 
@@ -2181,7 +2181,7 @@ public class GmsCoreSupportPatch {
                 }
             }
         } catch (Throwable t) {
-            android.util.Log.e("MorpheLocation", "handleCurrentLocation exception", t);
+            app.morphe.extension.shared.diagnostics.SafeLog.e("MorpheLocation", "handleCurrentLocation exception", t);
         }
     }
 }
