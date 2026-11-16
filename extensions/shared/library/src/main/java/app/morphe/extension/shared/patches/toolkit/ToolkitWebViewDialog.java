@@ -32,6 +32,7 @@ import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 
 import app.morphe.extension.shared.Logger;
+import app.morphe.extension.shared.requests.TrustedGoogleMedia;
 import app.morphe.extension.shared.patches.PhenotypeFlagManager.MaterialVectorDrawable;
 
 public class ToolkitWebViewDialog {
@@ -286,9 +287,27 @@ public class ToolkitWebViewDialog {
             public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
                 if (request != null && request.getUrl() != null) {
                     String url = request.getUrl().toString();
+                    if (request.isForMainFrame() && !TrustedGoogleMedia.isHost(url, "photos.google.com")
+                            && !TrustedGoogleMedia.isHost(url, "accounts.google.com")) {
+                        if ("https".equalsIgnoreCase(request.getUrl().getScheme())) {
+                            try { activity.startActivity(new android.content.Intent(android.content.Intent.ACTION_VIEW, request.getUrl())); }
+                            catch (Exception ignored) { Toast.makeText(activity, "Could not open link", Toast.LENGTH_SHORT).show(); }
+                        }
+                        return true;
+                    }
                     adjustUserAgentForUrl(view, url);
                 }
                 return false;
+            }
+
+            @Override
+            public boolean shouldOverrideUrlLoading(WebView view, String url) {
+                if (TrustedGoogleMedia.isHost(url, "photos.google.com") || TrustedGoogleMedia.isHost(url, "accounts.google.com")) return false;
+                if (url != null && url.startsWith("https://")) {
+                    try { activity.startActivity(new android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(url))); }
+                    catch (Exception ignored) {}
+                }
+                return true;
             }
 
             @Override
@@ -300,13 +319,13 @@ public class ToolkitWebViewDialog {
             private void adjustUserAgentForUrl(WebView view, String url) {
                 if (url == null) return;
                 WebSettings s = view.getSettings();
-                if (url.contains("accounts.google.com")) {
+                if (TrustedGoogleMedia.isHost(url, "accounts.google.com")) {
                     // Real device mobile UA for Google Accounts authentication
                     String mobileUa = getRealMobileUserAgent();
                     if (!mobileUa.equals(s.getUserAgentString())) {
                         s.setUserAgentString(mobileUa);
                     }
-                } else if (url.contains("photos.google.com")) {
+                } else if (TrustedGoogleMedia.isHost(url, "photos.google.com")) {
                     // Desktop Chrome UA for Google Photos Toolkit UI
                     if (!DESKTOP_CHROME_USER_AGENT.equals(s.getUserAgentString())) {
                         s.setUserAgentString(DESKTOP_CHROME_USER_AGENT);
@@ -320,7 +339,8 @@ public class ToolkitWebViewDialog {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
                     CookieManager.getInstance().flush();
                 }
-                if (url != null && url.startsWith("https://photos.google.com")) {
+                if (TrustedGoogleMedia.isHost(url, "photos.google.com")
+                        && TrustedGoogleMedia.isHost(view.getUrl(), "photos.google.com")) {
                     injectToolkitScript(activity, view);
                 }
             }
@@ -340,6 +360,8 @@ public class ToolkitWebViewDialog {
             // Tampermonkey shims + Userscript
             String injectionPayload =
                     "(function() {" +
+                    "  if (location.protocol !== 'https:' || location.hostname !== 'photos.google.com'" +
+                    "      || (location.port !== '' && location.port !== '443')) return;" +
                     "  if (window.__gptk_injected) return;" +
                     "  window.unsafeWindow = window;" +
                     "  window.GM_registerMenuCommand = function(name, cb) {};" +

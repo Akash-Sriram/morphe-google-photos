@@ -1,5 +1,7 @@
 package app.morphe.extension.shared.patches;
 
+import app.morphe.extension.shared.requests.TrustedGoogleMedia;
+
 import android.accounts.Account;
 import android.accounts.AccountManager;
 import android.accounts.AccountManagerFuture;
@@ -20,7 +22,7 @@ import android.os.Environment;
 import android.os.Handler;
 import android.os.Looper;
 import android.provider.MediaStore;
-import android.util.Log;
+import app.morphe.extension.shared.diagnostics.SafeLog;
 import android.widget.Toast;
 
 import java.io.File;
@@ -139,13 +141,13 @@ public class LocalCreationDownloader {
                             }
                             if (setVal != null) {
                                 setVal.invoke(flow, new HashMap<>());
-                                Log.i(TAG, "Cleared MFY state flow in clearMfySavedRegistry");
+                                SafeLog.i(TAG, "Cleared MFY state flow in clearMfySavedRegistry");
                             }
                         }
                     }
                 }
             } catch (Throwable t) {
-                Log.w(TAG, "Failed clearing MfyMixin state flow", t);
+                SafeLog.w(TAG, "Failed clearing MfyMixin state flow", t);
             }
         }
 
@@ -161,9 +163,9 @@ public class LocalCreationDownloader {
                         lMethod.invoke(pres, false);
                     } catch (Throwable ignored) {}
                 });
-                Log.i(TAG, "Cleared presenter saved sets and triggered refresh in clearMfySavedRegistry");
+                SafeLog.i(TAG, "Cleared presenter saved sets and triggered refresh in clearMfySavedRegistry");
             } catch (Throwable t) {
-                Log.w(TAG, "Failed clearing presenter in clearMfySavedRegistry", t);
+                SafeLog.w(TAG, "Failed clearing presenter in clearMfySavedRegistry", t);
             }
         }
 
@@ -179,7 +181,7 @@ public class LocalCreationDownloader {
                             File pb = new File(acct, "protodb/made_for_you_creation_initial_data.pb");
                             if (pb.exists()) {
                                 if (pb.delete()) {
-                                    Log.i(TAG, "Deleted MFY initial data pb: " + pb.getAbsolutePath());
+                                    SafeLog.i(TAG, "Deleted MFY initial data pb: " + pb.getAbsolutePath());
                                 }
                             }
                         }
@@ -187,10 +189,10 @@ public class LocalCreationDownloader {
                 }
             }
         } catch (Throwable t) {
-            Log.w(TAG, "Error deleting mfy initial data pb in clearMfySavedRegistry", t);
+            SafeLog.w(TAG, "Error deleting mfy initial data pb in clearMfySavedRegistry", t);
         }
 
-        Log.i(TAG, "Cleared MFY saved creations registry.");
+        SafeLog.i(TAG, "Cleared MFY saved creations registry.");
     }
 
     public static synchronized void clearStorySavedRegistry(Context context) {
@@ -208,7 +210,7 @@ public class LocalCreationDownloader {
         }
         sSavedKeys.removeIf(k -> !k.startsWith("card_") && !sCardMediaMap.containsKey(k));
 
-        Log.i(TAG, "Cleared Story saved creations registry.");
+        SafeLog.i(TAG, "Cleared Story saved creations registry.");
     }
 
     public static synchronized void clearSavedRegistry(Context context) {
@@ -240,9 +242,9 @@ public class LocalCreationDownloader {
                     appCtx.registerReceiver(receiver, filter);
                 }
                 sReceiverRegistered = true;
-                Log.i(TAG, "Registered broadcast receiver for " + ACTION_CLEAR_SAVED_MEMORIES);
+                SafeLog.i(TAG, "Registered broadcast receiver for " + ACTION_CLEAR_SAVED_MEMORIES);
             } catch (Throwable t) {
-                Log.w(TAG, "Failed registering clear receiver", t);
+                SafeLog.w(TAG, "Failed registering clear receiver", t);
             }
         }
     }
@@ -286,7 +288,7 @@ public class LocalCreationDownloader {
             }
 
             if (allAlreadySaved) {
-                Log.i(TAG, "Creation is already saved locally on device. Suppressing duplicate download.");
+                SafeLog.i(TAG, "Creation is already saved locally on device. Suppressing duplicate download.");
                 notifySaveListeners(saveCreationMixin, mediaList);
                 notifyStoryUi(saveCreationMixin);
                 return true;
@@ -307,7 +309,7 @@ public class LocalCreationDownloader {
             }
 
             if (!canResolveLocally) {
-                Log.w(TAG, "Cannot resolve local URI for creation item(s). Falling back to Google Photos standard cloud save.");
+                SafeLog.w(TAG, "Cannot resolve local URI for creation item(s). Falling back to Google Photos standard cloud save.");
                 return false;
             }
 
@@ -325,7 +327,7 @@ public class LocalCreationDownloader {
             notifySaveListeners(saveCreationMixin, mediaList);
             notifyStoryUi(saveCreationMixin);
 
-            Log.i(TAG, "Intercepted creation save request for " + items.size() + " item(s). Redirecting to DCIM/Google Photos.");
+            SafeLog.i(TAG, "Intercepted creation save request for " + items.size() + " item(s). Redirecting to DCIM/Google Photos.");
 
             // Dispatch background save to avoid blocking the main UI thread
             EXECUTOR.execute(() -> {
@@ -340,14 +342,14 @@ public class LocalCreationDownloader {
                 final int saved = successCount;
                 MAIN_HANDLER.post(() -> {
                     if (saved > 0) {
-                        Log.i(TAG, "Successfully exported " + saved + " creation(s) to DCIM/Google Photos.");
+                        SafeLog.i(TAG, "Successfully exported " + saved + " creation(s) to DCIM/Google Photos.");
                         notifySaveListeners(saveCreationMixin, mediaList);
                         notifyStoryUi(saveCreationMixin);
                         if (appContext != null) {
                             Toast.makeText(appContext, "Saved creation to Google Photos", Toast.LENGTH_SHORT).show();
                         }
                     } else {
-                        Log.w(TAG, "Failed to resolve local stream for creation item(s).");
+                        SafeLog.w(TAG, "Failed to resolve local stream for creation item(s).");
                         if (appContext != null) {
                             Toast.makeText(appContext, "Failed to save creation", Toast.LENGTH_SHORT).show();
                         }
@@ -357,7 +359,7 @@ public class LocalCreationDownloader {
 
             return true;
         } catch (Throwable t) {
-            Log.e(TAG, "Error during onSaveRequested interception", t);
+            SafeLog.e(TAG, "Error during onSaveRequested interception", t);
             return false;
         }
     }
@@ -387,7 +389,7 @@ public class LocalCreationDownloader {
 
             // If already saved in registry, show Saved and cleanly remove it after short delay
             if (isCreationSaved(mediaItem) || isCardSaved(id)) {
-                Log.i(TAG, "MFY creation " + id + " is already saved locally. Suppressing duplicate download.");
+                SafeLog.i(TAG, "MFY creation " + id + " is already saved locally. Suppressing duplicate download.");
                 recordCardSaved(id);
                 if (pres != null) {
                     updateMfyCardTileState(pres, id, true, false);
@@ -415,7 +417,7 @@ public class LocalCreationDownloader {
                 recordSavedItem(appContext, itemKey, id, collageFileName, null, utcMs);
             }
 
-            Log.i(TAG, "Intercepted MFY creation save for ID " + id + ". Exporting to DCIM/Google Photos in background.");
+            SafeLog.i(TAG, "Intercepted MFY creation save for ID " + id + ". Exporting to DCIM/Google Photos in background.");
 
             EXECUTOR.execute(() -> {
                 if (appContext != null) {
@@ -424,7 +426,7 @@ public class LocalCreationDownloader {
                         if (success) {
                             recordCardSaved(id);
                             Toast.makeText(appContext, "Saved creation to Google Photos", Toast.LENGTH_SHORT).show();
-                            Log.i(TAG, "Successfully exported MFY creation " + id + " to DCIM/Google Photos.");
+                            SafeLog.i(TAG, "Successfully exported MFY creation " + id + " to DCIM/Google Photos.");
                             if (pres != null) {
                                 updateMfyCardTileState(pres, id, true, false);
                             }
@@ -441,7 +443,7 @@ public class LocalCreationDownloader {
                             }, 700);
                         } else {
                             Toast.makeText(appContext, "Failed to save creation", Toast.LENGTH_SHORT).show();
-                            Log.w(TAG, "Failed exporting MFY creation " + id);
+                            SafeLog.w(TAG, "Failed exporting MFY creation " + id);
                             if (pres != null) {
                                 updateMfyCardTileState(pres, id, null, false);
                             }
@@ -452,7 +454,7 @@ public class LocalCreationDownloader {
             });
             return true;
         } catch (Throwable t) {
-            Log.e(TAG, "Error during onMfySaveRequested interception", t);
+            SafeLog.e(TAG, "Error during onMfySaveRequested interception", t);
             return false;
         }
     }
@@ -567,7 +569,7 @@ public class LocalCreationDownloader {
                 }
             }
         } catch (Throwable t) {
-            Log.w(TAG, "Failed creating updated sna tile", t);
+            SafeLog.w(TAG, "Failed creating updated sna tile", t);
         }
         return null;
     }
@@ -594,7 +596,7 @@ public class LocalCreationDownloader {
                 }
             }
         } catch (Throwable t) {
-            Log.w(TAG, "Failed creating updated sny", t);
+            SafeLog.w(TAG, "Failed creating updated sny", t);
         }
         return null;
     }
@@ -683,12 +685,12 @@ public class LocalCreationDownloader {
                     }
                     if (setVal != null) {
                         setVal.invoke(flow, newSny);
-                        Log.i(TAG, "updateMfyCardTileState: Successfully updated sny in StateFlow for " + cardId + " (saved=" + saved + ", remove=" + remove + ", newSize=" + newTiles.size() + ")");
+                        SafeLog.i(TAG, "updateMfyCardTileState: Successfully updated sny in StateFlow for " + cardId + " (saved=" + saved + ", remove=" + remove + ", newSize=" + newTiles.size() + ")");
                     }
                 }
             }
         } catch (Throwable t) {
-            Log.w(TAG, "Error in updateMfyCardTileState", t);
+            SafeLog.w(TAG, "Error in updateMfyCardTileState", t);
         }
     }
 
@@ -777,7 +779,7 @@ public class LocalCreationDownloader {
                                 }
                                 if (setVal != null) {
                                     setVal.invoke(flow, newMap);
-                                    Log.d(TAG, "Pre-populated MFY state flow with saved creations in onMfyMixinBound");
+                                    SafeLog.d(TAG, "Pre-populated MFY state flow with saved creations in onMfyMixinBound");
                                 }
                             }
                         }
@@ -785,7 +787,7 @@ public class LocalCreationDownloader {
                 }
             }
         } catch (Throwable t) {
-            Log.w(TAG, "Error in onMfyMixinBound", t);
+            SafeLog.w(TAG, "Error in onMfyMixinBound", t);
         }
     }
 
@@ -861,7 +863,7 @@ public class LocalCreationDownloader {
                         }
                         if (setVal != null) {
                             setVal.invoke(flow, newMap);
-                            Log.i(TAG, "Updated MFY state flow for ID " + id + " to " + (saved == null ? "REMOVED" : (saved ? "SAVED" : "SAVING")));
+                            SafeLog.i(TAG, "Updated MFY state flow for ID " + id + " to " + (saved == null ? "REMOVED" : (saved ? "SAVED" : "SAVING")));
                         }
                     }
                 }
@@ -877,7 +879,7 @@ public class LocalCreationDownloader {
                 }
             } catch (Throwable ignored) {}
         } catch (Throwable t) {
-            Log.w(TAG, "Could not update MFY status for " + id, t);
+            SafeLog.w(TAG, "Could not update MFY status for " + id, t);
         }
     }
 
@@ -954,12 +956,12 @@ public class LocalCreationDownloader {
 
             // If the loaded creations already have >= 3 un-saved items and no saved items were present, return them directly
             if (unSavedCreations.size() >= 3 && unSavedCreations.size() == (creations != null ? creations.size() : 0)) {
-                Log.d(TAG, "onMfyLoadCreations: Loaded " + unSavedCreations.size() + " un-saved creations from proto/recent window.");
+                SafeLog.d(TAG, "onMfyLoadCreations: Loaded " + unSavedCreations.size() + " un-saved creations from proto/recent window.");
                 return sngResult;
             }
 
             int currentCount = unSavedCreations.size();
-            Log.i(TAG, "onMfyLoadCreations: Un-saved creations count (" + currentCount + ") < 3. Falling back to query all historical creations from assistant_cards...");
+            SafeLog.i(TAG, "onMfyLoadCreations: Un-saved creations count (" + currentCount + ") < 3. Falling back to query all historical creations from assistant_cards...");
 
             Object delegate = snnDelegate;
             if (delegate == null || delegate instanceof Map || delegate instanceof Collection) {
@@ -969,7 +971,7 @@ public class LocalCreationDownloader {
                 }
             }
             if (delegate == null) {
-                Log.w(TAG, "onMfyLoadCreations: delegate is null, cannot perform fallback");
+                SafeLog.w(TAG, "onMfyLoadCreations: delegate is null, cannot perform fallback");
                 return sngResult;
             }
 
@@ -989,24 +991,24 @@ public class LocalCreationDownloader {
                 Object fallbackSng = queryAllMethod.invoke(delegate, null, true, new java.util.LinkedHashSet<>());
                 List<?> fallbackList = extractListFromSng(fallbackSng);
                 int fallbackCount = fallbackList != null ? fallbackList.size() : 0;
-                Log.i(TAG, "onMfyLoadCreations: Fallback query (z=true) returned " + fallbackCount + " creations.");
+                SafeLog.i(TAG, "onMfyLoadCreations: Fallback query (z=true) returned " + fallbackCount + " creations.");
 
                 // If diverse query returned < 3 items, try all categories (z=false)
                 if (fallbackCount < 3) {
                     fallbackSng = queryAllMethod.invoke(delegate, null, false, new java.util.LinkedHashSet<>());
                     fallbackList = extractListFromSng(fallbackSng);
                     fallbackCount = fallbackList != null ? fallbackList.size() : 0;
-                    Log.i(TAG, "onMfyLoadCreations: Fallback query (z=false) returned " + fallbackCount + " creations.");
+                    SafeLog.i(TAG, "onMfyLoadCreations: Fallback query (z=false) returned " + fallbackCount + " creations.");
                 }
 
                 if (fallbackCount > 0) {
                     return fallbackSng;
                 }
             } else {
-                Log.w(TAG, "onMfyLoadCreations: Could not find d(Instant, boolean, Set) on " + delegate.getClass().getName());
+                SafeLog.w(TAG, "onMfyLoadCreations: Could not find d(Instant, boolean, Set) on " + delegate.getClass().getName());
             }
         } catch (Throwable t) {
-            Log.w(TAG, "Error in onMfyLoadCreations fallback", t);
+            SafeLog.w(TAG, "Error in onMfyLoadCreations fallback", t);
         }
         return sngResult;
     }
@@ -1043,11 +1045,11 @@ public class LocalCreationDownloader {
             if (saved) {
                 recordCardSaved(cardId);
                 updatePresenterSets(presenter, cardId, null, true);
-                Log.d(TAG, "shouldFilterMfyCard: Skipping saved card " + cardId);
+                SafeLog.d(TAG, "shouldFilterMfyCard: Skipping saved card " + cardId);
                 return true;
             }
         } catch (Throwable t) {
-            Log.w(TAG, "Error in shouldFilterMfyCard", t);
+            SafeLog.w(TAG, "Error in shouldFilterMfyCard", t);
         }
         return false;
     }
@@ -1138,7 +1140,7 @@ public class LocalCreationDownloader {
                 }
             }
         } catch (Throwable t) {
-            Log.w(TAG, "Error updating presenter sets", t);
+            SafeLog.w(TAG, "Error updating presenter sets", t);
         }
     }
 
@@ -1216,7 +1218,7 @@ public class LocalCreationDownloader {
                                                 if (fMethod != null) {
                                                     aField.set(qln, newList);
                                                     fMethod.invoke(val, qln);
-                                                    Log.i(TAG, "Updated hero card in StateFlow to " + (saved ? "SAVED" : "SAVING"));
+                                                    SafeLog.i(TAG, "Updated hero card in StateFlow to " + (saved ? "SAVED" : "SAVING"));
                                                 }
                                             }
                                         }
@@ -1228,7 +1230,7 @@ public class LocalCreationDownloader {
                 } catch (Throwable ignored) {}
             }
         } catch (Throwable t) {
-            Log.w(TAG, "Error updating presenter StateFlow", t);
+            SafeLog.w(TAG, "Error updating presenter StateFlow", t);
         }
     }
 
@@ -1240,7 +1242,7 @@ public class LocalCreationDownloader {
         if (presenter == null || wsf == null) return;
         try {
             sCurrentPresenter = new java.lang.ref.WeakReference<>(presenter);
-            Log.d(TAG, "onCreateHeroSaveRequested called with wsf: " + wsf);
+            SafeLog.d(TAG, "onCreateHeroSaveRequested called with wsf: " + wsf);
 
             Object mediaItem = sWsfMediaMap.get(wsf);
             String targetCardId = sWsfCardMap.get(wsf);
@@ -1254,7 +1256,7 @@ public class LocalCreationDownloader {
                     if (kMap != null) {
                         Object bypn = kMap.get(wsf);
                         if (bypn != null) {
-                            Log.d(TAG, "Resolved bypn from presenter.k: " + bypn);
+                            SafeLog.d(TAG, "Resolved bypn from presenter.k: " + bypn);
                             mediaItem = bypn;
                         }
                     }
@@ -1321,7 +1323,7 @@ public class LocalCreationDownloader {
                                                                 if (mediaItem == null) {
                                                                     mediaItem = sCardMediaMap.get(cardId);
                                                                 }
-                                                                Log.i(TAG, "Hero card " + cardId + " resolved from presenter StateFlow");
+                                                                SafeLog.i(TAG, "Hero card " + cardId + " resolved from presenter StateFlow");
                                                             }
                                                         }
                                                     }
@@ -1368,7 +1370,7 @@ public class LocalCreationDownloader {
             final Object finalWsf = wsf;
 
             if (appContext != null && finalMediaItem != null) {
-                Log.i(TAG, "Dispatching local download for hero card: " + (finalCardId != null ? finalCardId : wsf));
+                SafeLog.i(TAG, "Dispatching local download for hero card: " + (finalCardId != null ? finalCardId : wsf));
                 EXECUTOR.execute(() -> {
                     boolean success = saveSingleItem(appContext, finalMediaItem);
                     MAIN_HANDLER.post(() -> {
@@ -1387,18 +1389,18 @@ public class LocalCreationDownloader {
                                 lMethod.invoke(presenter, false);
                             } catch (Throwable ignored) {}
                             Toast.makeText(appContext, "Saved creation to Google Photos", Toast.LENGTH_SHORT).show();
-                            Log.i(TAG, "Successfully exported hero card creation to DCIM/Google Photos and updated UI to Saved.");
+                            SafeLog.i(TAG, "Successfully exported hero card creation to DCIM/Google Photos and updated UI to Saved.");
                         } else {
                             Toast.makeText(appContext, "Failed to save creation", Toast.LENGTH_SHORT).show();
-                            Log.w(TAG, "Failed to download hero card creation locally.");
+                            SafeLog.w(TAG, "Failed to download hero card creation locally.");
                         }
                     });
                 });
             } else {
-                Log.w(TAG, "Cannot trigger hero card download: appContext=" + appContext + ", mediaItem=" + finalMediaItem);
+                SafeLog.w(TAG, "Cannot trigger hero card download: appContext=" + appContext + ", mediaItem=" + finalMediaItem);
             }
         } catch (Throwable t) {
-            Log.w(TAG, "Error in onCreateHeroSaveRequested", t);
+            SafeLog.w(TAG, "Error in onCreateHeroSaveRequested", t);
         }
     }
 
@@ -1470,7 +1472,7 @@ public class LocalCreationDownloader {
                 }
             }
         } catch (Throwable t) {
-            Log.w(TAG, "Error in isCreationSaved", t);
+            SafeLog.w(TAG, "Error in isCreationSaved", t);
         }
         return false;
     }
@@ -1673,11 +1675,11 @@ public class LocalCreationDownloader {
     private static boolean saveSingleItem(Context context, Object mediaItem) {
         Uri mediaUri = resolveMediaUri(context, mediaItem);
         if (mediaUri == null) {
-            Log.w(TAG, "Could not resolve URI for media item: " + mediaItem);
+            SafeLog.w(TAG, "Could not resolve URI for media item");
             return false;
         }
 
-        Log.d(TAG, "Resolved creation URI: " + mediaUri);
+        SafeLog.d(TAG, "Resolved creation URI");
         ContentResolver resolver = context.getContentResolver();
         String mimeType = resolver.getType(mediaUri);
         if (mimeType == null) {
@@ -1704,13 +1706,19 @@ public class LocalCreationDownloader {
         try {
             tempFile = File.createTempFile("morphe_creation_", extension, context.getCacheDir());
 
-            boolean loaded = tryLoadWithGlide(context, mediaItem, mediaUri, tempFile);
+            if (("http".equalsIgnoreCase(mediaUri.getScheme()) || "https".equalsIgnoreCase(mediaUri.getScheme()))
+                    && !TrustedGoogleMedia.isMediaUrl(mediaUri.toString())) {
+                throw new java.io.IOException("Untrusted media URL blocked");
+            }
+            boolean loaded = !"https".equalsIgnoreCase(mediaUri.getScheme())
+                    && !"http".equalsIgnoreCase(mediaUri.getScheme())
+                    && tryLoadWithGlide(context, mediaItem, mediaUri, tempFile);
             if (!loaded) {
-                Log.d(TAG, "Glide loading did not produce file, falling back to openMediaStream for " + mediaUri);
+                SafeLog.d(TAG, "Glide loading did not produce file, falling back to openMediaStream");
                 try (InputStream in = openMediaStream(context, resolver, mediaUri);
                      OutputStream out = new FileOutputStream(tempFile)) {
                     if (in == null) {
-                        Log.e(TAG, "Failed to open input stream for " + mediaUri);
+                        SafeLog.e(TAG, "Failed to open media input stream");
                         return false;
                     }
                     byte[] buffer = new byte[16384];
@@ -1749,9 +1757,9 @@ public class LocalCreationDownloader {
                         } catch (Throwable ignored) {}
                     }
                     exif.saveAttributes();
-                    Log.d(TAG, "Embedded EXIF DateTimeOriginal: " + dateStr + " into " + fileName);
+                    SafeLog.d(TAG, "Embedded EXIF DateTimeOriginal: " + dateStr + " into " + fileName);
                 } catch (Throwable t) {
-                    Log.w(TAG, "Failed embedding EXIF attributes", t);
+                    SafeLog.w(TAG, "Failed embedding EXIF attributes", t);
                 }
             }
 
@@ -1798,7 +1806,7 @@ public class LocalCreationDownloader {
 
                 Uri inserted = resolver.insert(tableUri, values);
                 if (inserted == null) {
-                    Log.e(TAG, "Failed to create MediaStore entry for " + fileName);
+                    SafeLog.e(TAG, "Failed to create MediaStore entry for " + fileName);
                     return false;
                 }
 
@@ -1842,7 +1850,7 @@ public class LocalCreationDownloader {
             } else {
                 File dcimDir = getGooglePhotosDir();
                 if (!dcimDir.exists() && !dcimDir.mkdirs()) {
-                    Log.e(TAG, "Failed to create directory: " + dcimDir.getAbsolutePath());
+                    SafeLog.e(TAG, "Failed to create directory: " + dcimDir.getAbsolutePath());
                     return false;
                 }
 
@@ -1867,7 +1875,7 @@ public class LocalCreationDownloader {
                 return true;
             }
         } catch (Throwable t) {
-            Log.e(TAG, "Error streaming creation to local storage", t);
+            SafeLog.e(TAG, "Error streaming creation to local storage", t);
             return false;
         } finally {
             if (tempFile != null && tempFile.exists()) {
@@ -1924,7 +1932,7 @@ public class LocalCreationDownloader {
                 } catch (Throwable ignored) {}
             }
             if (glideClass == null) {
-                Log.w(TAG, "Glide class not found");
+                SafeLog.w(TAG, "Glide class not found");
                 return false;
             }
 
@@ -1950,16 +1958,16 @@ public class LocalCreationDownloader {
                 } catch (Throwable ignored) {}
             }
             if (withMethod == null) {
-                Log.w(TAG, "Glide.with method not found");
+                SafeLog.w(TAG, "Glide.with method not found");
                 return false;
             }
 
             Object requestManager = withMethod.invoke(null, context);
             if (requestManager == null) {
-                Log.w(TAG, "Glide.with(context) returned null");
+                SafeLog.w(TAG, "Glide.with(context) returned null");
                 return false;
             }
-            Log.d(TAG, "Resolved Glide requestManager: " + requestManager.getClass().getName());
+            SafeLog.d(TAG, "Resolved Glide requestManager: " + requestManager.getClass().getName());
 
             // 1. Try asFile() -> meu
             Method asFileMethod = null;
@@ -1992,11 +2000,11 @@ public class LocalCreationDownloader {
                     try {
                         Object requestBuilder = asFileMethod.invoke(requestManager);
                         if (requestBuilder != null && submitAndCopyFile(requestBuilder, model, tempFile)) {
-                            Log.i(TAG, "Successfully loaded file via Glide asFile() for model: " + model.getClass().getSimpleName());
+                            SafeLog.i(TAG, "Successfully loaded file via Glide asFile() for model: " + model.getClass().getSimpleName());
                             return true;
                         }
                     } catch (Throwable t) {
-                        Log.d(TAG, "Glide asFile() failed for " + model + ": " + t.getMessage());
+                        SafeLog.d(TAG, "Glide asFile() failed: " + t.getClass().getSimpleName());
                     }
                 }
             }
@@ -2025,16 +2033,16 @@ public class LocalCreationDownloader {
                     try {
                         Object requestBuilder = asBitmapMethod.invoke(requestManager);
                         if (requestBuilder != null && submitAndSaveBitmap(requestBuilder, model, tempFile)) {
-                            Log.i(TAG, "Successfully loaded bitmap via Glide asBitmap() for model: " + model.getClass().getSimpleName());
+                            SafeLog.i(TAG, "Successfully loaded bitmap via Glide asBitmap() for model: " + model.getClass().getSimpleName());
                             return true;
                         }
                     } catch (Throwable t) {
-                        Log.d(TAG, "Glide asBitmap() failed for " + model + ": " + t.getMessage());
+                        SafeLog.d(TAG, "Glide asBitmap() failed: " + t.getClass().getSimpleName());
                     }
                 }
             }
         } catch (Throwable t) {
-            Log.w(TAG, "tryLoadWithGlide failed with exception", t);
+            SafeLog.w(TAG, "tryLoadWithGlide failed with exception", t);
         }
         return false;
     }
@@ -2164,8 +2172,7 @@ public class LocalCreationDownloader {
             String[] scopes = new String[] {
                 "oauth2:https://www.googleapis.com/auth/photos",
                 "oauth2:https://www.googleapis.com/auth/photos.image.readonly",
-                "oauth2:openid https://www.googleapis.com/auth/mobileapps.native https://www.googleapis.com/auth/photos.native",
-                "oauth2:openid"
+                "oauth2:openid https://www.googleapis.com/auth/mobileapps.native https://www.googleapis.com/auth/photos.native"
             };
             Bundle options = new Bundle();
             try {
@@ -2191,11 +2198,8 @@ public class LocalCreationDownloader {
                     }
                 }
             }
-            for (Account acc : accounts) {
-                if (!orderedAccounts.contains(acc)) {
-                    orderedAccounts.add(acc);
-                }
-            }
+            // Never silently use a different signed-in account's credentials.
+            if (activeEmail == null && accounts.length == 1) orderedAccounts.add(accounts[0]);
 
             for (Account acc : orderedAccounts) {
                 for (String scope : scopes) {
@@ -2205,7 +2209,7 @@ public class LocalCreationDownloader {
                         if (bundle != null) {
                             String token = bundle.getString(AccountManager.KEY_AUTHTOKEN);
                             if (token != null && !token.isEmpty()) {
-                                Log.d(TAG, "Successfully acquired auth token for " + acc.name + " scope " + scope);
+                                SafeLog.d(TAG, "Successfully acquired media auth token");
                                 return token;
                             }
                         }
@@ -2213,7 +2217,7 @@ public class LocalCreationDownloader {
                 }
             }
         } catch (Throwable t) {
-            Log.w(TAG, "Failed getting auth token", t);
+            SafeLog.w(TAG, "Failed getting auth token", t);
         }
         return null;
     }
@@ -2241,40 +2245,41 @@ public class LocalCreationDownloader {
                 } else {
                     urlStr = urlStr + "=d";
                 }
-                Log.d(TAG, "Upgraded Fife URL to original quality: " + urlStr);
+                SafeLog.d(TAG, "Upgraded Fife URL to original quality");
             }
 
+            if (!TrustedGoogleMedia.isMediaUrl(urlStr)) {
+                throw new java.io.IOException("Untrusted media URL blocked");
+            }
             String authToken = getAuthToken(context);
             java.net.HttpURLConnection conn = openHttpConnection(urlStr, authToken);
             int responseCode = conn.getResponseCode();
             if (responseCode >= 400) {
-                Log.w(TAG, "HTTP " + responseCode + " for URL: " + urlStr + " — falling back to original URI");
+                SafeLog.w(TAG, "HTTP " + responseCode + " — falling back to original URI");
                 conn.disconnect();
                 conn = openHttpConnection(uri.toString(), authToken);
                 responseCode = conn.getResponseCode();
                 if (responseCode >= 400 && authToken != null) {
-                    Log.w(TAG, "HTTP " + responseCode + " with auth — trying anonymous connection to original URI");
+                    SafeLog.w(TAG, "HTTP " + responseCode + " with auth — trying anonymous connection to original URI");
                     conn.disconnect();
                     conn = openHttpConnection(uri.toString(), null);
                 }
             }
-            return conn.getInputStream();
+            final java.net.HttpURLConnection activeConnection = conn;
+            try {
+                return new java.io.FilterInputStream(conn.getInputStream()) {
+                    @Override public void close() throws java.io.IOException {
+                        try { super.close(); } finally { activeConnection.disconnect(); }
+                    }
+                };
+            } catch (Exception e) { conn.disconnect(); throw e; }
         } else {
             return resolver.openInputStream(uri);
         }
     }
 
     private static java.net.HttpURLConnection openHttpConnection(String urlStr, String authToken) throws Exception {
-        java.net.HttpURLConnection conn = (java.net.HttpURLConnection) new java.net.URL(urlStr).openConnection();
-        conn.setConnectTimeout(15000);
-        conn.setReadTimeout(60000);
-        conn.setInstanceFollowRedirects(true);
-        conn.setRequestProperty("User-Agent", "Mozilla/5.0");
-        if (authToken != null && !authToken.isEmpty()) {
-            conn.setRequestProperty("Authorization", "Bearer " + authToken);
-            Log.d(TAG, "Attached Authorization Bearer token to HTTP request");
-        }
-        return conn;
+        return TrustedGoogleMedia.open(urlStr, authToken);
     }
 
     private static Uri tryResolveViaProvider(Object provider, Object mediaItem, String[] qualityClasses) {
@@ -2440,14 +2445,14 @@ public class LocalCreationDownloader {
             Matcher fm = fifePattern.matcher(str);
             if (fm.find()) {
                 String url = fm.group();
-                Log.d(TAG, "Extracted Fife URL from mediaItem toString: " + url);
+                SafeLog.d(TAG, "Extracted Fife URL from mediaItem");
                 return Uri.parse(url);
             }
             Pattern generalUrlPattern = Pattern.compile("https?://[^'\"\\s,\\]\\}]+");
             Matcher gm = generalUrlPattern.matcher(str);
             if (gm.find()) {
                 String url = gm.group();
-                Log.d(TAG, "Extracted URL from mediaItem toString: " + url);
+                SafeLog.d(TAG, "Extracted URL from mediaItem");
                 return Uri.parse(url);
             }
             // Check for mediaKey in toString
@@ -2456,25 +2461,25 @@ public class LocalCreationDownloader {
             if (km.find()) {
                 String key = km.group(1);
                 String fifeUrl = "https://lh3.googleusercontent.com/" + key + "=d";
-                Log.d(TAG, "Constructed Fife URL from mediaKey in toString: " + fifeUrl);
+                SafeLog.d(TAG, "Constructed Fife URL from mediaKey");
                 return Uri.parse(fifeUrl);
             }
         } catch (Throwable t) {
-            Log.w(TAG, "Error matching URL in toString", t);
+            SafeLog.w(TAG, "Error matching URL in toString", t);
         }
 
         // Attempt 5: Extract URL from mediaItem features (e.g. MediaDisplayFeature -> RemoteMediaModel / FifeUrl)
         try {
             String url = extractUrlFromObject(mediaItem, 0);
             if (url != null && !url.isEmpty()) {
-                Log.d(TAG, "Resolved creation URL from mediaItem features: " + url);
+                SafeLog.d(TAG, "Resolved creation URL from mediaItem features");
                 return Uri.parse(url);
             }
         } catch (Throwable t) {
-            Log.w(TAG, "Error in extractUrlFromObject", t);
+            SafeLog.w(TAG, "Error in extractUrlFromObject", t);
         }
 
-        Log.w(TAG, "Failed resolving media URI via all providers for item: " + mediaItem);
+        SafeLog.w(TAG, "Failed resolving media URI via all providers");
         return null;
     }
 
@@ -2592,12 +2597,12 @@ public class LocalCreationDownloader {
                 if (m.getName().equals("c") && m.getParameterTypes().length == 1) {
                     m.setAccessible(true);
                     m.invoke(mixin, mediaList);
-                    Log.d(TAG, "Invoked mixin.c(mediaList) directly");
+                    SafeLog.d(TAG, "Invoked mixin.c(mediaList) directly");
                     return;
                 }
             }
         } catch (Throwable t) {
-            Log.w(TAG, "Failed invoking mixin.c", t);
+            SafeLog.w(TAG, "Failed invoking mixin.c", t);
         }
 
         // Generic fallback for any 1-arg void method matching mediaList
@@ -2608,10 +2613,10 @@ public class LocalCreationDownloader {
                     try {
                         m.setAccessible(true);
                         m.invoke(mixin, mediaList);
-                        Log.d(TAG, "Invoked notify method: " + m.getName());
+                        SafeLog.d(TAG, "Invoked notify method: " + m.getName());
                         return;
                     } catch (Throwable t) {
-                        Log.w(TAG, "Failed invoking notify method", t);
+                        SafeLog.w(TAG, "Failed invoking notify method", t);
                     }
                 }
             }
@@ -2640,7 +2645,7 @@ public class LocalCreationDownloader {
                                     if (tm.getName().equals("s") || tm.getName().equals("advance")) {
                                         tm.setAccessible(true);
                                         tm.invoke(target);
-                                        Log.d(TAG, "Notified story UI via " + tm.getName());
+                                        SafeLog.d(TAG, "Notified story UI via " + tm.getName());
                                         return;
                                     }
                                 }
@@ -2650,7 +2655,7 @@ public class LocalCreationDownloader {
                 }
             }
         } catch (Throwable t) {
-            Log.w(TAG, "Could not notify story UI: " + t.getMessage());
+            SafeLog.w(TAG, "Could not notify story UI: " + t.getMessage());
         }
     }
 
@@ -2689,7 +2694,7 @@ public class LocalCreationDownloader {
                     }
                 }
             } catch (Throwable t) {
-                Log.w(TAG, "safeSlm fallback error: " + t.getMessage());
+                SafeLog.w(TAG, "safeSlm fallback error: " + t.getMessage());
             }
         }
         return null;

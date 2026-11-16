@@ -976,6 +976,8 @@ public final class GooglePhotosAccountAvatar {
         Logger.printDebug(() -> "Requesting userinfo: " + USER_INFO_URL);
         HttpURLConnection conn = (HttpURLConnection) new URL(USER_INFO_URL).openConnection();
         conn.setRequestMethod("GET");
+        // This authenticated API has a fixed endpoint; never forward its token on redirects.
+        conn.setInstanceFollowRedirects(false);
         conn.setRequestProperty("Authorization", "Bearer " + token);
         conn.setRequestProperty("Accept", "application/json");
         conn.setConnectTimeout(10000);

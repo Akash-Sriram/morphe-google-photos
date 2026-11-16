@@ -60,7 +60,7 @@ import app.morphe.extension.shared.patches.toolkit.NativeToolkitDialog;
  */
 public final class MorpheSettingsScreen {
 
-    private static final String MORPHE_VERSION = "v1.17.0";
+    private static final String MORPHE_VERSION = "v" + app.morphe.extension.shared.Utils.getPatchesReleaseVersion();
     private static final String GITHUB_URL = "https://github.com/Akash-Sriram/morphe-google-photos";
 
     private MorpheSettingsScreen() {}
