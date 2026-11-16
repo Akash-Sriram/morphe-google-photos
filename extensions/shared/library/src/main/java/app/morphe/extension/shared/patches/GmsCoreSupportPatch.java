@@ -78,6 +78,20 @@ public class GmsCoreSupportPatch {
         return resolveRegisteredAccountId(context, null);
     }
 
+    public static int resolveRegisteredAccountId(Context context, int currentId) {
+        if (currentId >= 0) {
+            return currentId;
+        }
+        return resolveRegisteredAccountId(context, null);
+    }
+
+    public static int resolveBackupAccount(int currentId, String gmsEmail, Object accountStore, Context context) {
+        if (currentId >= 0) {
+            return currentId;
+        }
+        return resolveRegisteredAccountFromEmail(gmsEmail, accountStore, context);
+    }
+
     /**
      * Resolves the registered Google account ID from Google Photos native prefs (accounts.xml)
      * or the runtime AccountStore (cbeg).

@@ -601,15 +601,13 @@ val gmsCoreSupportPatch = gmsCoreSupportPatch(
                                 mutableSyncMethod.addInstructions(
                                     ifEqIndex,
                                     """
-                                    if-ne v$accountReg, v$minusOneReg, :account_resolved
                                     iget-object v5, v$gmsSettingsReg, $checkCastType->$emailField:Ljava/lang/String;
                                     iget-object v6, v$thisReg, ${syncMethod.definingClass}->$accountStoreField:Lcuye;
                                     invoke-interface {v6}, Lcuye;->a()Ljava/lang/Object;
                                     move-result-object v6
                                     iget-object v7, v$thisReg, ${syncMethod.definingClass}->$contextField:Landroid/content/Context;
-                                    invoke-static {v5, v6, v7}, Lapp/morphe/extension/shared/patches/GmsCoreSupportPatch;->resolveRegisteredAccountFromEmail(Ljava/lang/String;Ljava/lang/Object;Landroid/content/Context;)I
+                                    invoke-static {v$accountReg, v5, v6, v7}, Lapp/morphe/extension/shared/patches/GmsCoreSupportPatch;->resolveBackupAccount(ILjava/lang/String;Ljava/lang/Object;Landroid/content/Context;)I
                                     move-result v$accountReg
-                                    :account_resolved
                                     """.trimIndent(),
                                 )
                             }
@@ -650,17 +648,14 @@ val gmsCoreSupportPatch = gmsCoreSupportPatch(
                                             val accountIdReg = (next1 as OneRegisterInstruction).registerA
                                             val ludiContextField = ludiClassDef.fields.firstOrNull { it.type == "Landroid/content/Context;" }?.name
                                             val ludiThisReg = ludiCMethod.implementation!!.registerCount - ludiCMethod.parameters.size - 1
-                                            val minusOneReg = (inst as? FiveRegisterInstruction)?.registerE ?: 3
 
                                             if (ludiContextField != null) {
                                                 mutableLudiCMethod.addInstructions(
                                                     i + 2,
                                                     """
-                                                    if-ne v$accountIdReg, v$minusOneReg, :has_account
                                                     iget-object v14, v$ludiThisReg, $ludiClassName->$ludiContextField:Landroid/content/Context;
-                                                    invoke-static {v14}, Lapp/morphe/extension/shared/patches/GmsCoreSupportPatch;->resolveRegisteredAccountId(Landroid/content/Context;)I
+                                                    invoke-static {v14, v$accountIdReg}, Lapp/morphe/extension/shared/patches/GmsCoreSupportPatch;->resolveRegisteredAccountId(Landroid/content/Context;I)I
                                                     move-result v$accountIdReg
-                                                    :has_account
                                                     """.trimIndent(),
                                                 )
                                                 break
