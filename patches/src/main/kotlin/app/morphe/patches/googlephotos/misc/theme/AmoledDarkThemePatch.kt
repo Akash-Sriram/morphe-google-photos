@@ -217,7 +217,6 @@ private val intermediateBaseThemes = setOf(
 private val protectedTranslucentThemes = mapOf(
     "Base.Theme.Photos.Expander" to "Theme.Photos.Deprecated.ActionBar",
     "Theme.Photos.Expander" to "Base.Theme.Photos.Expander",
-    "Theme.Photos.ThemedTransparent" to "Theme.Photos",
     "NativeSharesheetChipActivityExpander" to "Theme.Photos.Expander",
 )
 
