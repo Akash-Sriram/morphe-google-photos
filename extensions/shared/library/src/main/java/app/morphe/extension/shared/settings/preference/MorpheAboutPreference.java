@@ -220,7 +220,7 @@ public class MorpheAboutPreference extends Preference {
         ));
 
         // Logo with Morphe gradient border.
-        if (isNetworkConnected) {
+        if (isNetworkConnected && app.morphe.extension.shared.requests.TrustedGoogleMedia.isHost(AboutRoutes.aboutLogoUrl, "morphe.software")) {
             html.append(String.format("""
                     <div class="logo-container">
                         <div class="logo-inner">
@@ -229,17 +229,17 @@ public class MorpheAboutPreference extends Preference {
                             </div>
                         </div>
                     </div>
-                    """, AboutRoutes.aboutLogoUrl));
+                    """, android.text.TextUtils.htmlEncode(AboutRoutes.aboutLogoUrl)));
         }
 
         String appPatchesVersion = Utils.getPatchesReleaseVersion();
 
         // Description with version long-press hook
         html.append("<p id=\"version-text\" style=\"cursor: pointer; -webkit-user-select: none; user-select: none; padding: 4px; border-radius: 8px;\">").append(
-                useNonBreakingHyphens(currentVersion == null || appPatchesVersion.equalsIgnoreCase(currentVersion)
+                useNonBreakingHyphens(android.text.TextUtils.htmlEncode(currentVersion == null || appPatchesVersion.equalsIgnoreCase(currentVersion)
                         ? getString("morphe_settings_about_links_body_version_current", appPatchesVersion)
                         : getString("morphe_settings_about_links_body_version_outdated", appPatchesVersion, currentVersion)
-                )
+                ))
         ).append("</p>");
         html.append("<script>"
                 + "let pTimer; const el = document.getElementById('version-text');"
@@ -272,8 +272,9 @@ public class MorpheAboutPreference extends Preference {
 
         // Link buttons.
         for (WebLink link : aboutLinks) {
-            html.append("<a href=\"").append(link.url).append("\" class=\"link-button\">")
-                    .append(link.name).append("</a>");
+            if ("#".equals(link.url)) continue;
+            html.append("<a href=\"").append(android.text.TextUtils.htmlEncode(link.url)).append("\" class=\"link-button\">")
+                    .append(android.text.TextUtils.htmlEncode(link.name)).append("</a>");
         }
 
         html.append("""
@@ -492,7 +493,10 @@ class WebLink {
 
     WebLink(boolean preferred, String name, String url) {
         this.preferred = preferred;
-        this.url = url;
+        // Remote metadata must not introduce javascript:, intent:, or local-file links.
+        Uri parsed = Uri.parse(url);
+        this.url = "https".equalsIgnoreCase(parsed.getScheme())
+                && parsed.getHost() != null && parsed.getUserInfo() == null ? url : "#";
         String localizedNameKey = webLinkNameReplacements.get(name.toLowerCase(Locale.US));
         this.name = (localizedNameKey != null) ? str(localizedNameKey) : name;
     }
@@ -565,6 +569,7 @@ class AboutRoutes {
 
             JSONObject json = Requester.parseJSONObjectAndDisconnect(connection);
             version = json.getString("version");
+            if (!version.matches("v?[0-9]+(?:\\.[0-9]+){1,3}(?:[-+][A-Za-z0-9.-]+)?")) return null;
             if (version.startsWith("v")) {
                 version = version.substring(1);
             }

@@ -84,6 +84,8 @@ import java.lang.reflect.Constructor;
 import java.lang.reflect.Method;
 
 import app.morphe.extension.shared.Logger;
+import app.morphe.extension.shared.diagnostics.DiagnosticRedactor;
+import app.morphe.extension.shared.requests.TrustedGoogleMedia;
 import app.morphe.extension.shared.patches.PhenotypeFlagManager;
 import app.morphe.extension.shared.patches.PhenotypeFlagManager.MaterialVectorDrawable;
 import app.morphe.extension.shared.patches.PhenotypeFlagManager.Theme;
@@ -3078,7 +3080,12 @@ public class NativeToolkitDialog {
         if ("exportDcim".equals(actionId)) {
             exportItemsToDcim(activity, items, density, theme);
         } else if ("exportMetadata".equals(actionId)) {
-            exportCsvFile(activity, items);
+            new android.app.AlertDialog.Builder(activity).setTitle("Export CSV")
+                .setItems(new String[]{"Basic CSV", "Full CSV (includes locations, descriptions and private links)"}, (d, which) -> {
+                    if (which == 0) exportCsvFile(activity, items, false);
+                    else new android.app.AlertDialog.Builder(activity).setMessage("Full CSV contains personal metadata and private media links. Save it?")
+                        .setPositiveButton("Save", (dialog, button) -> exportCsvFile(activity, items, true)).setNegativeButton("Cancel", null).show();
+                }).show();
         } else if ("toNewAlbum".equals(actionId)) {
             showNewAlbumDialog(activity, items, refreshRunner, density, theme);
         } else if ("toExistingAlbum".equals(actionId)) {
@@ -3098,7 +3105,20 @@ public class NativeToolkitDialog {
                     ? "These photos & videos will be hidden and won’t show up as you scroll through Google Photos or in other apps."
                     : "These photos & videos will be hidden and won’t show up as you scroll through Google Photos or in other apps, and won’t be backed up.";
             showActionConfirmDialog(activity, title, msg, "Move", () -> {
-                executeDbActionAsync(activity, actionId, items, null, refreshRunner);
+                StorageScanner.AccountInfo capturedAccount = currentAccount;
+                List<StorageScanner.MediaItem> capturedItems = new ArrayList<>(items);
+                THREAD_POOL.execute(() -> {
+                    boolean local = capturedAccount != null && capturedItems.stream().anyMatch(it -> StorageScanner.resolveLocalFilePath(capturedAccount, it.dedupKey) != null);
+                    MAIN_HANDLER.post(() -> {
+                        Runnable move = () -> {
+                            if (currentAccount == capturedAccount && !activity.isFinishing() && !activity.isDestroyed())
+                                executeDbActionAsync(activity, actionId, capturedItems, null, refreshRunner);
+                        };
+                        if (local && Build.VERSION.SDK_INT >= 30 && !Environment.isExternalStorageManager())
+                            app.morphe.extension.shared.requests.AllFilesPermission.request(activity, move);
+                        else move.run();
+                    });
+                });
             }, density, theme);
         } else if ("unLock".equals(actionId)) {
             int count = items.size();
@@ -3523,14 +3543,14 @@ public class NativeToolkitDialog {
         });
     }
 
-    private static void exportCsvFile(Activity activity, List<StorageScanner.MediaItem> items) {
+    private static void exportCsvFile(Activity activity, List<StorageScanner.MediaItem> items, boolean full) {
         THREAD_POOL.execute(() -> {
             try {
                 File dir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS);
                 if (!dir.exists()) dir.mkdirs();
                 String name = "Google_Photos_Toolkit_" + FILE_DATE_FORMAT.format(new Date()) + ".csv";
                 File file = new File(dir, name);
-                String csv = StorageScanner.exportToCsv(items);
+                String csv = StorageScanner.exportToCsv(items, full);
                 try (FileOutputStream fos = new FileOutputStream(file)) {
                     fos.write(csv.getBytes(StandardCharsets.UTF_8));
                 }
@@ -3763,28 +3783,17 @@ public class NativeToolkitDialog {
     }
 
     private static void downloadRemoteFile(String urlStr, File dst, String authToken) throws Exception {
-        URL u = new URL(urlStr);
-        HttpURLConnection conn = (HttpURLConnection) u.openConnection();
-        conn.setConnectTimeout(15000);
-        conn.setReadTimeout(60000);
-        conn.setInstanceFollowRedirects(true);
-        conn.setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android)");
-        if (authToken != null && !authToken.isEmpty()) {
-            conn.setRequestProperty("Authorization", "Bearer " + authToken);
-        }
+        HttpURLConnection conn = TrustedGoogleMedia.open(urlStr, authToken);
         int code = conn.getResponseCode();
-        // If authorized request failed with 401/403/404, retry once anonymously in case URL is public CDN
+        // Public Google CDN media can still be downloaded without credentials.
         if ((code == 401 || code == 403 || code == 404) && authToken != null) {
             conn.disconnect();
-            conn = (HttpURLConnection) u.openConnection();
-            conn.setConnectTimeout(15000);
-            conn.setReadTimeout(60000);
-            conn.setInstanceFollowRedirects(true);
-            conn.setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android)");
+            conn = TrustedGoogleMedia.open(urlStr, null);
             code = conn.getResponseCode();
         }
         if (code >= 400) {
-            throw new IOException("HTTP " + code + " (" + conn.getResponseMessage() + ")");
+            conn.disconnect();
+            throw new TrustedGoogleMedia.DownloadException(code == 401 || code == 403 ? TrustedGoogleMedia.Reason.AUTH_FAILED : TrustedGoogleMedia.Reason.HTTP_ERROR, "HTTP " + code);
         }
         try (InputStream in = conn.getInputStream();
              FileOutputStream out = new FileOutputStream(dst)) {
@@ -3909,7 +3918,7 @@ public class NativeToolkitDialog {
             }
             ClipboardManager cm = (ClipboardManager) activity.getSystemService(Context.CLIPBOARD_SERVICE);
             if (cm != null) {
-                cm.setPrimaryClip(ClipData.newPlainText("Toolkit Export Errors", sb.toString()));
+                cm.setPrimaryClip(ClipData.newPlainText("Toolkit Export Errors", DiagnosticRedactor.sanitize(sb.toString())));
                 Toast.makeText(activity, "Error report copied to clipboard", Toast.LENGTH_SHORT).show();
             }
         });
@@ -4069,18 +4078,9 @@ public class NativeToolkitDialog {
                         baseName += (item.mimeType != null && item.mimeType.contains("video")) ? ".mp4" : ".jpg";
                     }
 
-                    File destFile = new File(exportDir, baseName);
-                    int count = 1;
-                    while (destFile.exists()) {
-                        int dot = baseName.lastIndexOf('.');
-                        if (dot > 0) {
-                            destFile = new File(exportDir, baseName.substring(0, dot) + "_" + count + baseName.substring(dot));
-                        } else {
-                            destFile = new File(exportDir, baseName + "_" + count);
-                        }
-                        count++;
-                    }
-
+                    baseName = app.morphe.extension.shared.requests.ExportSafety.filename(baseName);
+                    File destFile = File.createTempFile("morphe_export_", ".tmp", activity.getCacheDir());
+                    try {
                     boolean copied = false;
                     // 1. Direct file path from remoteUrl
                     if (item.remoteUrl != null && (item.remoteUrl.startsWith("/") || item.remoteUrl.startsWith("file://"))) {
@@ -4130,10 +4130,14 @@ public class NativeToolkitDialog {
                     }
 
                     // 3. Authenticated Google Photos Glide download
-                    if (!copied && item.remoteUrl != null && (item.remoteUrl.startsWith("http://") || item.remoteUrl.startsWith("https://"))) {
+                    if (!copied && item.remoteUrl != null && (item.remoteUrl.startsWith("https:") || item.remoteUrl.startsWith("http:"))
+                            && !TrustedGoogleMedia.isMediaUrl(item.remoteUrl)) {
+                        throw new TrustedGoogleMedia.DownloadException(TrustedGoogleMedia.Reason.UNTRUSTED_HOST, "update the patch if Google changed its media host");
+                    }
+                    if (!copied && TrustedGoogleMedia.isMediaUrl(item.remoteUrl)) {
                         int accountId = currentAccount != null ? currentAccount.accountId : -1;
                         try {
-                            File remoteCachedFile = downloadRemoteFileGlide(activity, item.remoteUrl, accountId);
+                            File remoteCachedFile = null; // HTTP media uses the checked transport below.
                             if (remoteCachedFile != null && remoteCachedFile.exists() && remoteCachedFile.length() > 0) {
                                 copyFile(remoteCachedFile, destFile);
                                 copied = destFile.exists() && destFile.length() > 0;
@@ -4195,26 +4199,27 @@ public class NativeToolkitDialog {
                                 }
                             } catch (Throwable t) {
                                 unchangedPaths.add(destFile.getAbsolutePath());
-                                Logger.printException(() -> "Could not tag exported quota item " + item.filename, t);
+                                Logger.printException(() -> "Could not tag exported quota item " + "[MEDIA]", t);
                             }
                         }
+                        exportedPaths.add(app.morphe.extension.shared.requests.MediaExport.publish(activity, destFile, baseName, item.mimeType));
                         successCount++;
-                        exportedPaths.add(destFile.getAbsolutePath());
                     } else {
                         String err = (lastError != null ? lastError : "Source media not found or inaccessible")
                                 + (item.quotaBytes > 0 ? " (preview fallback is disabled for quota items)" : "");
                         failures.add(new ExportFailure(item, item.filename, err));
-                        Logger.printInfo(() -> "Export failed for " + item.filename + ": " + err);
+                        Logger.printInfo(() -> "Export failed for " + "[MEDIA]" + ": " + err);
                     }
+                    } finally { destFile.delete(); }
                 } catch (Throwable t) {
-                    Logger.printException(() -> "Error exporting item " + item.filename, t);
+                    Logger.printException(() -> "Error exporting item " + "[MEDIA]", t);
                     failures.add(new ExportFailure(item, item.filename, t.getMessage() != null ? t.getMessage() : t.getClass().getSimpleName()));
                 }
             }
 
             final int finalSuccess = successCount;
             if (!exportedPaths.isEmpty()) {
-                String[] pathsArray = exportedPaths.toArray(new String[0]);
+                String[] pathsArray = exportedPaths.stream().filter(path -> !path.startsWith("content:")).toArray(String[]::new);
                 try {
                     MediaScannerConnection.scanFile(activity, pathsArray, null, (path, uri) -> {
                         Logger.printInfo(() -> "Exported & indexed in Pictures: " + path);
@@ -5181,6 +5186,7 @@ public class NativeToolkitDialog {
 
     private static Object loadGlideRequestBuilder(Object requestManager, String urlStr, int accountId) {
         if (requestManager == null || urlStr == null) return null;
+        if (urlStr.startsWith("http://") || urlStr.startsWith("https://")) return null;
         try {
             Class<?> rmClass = requestManager.getClass();
 
@@ -5547,15 +5553,19 @@ public class NativeToolkitDialog {
         // 3. Secondary fallback: raw HTTP connection (works for unauthenticated public URLs)
         try {
             String thumbUrl = urlStr.replace("=s0-d", "=s140-c");
-            URL u = new URL(thumbUrl);
-            HttpURLConnection conn = (HttpURLConnection) u.openConnection();
-            conn.setConnectTimeout(2500);
-            conn.setReadTimeout(2500);
+            HttpURLConnection conn = TrustedGoogleMedia.open(thumbUrl, null);
+            int status = conn.getResponseCode();
+            StorageScanner.AccountInfo thumbnailAccount = currentAccount;
+            if ((status == 401 || status == 403) && thumbnailAccount != null && thumbnailAccount.accountId == accountId) {
+                conn.disconnect();
+                String token = app.morphe.extension.shared.patches.LocalCreationDownloader.getAuthToken(context, thumbnailAccount.accountName);
+                conn = TrustedGoogleMedia.open(thumbUrl, token);
+            }
             try (InputStream is = conn.getInputStream()) {
                 BitmapFactory.Options opts = new BitmapFactory.Options();
                 opts.inPreferredConfig = Bitmap.Config.RGB_565;
                 return BitmapFactory.decodeStream(is, null, opts);
-            }
+            } finally { conn.disconnect(); }
         } catch (Throwable ignored) {
             return null;
         }

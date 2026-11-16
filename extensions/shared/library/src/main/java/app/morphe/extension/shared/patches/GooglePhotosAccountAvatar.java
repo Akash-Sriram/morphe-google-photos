@@ -957,6 +957,8 @@ public final class GooglePhotosAccountAvatar {
     private static Bitmap downloadAvatar(String token) throws Exception {
         HttpURLConnection conn = (HttpURLConnection) new URL(USER_INFO_URL).openConnection();
         conn.setRequestMethod("GET");
+        // This authenticated API has a fixed endpoint; never forward its token on redirects.
+        conn.setInstanceFollowRedirects(false);
         conn.setRequestProperty("Authorization", "Bearer " + token);
         conn.setRequestProperty("Accept", "application/json");
         conn.setConnectTimeout(10000);

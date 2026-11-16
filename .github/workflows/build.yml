@@ -41,6 +41,9 @@ jobs:
           distribution: 'temurin'
           java-version: '21'
 
+      - name: Security regression checks
+        run: sh tests/security/run.sh
+
       - name: Cache Gradle
         uses: burrunan/gradle-cache-action@v3
 

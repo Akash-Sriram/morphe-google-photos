@@ -20,7 +20,7 @@ import android.os.Looper;
 import android.os.Parcelable;
 import android.provider.MediaStore;
 import android.provider.Settings;
-import android.util.Log;
+import app.morphe.extension.shared.diagnostics.SafeLog;
 import android.widget.Toast;
 
 import java.io.ByteArrayOutputStream;
@@ -599,7 +599,7 @@ public class StorageScanner {
             }
 
             albums.addAll(albumMap.values());
-            Log.i("morphe: StorageScanner", "getAvailableAlbums found " + albums.size() + " albums");
+            SafeLog.i("morphe: StorageScanner", "getAvailableAlbums found " + albums.size() + " albums");
         } catch (Throwable t) {
             Logger.printException(() -> "Error fetching albums", t);
         } finally {
@@ -2454,7 +2454,7 @@ public class StorageScanner {
                 }
             }
         } catch (Throwable t) {
-            Log.w("morphe: StorageScanner", "Error resolving media ids from database", t);
+            SafeLog.w("morphe: StorageScanner", "Error resolving media ids from database", t);
         }
         return ids;
     }
@@ -2477,7 +2477,7 @@ public class StorageScanner {
                         result.addAll(loaded);
                     }
                 } catch (Throwable t) {
-                    Log.e("morphe: StorageScanner", "Error loading core media items chunk (" + chunkKeys.size() + " keys)", t);
+                    SafeLog.e("morphe: StorageScanner", "Error loading core media items chunk (" + chunkKeys.size() + " keys)", t);
                 }
             }
         }
@@ -2497,13 +2497,13 @@ public class StorageScanner {
                             result.addAll(loaded);
                         }
                     } catch (Throwable t) {
-                        Log.e("morphe: StorageScanner", "Error loading core media items by ID chunk (" + chunkIds.size() + " ids)", t);
+                        SafeLog.e("morphe: StorageScanner", "Error loading core media items by ID chunk (" + chunkIds.size() + " ids)", t);
                     }
                 }
             }
         }
 
-        Log.i("morphe: StorageScanner", "Loaded " + result.size() + " core media items for " + items.size() + " requested items");
+        SafeLog.i("morphe: StorageScanner", "Loaded " + result.size() + " core media items for " + items.size() + " requested items");
         return result;
     }
 
@@ -2595,7 +2595,7 @@ public class StorageScanner {
 
     private static boolean executeOnlineTrashTask(Context context, int accountId, List<MediaItem> items) {
         if (context == null || items == null || items.isEmpty()) return false;
-        Log.i("morphe: StorageScanner", "executeOnlineTrashTask: starting for " + items.size() + " items");
+        SafeLog.i("morphe: StorageScanner", "executeOnlineTrashTask: starting for " + items.size() + " items");
 
         int chunkSize = 100;
         int totalChunks = (items.size() + chunkSize - 1) / chunkSize;
@@ -2643,11 +2643,11 @@ public class StorageScanner {
                         if (statusCode == 200) chunkSuccess = true;
                     }
                     if (chunkSuccess) {
-                        Log.i("morphe: StorageScanner", "MoveToTrashActionWrapper succeeded for chunk " + chunkIndex + "/" + totalChunks);
+                        SafeLog.i("morphe: StorageScanner", "MoveToTrashActionWrapper succeeded for chunk " + chunkIndex + "/" + totalChunks);
                     }
                 }
             } catch (Throwable t) {
-                Log.w("morphe: StorageScanner", "MoveToTrashActionWrapper failed for chunk " + chunkIndex, t);
+                SafeLog.w("morphe: StorageScanner", "MoveToTrashActionWrapper failed for chunk " + chunkIndex, t);
             }
 
             // Strategy 2: bjir with CORRECT keys (col2 = remote mediaKeys, col3 = dedupKeys)
@@ -2701,18 +2701,18 @@ public class StorageScanner {
                         Object ltvRes = dMethod.invoke(bjirAction, context, 0);
                         if (ltvRes != null && ltvRes.toString().contains("SUCCESS")) {
                             chunkSuccess = true;
-                            Log.i("morphe: StorageScanner", "bjir.d direct RPC succeeded for chunk " + chunkIndex);
+                            SafeLog.i("morphe: StorageScanner", "bjir.d direct RPC succeeded for chunk " + chunkIndex);
                         }
                     }
                 } catch (Throwable tBjir) {
-                    Log.w("morphe: StorageScanner", "bjir fallback failed for chunk " + chunkIndex, tBjir);
+                    SafeLog.w("morphe: StorageScanner", "bjir fallback failed for chunk " + chunkIndex, tBjir);
                 }
             }
 
             if (chunkSuccess) successCount++;
         }
 
-        Log.i("morphe: StorageScanner", "executeOnlineTrashTask finished: " + successCount + "/" + totalChunks + " chunks successful");
+        SafeLog.i("morphe: StorageScanner", "executeOnlineTrashTask finished: " + successCount + "/" + totalChunks + " chunks successful");
         return successCount > 0;
     }
 
@@ -2832,17 +2832,17 @@ public class StorageScanner {
         try {
             Object trashCollectionRef = createTrashMediaCollection(account.accountId);
             if (trashCollectionRef == null) {
-                Log.w("morphe: StorageScanner", "syncCloudTrashToLocalDb: Trash collection ref not found");
+                SafeLog.w("morphe: StorageScanner", "syncCloudTrashToLocalDb: Trash collection ref not found");
                 return;
             }
 
             List<?> allTrashMedia = loadMediaCollection(context, trashCollectionRef);
             if (allTrashMedia == null || allTrashMedia.isEmpty()) {
-                Log.i("morphe: StorageScanner", "syncCloudTrashToLocalDb: Trash collection returned 0 items");
+                SafeLog.i("morphe: StorageScanner", "syncCloudTrashToLocalDb: Trash collection returned 0 items");
                 return;
             }
 
-            Log.i("morphe: StorageScanner", "syncCloudTrashToLocalDb: Loaded " + allTrashMedia.size() + " items from trash collection");
+            SafeLog.i("morphe: StorageScanner", "syncCloudTrashToLocalDb: Loaded " + allTrashMedia.size() + " items from trash collection");
 
             String[] zonCandidates = ToolkitMappings.DEDUP_KEY_FEATURE_CLASSES;
             Class<?> zonClass = null;
@@ -2893,13 +2893,13 @@ public class StorageScanner {
                     updated += db.update("remote_media", cv, "media_key = ? AND (state != 2 OR trash_timestamp IS NULL OR trash_timestamp = 0)", new String[]{mk});
                 }
                 db.setTransactionSuccessful();
-                Log.i("morphe: StorageScanner", "syncCloudTrashToLocalDb: Marked " + updated + " cloud trash items as state=2 locally");
+                SafeLog.i("morphe: StorageScanner", "syncCloudTrashToLocalDb: Marked " + updated + " cloud trash items as state=2 locally");
             } finally {
                 db.endTransaction();
                 db.close();
             }
         } catch (Throwable t) {
-            Log.w("morphe: StorageScanner", "syncCloudTrashToLocalDb failed: " + t.getMessage());
+            SafeLog.w("morphe: StorageScanner", "syncCloudTrashToLocalDb failed: " + t.getMessage());
         }
     }
 
@@ -2910,17 +2910,17 @@ public class StorageScanner {
         try {
             Object trashCollectionRef = createTrashMediaCollection(accountId);
             if (trashCollectionRef == null) {
-                Log.w("morphe: StorageScanner", "loadTrashMediaItems: Failed to create TrashMediaCollection");
+                SafeLog.w("morphe: StorageScanner", "loadTrashMediaItems: Failed to create TrashMediaCollection");
                 return result;
             }
 
             List<?> allTrashMedia = loadMediaCollection(context, trashCollectionRef);
             if (allTrashMedia == null || allTrashMedia.isEmpty()) {
-                Log.w("morphe: StorageScanner", "loadTrashMediaItems: Trash collection returned 0 items");
+                SafeLog.w("morphe: StorageScanner", "loadTrashMediaItems: Trash collection returned 0 items");
                 return result;
             }
 
-            Log.i("morphe: StorageScanner", "loadTrashMediaItems: Loaded " + allTrashMedia.size() + " items from trash collection");
+            SafeLog.i("morphe: StorageScanner", "loadTrashMediaItems: Loaded " + allTrashMedia.size() + " items from trash collection");
 
             // Filter for matching items by dedupKey or mediaKey
             Set<String> targetDedupKeys = new HashSet<>();
@@ -2981,20 +2981,20 @@ public class StorageScanner {
 
             // Fallback: If feature matching returned 0 but trash collection has items, take all items
             if (result.isEmpty() && !allTrashMedia.isEmpty()) {
-                Log.i("morphe: StorageScanner", "loadTrashMediaItems: feature matching empty, using all " + allTrashMedia.size() + " trash collection items");
+                SafeLog.i("morphe: StorageScanner", "loadTrashMediaItems: feature matching empty, using all " + allTrashMedia.size() + " trash collection items");
                 result.addAll(allTrashMedia);
             }
         } catch (Throwable t) {
-            Log.e("morphe: StorageScanner", "Error in loadTrashMediaItems", t);
+            SafeLog.e("morphe: StorageScanner", "Error in loadTrashMediaItems", t);
         }
 
-        Log.i("morphe: StorageScanner", "loadTrashMediaItems: Returning " + result.size() + " items for restore");
+        SafeLog.i("morphe: StorageScanner", "loadTrashMediaItems: Returning " + result.size() + " items for restore");
         return result;
     }
 
     private static boolean executeOnlineRestoreTask(Context context, int accountId, List<MediaItem> items) {
         if (context == null || items == null || items.isEmpty()) return false;
-        Log.i("morphe: StorageScanner", "executeOnlineRestoreTask: starting for " + items.size() + " items");
+        SafeLog.i("morphe: StorageScanner", "executeOnlineRestoreTask: starting for " + items.size() + " items");
 
         int chunkSize = 100;
         int totalChunks = (items.size() + chunkSize - 1) / chunkSize;
@@ -3031,12 +3031,12 @@ public class StorageScanner {
                                 try {
                                     Object exc = res.getClass().getField("e").get(res);
                                     String msg = (String) res.getClass().getField("f").get(res);
-                                    Log.w("morphe: StorageScanner", "RestoreActionTask returned status " + statusCode + ", msg: " + msg, (Throwable) exc);
+                                    SafeLog.w("morphe: StorageScanner", "RestoreActionTask returned status " + statusCode + ", msg: " + msg, (Throwable) exc);
                                 } catch (Throwable ignored) {}
                             }
                         }
                     } catch (Throwable tTask) {
-                        Log.w("morphe: StorageScanner", "RestoreActionTask failed for chunk " + chunkIndex, tTask);
+                        SafeLog.w("morphe: StorageScanner", "RestoreActionTask failed for chunk " + chunkIndex, tTask);
                     }
 
                     // Strategy 2: Direct bjim.a + wqx.a RPC fallback
@@ -3055,34 +3055,34 @@ public class StorageScanner {
                             if (wqxAction != null) {
                                 Method execMethod = Class.forName("wqx").getMethod("a");
                                 Object execRes = execMethod.invoke(wqxAction);
-                                Log.i("morphe: StorageScanner", "Direct bjim.a restore returned: " + execRes);
+                                SafeLog.i("morphe: StorageScanner", "Direct bjim.a restore returned: " + execRes);
                                 chunkSuccess = true;
                             }
                         } catch (Throwable tBjim) {
-                            Log.w("morphe: StorageScanner", "Direct bjim restore fallback failed for chunk " + chunkIndex, tBjim);
+                            SafeLog.w("morphe: StorageScanner", "Direct bjim restore fallback failed for chunk " + chunkIndex, tBjim);
                         }
                     }
 
                     if (chunkSuccess) {
-                        Log.i("morphe: StorageScanner", "Online restore succeeded for chunk " + chunkIndex + "/" + totalChunks);
+                        SafeLog.i("morphe: StorageScanner", "Online restore succeeded for chunk " + chunkIndex + "/" + totalChunks);
                     }
                 } else {
-                    Log.w("morphe: StorageScanner", "RestoreActionTask chunk " + chunkIndex + ": 0 core items loaded");
+                    SafeLog.w("morphe: StorageScanner", "RestoreActionTask chunk " + chunkIndex + ": 0 core items loaded");
                 }
             } catch (Throwable t) {
-                Log.w("morphe: StorageScanner", "RestoreActionTask chunk " + chunkIndex + " failed", t);
+                SafeLog.w("morphe: StorageScanner", "RestoreActionTask chunk " + chunkIndex + " failed", t);
             }
 
             if (chunkSuccess) successCount++;
         }
 
-        Log.i("morphe: StorageScanner", "executeOnlineRestoreTask finished: " + successCount + "/" + totalChunks + " chunks successful");
+        SafeLog.i("morphe: StorageScanner", "executeOnlineRestoreTask finished: " + successCount + "/" + totalChunks + " chunks successful");
         return successCount > 0;
     }
 
     private static boolean executeOnlineArchiveTask(Context context, int accountId, List<MediaItem> items, boolean archive) {
         if (context == null || items == null || items.isEmpty()) return false;
-        Log.i("morphe: StorageScanner", "executeOnlineArchiveTask: starting for " + items.size() + " items, archive=" + archive);
+        SafeLog.i("morphe: StorageScanner", "executeOnlineArchiveTask: starting for " + items.size() + " items, archive=" + archive);
 
         int chunkSize = 100;
         int totalChunks = (items.size() + chunkSize - 1) / chunkSize;
@@ -3124,10 +3124,10 @@ public class StorageScanner {
                             } else {
                                 chunkSuccess = true;
                             }
-                            Log.i("morphe: StorageScanner", "Dispatched MediaUndoActionTask chunk " + chunkIndex + "/" + totalChunks);
+                            SafeLog.i("morphe: StorageScanner", "Dispatched MediaUndoActionTask chunk " + chunkIndex + "/" + totalChunks);
                         }
                     } catch (Throwable tTask) {
-                        Log.w("morphe: StorageScanner", "Error running MediaUndoActionTask chunk " + chunkIndex + ": " + tTask.getMessage());
+                        SafeLog.w("morphe: StorageScanner", "Error running MediaUndoActionTask chunk " + chunkIndex + ": " + tTask.getMessage());
                         // Fallback: direct archive service invocation (rsr.a / psu.a)
                         for (String psuCandidate : ToolkitMappings.ARCHIVE_SERVICE_CLASSES) {
                             try {
@@ -3142,7 +3142,7 @@ public class StorageScanner {
                                     }
                                 }
                             } catch (Throwable tPsu) {
-                                Log.w("morphe: StorageScanner", "Error in " + psuCandidate + ".a fallback: " + tPsu.getMessage());
+                                SafeLog.w("morphe: StorageScanner", "Error in " + psuCandidate + ".a fallback: " + tPsu.getMessage());
                             }
                         }
                     }
@@ -3179,13 +3179,13 @@ public class StorageScanner {
                                 try {
                                     ((Future<?>) future).get(15, TimeUnit.SECONDS);
                                     chunkSuccess = true;
-                                    Log.i("morphe: StorageScanner", "Direct archive RPC confirmed chunk " + chunkIndex + "/" + totalChunks);
+                                    SafeLog.i("morphe: StorageScanner", "Direct archive RPC confirmed chunk " + chunkIndex + "/" + totalChunks);
                                 } catch (Throwable tWait) {
-                                    Log.w("morphe: StorageScanner", "Direct archive RPC wait chunk " + chunkIndex + ": " + tWait.getMessage());
+                                    SafeLog.w("morphe: StorageScanner", "Direct archive RPC wait chunk " + chunkIndex + ": " + tWait.getMessage());
                                 }
                             }
                         } catch (Throwable tRpc) {
-                            Log.w("morphe: StorageScanner", "Error invoking psz.h RPC chunk " + chunkIndex + ": " + tRpc.getMessage());
+                            SafeLog.w("morphe: StorageScanner", "Error invoking psz.h RPC chunk " + chunkIndex + ": " + tRpc.getMessage());
                         }
 
                         // Enqueue via ActionWrapper & flush with flusher
@@ -3203,30 +3203,30 @@ public class StorageScanner {
                                 if (actionId != -1L) {
                                     flushActionQueue(context, accountId, actionId);
                                     chunkSuccess = true;
-                                    Log.i("morphe: StorageScanner", "ActionQueue flushed chunk " + chunkIndex + "/" + totalChunks);
+                                    SafeLog.i("morphe: StorageScanner", "ActionQueue flushed chunk " + chunkIndex + "/" + totalChunks);
                                 }
                             }
                         } catch (Throwable tQueue) {
-                            Log.w("morphe: StorageScanner", "Error in ActionWrapper/flusher chunk " + chunkIndex + ": " + tQueue.getMessage());
+                            SafeLog.w("morphe: StorageScanner", "Error in ActionWrapper/flusher chunk " + chunkIndex + ": " + tQueue.getMessage());
                         }
                     } catch (Throwable tPsz) {
-                        Log.w("morphe: StorageScanner", "Error constructing psz chunk " + chunkIndex + ": " + tPsz.getMessage());
+                        SafeLog.w("morphe: StorageScanner", "Error constructing psz chunk " + chunkIndex + ": " + tPsz.getMessage());
                     }
                 }
             } catch (Throwable tChunk) {
-                Log.e("morphe: StorageScanner", "Error processing chunk " + chunkIndex + "/" + totalChunks, tChunk);
+                SafeLog.e("morphe: StorageScanner", "Error processing chunk " + chunkIndex + "/" + totalChunks, tChunk);
             }
 
             if (chunkSuccess) successCount++;
         }
 
-        Log.i("morphe: StorageScanner", "executeOnlineArchiveTask finished: " + successCount + "/" + totalChunks + " chunks successful");
+        SafeLog.i("morphe: StorageScanner", "executeOnlineArchiveTask finished: " + successCount + "/" + totalChunks + " chunks successful");
         return successCount > 0;
     }
 
     private static boolean executeOnlineFavoriteTask(Context context, int accountId, List<MediaItem> items, boolean favorite) {
         if (context == null || items == null || items.isEmpty()) return false;
-        Log.i("morphe: StorageScanner", "executeOnlineFavoriteTask: starting for " + items.size() + " items, favorite=" + favorite);
+        SafeLog.i("morphe: StorageScanner", "executeOnlineFavoriteTask: starting for " + items.size() + " items, favorite=" + favorite);
 
         int chunkSize = 100;
         int totalChunks = (items.size() + chunkSize - 1) / chunkSize;
@@ -3259,19 +3259,19 @@ public class StorageScanner {
                         if (statusCode == 200) chunkSuccess = true;
                     }
                     if (chunkSuccess) {
-                        Log.i("morphe: StorageScanner", "FavoritesTask chunk " + chunkIndex + "/" + totalChunks + " succeeded");
+                        SafeLog.i("morphe: StorageScanner", "FavoritesTask chunk " + chunkIndex + "/" + totalChunks + " succeeded");
                     }
                 } else {
-                    Log.w("morphe: StorageScanner", "FavoritesTask chunk " + chunkIndex + ": 0 core items loaded");
+                    SafeLog.w("morphe: StorageScanner", "FavoritesTask chunk " + chunkIndex + ": 0 core items loaded");
                 }
             } catch (Throwable t) {
-                Log.w("morphe: StorageScanner", "Error invoking FavoritesTask chunk " + chunkIndex, t);
+                SafeLog.w("morphe: StorageScanner", "Error invoking FavoritesTask chunk " + chunkIndex, t);
             }
 
             if (chunkSuccess) successCount++;
         }
 
-        Log.i("morphe: StorageScanner", "executeOnlineFavoriteTask finished: " + successCount + "/" + totalChunks + " chunks successful");
+        SafeLog.i("morphe: StorageScanner", "executeOnlineFavoriteTask finished: " + successCount + "/" + totalChunks + " chunks successful");
         return successCount > 0;
     }
 
@@ -3315,7 +3315,7 @@ public class StorageScanner {
 
     private static boolean executeOnlineMarsMoveTask(Context context, int accountId, List<MediaItem> items) {
         if (context == null || items == null || items.isEmpty()) return false;
-        Log.i("morphe: StorageScanner", "executeOnlineMarsMoveTask: starting for " + items.size() + " items");
+        SafeLog.i("morphe: StorageScanner", "executeOnlineMarsMoveTask: starting for " + items.size() + " items");
 
         int chunkSize = 5;
         int totalChunks = (items.size() + chunkSize - 1) / chunkSize;
@@ -3362,7 +3362,7 @@ public class StorageScanner {
                                             rCode = moveResult.getClass().getField("d").getInt(moveResult);
                                         } catch (Throwable ignored) {}
 
-                                        Log.i("morphe: StorageScanner", "MarsMoveTask chunk " + chunkIndex + ": moved=" + moved + ", failed=" + failed + ", cancelled=" + cancelled + ", code=" + rCode);
+                                        SafeLog.i("morphe: StorageScanner", "MarsMoveTask chunk " + chunkIndex + ": moved=" + moved + ", failed=" + failed + ", cancelled=" + cancelled + ", code=" + rCode);
                                         if (moved > 0) {
                                             chunkSuccess = true;
                                             totalMovedCount += moved;
@@ -3370,31 +3370,31 @@ public class StorageScanner {
                                     }
                                 }
                             } catch (Throwable tBundle) {
-                                Log.w("morphe: StorageScanner", "Error reading mars_move_result bundle: " + tBundle.getMessage());
+                                SafeLog.w("morphe: StorageScanner", "Error reading mars_move_result bundle: " + tBundle.getMessage());
                             }
                             if (!chunkSuccess && totalMovedCount == 0) {
                                 try {
                                     int statusCode = res.getClass().getField("d").getInt(res);
                                     if (statusCode == 200) {
-                                        Log.i("morphe: StorageScanner", "MarsMoveTask returned statusCode 200 (fallback check)");
+                                        SafeLog.i("morphe: StorageScanner", "MarsMoveTask returned statusCode 200 (fallback check)");
                                     }
                                 } catch (Throwable ignored) {}
                             }
                         }
                     } else {
-                        Log.w("morphe: StorageScanner", "createMarsMoveTask returned null for chunk " + chunkIndex);
+                        SafeLog.w("morphe: StorageScanner", "createMarsMoveTask returned null for chunk " + chunkIndex);
                     }
                 } else {
-                    Log.w("morphe: StorageScanner", "loadCoreMediaItems returned 0 items for chunk " + chunkIndex);
+                    SafeLog.w("morphe: StorageScanner", "loadCoreMediaItems returned 0 items for chunk " + chunkIndex);
                 }
             } catch (Throwable t) {
-                Log.w("morphe: StorageScanner", "Error invoking MarsMoveTask chunk " + chunkIndex, t);
+                SafeLog.w("morphe: StorageScanner", "Error invoking MarsMoveTask chunk " + chunkIndex, t);
             }
 
             if (chunkSuccess) successCount++;
         }
 
-        Log.i("morphe: StorageScanner", "executeOnlineMarsMoveTask finished: " + successCount + "/" + totalChunks + " chunks successful, moved " + totalMovedCount + " items");
+        SafeLog.i("morphe: StorageScanner", "executeOnlineMarsMoveTask finished: " + successCount + "/" + totalChunks + " chunks successful, moved " + totalMovedCount + " items");
         return totalMovedCount > 0;
     }
 
@@ -3404,20 +3404,20 @@ public class StorageScanner {
     public static volatile java.util.function.Consumer<String> sActionProgressCallback = null;
 
     public static void onMarsGridActivityCreated(final Activity activity) {
-        Log.i("morphe: StorageScanner", "onMarsGridActivityCreated called: activity=" + activity + " pendingItems=" + sPendingUnlockItems + " accountId=" + sPendingUnlockAccountId);
+        SafeLog.i("morphe: StorageScanner", "onMarsGridActivityCreated called: activity=" + activity + " pendingItems=" + sPendingUnlockItems + " accountId=" + sPendingUnlockAccountId);
         if (activity == null) return;
         final List<MediaItem> itemsToUnlock = sPendingUnlockItems;
         final int accountId = sPendingUnlockAccountId;
         final Runnable onDoneCallback = sPendingUnlockCallback;
         if (itemsToUnlock == null || itemsToUnlock.isEmpty()) {
-            Log.w("morphe: StorageScanner", "onMarsGridActivityCreated: no pending items — skipping unlock");
+            SafeLog.w("morphe: StorageScanner", "onMarsGridActivityCreated: no pending items — skipping unlock");
             return;
         }
         sPendingUnlockItems = null;
         sPendingUnlockAccountId = -1;
         sPendingUnlockCallback = null;
 
-        Log.i("morphe: StorageScanner", "onMarsGridActivityCreated: starting auto-unlock for " + itemsToUnlock.size() + " items");
+        SafeLog.i("morphe: StorageScanner", "onMarsGridActivityCreated: starting auto-unlock for " + itemsToUnlock.size() + " items");
 
         new Handler(Looper.getMainLooper()).postDelayed(() -> {
             if (activity.isFinishing() || activity.isDestroyed()) return;
@@ -3428,7 +3428,7 @@ public class StorageScanner {
                 try {
                     ok = executeOnlineMarsRemoveTask(activity, accountId, itemsToUnlock);
                 } catch (Throwable t) {
-                    Log.e("morphe: StorageScanner", "Error in auto-unlock thread", t);
+                    SafeLog.e("morphe: StorageScanner", "Error in auto-unlock thread", t);
                 }
                 final boolean finalOk = ok;
                 activity.runOnUiThread(() -> {
@@ -3497,7 +3497,7 @@ public class StorageScanner {
 
     private static boolean executeOnlineMarsRemoveTask(Context context, int accountId, List<MediaItem> items) {
         if (context == null || items == null || items.isEmpty()) return false;
-        Log.i("morphe: StorageScanner", "executeOnlineMarsRemoveTask: starting for " + items.size() + " items");
+        SafeLog.i("morphe: StorageScanner", "executeOnlineMarsRemoveTask: starting for " + items.size() + " items");
 
         List<?> allCoreMedia = loadDirectMarsMedia(context, accountId, items);
         if (allCoreMedia == null || allCoreMedia.isEmpty()) {
@@ -3505,7 +3505,7 @@ public class StorageScanner {
         }
 
         if (allCoreMedia == null || allCoreMedia.isEmpty()) {
-            Log.w("morphe: StorageScanner", "executeOnlineMarsRemoveTask: could not load core media for " + items.size() + " items");
+            SafeLog.w("morphe: StorageScanner", "executeOnlineMarsRemoveTask: could not load core media for " + items.size() + " items");
             return false;
         }
 
@@ -3610,7 +3610,7 @@ public class StorageScanner {
                                     Field fieldA = removeResult.getClass().getField("a");
                                     Object removedObj = fieldA.get(removeResult);
                                     int removed = (removedObj instanceof Collection) ? ((Collection<?>) removedObj).size() : 0;
-                                    Log.i("morphe: StorageScanner", "MarsRemoveTask chunk " + chunkIndex + ": removed=" + removed);
+                                    SafeLog.i("morphe: StorageScanner", "MarsRemoveTask chunk " + chunkIndex + ": removed=" + removed);
                                     if (removed > 0) {
                                         chunkSuccess = true;
                                         totalRemovedCount += removed;
@@ -3618,13 +3618,13 @@ public class StorageScanner {
                                 }
                             }
                         } catch (Throwable tBundle) {
-                            Log.w("morphe: StorageScanner", "Error reading mars_remove_result bundle: " + tBundle.getMessage());
+                            SafeLog.w("morphe: StorageScanner", "Error reading mars_remove_result bundle: " + tBundle.getMessage());
                         }
                         if (!chunkSuccess) {
                             try {
                                 int statusCode = res.getClass().getField("d").getInt(res);
                                 if (statusCode == 200) {
-                                    Log.i("morphe: StorageScanner", "MarsRemoveTask returned statusCode 200 for chunk " + chunkIndex);
+                                    SafeLog.i("morphe: StorageScanner", "MarsRemoveTask returned statusCode 200 for chunk " + chunkIndex);
                                     chunkSuccess = true;
                                     totalRemovedCount += chunkCore.size();
                                 }
@@ -3645,18 +3645,18 @@ public class StorageScanner {
                             if (future instanceof java.util.concurrent.Future) {
                                 Object removeResult = ((java.util.concurrent.Future<?>) future).get(15, java.util.concurrent.TimeUnit.SECONDS);
                                 if (removeResult != null) {
-                                    Log.i("morphe: StorageScanner", "MarsRemoveAction (ajac.a) returned " + removeResult + " for chunk " + chunkIndex);
+                                    SafeLog.i("morphe: StorageScanner", "MarsRemoveAction (ajac.a) returned " + removeResult + " for chunk " + chunkIndex);
                                     chunkSuccess = true;
                                     totalRemovedCount += chunkCore.size();
                                 }
                             }
                         }
                     } catch (Throwable tAjac) {
-                        Log.w("morphe: StorageScanner", "ajac.a fallback failed for chunk " + chunkIndex, tAjac);
+                        SafeLog.w("morphe: StorageScanner", "ajac.a fallback failed for chunk " + chunkIndex, tAjac);
                     }
                 }
             } catch (Throwable t) {
-                Log.w("morphe: StorageScanner", "Error invoking MarsRemoveTask chunk " + chunkIndex, t);
+                SafeLog.w("morphe: StorageScanner", "Error invoking MarsRemoveTask chunk " + chunkIndex, t);
             }
 
             if (chunkSuccess) {
@@ -3705,7 +3705,7 @@ public class StorageScanner {
                                             }
                                         }
                                     } catch (Throwable tQuery) {
-                                        Log.w("morphe: StorageScanner", "Failed to read remote_locked_media row for " + it.dedupKey, tQuery);
+                                        SafeLog.w("morphe: StorageScanner", "Failed to read remote_locked_media row for " + it.dedupKey, tQuery);
                                     }
                                 }
 
@@ -3742,7 +3742,7 @@ public class StorageScanner {
                                             remoteMediaValues.put("quota_charged_bytes", it.quotaBytes);
                                         }
                                         db.insertWithOnConflict("remote_media", null, remoteMediaValues, SQLiteDatabase.CONFLICT_REPLACE);
-                                        Log.i("morphe: StorageScanner", "Restored unlocked item into remote_media: " + it.dedupKey);
+                                        SafeLog.i("morphe: StorageScanner", "Restored unlocked item into remote_media: " + it.dedupKey);
                                     }
                                 } else {
                                     if (hasTable(db, "remote_media")) {
@@ -3794,13 +3794,13 @@ public class StorageScanner {
                             db.endTransaction();
                         }
                     } catch (Throwable tDb) {
-                        Log.w("morphe: StorageScanner", "Error syncing local locked media DB tables", tDb);
+                        SafeLog.w("morphe: StorageScanner", "Error syncing local locked media DB tables", tDb);
                     }
                 }
             }
         }
 
-        Log.i("morphe: StorageScanner", "executeOnlineMarsRemoveTask finished: " + successCount + "/" + totalChunks + " chunks successful, removed " + totalRemovedCount + " items");
+        SafeLog.i("morphe: StorageScanner", "executeOnlineMarsRemoveTask finished: " + successCount + "/" + totalChunks + " chunks successful, removed " + totalRemovedCount + " items");
         return successCount > 0;
     }
 
@@ -4060,14 +4060,14 @@ public class StorageScanner {
                 }
             }
         } catch (Throwable t) {
-            Log.w("morphe: StorageScanner", "loadAlbumMediaItems error: " + t.getMessage());
+            SafeLog.w("morphe: StorageScanner", "loadAlbumMediaItems error: " + t.getMessage());
         }
         return matched;
     }
 
     private static boolean executeOnlineRemoveFromAlbumTask(Context context, int accountId, String albumMediaKey, List<MediaItem> items) {
         if (context == null || albumMediaKey == null || albumMediaKey.isEmpty() || items == null || items.isEmpty()) return false;
-        Log.i("morphe: StorageScanner", "executeOnlineRemoveFromAlbumTask: starting for " + items.size() + " items from " + albumMediaKey);
+        SafeLog.i("morphe: StorageScanner", "executeOnlineRemoveFromAlbumTask: starting for " + items.size() + " items from " + albumMediaKey);
 
         int chunkSize = 50;
         int totalChunks = (items.size() + chunkSize - 1) / chunkSize;
@@ -4100,7 +4100,7 @@ public class StorageScanner {
                                             (m.getParameterTypes()[2] == List.class || m.getParameterTypes()[2] == Collection.class)) {
                                             task = m.invoke(null, accountId, collection, coreItems);
                                             if (task != null) {
-                                                Log.i("morphe: StorageScanner", "Created RemoveMediaFromPrivateAlbumTask via " + rClassCandidate + "." + m.getName() + ": " + task);
+                                                SafeLog.i("morphe: StorageScanner", "Created RemoveMediaFromPrivateAlbumTask via " + rClassCandidate + "." + m.getName() + ": " + task);
                                                 break;
                                             }
                                         }
@@ -4108,7 +4108,7 @@ public class StorageScanner {
                                     if (task != null) break;
                                 }
                             } catch (Throwable tRemove) {
-                                Log.w("morphe: StorageScanner", rClassCandidate + " reflection failed: " + tRemove.getMessage());
+                                SafeLog.w("morphe: StorageScanner", rClassCandidate + " reflection failed: " + tRemove.getMessage());
                             }
                         }
                     }
@@ -4143,7 +4143,7 @@ public class StorageScanner {
                                             Object qdnInst = bMethod.invoke(qdpInst);
                                             Method aMethod = qdnInst.getClass().getMethod("a");
                                             task = aMethod.invoke(qdnInst);
-                                            Log.i("morphe: StorageScanner", "Created RemoveMediaFromPrivateAlbumTask via " + wName + ": " + task);
+                                            SafeLog.i("morphe: StorageScanner", "Created RemoveMediaFromPrivateAlbumTask via " + wName + ": " + task);
                                             break;
                                         }
                                     }
@@ -4164,10 +4164,10 @@ public class StorageScanner {
                             if (colClass != null) {
                                 Constructor<?> ctor = taskClass.getConstructor(int.class, Collection.class, colClass);
                                 task = ctor.newInstance(accountId, coreItems, collection);
-                                Log.i("morphe: StorageScanner", "Created RemoveFromCollectionTask: " + task);
+                                SafeLog.i("morphe: StorageScanner", "Created RemoveFromCollectionTask: " + task);
                             }
                         } catch (Throwable tTask) {
-                            Log.w("morphe: StorageScanner", "RemoveFromCollectionTask reflection failed: " + tTask.getMessage());
+                            SafeLog.w("morphe: StorageScanner", "RemoveFromCollectionTask reflection failed: " + tTask.getMessage());
                         }
                     }
 
@@ -4176,13 +4176,13 @@ public class StorageScanner {
                         if (res != null) {
                             try {
                                 int statusCode = getTaskStatusCode(res);
-                                Log.i("morphe: StorageScanner", "Remove task chunk " + chunkIndex + " status: " + statusCode);
+                                SafeLog.i("morphe: StorageScanner", "Remove task chunk " + chunkIndex + " status: " + statusCode);
                                 if (statusCode == 200) {
                                     chunkSuccess = true;
                                 } else {
                                     try {
                                         Object exc = res.getClass().getField("e").get(res);
-                                        Log.w("morphe: StorageScanner", "Remove task returned error status " + statusCode, (Throwable) exc);
+                                        SafeLog.w("morphe: StorageScanner", "Remove task returned error status " + statusCode, (Throwable) exc);
                                     } catch (Throwable ignored) {}
                                 }
                             } catch (Throwable ignored) {
@@ -4191,10 +4191,10 @@ public class StorageScanner {
                         }
                     }
                 } else {
-                    Log.w("morphe: StorageScanner", "loadAlbumMediaItems returned 0 items for chunk " + chunkIndex);
+                    SafeLog.w("morphe: StorageScanner", "loadAlbumMediaItems returned 0 items for chunk " + chunkIndex);
                 }
             } catch (Throwable t) {
-                Log.w("morphe: StorageScanner", "Error invoking Remove task chunk " + chunkIndex, t);
+                SafeLog.w("morphe: StorageScanner", "Error invoking Remove task chunk " + chunkIndex, t);
             }
 
             if (chunkSuccess) successCount++;
@@ -4229,7 +4229,7 @@ public class StorageScanner {
             }
         } catch (Throwable ignored) {}
 
-        Log.i("morphe: StorageScanner", "executeOnlineRemoveFromAlbumTask finished: " + successCount + "/" + totalChunks + " chunks successful, localDeletedRows=" + localDeletedRows);
+        SafeLog.i("morphe: StorageScanner", "executeOnlineRemoveFromAlbumTask finished: " + successCount + "/" + totalChunks + " chunks successful, localDeletedRows=" + localDeletedRows);
         return successCount > 0 || localDeletedRows > 0;
     }
 
@@ -4340,7 +4340,7 @@ public class StorageScanner {
                         }
                     }
                 } catch (Throwable tTask) {
-                    Log.w("morphe: StorageScanner", "EditDateTimeTask error for " + item.filename, tTask);
+                    SafeLog.w("morphe: StorageScanner", "EditDateTimeTask error for " + "[MEDIA]", tTask);
                 }
 
                 // 2. Local database update
@@ -4353,7 +4353,7 @@ public class StorageScanner {
                         if (hasTable(db, "media")) db.update("media", cv, "dedup_key = ?", new String[]{item.dedupKey});
                         if (hasTable(db, "local_media")) db.update("local_media", cv, "dedup_key = ?", new String[]{item.dedupKey});
                     } catch (Throwable tDb) {
-                        Log.w("morphe: StorageScanner", "Local db date update error for " + item.filename, tDb);
+                        SafeLog.w("morphe: StorageScanner", "Local db date update error for " + "[MEDIA]", tDb);
                     }
                 }
 
@@ -4421,9 +4421,9 @@ public class StorageScanner {
             Object monitor = ctor.newInstance(context);
             bbphClass.getMethod("c", int.class).invoke(monitor, accountId);
             bbphClass.getMethod("d", int.class).invoke(monitor, accountId);
-            Log.i("morphe: StorageScanner", "Notified bbph UI monitor for account " + accountId);
+            SafeLog.i("morphe: StorageScanner", "Notified bbph UI monitor for account " + accountId);
         } catch (Throwable t) {
-            Log.w("morphe: StorageScanner", "Error in bbph UI notification: " + t.getMessage());
+            SafeLog.w("morphe: StorageScanner", "Error in bbph UI notification: " + t.getMessage());
         }
 
         // Notify Google Photos native MediaMonitor to reload photo feeds and archive screens
@@ -4432,9 +4432,9 @@ public class StorageScanner {
             Constructor<?> bybjCtor = bybjClass.getConstructor(Context.class);
             Object bybjInst = bybjCtor.newInstance(context);
             bybjClass.getMethod("a").invoke(bybjInst);
-            Log.i("morphe: StorageScanner", "Notified bybj MediaMonitor for account " + accountId);
+            SafeLog.i("morphe: StorageScanner", "Notified bybj MediaMonitor for account " + accountId);
         } catch (Throwable t) {
-            Log.w("morphe: StorageScanner", "Error in bybj MediaMonitor: " + t.getMessage());
+            SafeLog.w("morphe: StorageScanner", "Error in bybj MediaMonitor: " + t.getMessage());
         }
 
         try {
@@ -4506,7 +4506,8 @@ public class StorageScanner {
         }
 
         if ("lock".equals(actionId)) {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && !Environment.isExternalStorageManager()) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && !Environment.isExternalStorageManager()
+                    && items.stream().anyMatch(it -> resolveLocalFilePath(account, it.dedupKey) != null)) {
                 try {
                     Intent intent = new Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION);
                     intent.setData(Uri.parse("package:" + context.getPackageName()));
@@ -5055,11 +5056,22 @@ public class StorageScanner {
     }
 
     public static String exportToCsv(List<MediaItem> items) {
+        return exportToCsv(items, false);
+    }
+
+    public static String exportToCsv(List<MediaItem> items, boolean full) {
         StringBuilder sb = new StringBuilder();
-        sb.append("mediaKey,dedupKey,fileName,takenAt,width,height,durationMs,sizeBytes,takesUpSpace,spaceTakenBytes,isArchived,isFavorite,latitude,longitude,caption,thumbnailUrl\n");
+        sb.append(full ? "mediaKey,dedupKey,fileName,takenAt,width,height,durationMs,sizeBytes,takesUpSpace,spaceTakenBytes,isArchived,isFavorite,latitude,longitude,caption,thumbnailUrl\n" : "fileName,takenAt,width,height,durationMs,sizeBytes,isArchived,isFavorite\n");
         SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", Locale.US);
 
+        sdf.setTimeZone(java.util.TimeZone.getTimeZone("UTC"));
         for (MediaItem item : items) {
+            if (!full) {
+                sb.append(escapeCsv(item.filename)).append(",").append(item.captureTimestamp > 0 ? sdf.format(new Date(item.captureTimestamp)) : "").append(",")
+                    .append(item.width).append(",").append(item.height).append(",").append(item.duration).append(",").append(item.sizeBytes).append(",")
+                    .append(item.isArchived).append(",").append(item.isFavorite).append("\n");
+                continue;
+            }
             sb.append(escapeCsv(item.mediaKey)).append(",");
             sb.append(escapeCsv(item.dedupKey)).append(",");
             sb.append(escapeCsv(item.filename)).append(",");
@@ -5081,11 +5093,7 @@ public class StorageScanner {
     }
 
     private static String escapeCsv(String val) {
-        if (val == null) return "";
-        if (val.contains(",") || val.contains("\"") || val.contains("\n")) {
-            return "\"" + val.replace("\"", "\"\"") + "\"";
-        }
-        return val;
+        return app.morphe.extension.shared.requests.ExportSafety.csvCell(val);
     }
 
     private static final Map<String, Boolean> TABLE_EXISTS_CACHE = new ConcurrentHashMap<>();
