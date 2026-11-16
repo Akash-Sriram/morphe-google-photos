@@ -14,7 +14,7 @@ import android.os.Environment;
 import android.os.Handler;
 import android.os.Looper;
 import android.provider.MediaStore;
-import android.util.Log;
+import app.morphe.extension.shared.diagnostics.SafeLog;
 import android.widget.Toast;
 
 import java.io.BufferedReader;
@@ -39,7 +39,6 @@ import java.util.Locale;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.regex.Pattern;
 
 import app.morphe.extension.shared.Logger;
 import app.morphe.extension.shared.Utils;
@@ -60,9 +59,6 @@ public final class SessionLogManager {
     private static final String LOGS_DIR_NAME = "morphe_logs";
     private static final int MAX_SESSIONS = 5;
     private static final int MAX_IN_MEMORY_LOGS = 600;
-
-    private static final Pattern EMAIL_PATTERN = Pattern.compile("[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\\.[a-zA-Z0-9-.]+");
-    private static final Pattern AUTH_TOKEN_PATTERN = Pattern.compile("(?i)(auth_token|bearer|access_token|refresh_token|api_key|password)[=:\\s]+[\\w\\-\\.~+]{12,}");
 
     private static final ExecutorService IO_EXECUTOR = Executors.newSingleThreadExecutor();
     private static final Handler MAIN_HANDLER = new Handler(Looper.getMainLooper());
@@ -146,9 +142,9 @@ public final class SessionLogManager {
                 sCurrentSessionFile = new File(dir, "session_" + sCurrentSessionId + ".log");
                 writeSessionHeader(sCurrentSessionFile);
 
-                Log.i(TAG, "Initialized session log: " + sCurrentSessionFile.getName());
+                SafeLog.i(TAG, "Initialized session log: " + sCurrentSessionFile.getName());
             } catch (Throwable t) {
-                Log.e(TAG, "Failed to initialize session log file", t);
+                SafeLog.e(TAG, "Failed to initialize session log file", t);
             }
         });
 
@@ -169,7 +165,7 @@ public final class SessionLogManager {
             try {
                 handleCrash(thread, throwable);
             } catch (Throwable t) {
-                Log.e(TAG, "Failed inside crash handler", t);
+                SafeLog.e(TAG, "Failed inside crash handler", t);
             } finally {
                 if (sOriginalCrashHandler != null) {
                     sOriginalCrashHandler.uncaughtException(thread, throwable);
@@ -214,7 +210,7 @@ public final class SessionLogManager {
             }
             crashDump.append("=======================================================\n");
 
-            String fullCrash = crashDump.toString();
+            String fullCrash = sanitize(crashDump.toString());
 
             // Write synchronously to current session file (or fallback if early startup)
             if (sCurrentSessionFile != null) {
@@ -241,7 +237,7 @@ public final class SessionLogManager {
                 } catch (Throwable ignored) {}
             }
         } catch (Throwable t) {
-            Log.e(TAG, "Error writing crash report", t);
+            SafeLog.e(TAG, "Error writing crash report", t);
         }
     }
 
@@ -260,7 +256,7 @@ public final class SessionLogManager {
             writer.write("=======================================================\n\n");
             writer.flush();
         } catch (Throwable t) {
-            Log.e(TAG, "Error writing session header", t);
+            SafeLog.e(TAG, "Error writing session header", t);
         }
     }
 
@@ -292,6 +288,7 @@ public final class SessionLogManager {
                     try (BufferedReader br = new BufferedReader(new FileReader(latest))) {
                         String line;
                         while ((line = br.readLine()) != null) {
+                            line = sanitize(line);
                             if (line.contains("[FATAL UNCAUGHT EXCEPTION]")) {
                                 sLastSessionCrashed = true;
                                 sLastCrashSummary = readCrashSummary(latest);
@@ -302,7 +299,7 @@ public final class SessionLogManager {
                 }
             }
         } catch (Throwable t) {
-            Log.w(TAG, "Failed checking previous session", t);
+            SafeLog.w(TAG, "Failed checking previous session", t);
         }
     }
 
@@ -320,7 +317,7 @@ public final class SessionLogManager {
                     linesRead++;
                 }
             }
-            return sb.length() > 0 ? sb.toString() : "App crashed unexpectedly";
+            return sb.length() > 0 ? sanitize(sb.toString()) : "App crashed unexpectedly";
         } catch (Throwable ignored) {
             return "App crashed in previous session";
         }
@@ -336,7 +333,7 @@ public final class SessionLogManager {
                 }
             }
         } catch (Throwable t) {
-            Log.w(TAG, "Error pruning old sessions", t);
+            SafeLog.w(TAG, "Error pruning old sessions", t);
         }
     }
 
@@ -384,7 +381,7 @@ public final class SessionLogManager {
             }
         }
 
-        String logLine = entry.toString();
+        String logLine = sanitize(entry.toString());
 
         synchronized (BUFFER_LOCK) {
             if (sRecentLogBuffer.size() >= MAX_IN_MEMORY_LOGS) {
@@ -397,6 +394,7 @@ public final class SessionLogManager {
         final File targetFile = sCurrentSessionFile;
         if (targetFile != null) {
             IO_EXECUTOR.execute(() -> {
+                if (targetFile.length() > 2 * 1024 * 1024) return;
                 try (BufferedWriter writer = new BufferedWriter(new FileWriter(targetFile, true))) {
                     writer.write(logLine);
                     writer.newLine();
@@ -452,7 +450,7 @@ public final class SessionLogManager {
                                 }
                             }
 
-                            if (fileWriter != null) {
+                            if (fileWriter != null && current.length() <= 2 * 1024 * 1024) {
                                 try {
                                     fileWriter.write(sanitized);
                                     fileWriter.newLine();
@@ -469,7 +467,7 @@ public final class SessionLogManager {
                     }
                 }
             } catch (Throwable t) {
-                Log.d(TAG, "Logcat capture completed or unavailable: " + t.getMessage());
+                SafeLog.d(TAG, "Logcat capture completed or unavailable: " + t.getMessage());
             } finally {
                 if (fileWriter != null) try { fileWriter.flush(); fileWriter.close(); } catch (Throwable ignored) {}
                 if (reader != null) try { reader.close(); } catch (Throwable ignored) {}
@@ -541,10 +539,7 @@ public final class SessionLogManager {
     }
 
     public static String sanitize(String input) {
-        if (input == null) return null;
-        String res = EMAIL_PATTERN.matcher(input).replaceAll("[REDACTED_EMAIL]");
-        res = AUTH_TOKEN_PATTERN.matcher(res).replaceAll("$1=[REDACTED_TOKEN]");
-        return res;
+        return DiagnosticRedactor.sanitize(input);
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -605,6 +600,7 @@ public final class SessionLogManager {
         try (BufferedReader br = new BufferedReader(new FileReader(session.file))) {
             String line;
             while ((line = br.readLine()) != null) {
+                line = sanitize(line);
                 if (line.startsWith("==") || line.startsWith("📱") || line.startsWith("Session") ||
                     line.startsWith("Device:") || line.startsWith("Android") || line.startsWith("Security") ||
                     line.startsWith("Photos") || line.startsWith("Morphe") || line.startsWith("MORPHE") ||
@@ -656,7 +652,7 @@ public final class SessionLogManager {
             }
         }
 
-        return sb.toString();
+        return sanitize(sb.toString());
     }
 
     public static String getFilterDescription(String levelFilter, String filterQuery) {
@@ -717,7 +713,24 @@ public final class SessionLogManager {
         sb.append("\n```\n");
         sb.append("</details>\n");
 
-        return sb.toString();
+        return sanitize(sb.toString());
+    }
+
+    public static void previewAction(Activity activity, SessionInfo session, boolean markdown, String query, String level, java.util.function.Consumer<String> action) {
+        IO_EXECUTOR.execute(() -> {
+            String raw = readSessionContent(session, query, level, 0);
+            String preview = sanitize(markdown ? formatGitHubReport(session, raw, query, level) : raw);
+            MAIN_HANDLER.post(() -> {
+                if (activity.isFinishing() || activity.isDestroyed()) return;
+                android.widget.TextView text = new android.widget.TextView(activity);
+                text.setTextIsSelectable(true);
+                text.setText(preview);
+                android.widget.ScrollView scroll = new android.widget.ScrollView(activity);
+                scroll.addView(text);
+                new android.app.AlertDialog.Builder(activity).setTitle("Review diagnostics: technical device information remains")
+                    .setView(scroll).setNegativeButton("Cancel", null).setPositiveButton("Continue", (d, w) -> action.accept(preview)).show();
+            });
+        });
     }
 
     public static Uri exportSessionToFile(Context context, SessionInfo session, boolean asMarkdown) {
@@ -725,11 +738,15 @@ public final class SessionLogManager {
     }
 
     public static Uri exportSessionToFile(Context context, SessionInfo session, boolean asMarkdown, String filterQuery, String levelFilter) {
+        return exportSessionToFile(context, session, asMarkdown, filterQuery, levelFilter, null);
+    }
+
+    public static Uri exportSessionToFile(Context context, SessionInfo session, boolean asMarkdown, String filterQuery, String levelFilter, String snapshot) {
         if (context == null || session == null) return null;
         try {
             boolean isFiltered = (levelFilter != null && !levelFilter.equalsIgnoreCase("ALL")) || (filterQuery != null && !filterQuery.trim().isEmpty());
             String rawContent = readSessionContent(session, filterQuery, levelFilter, 0);
-            String content = asMarkdown ? formatGitHubReport(session, rawContent, filterQuery, levelFilter) : rawContent;
+            String content = sanitize(snapshot != null ? snapshot : asMarkdown ? formatGitHubReport(session, rawContent, filterQuery, levelFilter) : rawContent);
             String ext = asMarkdown ? ".md" : ".log";
             String mimeType = asMarkdown ? "text/markdown" : "text/plain";
             String baseName = session.id.replace(".log", "");
@@ -769,7 +786,7 @@ public final class SessionLogManager {
             MAIN_HANDLER.post(() -> Toast.makeText(context, toastMsg, Toast.LENGTH_LONG).show());
             return resultUri;
         } catch (Throwable t) {
-            Log.e(TAG, "Failed exporting session to file", t);
+            SafeLog.e(TAG, "Failed exporting session to file", t);
             MAIN_HANDLER.post(() -> Toast.makeText(context, "Export failed: " + t.getMessage(), Toast.LENGTH_SHORT).show());
             return null;
         }
@@ -780,10 +797,23 @@ public final class SessionLogManager {
     }
 
     public static void shareSessionFile(Activity activity, SessionInfo session, boolean asMarkdown, String filterQuery, String levelFilter) {
+        shareSessionFile(activity, session, asMarkdown, filterQuery, levelFilter, null);
+    }
+
+    public static void shareSessionFile(Activity activity, SessionInfo session, boolean asMarkdown, String filterQuery, String levelFilter, String snapshot) {
         if (activity == null || session == null) return;
         IO_EXECUTOR.execute(() -> {
             try {
-                Uri fileUri = exportSessionToFile(activity, session, asMarkdown, filterQuery, levelFilter);
+                String text = snapshot != null ? sanitize(snapshot) : sanitize(asMarkdown ? formatGitHubReport(session, readSessionContent(session, filterQuery, levelFilter, 0), filterQuery, levelFilter) : readSessionContent(session, filterQuery, levelFilter, 0));
+                File shareDir = new File(activity.getCacheDir(), "morphe_share");
+                shareDir.mkdirs();
+                File[] oldShares = shareDir.listFiles();
+                if (oldShares != null) for (File old : oldShares) {
+                    if (System.currentTimeMillis() - old.lastModified() > 86400000L) old.delete();
+                }
+                File shareFile = File.createTempFile("report_", asMarkdown ? ".md" : ".log", shareDir);
+                try (OutputStream out = new FileOutputStream(shareFile)) { out.write(text.getBytes(java.nio.charset.StandardCharsets.UTF_8)); }
+                Uri fileUri = new Uri.Builder().scheme("content").authority(activity.getPackageName() + ".morphe.diagnostics").appendPath(shareFile.getName()).build();
                 MAIN_HANDLER.post(() -> {
                     try {
                         Intent sendIntent = new Intent(Intent.ACTION_SEND);
@@ -804,7 +834,7 @@ public final class SessionLogManager {
                     }
                 });
             } catch (Throwable t) {
-                Log.e(TAG, "shareSessionFile failed", t);
+                SafeLog.e(TAG, "shareSessionFile failed", t);
             }
         });
     }
