@@ -505,114 +505,45 @@ val gmsCoreSupportPatch = gmsCoreSupportPatch(
             }
         }
 
-        // 11) Backup Settings: Prevent LaunchedEffect from auto-opening account selector dialog on entry
-        BackupSettingsEntryLaunchedEffectFingerprint.methodOrNull?.let { effectMethod ->
-            val mutableClass = mutableClassDefBy(effectMethod.definingClass)
-            val mutableMethod = mutableClass.findMutableMethodOf(effectMethod)
-            val instructions = effectMethod.implementation?.instructions?.toList()
-            if (instructions != null) {
-                // Find all invoke-interface instructions targeting ->g()Z (uvk.g() isBackupEnabled)
-                val gInvocations = instructions.withIndex().filter { (_, inst) ->
-                    inst.opcode == Opcode.INVOKE_INTERFACE &&
-                        (inst as? ReferenceInstruction)?.reference?.toString()?.contains("->g()Z") == true
-                }.map { it.index }
-
-                if (gInvocations.isNotEmpty()) {
-                    // The second invocation guards the auto-popup on entry (Lusj.a trigger)
-                    val targetGIndex = gInvocations.last()
-                    val moveResultRel = instructions.drop(targetGIndex + 1).indexOfFirst {
-                        it.opcode == Opcode.MOVE_RESULT
-                    }
-                    if (moveResultRel != -1) {
-                        val moveResultIndex = targetGIndex + 1 + moveResultRel
-                        val reg = (instructions[moveResultIndex] as OneRegisterInstruction).registerA
-                        // Force boolean to true right after move-result so the subsequent if-nez always branches
-                        // to the exit block, preventing the auto-popup while keeping manual card clicks working.
-                        mutableMethod.addInstruction(
-                            moveResultIndex + 1,
-                            "const/4 v$reg, 0x1",
-                        )
-                    }
-                }
-            }
-        }
-
-        // 12) Backup Settings: Synchronize backup account from Photos registered account when GMS Core account is not found
+        // 11) Backup Settings: Sanitize GMS Core backup settings (uyc) on MicroG/non-certified devices
         GmsCoreBackupAccountSyncFingerprint.methodOrNull?.let { syncMethod ->
             val syncClassDef = classDefBy(syncMethod.definingClass)
             val mutableSyncClass = mutableClassDefBy(syncClassDef)
             val mutableSyncMethod = mutableSyncClass.findMutableMethodOf(syncMethod)
             val instructions = syncMethod.implementation?.instructions?.toList()
             if (instructions != null) {
-                // Find the invoke-interface that resolves an account name to int: cbeg.a(String) -> int
-                val accountLookupIndex = instructions.indexOfFirst { inst ->
-                    inst.opcode == Opcode.INVOKE_INTERFACE &&
-                        ((inst as? ReferenceInstruction)?.reference as? MethodReference)?.let { ref ->
-                            ref.parameterTypes.size == 1 &&
-                                ref.parameterTypes[0] == "Ljava/lang/String;" &&
-                                ref.returnType == "I"
-                        } == true
-                }
-                if (accountLookupIndex != -1) {
-                    val moveResultRel = instructions.drop(accountLookupIndex + 1).indexOfFirst {
-                        it.opcode == Opcode.MOVE_RESULT
+                // Find CHECK_CAST targeting the GmsSettings class (Luyc;)
+                val emailIgetInst = instructions.mapNotNull { inst ->
+                    if (inst.opcode == Opcode.IGET_OBJECT &&
+                        ((inst as? ReferenceInstruction)?.reference as? FieldReference)?.type == "Ljava/lang/String;"
+                    ) inst else null
+                }.firstOrNull()
+
+                val emailFr = (emailIgetInst as? ReferenceInstruction)?.reference as? FieldReference
+                val checkCastType = emailFr?.definingClass
+                val gmsSettingsReg = (emailIgetInst as? TwoRegisterInstruction)?.registerB
+
+                val emailIgetIndex = emailIgetInst?.let { instructions.indexOf(it) } ?: -1
+                val checkCastIndex = if (emailIgetIndex != -1 && checkCastType != null) {
+                    (emailIgetIndex downTo 0).firstOrNull {
+                        instructions[it].opcode == Opcode.CHECK_CAST &&
+                            ((instructions[it] as? ReferenceInstruction)?.reference as? TypeReference)?.type == checkCastType
                     }
-                    if (moveResultRel != -1) {
-                        val moveResultIndex = accountLookupIndex + 1 + moveResultRel
-                        val accountReg = (instructions[moveResultIndex] as OneRegisterInstruction).registerA
+                } else null
 
-                        // Find the if-eq check against -1 (which jumps to "GMS Core backup account is not found in Photos")
-                        val ifEqRel = instructions.drop(moveResultIndex + 1).indexOfFirst {
-                            it.opcode == Opcode.IF_EQ
-                        }
-                        if (ifEqRel != -1) {
-                            val ifEqIndex = moveResultIndex + 1 + ifEqRel
-                            val ifEqInst = instructions[ifEqIndex] as TwoRegisterInstruction
-                            val minusOneReg = if (ifEqInst.registerA == accountReg) ifEqInst.registerB else ifEqInst.registerA
+                val contextField = syncClassDef.fields.firstOrNull { it.type == "Landroid/content/Context;" }?.name
+                val thisReg = syncMethod.implementation!!.registerCount - syncMethod.parameters.size - 1
 
-                            // Locate Context field on Luvq
-                            val contextField = syncClassDef.fields.firstOrNull { it.type == "Landroid/content/Context;" }?.name
-
-                            // Locate email IGET_OBJECT instruction before accountLookupIndex: iget-object v1, v10, Luyc;->a:Ljava/lang/String;
-                            val emailIgetInst = (accountLookupIndex downTo 0).mapNotNull {
-                                val inst = instructions[it]
-                                if (inst.opcode == Opcode.IGET_OBJECT &&
-                                    ((inst as? ReferenceInstruction)?.reference as? FieldReference)?.type == "Ljava/lang/String;"
-                                ) inst else null
-                            }.firstOrNull()
-
-                            val emailFr = (emailIgetInst as? ReferenceInstruction)?.reference as? FieldReference
-                            val checkCastType = emailFr?.definingClass
-                            val emailField = emailFr?.name
-                            val gmsSettingsReg = (emailIgetInst as? TwoRegisterInstruction)?.registerB
-
-                            // Locate accountStore (cbeg) supplier field on Luvq: iget-object v3, v9, Luvq;->n:Lcuye;
-                            val igetSupplierIndex = (accountLookupIndex downTo 0).firstOrNull {
-                                instructions[it].opcode == Opcode.IGET_OBJECT &&
-                                    ((instructions[it] as? ReferenceInstruction)?.reference as? FieldReference)?.definingClass == syncMethod.definingClass
-                            }
-                            val accountStoreField = igetSupplierIndex?.let {
-                                ((instructions[it] as? ReferenceInstruction)?.reference as? FieldReference)?.name
-                            }
-
-                            val thisReg = syncMethod.implementation!!.registerCount - syncMethod.parameters.size - 1
-
-                            if (contextField != null && gmsSettingsReg != null && emailField != null && accountStoreField != null && checkCastType != null) {
-                                mutableSyncMethod.addInstructions(
-                                    ifEqIndex,
-                                    """
-                                    iget-object v5, v$gmsSettingsReg, $checkCastType->$emailField:Ljava/lang/String;
-                                    iget-object v6, v$thisReg, ${syncMethod.definingClass}->$accountStoreField:Lcuye;
-                                    invoke-interface {v6}, Lcuye;->a()Ljava/lang/Object;
-                                    move-result-object v6
-                                    iget-object v7, v$thisReg, ${syncMethod.definingClass}->$contextField:Landroid/content/Context;
-                                    invoke-static {v$accountReg, v5, v6, v7}, Lapp/morphe/extension/shared/patches/GmsCoreSupportPatch;->resolveBackupAccount(ILjava/lang/String;Ljava/lang/Object;Landroid/content/Context;)I
-                                    move-result v$accountReg
-                                    """.trimIndent(),
-                                )
-                            }
-                        }
-                    }
+                if (checkCastIndex != null && gmsSettingsReg != null && contextField != null && checkCastType != null) {
+                    mutableSyncMethod.addInstructions(
+                        checkCastIndex + 1,
+                        """
+                        iget-object v5, v$thisReg, ${syncMethod.definingClass}->$contextField:Landroid/content/Context;
+                        invoke-static {v$gmsSettingsReg, v5}, Lapp/morphe/extension/shared/patches/GmsCoreSupportPatch;->sanitizeGmsBackupSettings(Ljava/lang/Object;Landroid/content/Context;)Ljava/lang/Object;
+                        move-result-object v$gmsSettingsReg
+                        check-cast v$gmsSettingsReg, $checkCastType
+                        """.trimIndent(),
+                    )
                 }
 
                 // 13) Backup Preferences: In Ludi.c, resolve registered account if backup_prefs_account_id is -1

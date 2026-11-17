@@ -23,10 +23,13 @@ import android.widget.LinearLayout;
 
 import androidx.annotation.Nullable;
 
+import java.lang.reflect.Constructor;
+import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.net.HttpURLConnection;
 import java.net.MalformedURLException;
 import java.net.URL;
+import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
@@ -90,6 +93,90 @@ public class GmsCoreSupportPatch {
             return currentId;
         }
         return resolveRegisteredAccountFromEmail(gmsEmail, accountStore, context);
+    }
+
+    /**
+     * Sanitizes GMS Core backup settings (uyc) for MicroG and non-certified devices.
+     * When GMS Core returns empty/disabled settings or null selective backup sets,
+     * this resolves the configured backup account from Google Photos preferences
+     * and guarantees a non-null folder set, preventing NullPointerException and fallback to disabled state.
+     */
+    public static Object sanitizeGmsBackupSettings(Object gmsSettings, Context context) {
+        if (gmsSettings == null) {
+            return null;
+        }
+        try {
+            if (context == null) {
+                context = Utils.getContext();
+            }
+            Class<?> uycClass = gmsSettings.getClass();
+            Field aField = uycClass.getDeclaredField("a"); // String (email)
+            Field bField = uycClass.getDeclaredField("b"); // boolean (isBackupEnabled)
+            Field cField = uycClass.getDeclaredField("c"); // boolean (cellularPhotos)
+            Field dField = uycClass.getDeclaredField("d"); // boolean (roaming)
+            Field eField = uycClass.getDeclaredField("e"); // boolean (selectiveBackup)
+            Field fField = uycClass.getDeclaredField("f"); // Set<String> (folders)
+
+            aField.setAccessible(true);
+            bField.setAccessible(true);
+            cField.setAccessible(true);
+            dField.setAccessible(true);
+            eField.setAccessible(true);
+            fField.setAccessible(true);
+
+            String email = (String) aField.get(gmsSettings);
+            boolean isBackupEnabled = bField.getBoolean(gmsSettings);
+            boolean cellularPhotos = cField.getBoolean(gmsSettings);
+            boolean roaming = dField.getBoolean(gmsSettings);
+            boolean selectiveBackup = eField.getBoolean(gmsSettings);
+            @SuppressWarnings("unchecked")
+            Set<String> folders = (Set<String>) fField.get(gmsSettings);
+            if (folders == null) {
+                folders = Collections.emptySet();
+            }
+
+            if (context != null) {
+                SharedPreferences backupPrefs = context.getSharedPreferences("photos.backup.backup_prefs", Context.MODE_PRIVATE);
+                int backupAccountId = backupPrefs.getInt("backup_prefs_account_id", -1);
+                SharedPreferences accountsPrefs = context.getSharedPreferences("accounts", Context.MODE_PRIVATE);
+
+                if (email == null || email.trim().isEmpty()) {
+                    if (backupAccountId >= 0) {
+                        String configuredEmail = accountsPrefs.getString(backupAccountId + ".account_name", null);
+                        if (configuredEmail != null && !configuredEmail.trim().isEmpty()) {
+                            email = configuredEmail;
+                            isBackupEnabled = true;
+                        }
+                    } else {
+                        // Fallback: check if active account in Photos exists
+                        int activeKey = accountsPrefs.getInt("key.active-account-key", -1);
+                        if (activeKey >= 0) {
+                            String activeEmail = accountsPrefs.getString(activeKey + ".account_name", null);
+                            if (activeEmail != null && !activeEmail.trim().isEmpty()) {
+                                email = activeEmail;
+                                isBackupEnabled = true;
+                                backupPrefs.edit().putInt("backup_prefs_account_id", activeKey).apply();
+                            }
+                        }
+                    }
+                } else if (!isBackupEnabled && backupAccountId >= 0) {
+                    isBackupEnabled = true;
+                }
+            }
+
+            Constructor<?> ctor = uycClass.getDeclaredConstructor(
+                    String.class, boolean.class, boolean.class, boolean.class, boolean.class, Set.class
+            );
+            ctor.setAccessible(true);
+            Object sanitized = ctor.newInstance(email, isBackupEnabled, cellularPhotos, roaming, selectiveBackup, folders);
+            final String finalEmail = email;
+            final boolean finalEnabled = isBackupEnabled;
+            Logger.printInfo(() -> "Sanitized GmsCore backup settings: email=" + finalEmail + ", enabled=" + finalEnabled);
+            return sanitized;
+        } catch (Throwable t) {
+            Logger.printException(() -> "Error sanitizing GmsCore backup settings", t);
+            return gmsSettings;
+        }
     }
 
     /**
