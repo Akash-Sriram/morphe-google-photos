@@ -99,12 +99,14 @@ internal object CreateItemButtonTextFingerprint : Fingerprint(
         (
             method.parameterTypes[0].endsWith("slm;") ||
             method.parameterTypes[0].endsWith("soc;") ||
-            method.parameterTypes[0].endsWith("ssf;")
+            method.parameterTypes[0].endsWith("ssf;") ||
+            method.parameterTypes[0].endsWith("svq;")
         ) &&
         (
             method.parameterTypes[1] == "Leky;" ||
             method.parameterTypes[1] == "Lelp;" ||
             method.parameterTypes[1] == "Lenj;" ||
+            method.parameterTypes[1] == "Lens;" ||
             method.parameterTypes[1].startsWith("L")
         )
     }
