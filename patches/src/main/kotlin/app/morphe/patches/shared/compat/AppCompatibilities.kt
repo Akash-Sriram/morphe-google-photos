@@ -19,6 +19,10 @@ internal object AppCompatibilities {
                 isExperimental = true,
             ),
             AppTarget(
+                version = "8.1.0.1023737660",
+                isExperimental = true,
+            ),
+            AppTarget(
                 version = "8.1.0.1020990585",
                 isExperimental = true,
             ),
