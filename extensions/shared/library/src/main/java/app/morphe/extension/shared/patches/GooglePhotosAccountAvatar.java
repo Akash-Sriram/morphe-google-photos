@@ -47,6 +47,7 @@ import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 import java.util.Locale;
@@ -92,6 +93,7 @@ public final class GooglePhotosAccountAvatar {
     private static final Set<View> OBSERVED_WINDOW_ROOTS = Collections.newSetFromMap(new WeakHashMap<>());
     private static final Set<View> WATCHED_TOOLBAR_VIEWS = Collections.newSetFromMap(new WeakHashMap<>());
     private static final Map<ImageView, Integer> APPLIED_AVATAR_HASHES = Collections.synchronizedMap(new WeakHashMap<>());
+    private static final Map<ImageView, Bitmap> APPLIED_AVATAR_BITMAPS = Collections.synchronizedMap(new WeakHashMap<>());
     private static final Map<String, Integer> RES_ID_CACHE = new ConcurrentHashMap<>();
 
     private static volatile long lastWindowScanUptime;
@@ -167,6 +169,7 @@ public final class GooglePhotosAccountAvatar {
                             }
                         }
                         APPLIED_AVATAR_HASHES.clear();
+                        APPLIED_AVATAR_BITMAPS.clear();
                         Utils.runOnMainThread(() -> scanAllWindowRoots(activity, true));
                     }
                 };
@@ -386,6 +389,7 @@ public final class GooglePhotosAccountAvatar {
             activeSelectedEmail = liveEmail;
             persistAccountSelection(activity, liveEmail);
             APPLIED_AVATAR_HASHES.clear();
+            APPLIED_AVATAR_BITMAPS.clear();
         }
 
         // 2. Check native prefs
@@ -395,6 +399,7 @@ public final class GooglePhotosAccountAvatar {
             activeSelectedEmail = nativeEmail;
             persistAccountSelection(activity, nativeEmail);
             APPLIED_AVATAR_HASHES.clear();
+            APPLIED_AVATAR_BITMAPS.clear();
         }
 
         // If signed out or "Use without an account", do not touch toolbar view
@@ -521,7 +526,9 @@ public final class GooglePhotosAccountAvatar {
             if (bmp == null) continue;
 
             View disc = findRowAvatarDisc(activity, tv);
-            if (disc != null) setAvatarOnView(activity, disc, bmp);
+            if (disc != null) {
+                setAvatarOnView(activity, disc, bmp);
+            }
         }
 
         attachSignedOutRowHook(activity, root);
@@ -674,6 +681,7 @@ public final class GooglePhotosAccountAvatar {
             if (!sameEmail(nativeEmail, activeSelectedEmail)) {
                 activeSelectedEmail = nativeEmail;
                 APPLIED_AVATAR_HASHES.clear();
+                APPLIED_AVATAR_BITMAPS.clear();
             }
             return NO_ACCOUNT_SENTINEL.equals(nativeEmail) ? null : nativeEmail;
         }
@@ -824,16 +832,13 @@ public final class GooglePhotosAccountAvatar {
         for (ImageView target : targets) {
             if (isExcluded(activity, target)) continue;
             Integer lastHash = APPLIED_AVATAR_HASHES.get(target);
+            Bitmap lastAppliedBitmap = APPLIED_AVATAR_BITMAPS.get(target);
             Drawable curDrawable = target.getDrawable();
-            boolean isOurBitmap = false;
-            if (curDrawable instanceof BitmapDrawable) {
+            if (lastHash != null && lastHash == bmpHash && lastAppliedBitmap != null && curDrawable instanceof BitmapDrawable) {
                 Bitmap curBmp = ((BitmapDrawable) curDrawable).getBitmap();
-                if (curBmp != null && (curBmp == bitmap || curBmp.hashCode() == bmpHash)) {
-                    isOurBitmap = true;
+                if (curBmp == lastAppliedBitmap) {
+                    continue;
                 }
-            }
-            if (lastHash != null && lastHash == bmpHash && isOurBitmap) {
-                continue;
             }
 
             int size = Math.min(target.getWidth(), target.getHeight());
@@ -844,8 +849,12 @@ public final class GooglePhotosAccountAvatar {
             target.setImageDrawable(new BitmapDrawable(target.getResources(), scaled));
             if (target.getForeground() != null) target.setForeground(null);
             target.setVisibility(View.VISIBLE);
-            target.invalidate();
             APPLIED_AVATAR_HASHES.put(target, bmpHash);
+            APPLIED_AVATAR_BITMAPS.put(target, scaled);
+            Logger.printDebug(() -> String.format(Locale.ROOT,
+                    "Applied avatar on %s (viewId=%s, size=%dx%d, bmp=%dx%d, hash=%d)",
+                    target.getClass().getSimpleName(), target.getId() != View.NO_ID ? target.getId() : "NO_ID",
+                    target.getWidth(), target.getHeight(), bitmap.getWidth(), bitmap.getHeight(), bmpHash));
         }
     }
 
@@ -904,25 +913,32 @@ public final class GooglePhotosAccountAvatar {
         Utils.runOnBackgroundThread(() -> {
             try {
                 Account[] accounts = AccountManager.get(activity).getAccountsByType(ACCOUNT_TYPE);
+                Logger.printInfo(() -> "[AvatarDiagnostic:prefetch] Found " + accounts.length + " accounts: " + Arrays.toString(accounts));
                 boolean anyReady = false;
                 for (Account acc : accounts) {
-                    if (readCachedAvatar(activity, acc.name) != null) anyReady = true;
+                    Bitmap cached = readCachedAvatar(activity, acc.name);
+                    Logger.printInfo(() -> "[AvatarDiagnostic:prefetch] Account " + acc.name + " cached=" + (cached != null));
+                    if (cached != null) anyReady = true;
                     else fetchProfileToken(activity, root, acc);
                 }
                 if (anyReady) Utils.runOnMainThread(() -> refresh(activity, root));
             } catch (Exception e) {
-                Logger.printDebug(() -> "Could not prefetch account avatars: " + e.getMessage());
+                Logger.printInfo(() -> "[AvatarDiagnostic:prefetch] Could not prefetch account avatars: " + e.getMessage());
             }
         });
     }
 
     private static void fetchProfileToken(Activity activity, View root, Account account) {
         String key = account.name.toLowerCase(Locale.ROOT);
-        if (MEMORY_AVATARS.containsKey(key) || !FETCHING_ACCOUNTS.add(key)) return;
+        boolean inMem = MEMORY_AVATARS.containsKey(key);
+        boolean added = FETCHING_ACCOUNTS.add(key);
+        Logger.printInfo(() -> "[AvatarDiagnostic:fetchProfileToken] " + account.name + " inMem=" + inMem + " added=" + added);
+        if (inMem || !added) return;
 
         try {
             Bundle options = new Bundle();
             options.putString("androidPackageName", activity.getPackageName());
+            Logger.printDebug(() -> "Requesting token for " + account.name);
             AccountManagerFuture<Bundle> future = AccountManager.get(activity).getAuthToken(
                     account, PROFILE_TOKEN_TYPE, options, false, null, null);
 
@@ -930,6 +946,8 @@ public final class GooglePhotosAccountAvatar {
                 try {
                     Bundle result = future.getResult();
                     String token = result.getString(AccountManager.KEY_AUTHTOKEN);
+                    Logger.printDebug(() -> "Token result for " + account.name
+                            + ": token=" + (token != null ? ("len=" + token.length()) : "null"));
                     if (token != null && !token.isEmpty()) {
                         Bitmap avatar = downloadAvatar(token);
                         if (avatar != null) {
@@ -938,7 +956,7 @@ public final class GooglePhotosAccountAvatar {
                         }
                     }
                 } catch (Exception e) {
-                    Logger.printDebug(() -> "Could not load account avatar: " + e.getMessage());
+                    Logger.printDebug(() -> "Error fetching token for " + account.name + ": " + e.getMessage());
                 } finally {
                     FETCHING_ACCOUNTS.remove(key);
                 }
@@ -955,13 +973,16 @@ public final class GooglePhotosAccountAvatar {
 
     @Nullable
     private static Bitmap downloadAvatar(String token) throws Exception {
+        Logger.printDebug(() -> "Requesting userinfo: " + USER_INFO_URL);
         HttpURLConnection conn = (HttpURLConnection) new URL(USER_INFO_URL).openConnection();
         conn.setRequestMethod("GET");
         conn.setRequestProperty("Authorization", "Bearer " + token);
         conn.setRequestProperty("Accept", "application/json");
         conn.setConnectTimeout(10000);
         conn.setReadTimeout(10000);
-        if (conn.getResponseCode() != HttpURLConnection.HTTP_OK) { conn.disconnect(); return null; }
+        int respCode = conn.getResponseCode();
+        Logger.printDebug(() -> "userinfo HTTP response code: " + respCode);
+        if (respCode != HttpURLConnection.HTTP_OK) { conn.disconnect(); return null; }
 
         StringBuilder sb = new StringBuilder();
         try (BufferedReader r = new BufferedReader(
@@ -970,20 +991,62 @@ public final class GooglePhotosAccountAvatar {
             while ((line = r.readLine()) != null) sb.append(line);
         } finally { conn.disconnect(); }
 
-        String pictureUrl = new JSONObject(sb.toString()).optString("picture", null);
-        if (pictureUrl == null || pictureUrl.isEmpty()) return null;
+        String json = sb.toString();
+        Logger.printDebug(() -> "userinfo JSON: " + json);
+        String pictureUrl = new JSONObject(json).optString("picture", null);
+        Logger.printDebug(() -> "pictureUrl: " + pictureUrl);
+        if (pictureUrl == null || pictureUrl.isEmpty() || isDefaultAvatarUrl(pictureUrl)) {
+            Logger.printDebug(() -> "Skipping default or empty picture URL: " + pictureUrl);
+            return null;
+        }
 
         HttpURLConnection imgConn = (HttpURLConnection) new URL(pictureUrl).openConnection();
         imgConn.setConnectTimeout(10000);
         imgConn.setReadTimeout(10000);
         try (InputStream in = imgConn.getInputStream()) {
-            return makeCircular(BitmapFactory.decodeStream(in));
+            Bitmap raw = BitmapFactory.decodeStream(in);
+            Logger.printDebug(() -> "Downloaded raw bitmap: " + (raw != null ? (raw.getWidth() + "x" + raw.getHeight()) : "null"));
+            if (raw == null || isDefaultBlueSilhouette(raw)) {
+                Logger.printInfo(() -> "Downloaded avatar is null or default blue silhouette, skipping");
+                return null;
+            }
+            return makeCircular(raw);
         } finally { imgConn.disconnect(); }
     }
 
     // ─────────────────────────────────────────────────────────────────────────
     // Bitmap helpers
     // ─────────────────────────────────────────────────────────────────────────
+
+    private static boolean isDefaultAvatarUrl(@Nullable String url) {
+        if (url == null || url.isEmpty()) return true;
+        String lower = url.toLowerCase(Locale.ROOT);
+        return lower.contains("default-user") || lower.contains("default_avatar");
+    }
+
+    private static boolean isDefaultBlueSilhouette(@Nullable Bitmap bmp) {
+        if (bmp == null || bmp.getWidth() <= 0 || bmp.getHeight() <= 0) return false;
+        try {
+            int w = bmp.getWidth();
+            int h = bmp.getHeight();
+            int centerPixel = bmp.getPixel(w / 2, h / 2);
+            int cr = (centerPixel >> 16) & 0xff;
+            int cg = (centerPixel >> 8) & 0xff;
+            int cb = centerPixel & 0xff;
+
+            int topBgPixel = bmp.getPixel(w / 2, Math.max(1, h / 10));
+            int br = (topBgPixel >> 16) & 0xff;
+            int bg = (topBgPixel >> 8) & 0xff;
+            int bb = topBgPixel & 0xff;
+
+            boolean centerMatches = Math.abs(cr - 67) <= 10 && Math.abs(cg - 116) <= 10 && Math.abs(cb - 224) <= 10;
+            boolean bgMatches = Math.abs(br - 160) <= 10 && Math.abs(bg - 195) <= 10 && Math.abs(bb - 255) <= 10;
+
+            return centerMatches && bgMatches;
+        } catch (Throwable ignored) {
+            return false;
+        }
+    }
 
     @Nullable
     private static Bitmap makeCircular(@Nullable Bitmap src) {
@@ -1020,18 +1083,34 @@ public final class GooglePhotosAccountAvatar {
         if (email == null || NO_ACCOUNT_SENTINEL.equals(email)) return null;
         String key = email.toLowerCase(Locale.ROOT);
         Bitmap mem = MEMORY_AVATARS.get(key);
-        if (mem != null) return mem;
+        if (mem != null) {
+            Logger.printDebug(() -> email + " hit RAM cache (" + mem.getWidth() + "x" + mem.getHeight() + ")");
+            return mem;
+        }
 
         File f = cacheFile(activity, email);
-        if (!f.isFile()) return null;
+        if (!f.isFile()) {
+            Logger.printDebug(() -> email + " disk cache miss (" + f.getAbsolutePath() + ")");
+            return null;
+        }
         if (System.currentTimeMillis() - f.lastModified() > CACHE_MAX_AGE_MILLIS) {
+            Logger.printInfo(() -> email + " disk cache expired, deleting");
             //noinspection ResultOfMethodCallIgnored
             f.delete();
             return null;
         }
         try (InputStream in = new FileInputStream(f)) {
             Bitmap bmp = makeCircular(BitmapFactory.decodeStream(in));
-            if (bmp != null) MEMORY_AVATARS.put(key, bmp);
+            if (bmp != null) {
+                if (isDefaultBlueSilhouette(bmp)) {
+                    Logger.printInfo(() -> email + " cached avatar is default blue silhouette, deleting file");
+                    //noinspection ResultOfMethodCallIgnored
+                    f.delete();
+                    return null;
+                }
+                MEMORY_AVATARS.put(key, bmp);
+                Logger.printDebug(() -> email + " loaded from disk (" + bmp.getWidth() + "x" + bmp.getHeight() + ")");
+            }
             return bmp;
         } catch (Exception e) {
             Logger.printDebug(() -> "Could not read cached avatar: " + e.getMessage());
@@ -1040,10 +1119,12 @@ public final class GooglePhotosAccountAvatar {
     }
 
     private static void writeCachedAvatar(Activity activity, String email, Bitmap bitmap) {
-        if (email == null || bitmap == null || NO_ACCOUNT_SENTINEL.equals(email)) return;
+        if (email == null || bitmap == null || NO_ACCOUNT_SENTINEL.equals(email) || isDefaultBlueSilhouette(bitmap)) return;
         MEMORY_AVATARS.put(email.toLowerCase(Locale.ROOT), bitmap);
+        File f = cacheFile(activity, email);
+        Logger.printDebug(() -> "Writing cached avatar for " + email + " to " + f.getAbsolutePath());
         Utils.runOnBackgroundThread(() -> {
-            try (FileOutputStream out = new FileOutputStream(cacheFile(activity, email))) {
+            try (FileOutputStream out = new FileOutputStream(f)) {
                 bitmap.compress(Bitmap.CompressFormat.PNG, 100, out);
             } catch (Exception e) {
                 Logger.printDebug(() -> "Could not cache avatar: " + e.getMessage());
