@@ -45,6 +45,7 @@ import app.morphe.extension.shared.patches.PhenotypeFlagManager.MaterialVectorDr
 import app.morphe.extension.shared.patches.PhenotypeFlagManager.Theme;
 import app.morphe.extension.shared.patches.PhotosModelSeeder;
 import app.morphe.extension.shared.patches.PhotosOnlyBackupFilter;
+import app.morphe.extension.shared.patches.PhotosTimelineFilter;
 import app.morphe.extension.shared.patches.flags.PhotoFlagsRegistry;
 import app.morphe.extension.shared.patches.toolkit.NativeToolkitDialog;
 
@@ -333,8 +334,19 @@ public final class MorpheSettingsScreen {
         content.addView(backupGroup);
 
         // ─────────────────────────────────────────────────────────────────────
-        // 1.8. Interface & Navigation
+        // 1.7. Timeline & Photos View
         // ─────────────────────────────────────────────────────────────────────
+        content.addView(createSectionHeader(activity, density, theme, "Timeline & Photos View"));
+        LinearLayout timelineGroup = createCardContainer(activity, density, theme);
+
+        timelineGroup.addView(createPreferenceItem(activity, density, theme,
+                "quantum_gm_ic_folder_vd_theme_24",
+                MaterialVectorDrawable.TYPE_GRID,
+                "Customize timeline folders",
+                "Choose device folders (Camera, Screenshots, etc.) to show on your main Photos timeline",
+                () -> PhotosTimelineFilter.showFolderPickerDialog(activity, theme)));
+
+        content.addView(timelineGroup);
         content.addView(createSectionHeader(activity, density, theme, "Interface & Navigation"));
         LinearLayout navGroup = createCardContainer(activity, density, theme);
 

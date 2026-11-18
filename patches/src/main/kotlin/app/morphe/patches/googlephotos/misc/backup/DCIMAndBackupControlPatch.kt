@@ -32,6 +32,7 @@ val dcimAndBackupControlPatch = bytecodePatch(
     name = "DCIM & backup control",
     description = "Disables always on backup for the Camera and other DCIM folders, allowing individual folder control, " +
         "adds an 'Upload photos only' toggle to Morphe Settings to skip videos in automatic backup, " +
+        "allows hiding the Camera roll and customizing timeline folders without cloud backup, " +
         "and exports memory collages and creations to DCIM/Google Photos for quota-free backup.",
     default = true,
 ) {
@@ -649,6 +650,25 @@ val dcimAndBackupControlPatch = bytecodePatch(
             }
         }
 
+        // 10. Timeline Folder & Camera Roll Filtering (#46, #89)
+        // Intercept compiled timeline SQL queries (tiles, date headers, counts) right before return.
+        val timelineQueryMethod = TimelineQueryBuilderFingerprint.methodOrNull
+        if (timelineQueryMethod != null) {
+            val queryClassDef = mutableClassDefBy(timelineQueryMethod.definingClass)
+            val mutableQueryMethod = queryClassDef.findMutableMethodOf(timelineQueryMethod)
+            val liveInstructions = mutableQueryMethod.implementation?.instructions?.toList() ?: emptyList()
+            val returnIdx = liveInstructions.indexOfLast { it.opcode == Opcode.RETURN_OBJECT }
+            if (returnIdx != -1) {
+                val returnReg = (liveInstructions[returnIdx] as OneRegisterInstruction).registerA
+                mutableQueryMethod.addInstructions(
+                    returnIdx,
+                    """
+                    invoke-static { v$returnReg }, Lapp/morphe/extension/shared/patches/PhotosTimelineFilter;->filterTimelineSqlQuery(Ljava/lang/String;)Ljava/lang/String;
+                    move-result-object v$returnReg
+                    """.trimIndent()
+                )
+            }
+        }
 
         if (!patchedSaveMixin) {
             throw PatchException("Could not find SaveCreationMixin or its save execution method.")
