@@ -29,6 +29,9 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Fetch Git Notes
+        run: git fetch origin "+refs/notes/*:refs/notes/*" || true
+
       - name: Apply manual release bump override
         if: github.event.inputs.bump != 'auto' && github.event.inputs.bump != ''
         run: |
