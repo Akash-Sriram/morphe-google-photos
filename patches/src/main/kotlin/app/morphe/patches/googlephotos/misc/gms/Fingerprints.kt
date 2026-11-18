@@ -245,7 +245,7 @@ internal object BackupSettingsEntryLaunchedEffectFingerprint : Fingerprint(
                 m.parameterTypes[0] == "Z" &&
                 m.parameterTypes[2] == "Ljava/util/List;" &&
                 m.parameterTypes[4] == "Z" &&
-                m.parameterTypes[7].contains("cvbh")
+                (m.parameterTypes[7].contains("cvbh") || m.parameterTypes[7].contains("cuzp") || m.parameterTypes[7].startsWith("L"))
         }
     },
 )

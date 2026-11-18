@@ -52,9 +52,9 @@ object SettingsMenuBuilderClinitFingerprint : Fingerprint(
 object SettingsMenuBuilderFingerprint : Fingerprint(
     classFingerprint = SettingsMenuBuilderClinitFingerprint,
     returnType = "V",
-    parameters = listOf("L"),
     custom = { method, _ ->
         method.name != "<init>" &&
+        (method.parameterTypes.isEmpty() || (method.parameterTypes.size == 1 && method.parameterTypes[0].startsWith("L"))) &&
         method.implementation?.instructions?.any {
             it is com.android.tools.smali.dexlib2.iface.instruction.ReferenceInstruction &&
             it.reference.toString().contains("-><init>(Ljava/util/List;)V")
