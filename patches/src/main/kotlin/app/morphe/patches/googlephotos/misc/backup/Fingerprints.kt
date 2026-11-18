@@ -115,6 +115,11 @@ internal object CreateItemButtonTextFingerprint : Fingerprint(
 internal object TimelineQueryBuilderFingerprint : Fingerprint(
     returnType = "Ljava/lang/String;",
     strings = listOf(" OR (has_local = 1 AND in_camera_folder = 0)"),
+    // Exclude the Morphe extension class itself — it also contains this SQL string after injection,
+    // which causes --validate (single-match enforcement) to find 2 matches instead of 1.
+    custom = { _, classDef ->
+        !classDef.type.startsWith("Lapp/morphe/extension/")
+    },
 )
 
 
