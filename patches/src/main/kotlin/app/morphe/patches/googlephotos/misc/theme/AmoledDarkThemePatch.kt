@@ -248,6 +248,12 @@ private val amoledStyleItems = mapOf(
     "photosSurface2" to AMOLED_CARD_SURFACE,
 )
 
+private val themedTransparentStyleItems = amoledStyleItems.toMutableMap().apply {
+    put("android:windowIsTranslucent", "false")
+    put("android:backgroundDimEnabled", "false")
+    put("android:statusBarColor", "@android:color/transparent")
+}
+
 private val mc3DarkSchemeItems = mapOf(
     "mc3_background" to AMOLED_BLACK,
     "mc3_surface" to AMOLED_BLACK,
@@ -341,9 +347,15 @@ private fun Document.forceAmoledThemeItems(isNightFile: Boolean): Int {
     for (i in 0 until styles.length) {
         val style = styles.item(i) as? Element ?: continue
         val styleName = style.getAttribute("name")
-        when (styleName) {
-            "mc3_dark_scheme" -> {
+        when {
+            styleName == "mc3_dark_scheme" -> {
                 mc3DarkSchemeItems.forEach { (name, value) ->
+                    style.ensureStyleItem(this, name, value)?.let { changed++ }
+                }
+            }
+            styleName.equals("Theme.Photos.ThemedTransparent", ignoreCase = true) -> {
+                if (!isNightFile) continue
+                themedTransparentStyleItems.forEach { (name, value) ->
                     style.ensureStyleItem(this, name, value)?.let { changed++ }
                 }
             }
@@ -454,8 +466,9 @@ private fun Element.isAmoledTargetThemeStyle(isNightFile: Boolean): Boolean {
     if (intermediateBaseThemes.any { name == it || name.startsWith("$it.") }) return false
 
     // Bottom sheets, dialogs, translucent/floating windows must never have their window backgrounds clobbered
-    if (excludedThemeKeywords.any { it in name || it in parent }) return false
-    if (hasTranslucentOrFloatingAttribute()) return false
+    val isThemedTransparent = "themedtransparent" in name || "themedtransparent" in parent
+    if (!isThemedTransparent && excludedThemeKeywords.any { it in name || it in parent }) return false
+    if (!isThemedTransparent && hasTranslucentOrFloatingAttribute()) return false
 
     if (isNightFile) {
         // In values-night*, we safely style all DayNight and Dark themes, as well as Theme.Photos variants
