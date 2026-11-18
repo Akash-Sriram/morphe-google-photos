@@ -141,14 +141,8 @@ public class GmsCoreSupportPatch {
     }
 
     public static boolean onCheckBackupAccountLinked(boolean originalVal, Object luslObj) {
-        if (!originalVal) {
-            int activeId = resolveRegisteredAccountId(Utils.getContext());
-            if (activeId >= 0) {
-                logBackup("[Lusl.b CHECK] OVERRIDING unlinked false -> TRUE (activeId=" + activeId + ")");
-                return true;
-            }
-        }
-        return originalVal;
+        logBackup("[Lusl.b CHECK] Suppressing auto-account-switcher popup in Backup Settings LaunchedEffect (originalVal=" + originalVal + ")");
+        return true;
     }
 
     public static Object sanitizeLudh(Object ludhObj) {
@@ -362,6 +356,17 @@ public class GmsCoreSupportPatch {
         }
         if (context == null) return -1;
         try {
+            // Priority 1: Check existing backup preferences
+            try {
+                SharedPreferences backupPrefs = context.getSharedPreferences("photos.backup.backup_prefs", Context.MODE_PRIVATE);
+                int backupAccountId = backupPrefs.getInt("backup_prefs_account_id", -1);
+                if (backupAccountId >= 0) {
+                    logBackup("Resolved active backup account ID from backup_prefs: " + backupAccountId);
+                    return backupAccountId;
+                }
+            } catch (Throwable ignored) {}
+
+            // Priority 2: Native accounts preferences (accounts.xml)
             SharedPreferences accountsPrefs = context.getSharedPreferences("accounts", Context.MODE_PRIVATE);
             int activeKey = accountsPrefs.getInt("key.active-account-key", -1);
             if (activeKey >= 0) {
@@ -396,6 +401,7 @@ public class GmsCoreSupportPatch {
                 }
             }
 
+            // Priority 3: Explicit accountStore instance
             if (accountStore != null) {
                 try {
                     Method hMethod = accountStore.getClass().getMethod("h");
@@ -406,6 +412,52 @@ public class GmsCoreSupportPatch {
                             logBackup("Resolved first registered account key: " + first);
                             return (Integer) first;
                         }
+                    }
+                } catch (Throwable ignored) {}
+            }
+
+            // Priority 4: Dynamic ServiceLocator resolution for AccountHandler / AccountStore
+            ClassLoader classLoader = context.getClassLoader();
+            String[] locators = {"cdhf", "ccym", "cbyf", "bzoq", "bxoe"};
+            String[] handlers = {"cbne", "cbdz", "cbqo", "cbnu", "cboe", "cbmw"};
+            String[] stores = {"cbnl", "cbeg", "cboi", "cbfc", "cbdr", "cbde"};
+
+            for (String locName : locators) {
+                try {
+                    Class<?> locClass = classLoader.loadClass(locName);
+                    Method eMethod = locClass.getMethod("e", Context.class, Class.class);
+
+                    for (String handlerName : handlers) {
+                        try {
+                            Class<?> hClass = classLoader.loadClass(handlerName);
+                            Object handler = eMethod.invoke(null, context, hClass);
+                            if (handler != null) {
+                                Method dMethod = handler.getClass().getMethod("d");
+                                Integer id = (Integer) dMethod.invoke(handler);
+                                if (id != null && id >= 0) {
+                                    logBackup("Resolved active account ID via ServiceLocator (" + locName + " -> " + handlerName + ".d()): " + id);
+                                    return id;
+                                }
+                            }
+                        } catch (Throwable ignored) {}
+                    }
+
+                    for (String storeName : stores) {
+                        try {
+                            Class<?> sClass = classLoader.loadClass(storeName);
+                            Object store = eMethod.invoke(null, context, sClass);
+                            if (store != null) {
+                                Method hMethod = store.getClass().getMethod("h");
+                                List<?> list = (List<?>) hMethod.invoke(store);
+                                if (list != null && !list.isEmpty()) {
+                                    Object first = list.get(0);
+                                    if (first instanceof Integer && ((Integer) first) >= 0) {
+                                        logBackup("Resolved registered account ID via ServiceLocator (" + locName + " -> " + storeName + ".h()): " + first);
+                                        return (Integer) first;
+                                    }
+                                }
+                            }
+                        } catch (Throwable ignored) {}
                     }
                 } catch (Throwable ignored) {}
             }
@@ -420,6 +472,30 @@ public class GmsCoreSupportPatch {
      * to the currently registered/active account in Google Photos.
      */
     public static int resolveRegisteredAccountFromEmail(String gmsEmail, Object accountStore, Context context) {
+        if (accountStore == null && context != null) {
+            try {
+                ClassLoader cl = context.getClassLoader();
+                String[] locators = {"cdhf", "ccym", "cbyf", "bzoq", "bxoe"};
+                String[] stores = {"cbnl", "cbeg", "cboi", "cbfc", "cbdr", "cbde"};
+                for (String loc : locators) {
+                    try {
+                        Class<?> locClass = cl.loadClass(loc);
+                        Method eMethod = locClass.getMethod("e", Context.class, Class.class);
+                        for (String storeName : stores) {
+                            try {
+                                Class<?> sClass = cl.loadClass(storeName);
+                                Object store = eMethod.invoke(null, context, sClass);
+                                if (store != null) {
+                                    accountStore = store;
+                                    break;
+                                }
+                            } catch (Throwable ignored) {}
+                        }
+                        if (accountStore != null) break;
+                    } catch (Throwable ignored) {}
+                }
+            } catch (Throwable ignored) {}
+        }
         if (accountStore != null) {
             try {
                 Method hMethod = accountStore.getClass().getMethod("h");

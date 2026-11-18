@@ -170,10 +170,10 @@ val mediaEngineAndAIFixesPatch = bytecodePatch(
                     if (ref != null && ref.returnType == mddCallbackMethod.returnType &&
                         ref.parameterTypes.size == 1 && ref.parameterTypes[0] == "Ljava/lang/Throwable;"
                     ) {
-                        // Check if immediately preceded by new-instance / invoke-direct of bvrh
+                        // Check if immediately preceded by new-instance / invoke-direct of bvrh / bwyy
                         val isBvrhCatch = (1..3).any { offset ->
                             val prev = instructions.getOrNull(index - offset)
-                            prev is ReferenceInstruction && prev.reference.toString().contains("bvrh")
+                            prev is ReferenceInstruction && (prev.reference.toString().contains("bvrh") || prev.reference.toString().contains("bwyy") || prev.opcode == Opcode.NEW_INSTANCE)
                         }
                         if (isBvrhCatch) {
                             val next = instructions.getOrNull(index + 1)
@@ -211,14 +211,15 @@ val mediaEngineAndAIFixesPatch = bytecodePatch(
                     if (instruction is Instruction35c && instruction.opcode == Opcode.INVOKE_STATIC) {
                         val ref = instruction.reference as? MethodReference
                         if (ref != null && ref.returnType == "Z" && ref.parameterTypes.size == 2 &&
-                            ref.parameterTypes[0].endsWith("cmpi;") && ref.parameterTypes[1].endsWith("apct;")
+                            !ref.parameterTypes[0].startsWith("Ljava/") && !ref.parameterTypes[1].startsWith("Ljava/") &&
+                            (ref.name == "d" || ref.name == "k")
                         ) {
                             laqdzClass = ref.definingClass
                             val next = instructions.getOrNull(index + 1)
                             if (next is OneRegisterInstruction && next.opcode == Opcode.MOVE_RESULT) {
                                 val reg = next.registerA
                                 if (ref.name == "d") {
-                                    // Laqdz.d is the flat fallback gatekeeper: if true, it jumps to Laova.p (flat squircle).
+                                    // Laqdz.d is the flat fallback gatekeeper: if true, it jumps to flat squircle.
                                     // We must force false (0x0) so it always bypasses the flat fallback!
                                     mutableBind.replaceInstruction(index, "nop")
                                     mutableBind.replaceInstruction(index + 1, "const/4 v$reg, 0x0")
@@ -235,7 +236,7 @@ val mediaEngineAndAIFixesPatch = bytecodePatch(
                     if (instruction is Instruction35c && instruction.opcode == Opcode.INVOKE_VIRTUAL) {
                         val ref = instruction.reference as? MethodReference
                         if (ref != null && ref.name == "a" && ref.parameterTypes.size == 8 &&
-                            ref.parameterTypes[0].endsWith("cmpi;") && ref.parameterTypes[1].endsWith("apct;")
+                            !ref.parameterTypes[0].startsWith("Ljava/") && !ref.parameterTypes[1].startsWith("Ljava/")
                         ) {
                             lapbhClass = ref.definingClass
                         }
