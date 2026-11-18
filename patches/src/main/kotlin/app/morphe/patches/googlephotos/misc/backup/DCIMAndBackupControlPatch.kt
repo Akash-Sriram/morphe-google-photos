@@ -427,7 +427,9 @@ val dcimAndBackupControlPatch = bytecodePatch(
 
             // Fallback to all assistant cards if proto/14-day window has < 3 creations
             val loadCreationsMethod = delegateClassDef.methods.find { m ->
-                m.parameterTypes.size == 1 && m.parameterTypes[0] == "Lctwl;" && m.returnType == "Ljava/lang/Object;"
+                m.parameterTypes.size == 1 &&
+                    (m.parameterTypes[0] == "Lctwl;" || m.parameterTypes[0] == "Lcvbh;" || m.parameterTypes[0].startsWith("L")) &&
+                    m.returnType == "Ljava/lang/Object;"
             }
             if (loadCreationsMethod != null) {
                 val mutableLoadCreationsMethod = delegateClassDef.findMutableMethodOf(loadCreationsMethod)
