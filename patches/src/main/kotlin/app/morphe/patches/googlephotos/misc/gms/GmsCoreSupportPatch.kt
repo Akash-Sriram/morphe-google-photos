@@ -568,7 +568,7 @@ val gmsCoreSupportPatch = gmsCoreSupportPatch(
                     mutableUvhMethod.addInstructions(
                         0,
                         """
-                        invoke-static {v$ludhParamReg, v$boolParamReg}, Lapp/morphe/extension/shared/patches/GmsCoreSupportPatch;->onLuvhAEntry(Ljava/lang/Object;Ljava/lang/Boolean;)Ljava/lang/Object;
+                        invoke-static/range {v$ludhParamReg .. v$boolParamReg}, Lapp/morphe/extension/shared/patches/GmsCoreSupportPatch;->onLuvhAEntry(Ljava/lang/Object;Ljava/lang/Boolean;)Ljava/lang/Object;
                         move-result-object v$ludhParamReg
                         check-cast v$ludhParamReg, $ludhClassName
                         """.trimIndent(),
@@ -582,7 +582,7 @@ val gmsCoreSupportPatch = gmsCoreSupportPatch(
                                 mutableUvhMethod.addInstructions(
                                     idx,
                                     """
-                                    invoke-static {v$retReg, v$ludhParamReg}, Lapp/morphe/extension/shared/patches/GmsCoreSupportPatch;->onLuvhAReturn(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;
+                                    invoke-static/range {v$retReg .. v$retReg}, Lapp/morphe/extension/shared/patches/GmsCoreSupportPatch;->onLuvhAReturn(Ljava/lang/Object;)Ljava/lang/Object;
                                     move-result-object v$retReg
                                     check-cast v$retReg, ${uvhMethod.returnType}
                                     """.trimIndent(),

@@ -122,7 +122,7 @@ public class GmsCoreSupportPatch {
         return sanitizeLudh(ludhObj, null);
     }
 
-    public static Object onLuvhAReturn(Object luvk, Object ludh) {
+    public static Object onLuvhAReturn(Object luvk) {
         try {
             String luvkClass = luvk != null ? luvk.getClass().getName() : "null";
             Boolean isLinked = null;
@@ -132,7 +132,7 @@ public class GmsCoreSupportPatch {
                     isLinked = (Boolean) gMethod.invoke(luvk);
                 } catch (Throwable ignored) {}
             }
-            logBackup("[Luvh.a RETURN] luvk=" + luvk + " (class=" + luvkClass + ") isLinked(g())=" + isLinked + " inputLudh=" + ludh);
+            logBackup("[Luvh.a RETURN] luvk=" + luvk + " (class=" + luvkClass + ") isLinked(g())=" + isLinked);
         } catch (Throwable t) {
             logBackup("[Luvh.a RETURN] Error inspecting: " + t.getMessage());
         }
