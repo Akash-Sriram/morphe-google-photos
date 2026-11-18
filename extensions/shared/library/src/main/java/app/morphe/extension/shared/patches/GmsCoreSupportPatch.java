@@ -95,6 +95,194 @@ public class GmsCoreSupportPatch {
         return resolveRegisteredAccountFromEmail(gmsEmail, accountStore, context);
     }
 
+    // ─────────────────────────────────────────────────────────────────────────
+    // Live Backup Diagnostics & State Sanitization
+    // ─────────────────────────────────────────────────────────────────────────
+
+    public static final String BACKUP_TAG = "MORPHE_BACKUP";
+
+    public static void logBackup(String message) {
+        android.util.Log.e(BACKUP_TAG, message);
+    }
+
+    public static void onAutoBackupSettingsActivityAttachBinder(Activity activity) {
+        try {
+            Intent intent = activity != null ? activity.getIntent() : null;
+            Bundle extras = intent != null ? intent.getExtras() : null;
+            logBackup("[AutoBackupSettingsActivity.onAttachBinder] activity=" + activity + " intent=" + intent + " extras=" + extras);
+        } catch (Throwable t) {
+            logBackup("[AutoBackupSettingsActivity.onAttachBinder] Error: " + t.getMessage());
+        }
+    }
+
+    public static Object onLuvhAEntry(Object ludhObj, Boolean isConnected) {
+        logBackup("[Luvh.a ENTRY] ludh=" + ludhObj + " isConnected=" + isConnected + " (thread=" + Thread.currentThread().getName() + ")");
+        return sanitizeLudh(ludhObj, null);
+    }
+
+    public static Object onLuvhAReturn(Object luvk, Object ludh) {
+        try {
+            String luvkClass = luvk != null ? luvk.getClass().getName() : "null";
+            Boolean isLinked = null;
+            if (luvk != null) {
+                try {
+                    Method gMethod = luvk.getClass().getMethod("g");
+                    isLinked = (Boolean) gMethod.invoke(luvk);
+                } catch (Throwable ignored) {}
+            }
+            logBackup("[Luvh.a RETURN] luvk=" + luvk + " (class=" + luvkClass + ") isLinked(g())=" + isLinked + " inputLudh=" + ludh);
+        } catch (Throwable t) {
+            logBackup("[Luvh.a RETURN] Error inspecting: " + t.getMessage());
+        }
+        return luvk;
+    }
+
+    public static boolean onCheckBackupAccountLinked(boolean originalVal, Object luslObj) {
+        logBackup("[Lusl.b CHECK] originalVal=" + originalVal + " lusl=" + luslObj);
+        try {
+            if (luslObj != null) {
+                Field bField = luslObj.getClass().getDeclaredField("b");
+                bField.setAccessible(true);
+                Object uvk = bField.get(luslObj);
+                String uvkClass = uvk != null ? uvk.getClass().getName() : "null";
+                Boolean gResult = null;
+                if (uvk != null) {
+                    try {
+                        Method gMethod = uvk.getClass().getMethod("g");
+                        gResult = (Boolean) gMethod.invoke(uvk);
+                    } catch (Throwable ignored) {}
+                }
+                logBackup("[Lusl.b CHECK] uvk=" + uvk + " class=" + uvkClass + " uvk.g()=" + gResult);
+            }
+        } catch (Throwable t) {
+            logBackup("[Lusl.b CHECK] Error inspecting lusl: " + t.getMessage());
+        }
+        if (!originalVal) {
+            int activeId = resolveRegisteredAccountId(Utils.getContext());
+            logBackup("[Lusl.b CHECK] originalVal is FALSE! activeId in Photos=" + activeId);
+            if (activeId >= 0) {
+                logBackup("[Lusl.b CHECK] OVERRIDING unlinked false -> TRUE because active registered account exists (id=" + activeId + ")!");
+                return true;
+            }
+        }
+        return originalVal;
+    }
+
+    public static Object sanitizeLudh(Object ludhObj) {
+        return sanitizeLudh(ludhObj, null);
+    }
+
+    /**
+     * Sanitizes Google Photos BackupPreferences (Ludh) on MicroG/LineageOS.
+     * When backup account ID is -1 (unlinked), this resolves the active registered account ID
+     * from accounts.xml and builds a valid Ludh instance using the internal builder (Ludg),
+     * ensuring backup settings UI treats the active account as linked and avoids triggering
+     * the auto-account-switcher dialog.
+     */
+    public static Object sanitizeLudh(Object ludhObj, Context context) {
+        if (ludhObj == null) {
+            return null;
+        }
+        try {
+            if (context == null) {
+                context = Utils.getContext();
+            }
+            Class<?> ludhClass = ludhObj.getClass();
+            Field bField = ludhClass.getDeclaredField("b");
+            bField.setAccessible(true);
+            int accountId = bField.getInt(ludhObj);
+
+            logBackup("[sanitizeLudh] ENTER: ludhObj=" + ludhObj + " accountId=" + accountId + " context=" + context + " (thread=" + Thread.currentThread().getName() + ")");
+
+            if (accountId >= 0) {
+                logBackup("[sanitizeLudh] Account already linked (id=" + accountId + "), keeping as-is.");
+                return ludhObj;
+            }
+
+            int activeId = resolveRegisteredAccountId(context);
+            logBackup("[sanitizeLudh] Resolving unlinked accountId=" + accountId + " -> registered activeId=" + activeId);
+            if (activeId < 0) {
+                logBackup("[sanitizeLudh] No registered account found, returning unlinked ludh.");
+                return ludhObj;
+            }
+
+            // Find builder class from Ludh constructor: Ludh(Ludg)
+            Class<?> builderClass = null;
+            for (Constructor<?> ctor : ludhClass.getDeclaredConstructors()) {
+                Class<?>[] params = ctor.getParameterTypes();
+                if (params.length == 1 && !params[0].isPrimitive() && !params[0].getName().equals("android.os.Parcel")) {
+                    builderClass = params[0];
+                    break;
+                }
+            }
+            if (builderClass == null) {
+                logBackup("[sanitizeLudh] Error: builder class not found for " + ludhClass.getName());
+                return ludhObj;
+            }
+
+            Object builder = builderClass.getDeclaredConstructor().newInstance();
+            Method copyMethod = null;
+            for (Method m : builderClass.getDeclaredMethods()) {
+                if (m.getParameterTypes().length == 1 && m.getParameterTypes()[0].equals(ludhClass)) {
+                    copyMethod = m;
+                    break;
+                }
+            }
+            if (copyMethod != null) {
+                copyMethod.invoke(builder, ludhObj);
+            }
+
+            // Set accountId on builder (field "a")
+            Field builderA = builderClass.getDeclaredField("a");
+            builderA.setAccessible(true);
+            builderA.setInt(builder, activeId);
+
+            // Ensure required enum fields are populated
+            for (Method m : builderClass.getDeclaredMethods()) {
+                Class<?>[] pTypes = m.getParameterTypes();
+                if (pTypes.length == 1 && pTypes[0].isEnum()) {
+                    Object[] enumConstants = pTypes[0].getEnumConstants();
+                    if (enumConstants != null && enumConstants.length > 0) {
+                        try {
+                            m.invoke(builder, enumConstants[0]);
+                        } catch (Throwable ignored) {}
+                    }
+                }
+            }
+
+            // Build new Ludh
+            Method buildMethod = null;
+            for (Method m : builderClass.getDeclaredMethods()) {
+                if (m.getParameterTypes().length == 0 && m.getReturnType().equals(ludhClass)) {
+                    buildMethod = m;
+                    break;
+                }
+            }
+            if (buildMethod == null) {
+                logBackup("[sanitizeLudh] Error: build method not found on " + builderClass.getName());
+                return ludhObj;
+            }
+            Object sanitized = buildMethod.invoke(builder);
+
+            // Persist to photos.backup.backup_prefs so background sync recognizes the account
+            if (context != null) {
+                SharedPreferences backupPrefs = context.getSharedPreferences("photos.backup.backup_prefs", Context.MODE_PRIVATE);
+                if (backupPrefs.getInt("backup_prefs_account_id", -1) != activeId) {
+                    backupPrefs.edit()
+                            .putInt("backup_prefs_account_id", activeId)
+                            .putBoolean("photos.backup.selective_backup_enabled", false)
+                            .apply();
+                }
+            }
+
+            logBackup("[sanitizeLudh] SUCCESS: Built sanitized Ludh with activeId=" + activeId + " (sanitized=" + sanitized + ")");
+            return sanitized;
+        } catch (Throwable t) {
+            logBackup("[sanitizeLudh] EXCEPTION: " + android.util.Log.getStackTraceString(t));
+            return ludhObj;
+        }
+    }
+
     /**
      * Sanitizes GMS Core backup settings (uyc) for MicroG and non-certified devices.
      * When GMS Core returns empty/disabled settings or null selective backup sets,
@@ -109,6 +297,7 @@ public class GmsCoreSupportPatch {
             if (context == null) {
                 context = Utils.getContext();
             }
+            logBackup("[sanitizeGmsBackupSettings] ENTER: gmsSettings=" + gmsSettings + " context=" + context + " (thread=" + Thread.currentThread().getName() + ")");
             Class<?> uycClass = gmsSettings.getClass();
             Field aField = uycClass.getDeclaredField("a"); // String (email)
             Field bField = uycClass.getDeclaredField("b"); // boolean (isBackupEnabled)
@@ -134,6 +323,8 @@ public class GmsCoreSupportPatch {
             if (folders == null) {
                 folders = Collections.emptySet();
             }
+
+            logBackup("[sanitizeGmsBackupSettings] INPUT: email=" + email + ", isBackupEnabled=" + isBackupEnabled + ", cellular=" + cellularPhotos + ", roaming=" + roaming + ", selective=" + selectiveBackup);
 
             if (context != null) {
                 SharedPreferences backupPrefs = context.getSharedPreferences("photos.backup.backup_prefs", Context.MODE_PRIVATE);
@@ -171,10 +362,10 @@ public class GmsCoreSupportPatch {
             Object sanitized = ctor.newInstance(email, isBackupEnabled, cellularPhotos, roaming, selectiveBackup, folders);
             final String finalEmail = email;
             final boolean finalEnabled = isBackupEnabled;
-            Logger.printInfo(() -> "Sanitized GmsCore backup settings: email=" + finalEmail + ", enabled=" + finalEnabled);
+            logBackup("[sanitizeGmsBackupSettings] SUCCESS: email=" + finalEmail + ", enabled=" + finalEnabled);
             return sanitized;
         } catch (Throwable t) {
-            Logger.printException(() -> "Error sanitizing GmsCore backup settings", t);
+            logBackup("[sanitizeGmsBackupSettings] EXCEPTION: " + android.util.Log.getStackTraceString(t));
             return gmsSettings;
         }
     }
@@ -185,6 +376,9 @@ public class GmsCoreSupportPatch {
      * Used on MicroG / LineageOS / non-certified devices when GMS Core backup account is unavailable.
      */
     public static int resolveRegisteredAccountId(Context context, Object accountStore) {
+        if (context == null) {
+            context = Utils.getContext();
+        }
         if (context == null) return -1;
         try {
             SharedPreferences accountsPrefs = context.getSharedPreferences("accounts", Context.MODE_PRIVATE);
@@ -195,16 +389,29 @@ public class GmsCoreSupportPatch {
                         Method pMethod = accountStore.getClass().getMethod("p", int.class);
                         Boolean isValid = (Boolean) pMethod.invoke(accountStore, activeKey);
                         if (isValid != null && isValid) {
-                            Logger.printInfo(() -> "Resolved registered active account key: " + activeKey);
+                            logBackup("Resolved registered active account key: " + activeKey);
                             return activeKey;
                         }
                     } catch (Throwable ignored) {
-                        Logger.printInfo(() -> "Resolved active account key from prefs: " + activeKey);
+                        logBackup("Resolved active account key from prefs: " + activeKey);
                         return activeKey;
                     }
                 } else {
-                    Logger.printInfo(() -> "Resolved active account key from prefs: " + activeKey);
+                    logBackup("Resolved active account key from prefs: " + activeKey);
                     return activeKey;
+                }
+            }
+
+            // Fallback: check all keys in accountsPrefs map
+            for (Map.Entry<String, ?> entry : accountsPrefs.getAll().entrySet()) {
+                if (entry.getKey().endsWith(".account_name") && entry.getValue() instanceof String) {
+                    try {
+                        int id = Integer.parseInt(entry.getKey().substring(0, entry.getKey().indexOf('.')));
+                        if (id >= 0) {
+                            logBackup("Resolved account ID from prefs map: " + id + " (" + entry.getValue() + ")");
+                            return id;
+                        }
+                    } catch (Throwable ignored) {}
                 }
             }
 
@@ -215,14 +422,14 @@ public class GmsCoreSupportPatch {
                     if (list != null && !list.isEmpty()) {
                         Object first = list.get(0);
                         if (first instanceof Integer) {
-                            Logger.printInfo(() -> "Resolved first registered account key: " + first);
+                            logBackup("Resolved first registered account key: " + first);
                             return (Integer) first;
                         }
                     }
                 } catch (Throwable ignored) {}
             }
         } catch (Throwable t) {
-            Logger.printException(() -> "Error resolving registered account ID", t);
+            logBackup("Error resolving registered account ID: " + t.getMessage());
         }
         return -1;
     }

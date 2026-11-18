@@ -546,7 +546,73 @@ val gmsCoreSupportPatch = gmsCoreSupportPatch(
                     )
                 }
 
-                // 13) Backup Preferences: In Ludi.c, resolve registered account if backup_prefs_account_id is -1
+                // 12) Backup Preferences & State: Dynamically resolve Ludh and Luvh, and sanitize + trace
+                val wMethod = syncClassDef.methods.firstOrNull {
+                    it.parameterTypes.size == 2 && it.parameterTypes[0] == "Ljava/lang/Boolean;"
+                }
+                val ludhClassName = wMethod?.parameterTypes?.getOrNull(1)
+                val uvhMethodRef = wMethod?.implementation?.instructions?.mapNotNull {
+                    if (it.opcode == Opcode.INVOKE_STATIC) {
+                        (it as? ReferenceInstruction)?.reference as? MethodReference
+                    } else null
+                }?.firstOrNull()
+
+                // Hook 1: Entry & Return of Luvh.a(Ludh, Boolean)Luvk
+                if (uvhMethodRef != null && ludhClassName != null) {
+                    val uvhClassDef = classDefBy(uvhMethodRef.definingClass)
+                    val mutableUvhClass = mutableClassDefBy(uvhClassDef)
+                    val uvhMethod = uvhClassDef.methods.first { it.name == uvhMethodRef.name && it.parameterTypes == uvhMethodRef.parameterTypes }
+                    val mutableUvhMethod = mutableUvhClass.findMutableMethodOf(uvhMethod)
+                    val ludhParamReg = uvhMethod.implementation!!.registerCount - uvhMethod.parameters.size
+                    val boolParamReg = ludhParamReg + 1
+                    mutableUvhMethod.addInstructions(
+                        0,
+                        """
+                        invoke-static {v$ludhParamReg, v$boolParamReg}, Lapp/morphe/extension/shared/patches/GmsCoreSupportPatch;->onLuvhAEntry(Ljava/lang/Object;Ljava/lang/Boolean;)Ljava/lang/Object;
+                        move-result-object v$ludhParamReg
+                        check-cast v$ludhParamReg, $ludhClassName
+                        """.trimIndent(),
+                    )
+
+                    val uvhInstructions = uvhMethod.implementation?.instructions?.toList()
+                    if (uvhInstructions != null) {
+                        for ((idx, inst) in uvhInstructions.withIndex().reversed()) {
+                            if (inst.opcode == Opcode.RETURN_OBJECT) {
+                                val retReg = (inst as OneRegisterInstruction).registerA
+                                mutableUvhMethod.addInstructions(
+                                    idx,
+                                    """
+                                    invoke-static {v$retReg, v$ludhParamReg}, Lapp/morphe/extension/shared/patches/GmsCoreSupportPatch;->onLuvhAReturn(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;
+                                    move-result-object v$retReg
+                                    check-cast v$retReg, ${uvhMethod.returnType}
+                                    """.trimIndent(),
+                                )
+                            }
+                        }
+                    }
+                }
+
+                // Hook 2: Return points of Luvq.p (syncMethod)
+                if (ludhClassName != null) {
+                    val pInstructions = syncMethod.implementation?.instructions?.toList()
+                    if (pInstructions != null) {
+                        for ((idx, inst) in pInstructions.withIndex().reversed()) {
+                            if (inst.opcode == Opcode.RETURN_OBJECT) {
+                                val pRetReg = (inst as OneRegisterInstruction).registerA
+                                mutableSyncMethod.addInstructions(
+                                    idx,
+                                    """
+                                    invoke-static {v$pRetReg}, Lapp/morphe/extension/shared/patches/GmsCoreSupportPatch;->sanitizeLudh(Ljava/lang/Object;)Ljava/lang/Object;
+                                    move-result-object v$pRetReg
+                                    check-cast v$pRetReg, $ludhClassName
+                                    """.trimIndent(),
+                                )
+                            }
+                        }
+                    }
+                }
+
+                // Hook 3: Return points of Ludi.c()
                 val ludiClassName = instructions.mapNotNull { inst ->
                     ((inst as? ReferenceInstruction)?.reference as? MethodReference)?.let { ref ->
                         if (ref.definingClass == syncMethod.definingClass && ref.returnType.startsWith("L") && ref.returnType != "V") {
@@ -559,45 +625,73 @@ val gmsCoreSupportPatch = gmsCoreSupportPatch(
                     } == true
                 }
 
-                if (ludiClassName != null) {
+                if (ludiClassName != null && ludhClassName != null) {
                     val ludiClassDef = classDefBy(ludiClassName)
                     val mutableLudiClass = mutableClassDefBy(ludiClassDef)
                     val ludiCMethod = ludiClassDef.methods.first { it.name == "c" && it.parameterTypes.isEmpty() }
                     val mutableLudiCMethod = mutableLudiClass.findMutableMethodOf(ludiCMethod)
                     val ludiInstructions = ludiCMethod.implementation?.instructions?.toList()
                     if (ludiInstructions != null) {
-                        for (i in 0 until ludiInstructions.size - 2) {
-                            val inst = ludiInstructions[i]
-                            if (inst.opcode == Opcode.INVOKE_INTERFACE) {
-                                val mr = (inst as? ReferenceInstruction)?.reference as? MethodReference
-                                if (mr?.definingClass == "Landroid/content/SharedPreferences;" && mr.name == "getInt") {
-                                    val next1 = ludiInstructions[i + 1]
-                                    val next2 = ludiInstructions[i + 2]
-                                    if (next1.opcode == Opcode.MOVE_RESULT && next2.opcode == Opcode.IPUT) {
-                                        val fr = (next2 as? ReferenceInstruction)?.reference as? FieldReference
-                                        if (fr?.name == "a" && fr.type == "I") {
-                                            val accountIdReg = (next1 as OneRegisterInstruction).registerA
-                                            val ludiContextField = ludiClassDef.fields.firstOrNull { it.type == "Landroid/content/Context;" }?.name
-                                            val ludiThisReg = ludiCMethod.implementation!!.registerCount - ludiCMethod.parameters.size - 1
-
-                                            if (ludiContextField != null) {
-                                                mutableLudiCMethod.addInstructions(
-                                                    i + 2,
-                                                    """
-                                                    iget-object v14, v$ludiThisReg, $ludiClassName->$ludiContextField:Landroid/content/Context;
-                                                    invoke-static {v14, v$accountIdReg}, Lapp/morphe/extension/shared/patches/GmsCoreSupportPatch;->resolveRegisteredAccountId(Landroid/content/Context;I)I
-                                                    move-result v$accountIdReg
-                                                    """.trimIndent(),
-                                                )
-                                                break
-                                            }
-                                        }
-                                    }
-                                }
+                        for ((idx, inst) in ludiInstructions.withIndex().reversed()) {
+                            if (inst.opcode == Opcode.RETURN_OBJECT) {
+                                val retReg = (inst as OneRegisterInstruction).registerA
+                                mutableLudiCMethod.addInstructions(
+                                    idx,
+                                    """
+                                    invoke-static {v$retReg}, Lapp/morphe/extension/shared/patches/GmsCoreSupportPatch;->sanitizeLudh(Ljava/lang/Object;)Ljava/lang/Object;
+                                    move-result-object v$retReg
+                                    check-cast v$retReg, $ludhClassName
+                                    """.trimIndent(),
+                                )
                             }
                         }
                     }
                 }
+            }
+        }
+
+        // 12) Backup Settings: Observe & organically guard LaunchedEffect account chooser dialog
+        BackupSettingsEntryLaunchedEffectFingerprint.methodOrNull?.let { effectMethod ->
+            val effectClass = mutableClassDefBy(effectMethod.definingClass)
+            val mutableEffectMethod = effectClass.findMutableMethodOf(effectMethod)
+            val instructions = effectMethod.implementation?.instructions?.toList()
+            if (instructions != null) {
+                val isBackupEnabledIndex = instructions.indexOfFirst { inst ->
+                    inst.opcode == Opcode.INVOKE_INTERFACE &&
+                        ((inst as? ReferenceInstruction)?.reference as? MethodReference)?.let { ref ->
+                            ref.parameterTypes.isEmpty() && ref.returnType == "Z"
+                        } == true
+                }
+                if (isBackupEnabledIndex != -1) {
+                    val moveResultRel = instructions.drop(isBackupEnabledIndex + 1).indexOfFirst {
+                        it.opcode == Opcode.MOVE_RESULT
+                    }
+                    if (moveResultRel != -1) {
+                        val moveResultIndex = isBackupEnabledIndex + 1 + moveResultRel
+                        val reg = (instructions[moveResultIndex] as OneRegisterInstruction).registerA
+                        mutableEffectMethod.addInstructions(
+                            moveResultIndex + 1,
+                            """
+                            invoke-static {v$reg, p0}, Lapp/morphe/extension/shared/patches/GmsCoreSupportPatch;->onCheckBackupAccountLinked(ZLjava/lang/Object;)Z
+                            move-result v$reg
+                            """.trimIndent(),
+                        )
+                    }
+                }
+            }
+        }
+
+        // 13) AutoBackupSettingsActivity: Probe onAttachBinder
+        classDefByOrNull("Lcom/google/android/apps/photos/backup/settings/AutoBackupSettingsActivity;")?.let { actDef ->
+            val mutableAct = mutableClassDefBy(actDef)
+            actDef.methods.firstOrNull { it.name == "onAttachBinder" && it.parameterTypes.toList() == listOf("Landroid/os/Bundle;") }?.let { attachMethod ->
+                val mutableAttach = mutableAct.findMutableMethodOf(attachMethod)
+                mutableAttach.addInstructions(
+                    0,
+                    """
+                    invoke-static {p0}, Lapp/morphe/extension/shared/patches/GmsCoreSupportPatch;->onAutoBackupSettingsActivityAttachBinder(Landroid/app/Activity;)V
+                    """.trimIndent(),
+                )
             }
         }
     },
