@@ -2621,7 +2621,7 @@ public class StorageScanner {
 
                     Class<?> sourceClass = pTypes[3];
                     Object cjizSource = null;
-                    for (String helperName : new String[]{"ttk", "trf", "two", "rom", "tpk", "trn"}) {
+                    for (String helperName : new String[]{"udm", "ttk", "trf", "two", "rom", "tpk", "trn"}) {
                         Class<?> helper = ReflectionCache.findClassOrNull(helperName);
                         if (helper != null) {
                             for (Method m : helper.getMethods()) {
@@ -3039,27 +3039,60 @@ public class StorageScanner {
                         Log.w("morphe: StorageScanner", "RestoreActionTask failed for chunk " + chunkIndex, tTask);
                     }
 
-                    // Strategy 2: Direct bjim.a + wqx.a RPC fallback
+                    // Strategy 2: Direct restore interface fallback (bmpt in v8.2, bjim in v8.1)
                     if (!chunkSuccess) {
                         try {
-                            Class<?> bjimClass = Class.forName("bjim");
-                            Object bjimImpl = getServiceLocator(context, bjimClass);
+                            Class<?> restoreInterface = ReflectionCache.findClassOrNull("bmpt");
+                            if (restoreInterface == null) restoreInterface = ReflectionCache.findClassOrNull("bjim");
+                            if (restoreInterface != null) {
+                                Object restoreImpl = getServiceLocator(context, restoreInterface);
+                                if (restoreImpl == null) {
+                                    Class<?> implClass = ReflectionCache.findClassOrNull("bmrk");
+                                    if (implClass != null) {
+                                        restoreImpl = implClass.getConstructor(Context.class).newInstance(context);
+                                    }
+                                }
 
-                            Class<?> cjizClass = Class.forName("cjiz");
-                            Class<?> romClass = Class.forName("rom");
-                            Method romMethod = romClass.getMethod("b", Context.class);
-                            Object cjizSource = romMethod.invoke(null, context);
+                                Object source = null;
+                                for (String helperName : new String[]{"udm", "ttk", "trf", "two", "rom", "tpk", "trn"}) {
+                                    Class<?> helper = ReflectionCache.findClassOrNull(helperName);
+                                    if (helper != null) {
+                                        for (Method m : helper.getMethods()) {
+                                            if (java.lang.reflect.Modifier.isStatic(m.getModifiers()) && m.getParameterTypes().length == 1 &&
+                                                Context.class.isAssignableFrom(m.getParameterTypes()[0]) &&
+                                                !m.getReturnType().equals(void.class)) {
+                                                source = m.invoke(null, context);
+                                                break;
+                                            }
+                                        }
+                                    }
+                                    if (source != null) break;
+                                }
 
-                            Method aMethod = bjimClass.getMethod("a", int.class, Collection.class, boolean.class, cjizClass);
-                            Object wqxAction = aMethod.invoke(bjimImpl, accountId, coreItems, false, cjizSource);
-                            if (wqxAction != null) {
-                                Method execMethod = Class.forName("wqx").getMethod("a");
-                                Object execRes = execMethod.invoke(wqxAction);
-                                Log.i("morphe: StorageScanner", "Direct bjim.a restore returned: " + execRes);
-                                chunkSuccess = true;
+                                if (restoreImpl != null && source != null) {
+                                    Method aMethod = null;
+                                    for (Method m : restoreImpl.getClass().getMethods()) {
+                                        if (m.getName().equals("a") && m.getParameterTypes().length == 4 &&
+                                            m.getParameterTypes()[0].equals(int.class) &&
+                                            Collection.class.isAssignableFrom(m.getParameterTypes()[1]) &&
+                                            m.getParameterTypes()[2].equals(boolean.class)) {
+                                            aMethod = m;
+                                            break;
+                                        }
+                                    }
+                                    if (aMethod != null) {
+                                        Object action = aMethod.invoke(restoreImpl, accountId, coreItems, false, source);
+                                        if (action != null) {
+                                            Method execMethod = action.getClass().getMethod("a");
+                                            Object execRes = execMethod.invoke(action);
+                                            Log.i("morphe: StorageScanner", "Direct restore returned: " + execRes);
+                                            chunkSuccess = true;
+                                        }
+                                    }
+                                }
                             }
-                        } catch (Throwable tBjim) {
-                            Log.w("morphe: StorageScanner", "Direct bjim restore fallback failed for chunk " + chunkIndex, tBjim);
+                        } catch (Throwable tRestore) {
+                            Log.w("morphe: StorageScanner", "Direct restore fallback failed for chunk " + chunkIndex, tRestore);
                         }
                     }
 
