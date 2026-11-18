@@ -557,7 +557,7 @@ val gmsCoreSupportPatch = gmsCoreSupportPatch(
                     } else null
                 }?.firstOrNull()
 
-                // Hook 1: Entry & Return of Luvh.a(Ludh, Boolean)Luvk
+                // Hook 1: Entry of Luvh.a(Ludh, Boolean)Luvk
                 if (uvhMethodRef != null && ludhClassName != null) {
                     val uvhClassDef = classDefBy(uvhMethodRef.definingClass)
                     val mutableUvhClass = mutableClassDefBy(uvhClassDef)
@@ -573,79 +573,6 @@ val gmsCoreSupportPatch = gmsCoreSupportPatch(
                         check-cast v$ludhParamReg, $ludhClassName
                         """.trimIndent(),
                     )
-
-                    val uvhInstructions = uvhMethod.implementation?.instructions?.toList()
-                    if (uvhInstructions != null) {
-                        for ((idx, inst) in uvhInstructions.withIndex().reversed()) {
-                            if (inst.opcode == Opcode.RETURN_OBJECT) {
-                                val retReg = (inst as OneRegisterInstruction).registerA
-                                mutableUvhMethod.addInstructions(
-                                    idx,
-                                    """
-                                    invoke-static/range {v$retReg .. v$retReg}, Lapp/morphe/extension/shared/patches/GmsCoreSupportPatch;->onLuvhAReturn(Ljava/lang/Object;)Ljava/lang/Object;
-                                    move-result-object v$retReg
-                                    check-cast v$retReg, ${uvhMethod.returnType}
-                                    """.trimIndent(),
-                                )
-                            }
-                        }
-                    }
-                }
-
-                // Hook 2: Return points of Luvq.p (syncMethod)
-                if (ludhClassName != null) {
-                    val pInstructions = syncMethod.implementation?.instructions?.toList()
-                    if (pInstructions != null) {
-                        for ((idx, inst) in pInstructions.withIndex().reversed()) {
-                            if (inst.opcode == Opcode.RETURN_OBJECT) {
-                                val pRetReg = (inst as OneRegisterInstruction).registerA
-                                mutableSyncMethod.addInstructions(
-                                    idx,
-                                    """
-                                    invoke-static {v$pRetReg}, Lapp/morphe/extension/shared/patches/GmsCoreSupportPatch;->sanitizeLudh(Ljava/lang/Object;)Ljava/lang/Object;
-                                    move-result-object v$pRetReg
-                                    check-cast v$pRetReg, $ludhClassName
-                                    """.trimIndent(),
-                                )
-                            }
-                        }
-                    }
-                }
-
-                // Hook 3: Return points of Ludi.c()
-                val ludiClassName = instructions.mapNotNull { inst ->
-                    ((inst as? ReferenceInstruction)?.reference as? MethodReference)?.let { ref ->
-                        if (ref.definingClass == syncMethod.definingClass && ref.returnType.startsWith("L") && ref.returnType != "V") {
-                            ref.returnType
-                        } else null
-                    }
-                }.firstOrNull { retType ->
-                    classDefByOrNull(retType)?.methods?.any { m ->
-                        m.name == "c" && m.parameterTypes.isEmpty() && m.implementation != null
-                    } == true
-                }
-
-                if (ludiClassName != null && ludhClassName != null) {
-                    val ludiClassDef = classDefBy(ludiClassName)
-                    val mutableLudiClass = mutableClassDefBy(ludiClassDef)
-                    val ludiCMethod = ludiClassDef.methods.first { it.name == "c" && it.parameterTypes.isEmpty() }
-                    val mutableLudiCMethod = mutableLudiClass.findMutableMethodOf(ludiCMethod)
-                    val ludiInstructions = ludiCMethod.implementation?.instructions?.toList()
-                    if (ludiInstructions != null) {
-                        for ((idx, inst) in ludiInstructions.withIndex().reversed()) {
-                            if (inst.opcode == Opcode.RETURN_OBJECT) {
-                                val retReg = (inst as OneRegisterInstruction).registerA
-                                mutableLudiCMethod.addInstructions(
-                                    idx,
-                                    """
-                                    invoke-static {v$retReg}, Lapp/morphe/extension/shared/patches/GmsCoreSupportPatch;->sanitizeLudh(Ljava/lang/Object;)Ljava/lang/Object;
-                                    move-result-object v$retReg
-                                    check-cast v$retReg, $ludhClassName
-                                    """.trimIndent(),
-                                )
-                            }
-                        }
-                    }
                 }
             }
         }
@@ -678,20 +605,6 @@ val gmsCoreSupportPatch = gmsCoreSupportPatch(
                         )
                     }
                 }
-            }
-        }
-
-        // 13) AutoBackupSettingsActivity: Probe onAttachBinder
-        classDefByOrNull("Lcom/google/android/apps/photos/backup/settings/AutoBackupSettingsActivity;")?.let { actDef ->
-            val mutableAct = mutableClassDefBy(actDef)
-            actDef.methods.firstOrNull { it.name == "onAttachBinder" && it.parameterTypes.toList() == listOf("Landroid/os/Bundle;") }?.let { attachMethod ->
-                val mutableAttach = mutableAct.findMutableMethodOf(attachMethod)
-                mutableAttach.addInstructions(
-                    0,
-                    """
-                    invoke-static {p0}, Lapp/morphe/extension/shared/patches/GmsCoreSupportPatch;->onAutoBackupSettingsActivityAttachBinder(Landroid/app/Activity;)V
-                    """.trimIndent(),
-                )
             }
         }
     },
