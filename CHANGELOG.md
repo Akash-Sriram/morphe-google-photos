@@ -1,3 +1,31 @@
+## [1.19.0-dev.1](https://github.com/Akash-Sriram/morphe-google-photos/compare/v1.18.0...v1.19.0-dev.1) (2026-11-18)
+
+### 🐛 Bug Fixes
+
+* **Google Photos - Avatar:** resolve redraw loop via bitmap reference tracking and purge default blue silhouette cache ([f1ded3a](https://github.com/Akash-Sriram/morphe-google-photos/commit/f1ded3ad7ca316fd8a606fed21ced126de5c8414))
+* **Google Photos - Backup:** support v8.1 continuation type for loadCreationsMethod ([78ec682](https://github.com/Akash-Sriram/morphe-google-photos/commit/78ec6829bb39b0a828a7cc3c13ef295ac53a8e46))
+* **Google Photos - Gms:** add missing imports for Map and Bundle ([3833227](https://github.com/Akash-Sriram/morphe-google-photos/commit/3833227b0eaad5c47f5f863ea52bdda69fa22534))
+* **Google Photos - Gms:** organically sanitize GmsCore backup settings and remove UI suppression ([a0a64d8](https://github.com/Akash-Sriram/morphe-google-photos/commit/a0a64d897cf778cbba7a2a4f1a47176e84f5a5f3))
+* **Google Photos - Gms:** use invoke-static/range for Luvh.a hooks ([1e69f24](https://github.com/Akash-Sriram/morphe-google-photos/commit/1e69f24d244aa6701eb117beaef5e7720270cb57))
+* **Google Photos:** make GmsCore backup account resolution linear to prevent verifier error ([78b1f17](https://github.com/Akash-Sriram/morphe-google-photos/commit/78b1f17ba7c1065f406f869dc0615279f87e18fd))
+* **Google Photos:** prevent SpoofFeaturesPatch from false-matching BackupSettingsDialogUiState and forcing showAccountDialog ([b9e155b](https://github.com/Akash-Sriram/morphe-google-photos/commit/b9e155b4c9283b0029f2afc9a3fb9eed60d34cb1))
+* **Google Photos:** remove erroneous return hooks and streamline Luvh entry sanitization ([76a0b8e](https://github.com/Akash-Sriram/morphe-google-photos/commit/76a0b8edfa951b5cf13d0afaaad5c5b6772ec936))
+* **Google Photos - Theme:** prevent transparent Gemini consent dialog in AMOLED dark theme ([#86](https://github.com/Akash-Sriram/morphe-google-photos/issues/86)) ([936a933](https://github.com/Akash-Sriram/morphe-google-photos/commit/936a93328d2024fd71f69aae9778cf8ec6cf7e67))
+
+### ✨ New Features
+
+* **Google Photos:** add support for Google Photos 8.1.0.1020990585 ([c0e8046](https://github.com/Akash-Sriram/morphe-google-photos/commit/c0e80467c8c3c5d1ca0d666108fc47c380aeb78b))
+* **Google Photos - Compat:** mark Google Photos 8.1.0 as experimental target ([6cb7958](https://github.com/Akash-Sriram/morphe-google-photos/commit/6cb7958d2dc297833ec9c06c0987bd4e2a7924d2))
+* **Google Photos - Compat:** set Google Photos 8.1.0.1020990585 as supported target ([9eef2ef](https://github.com/Akash-Sriram/morphe-google-photos/commit/9eef2efc731bef1dd70d29b0eb0aec10190332b0))
+* **Google Photos - Create:** modernize Create tab button renderer hook for v8.1 ([1b063a3](https://github.com/Akash-Sriram/morphe-google-photos/commit/1b063a30542a791fc4d6965b40ef48e8ad7404e3))
+* **Google Photos - Gms:** add live backup diagnostics, state sanitization, and LaunchedEffect probe ([49ad424](https://github.com/Akash-Sriram/morphe-google-photos/commit/49ad424c062562043a2576972288e2d14a3423c3))
+* **Google Photos - Gms:** fix GmsCore backup account resolution on MicroG/LineageOS ([5e823cc](https://github.com/Akash-Sriram/morphe-google-photos/commit/5e823cc59a9f272bf05780f9f31b9ffc081efa10))
+* **Google Photos - Gms:** integrate 'Keep official package name' option into GmsCore support ([#87](https://github.com/Akash-Sriram/morphe-google-photos/issues/87), [#80](https://github.com/Akash-Sriram/morphe-google-photos/issues/80)) ([8f43d16](https://github.com/Akash-Sriram/morphe-google-photos/commit/8f43d16e64f8102a1e79b5cfcc98fb3b21f27627))
+
+### 🚀 Updated App Support
+
+* **Google Photos - Compat:** next app version release ([3504a9e](https://github.com/Akash-Sriram/morphe-google-photos/commit/3504a9eba85792fdaf141f9b633e4301f6e92912))
+
 ## [1.18.0-dev.9](https://github.com/Akash-Sriram/morphe-google-photos/compare/v1.18.0-dev.8...v1.18.0-dev.9) (2026-11-16)
 
 ### 🐛 Bug Fixes
