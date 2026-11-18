@@ -1,8 +1,9 @@
 #
 # https://help.github.com/articles/dealing-with-line-endings/
 #
-# Linux start script should use lf
+# Shell scripts should always use lf
 /gradlew        text eol=lf
+*.sh            text eol=lf
 
 # Keep Windows batch files untouched without automatic line ending transformations
 *.bat           -text
