@@ -143,9 +143,7 @@ val spoofFeaturesPatch = bytecodePatch(
                 // 1b. Legacy hook for older Google Photos settings (e.g. v6.x UI state <init>(ZZZZZZZ)V)
                 if (method.name == "<init>" &&
                     method.parameterTypes.size == 7 &&
-                    method.parameterTypes[0] == "Z" &&
-                    method.parameterTypes[1] == "Z" &&
-                    method.parameterTypes[2] == "Z" &&
+                    method.parameterTypes.all { it == "Z" } &&
                     method.returnType == "V"
                 ) {
                     val iputIndex = instructionList.indexOfFirst { it.opcode == Opcode.IPUT_BOOLEAN }

@@ -583,13 +583,14 @@ val gmsCoreSupportPatch = gmsCoreSupportPatch(
             val mutableEffectMethod = effectClass.findMutableMethodOf(effectMethod)
             val instructions = effectMethod.implementation?.instructions?.toList()
             if (instructions != null) {
-                val isBackupEnabledIndex = instructions.indexOfFirst { inst ->
-                    inst.opcode == Opcode.INVOKE_INTERFACE &&
+                val isBackupEnabledIndices = instructions.mapIndexedNotNull { idx, inst ->
+                    if (inst.opcode == Opcode.INVOKE_INTERFACE &&
                         ((inst as? ReferenceInstruction)?.reference as? MethodReference)?.let { ref ->
                             ref.parameterTypes.isEmpty() && ref.returnType == "Z"
                         } == true
+                    ) idx else null
                 }
-                if (isBackupEnabledIndex != -1) {
+                for (isBackupEnabledIndex in isBackupEnabledIndices.reversed()) {
                     val moveResultRel = instructions.drop(isBackupEnabledIndex + 1).indexOfFirst {
                         it.opcode == Opcode.MOVE_RESULT
                     }
