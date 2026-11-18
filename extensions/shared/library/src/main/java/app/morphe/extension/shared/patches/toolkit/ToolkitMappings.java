@@ -2,39 +2,39 @@ package app.morphe.extension.shared.patches.toolkit;
 
 /**
  * Mappings for Google Photos obfuscated internal symbols.
- * Auto-generated and verified by ToolkitAligner for Google Photos 8.0.0.1011730683.
+ * Auto-generated and verified by ToolkitAligner for Google Photos 8.1.0.1020990585.
  */
 public final class ToolkitMappings {
 
-    public static final String TARGET_VERSION = "8.0.0.1011730683";
+    public static final String TARGET_VERSION = "8.1.0.1020990585";
 
     // Service Locator (bzoq in 7.97, cbnw in 7.98)
-    public static final String SERVICE_LOCATOR_CLASS = "cdgr";
+    public static final String SERVICE_LOCATOR_CLASS = "ccym";
     public static final String SERVICE_LOCATOR_METHOD = "e";
-    public static final String[] SERVICE_LOCATOR_CLASSES = {"cdgr", "cbyf", "bzoq", "bxoe"};
+    public static final String[] SERVICE_LOCATOR_CLASSES = {"ccym", "cbyf", "bzoq", "bxoe"};
 
     // Task Runner (Sync task execution via static helper)
-    public static final String TASK_RUNNER_CLASS = "bakh";
-    public static final String TASK_RUNNER_SYNC_METHOD = "e";
-    public static final String[] TASK_RUNNER_CLASSES = {"bakh", "bsyv", "bztw", "cbsq", "cagl", "cant", "bxue"};
+    public static final String TASK_RUNNER_CLASS = "bclh";
+    public static final String TASK_RUNNER_SYNC_METHOD = "c";
+    public static final String[] TASK_RUNNER_CLASSES = {"bclh", "bsyv", "bztw", "cbsq", "cagl", "cant", "bxue"};
 
     // Add Media To Album (Private Album creation builder)
-    public static final String ADD_MEDIA_TO_ALBUM_BUILDER_CLASS = "ovs";
-    public static final String[] ADD_MEDIA_TO_ALBUM_BUILDER_CLASSES = {"ovs", "orw", "otz", "orn", "ovo", "mtl", "mqw"};
+    public static final String ADD_MEDIA_TO_ALBUM_BUILDER_CLASS = "ozb";
+    public static final String[] ADD_MEDIA_TO_ALBUM_BUILDER_CLASSES = {"ozb", "orw", "otz", "orn", "ovo", "mtl", "mqw"};
 
     // Add Media To Envelope (Shared Album addition builder)
     public static final String ADD_MEDIA_TO_ENVELOPE_BUILDER_CLASS = "aphh";
     public static final String[] ADD_MEDIA_TO_ENVELOPE_BUILDER_CLASSES = {"aphh", "apfz", "apjt", "amwa"};
 
     // Remove Media From Private Album Task
-    public static final String PRIVATE_ALBUM_REMOVE_CLASS = "lrw";
-    public static final String PRIVATE_ALBUM_REMOVE_METHOD = "h";
-    public static final String[] PRIVATE_ALBUM_REMOVE_CLASSES = {"lrw", "oqm", "osi", "iyo"};
+    public static final String PRIVATE_ALBUM_REMOVE_CLASS = "oxk";
+    public static final String PRIVATE_ALBUM_REMOVE_METHOD = "c";
+    public static final String[] PRIVATE_ALBUM_REMOVE_CLASSES = {"oxk", "oqm", "osi", "iyo"};
 
     // Mars Remove Task Config: {argClass, enumClass, enumField, builderClass, builderMethod}
-    public static final String[] MARS_REMOVE_CONFIG_CURRENT = {"odq", "bdaw", "mr", "svi", "m"};
+    public static final String[] MARS_REMOVE_CONFIG_CURRENT = {"ogw", "bclj", "mo", "sou", "n"};
     public static final String[][] MARS_REMOVE_CONFIGS = {
-        {"odq", "bdaw", "mr", "svi", "m"}, // 8.0.0.1011730683
+        {"ogw", "bclj", "mo", "sou", "n"}, // 8.1.0.1020990585
         {"oac", "bbuk", "ms", "ssk", "l"}, // 7.99.0.1007655401
         {"odi", "bdft", "ms", "stk", "s"}, // 7.97.0 arm64
         {"oax", "bbzi", "ms", "sgz", "n"}, // 7.97.0 univ
@@ -57,7 +57,7 @@ public final class ToolkitMappings {
     public static final String KEYS_COLLECTION_METHOD = "f";
     public static final String KEYS_COLLECTION_BUILDER = "pth";
     public static final String[][] KEYS_COLLECTION_FACTORIES = {
-        {"pti", "f"}, // 8.0.0.1011730683 & 7.99.0.1007655401
+        {"pti", "f"}, // 8.1.0.1020990585
         {"pyk", "f"}, // 7.97.0 arm64
         {"pvv", "f"}, // 7.97.0 univ
         {"pzv", "f"}, // 7.97.0 univ
@@ -73,7 +73,7 @@ public final class ToolkitMappings {
     public static final String FEATURES_REQUEST_BUILDER_CLASS = "yqd";
     public static final String FEATURES_REQUEST_CLASS = "yqf";
     public static final String[][] FEATURES_REQUEST_PAIRS = {
-        {"yqd", "yqf"}, // 8.0.0.1011730683 & 7.99.0.1007655401
+        {"yqd", "yqf"}, // 8.1.0.1020990585
         {"wqa", "wqb"}, // 7.97.0
         {"yta", "ytc"}, // 7.97.0
         {"yyq", "yyr"}  // 7.97.0 univ
@@ -87,31 +87,33 @@ public final class ToolkitMappings {
     public static final String[] REMOTE_MEDIA_KEY_FEATURE_CLASSES = {"nfl", "bams", "bamo", "bamk", "azxs"};
 
     // Action Queue Flusher (flushes local action mutations)
-    public static final String ACTION_FLUSHER_CLASS = "artc";
-    public static final String[] ACTION_FLUSHER_CLASSES = {"artc", "aqmp", "aqgz", "aqgr", "aokq", "amwa"};
+    public static final String ACTION_FLUSHER_CLASS = "arbz";
+    public static final String[] ACTION_FLUSHER_CLASSES = {"arbz", "aqmp", "aqgz", "aqgr", "aokq", "amwa"};
 
     // Archive Service & Actions
-    public static final String ARCHIVE_SERVICE_CLASS = "rzd";
+    public static final String ARCHIVE_SERVICE_CLASS = "scm";
     public static final String ARCHIVE_SERVICE_METHOD = "a";
-    public static final String[] ARCHIVE_SERVICE_CLASSES = {"rzd", "rvd", "rsr", "psu"};
+    public static final String[] ARCHIVE_SERVICE_CLASSES = {"scm", "rvd", "rsr", "psu"};
 
     public static final String ARCHIVE_BUILDER_CLASS = "rsv";
     public static final String ARCHIVE_ACTION_CLASS = "rsw";
     public static final String[] ARCHIVE_BUILDER_CLASSES = {"rsv", "psy"};
 
     // Move to Trash Action
-    public static final String MOVE_TO_TRASH_ACTION_CLASS = "bhbh";
-    public static final String[] MOVE_TO_TRASH_ACTION_CLASSES = {"bhbh", "bfsn", "bfjt", "bjir"};
+    public static final String MOVE_TO_TRASH_ACTION_CLASS = "bglr";
+    public static final String[] MOVE_TO_TRASH_ACTION_CLASSES = {"bglr", "bfsn", "bfjt", "bjir"};
 
+    // Glide Singleton (mdm in 7.98)
     // Glide Singleton
-    public static final String GLIDE_SINGLETON_CLASS = "mil";
-    public static final String[] GLIDE_SINGLETON_CLASSES = {"mil", "mez", "mdm", "khc", "mgg", "mkp", "kjo"};
+    public static final String GLIDE_SINGLETON_CLASS = "mlt";
+    public static final String[] GLIDE_SINGLETON_CLASSES = {"mlt", "mez", "mdm", "mil", "khc", "mgg", "mkp", "kjo"};
 
+    // Remote Media Model & Options (amrp/amrq in 7.98)
     // Remote Media Model & Options
-    public static final String REMOTE_MEDIA_MODEL_CLASS = "aody";
-    public static final String REMOTE_MEDIA_OPTIONS_CLASS = "aodz";
+    public static final String REMOTE_MEDIA_MODEL_CLASS = "ankr";
+    public static final String REMOTE_MEDIA_OPTIONS_CLASS = "anks";
     public static final String[][] REMOTE_MEDIA_MODEL_PAIRS = {
-        {"aody", "aodz"}, // 8.0.0.1011730683
+        {"ankr", "anks"}, // 8.1.0.1020990585
         {"amwm", "amwn"}, // 7.99.0.1007655401
         {"amsr", "amss"}, // 7.97.0 arm64
         {"amri", "amrj"}, // 7.97.0 univ

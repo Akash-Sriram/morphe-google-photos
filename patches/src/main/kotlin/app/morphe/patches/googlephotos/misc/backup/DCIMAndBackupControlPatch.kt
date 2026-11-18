@@ -427,7 +427,9 @@ val dcimAndBackupControlPatch = bytecodePatch(
 
             // Fallback to all assistant cards if proto/14-day window has < 3 creations
             val loadCreationsMethod = delegateClassDef.methods.find { m ->
-                m.parameterTypes.size == 1 && m.parameterTypes[0] == "Lctwl;" && m.returnType == "Ljava/lang/Object;"
+                m.parameterTypes.size == 1 &&
+                    (m.parameterTypes[0] == "Lctwl;" || m.parameterTypes[0] == "Lcvbh;" || m.parameterTypes[0].startsWith("L")) &&
+                    m.returnType == "Ljava/lang/Object;"
             }
             if (loadCreationsMethod != null) {
                 val mutableLoadCreationsMethod = delegateClassDef.findMutableMethodOf(loadCreationsMethod)
@@ -591,7 +593,11 @@ val dcimAndBackupControlPatch = bytecodePatch(
                 val ins = instructions[idx]
                 if (ins.opcode == Opcode.NEW_INSTANCE) {
                     val typeRef = (ins as? ReferenceInstruction)?.reference as? TypeReference
-                    if (typeRef?.type?.endsWith("cthu;") == true || typeRef?.type?.endsWith("cttj;") == true || typeRef?.type?.endsWith("cvfa;") == true) {
+                    if (typeRef?.type?.endsWith("cthu;") == true ||
+                        typeRef?.type?.endsWith("cttj;") == true ||
+                        typeRef?.type?.endsWith("cvfa;") == true ||
+                        typeRef?.type?.endsWith("cuyf;") == true
+                    ) {
                         mutableMethod.replaceInstruction(idx, "nop")
                         if (idx + 1 < instructions.size) mutableMethod.replaceInstruction(idx + 1, "nop")
                         if (idx + 2 < instructions.size) mutableMethod.replaceInstruction(idx + 2, "nop")

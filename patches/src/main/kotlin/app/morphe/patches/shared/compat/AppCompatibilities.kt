@@ -14,6 +14,7 @@ internal object AppCompatibilities {
         formFactor = FormFactor.MOBILE,
         appIconColor = 0xFC3F3C,
         targets = listOf(
+            AppTarget("8.1.0.1020990585"),
             AppTarget(
                 version = "8.0.0.1011730683",
                 isExperimental = true,

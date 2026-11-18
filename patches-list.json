@@ -18,6 +18,13 @@
           "formFactor": "MOBILE",
           "targets": [
             {
+              "version": "8.1.0.1020990585",
+              "versionCodes": null,
+              "isExperimental": false,
+              "minSdk": null,
+              "description": null
+            },
+            {
               "version": "8.0.0.1011730683",
               "versionCodes": null,
               "isExperimental": true,
@@ -51,6 +58,13 @@
           "signatures": null,
           "formFactor": "MOBILE",
           "targets": [
+            {
+              "version": "8.1.0.1020990585",
+              "versionCodes": null,
+              "isExperimental": false,
+              "minSdk": null,
+              "description": null
+            },
             {
               "version": "8.0.0.1011730683",
               "versionCodes": null,
@@ -96,6 +110,13 @@
           "formFactor": "MOBILE",
           "targets": [
             {
+              "version": "8.1.0.1020990585",
+              "versionCodes": null,
+              "isExperimental": false,
+              "minSdk": null,
+              "description": null
+            },
+            {
               "version": "8.0.0.1011730683",
               "versionCodes": null,
               "isExperimental": true,
@@ -130,6 +151,13 @@
           "formFactor": "MOBILE",
           "targets": [
             {
+              "version": "8.1.0.1020990585",
+              "versionCodes": null,
+              "isExperimental": false,
+              "minSdk": null,
+              "description": null
+            },
+            {
               "version": "8.0.0.1011730683",
               "versionCodes": null,
               "isExperimental": true,
@@ -163,6 +191,13 @@
           "signatures": null,
           "formFactor": "MOBILE",
           "targets": [
+            {
+              "version": "8.1.0.1020990585",
+              "versionCodes": null,
+              "isExperimental": false,
+              "minSdk": null,
+              "description": null
+            },
             {
               "version": "8.0.0.1011730683",
               "versionCodes": null,
@@ -208,6 +243,13 @@
           "formFactor": "MOBILE",
           "targets": [
             {
+              "version": "8.1.0.1020990585",
+              "versionCodes": null,
+              "isExperimental": false,
+              "minSdk": null,
+              "description": null
+            },
+            {
               "version": "8.0.0.1011730683",
               "versionCodes": null,
               "isExperimental": true,
@@ -241,6 +283,13 @@
           "signatures": null,
           "formFactor": "MOBILE",
           "targets": [
+            {
+              "version": "8.1.0.1020990585",
+              "versionCodes": null,
+              "isExperimental": false,
+              "minSdk": null,
+              "description": null
+            },
             {
               "version": "8.0.0.1011730683",
               "versionCodes": null,
