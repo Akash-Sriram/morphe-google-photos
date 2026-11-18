@@ -60,6 +60,7 @@ public final class SessionLogManager {
     private static final String LOGS_DIR_NAME = "morphe_logs";
     private static final int MAX_SESSIONS = 5;
     private static final int MAX_IN_MEMORY_LOGS = 600;
+    private static final long MAX_SESSION_FILE_SIZE_BYTES = 5 * 1024 * 1024L; // 5 MB safety limit per session
 
     private static final Pattern EMAIL_PATTERN = Pattern.compile("[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\\.[a-zA-Z0-9-.]+");
     private static final Pattern AUTH_TOKEN_PATTERN = Pattern.compile("(?i)(auth_token|bearer|access_token|refresh_token|api_key|password)[=:\\s]+[\\w\\-\\.~+]{12,}");
@@ -74,6 +75,7 @@ public final class SessionLogManager {
     private static volatile long sSessionStartTime = 0;
     private static volatile boolean sLastSessionCrashed = false;
     private static volatile String sLastCrashSummary = null;
+    private static volatile boolean sSessionFileSizeExceeded = false;
 
     private static final Deque<String> sRecentLogBuffer = new ArrayDeque<>();
     private static final Object BUFFER_LOCK = new Object();
@@ -125,6 +127,7 @@ public final class SessionLogManager {
 
         sContext = context.getApplicationContext() != null ? context.getApplicationContext() : context;
         sSessionStartTime = System.currentTimeMillis();
+        sSessionFileSizeExceeded = false;
 
         SimpleDateFormat sdf = new SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US);
         sCurrentSessionId = sdf.format(new Date(sSessionStartTime));
@@ -395,8 +398,18 @@ public final class SessionLogManager {
 
         // Asynchronously persist to current session file
         final File targetFile = sCurrentSessionFile;
-        if (targetFile != null) {
+        if (targetFile != null && !sSessionFileSizeExceeded) {
             IO_EXECUTOR.execute(() -> {
+                if (targetFile.length() >= MAX_SESSION_FILE_SIZE_BYTES) {
+                    if (!sSessionFileSizeExceeded) {
+                        sSessionFileSizeExceeded = true;
+                        try (BufferedWriter writer = new BufferedWriter(new FileWriter(targetFile, true))) {
+                            writer.write("--- [Morphe Diagnostics: Session file size exceeded 5MB limit. Log persistence halted for this session] ---");
+                            writer.newLine();
+                        } catch (Throwable ignored) {}
+                    }
+                    return;
+                }
                 try (BufferedWriter writer = new BufferedWriter(new FileWriter(targetFile, true))) {
                     writer.write(logLine);
                     writer.newLine();
@@ -454,6 +467,15 @@ public final class SessionLogManager {
 
                             if (fileWriter != null) {
                                 try {
+                                    if (current.length() >= MAX_SESSION_FILE_SIZE_BYTES) {
+                                        if (!sSessionFileSizeExceeded) {
+                                            sSessionFileSizeExceeded = true;
+                                            fileWriter.write("--- [Morphe Diagnostics: Session file size exceeded 5MB limit. Log persistence halted for this session] ---");
+                                            fileWriter.newLine();
+                                            fileWriter.flush();
+                                        }
+                                        continue;
+                                    }
                                     fileWriter.write(sanitized);
                                     fileWriter.newLine();
                                     boolean isUrgent = line.contains("FATAL") || line.contains("Exception") ||

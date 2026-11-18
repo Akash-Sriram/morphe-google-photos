@@ -39,6 +39,7 @@ import java.util.Set;
 
 import app.morphe.extension.shared.Logger;
 import app.morphe.extension.shared.Utils;
+import app.morphe.extension.shared.settings.BaseSettings;
 import app.morphe.extension.shared.requests.Requester;
 import app.morphe.extension.shared.requests.Route;
 import app.morphe.extension.shared.ui.CustomDialog;
@@ -104,7 +105,21 @@ public class GmsCoreSupportPatch {
     public static final String BACKUP_TAG = "MORPHE_BACKUP";
 
     public static void logBackup(String message) {
-        android.util.Log.e(BACKUP_TAG, message);
+        try {
+            if (BaseSettings.DEBUG.get()) {
+                android.util.Log.d(BACKUP_TAG, message);
+            }
+        } catch (Throwable ignored) {}
+    }
+
+    public static void logBackupError(String message, Throwable t) {
+        try {
+            if (t != null) {
+                android.util.Log.e(BACKUP_TAG, message + ": " + t.getMessage(), t);
+            } else {
+                android.util.Log.e(BACKUP_TAG, message);
+            }
+        } catch (Throwable ignored) {}
     }
 
     public static void onAutoBackupSettingsActivityAttachBinder(Activity activity) {
@@ -113,57 +128,23 @@ public class GmsCoreSupportPatch {
             Bundle extras = intent != null ? intent.getExtras() : null;
             logBackup("[AutoBackupSettingsActivity.onAttachBinder] activity=" + activity + " intent=" + intent + " extras=" + extras);
         } catch (Throwable t) {
-            logBackup("[AutoBackupSettingsActivity.onAttachBinder] Error: " + t.getMessage());
+            logBackupError("[AutoBackupSettingsActivity.onAttachBinder] Error", t);
         }
     }
 
     public static Object onLuvhAEntry(Object ludhObj, Boolean isConnected) {
-        logBackup("[Luvh.a ENTRY] ludh=" + ludhObj + " isConnected=" + isConnected + " (thread=" + Thread.currentThread().getName() + ")");
         return sanitizeLudh(ludhObj, null);
     }
 
     public static Object onLuvhAReturn(Object luvk) {
-        try {
-            String luvkClass = luvk != null ? luvk.getClass().getName() : "null";
-            Boolean isLinked = null;
-            if (luvk != null) {
-                try {
-                    Method gMethod = luvk.getClass().getMethod("g");
-                    isLinked = (Boolean) gMethod.invoke(luvk);
-                } catch (Throwable ignored) {}
-            }
-            logBackup("[Luvh.a RETURN] luvk=" + luvk + " (class=" + luvkClass + ") isLinked(g())=" + isLinked);
-        } catch (Throwable t) {
-            logBackup("[Luvh.a RETURN] Error inspecting: " + t.getMessage());
-        }
         return luvk;
     }
 
     public static boolean onCheckBackupAccountLinked(boolean originalVal, Object luslObj) {
-        logBackup("[Lusl.b CHECK] originalVal=" + originalVal + " lusl=" + luslObj);
-        try {
-            if (luslObj != null) {
-                Field bField = luslObj.getClass().getDeclaredField("b");
-                bField.setAccessible(true);
-                Object uvk = bField.get(luslObj);
-                String uvkClass = uvk != null ? uvk.getClass().getName() : "null";
-                Boolean gResult = null;
-                if (uvk != null) {
-                    try {
-                        Method gMethod = uvk.getClass().getMethod("g");
-                        gResult = (Boolean) gMethod.invoke(uvk);
-                    } catch (Throwable ignored) {}
-                }
-                logBackup("[Lusl.b CHECK] uvk=" + uvk + " class=" + uvkClass + " uvk.g()=" + gResult);
-            }
-        } catch (Throwable t) {
-            logBackup("[Lusl.b CHECK] Error inspecting lusl: " + t.getMessage());
-        }
         if (!originalVal) {
             int activeId = resolveRegisteredAccountId(Utils.getContext());
-            logBackup("[Lusl.b CHECK] originalVal is FALSE! activeId in Photos=" + activeId);
             if (activeId >= 0) {
-                logBackup("[Lusl.b CHECK] OVERRIDING unlinked false -> TRUE because active registered account exists (id=" + activeId + ")!");
+                logBackup("[Lusl.b CHECK] OVERRIDING unlinked false -> TRUE (activeId=" + activeId + ")");
                 return true;
             }
         }
@@ -186,27 +167,26 @@ public class GmsCoreSupportPatch {
             return null;
         }
         try {
-            if (context == null) {
-                context = Utils.getContext();
-            }
             Class<?> ludhClass = ludhObj.getClass();
             Field bField = ludhClass.getDeclaredField("b");
             bField.setAccessible(true);
             int accountId = bField.getInt(ludhObj);
 
-            logBackup("[sanitizeLudh] ENTER: ludhObj=" + ludhObj + " accountId=" + accountId + " context=" + context + " (thread=" + Thread.currentThread().getName() + ")");
-
+            // Fast path: if account is already linked, return immediately without allocations or logging
             if (accountId >= 0) {
-                logBackup("[sanitizeLudh] Account already linked (id=" + accountId + "), keeping as-is.");
                 return ludhObj;
+            }
+
+            if (context == null) {
+                context = Utils.getContext();
             }
 
             int activeId = resolveRegisteredAccountId(context);
-            logBackup("[sanitizeLudh] Resolving unlinked accountId=" + accountId + " -> registered activeId=" + activeId);
             if (activeId < 0) {
-                logBackup("[sanitizeLudh] No registered account found, returning unlinked ludh.");
                 return ludhObj;
             }
+
+            logBackup("[sanitizeLudh] Resolving unlinked accountId=" + accountId + " -> registered activeId=" + activeId);
 
             // Find builder class from Ludh constructor: Ludh(Ludg)
             Class<?> builderClass = null;
@@ -277,10 +257,10 @@ public class GmsCoreSupportPatch {
                 }
             }
 
-            logBackup("[sanitizeLudh] SUCCESS: Built sanitized Ludh with activeId=" + activeId + " (sanitized=" + sanitized + ")");
+            logBackup("[sanitizeLudh] SUCCESS: Built sanitized Ludh with activeId=" + activeId);
             return sanitized;
         } catch (Throwable t) {
-            logBackup("[sanitizeLudh] EXCEPTION: " + android.util.Log.getStackTraceString(t));
+            logBackupError("[sanitizeLudh] Error sanitizing Ludh", t);
             return ludhObj;
         }
     }
@@ -299,7 +279,6 @@ public class GmsCoreSupportPatch {
             if (context == null) {
                 context = Utils.getContext();
             }
-            logBackup("[sanitizeGmsBackupSettings] ENTER: gmsSettings=" + gmsSettings + " context=" + context + " (thread=" + Thread.currentThread().getName() + ")");
             Class<?> uycClass = gmsSettings.getClass();
             Field aField = uycClass.getDeclaredField("a"); // String (email)
             Field bField = uycClass.getDeclaredField("b"); // boolean (isBackupEnabled)
@@ -367,7 +346,7 @@ public class GmsCoreSupportPatch {
             logBackup("[sanitizeGmsBackupSettings] SUCCESS: email=" + finalEmail + ", enabled=" + finalEnabled);
             return sanitized;
         } catch (Throwable t) {
-            logBackup("[sanitizeGmsBackupSettings] EXCEPTION: " + android.util.Log.getStackTraceString(t));
+            logBackupError("[sanitizeGmsBackupSettings] Error sanitizing settings", t);
             return gmsSettings;
         }
     }
@@ -431,7 +410,7 @@ public class GmsCoreSupportPatch {
                 } catch (Throwable ignored) {}
             }
         } catch (Throwable t) {
-            logBackup("Error resolving registered account ID: " + t.getMessage());
+            logBackupError("Error resolving registered account ID", t);
         }
         return -1;
     }
