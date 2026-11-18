@@ -82,14 +82,14 @@ Replaced legacy floating overlays with a native, full-screen Material 3 settings
 
 **🎯 Supported versions:**
 
-| 🧪&nbsp;8.1.0.1020990585&nbsp;(experimental) | 🧪&nbsp;8.0.0.1011730683&nbsp;(experimental) | 7.99.0.1007655401 |
-| :---: | :---: | :---: |
+| 🧪&nbsp;8.2.0.1023899193&nbsp;(experimental) | 🧪&nbsp;8.1.0.1023737660&nbsp;(experimental) | 🧪&nbsp;8.1.0.1020990585&nbsp;(experimental) | 8.0.0.1011730683 |
+| :---: | :---: | :---: | :---: |
 
 | 💊&nbsp;Patch | 📜&nbsp;Description |
 |----------|----------------|
 | [AMOLED dark theme](#amoled-dark-theme) | Makes Google Photos dark surfaces true black while keeping light mode untouched. |
 | [Custom branding](#custom-branding) | Replaces the Google Photos app name, launcher icon, and in-app logos with custom branding (violet / teal / indigo / slate pinwheel, hand-drawn style). |
-| [DCIM & backup control](#dcim-backup-control) | Disables always on backup for the Camera and other DCIM folders, allowing individual folder control, adds an 'Upload photos only' toggle to Morphe Settings to skip videos in automatic backup, and exports memory collages and creations to DCIM/Google Photos for quota-free backup. |
+| [DCIM & backup control](#dcim-backup-control) | Disables always on backup for the Camera and other DCIM folders, allowing individual folder control, adds an 'Upload photos only' toggle to Morphe Settings to skip videos in automatic backup, allows hiding the Camera roll and customizing timeline folders without cloud backup, and exports memory collages and creations to DCIM/Google Photos for quota-free backup. |
 | [Flag manager & Toolkit](#flag-manager-toolkit) | Enables an in-app flag manager and Morphe toolkit in Photos Settings to toggle experimental UI redesigns, video editor tools, and feature flags. |
 | [GmsCore support](#gmscore-support) | Enables GmsCore / MicroG support and renames package for non-root installs. Leave enabled for standard non-root installs; disable only for rooted system installs using genuine Google Play Services. |
 | [Media engine & AI fixes](#media-engine-ai-fixes) | Bypasses the 0MB Mobile Data Download check for AI models and fixes font loading across Stories and UI to prevent blank text and fallback fonts. |

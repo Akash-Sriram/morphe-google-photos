@@ -18,6 +18,20 @@
           "formFactor": "MOBILE",
           "targets": [
             {
+              "version": "8.2.0.1023899193",
+              "versionCodes": null,
+              "isExperimental": true,
+              "minSdk": null,
+              "description": null
+            },
+            {
+              "version": "8.1.0.1023737660",
+              "versionCodes": null,
+              "isExperimental": true,
+              "minSdk": null,
+              "description": null
+            },
+            {
               "version": "8.1.0.1020990585",
               "versionCodes": null,
               "isExperimental": true,
@@ -26,13 +40,6 @@
             },
             {
               "version": "8.0.0.1011730683",
-              "versionCodes": null,
-              "isExperimental": true,
-              "minSdk": null,
-              "description": null
-            },
-            {
-              "version": "7.99.0.1007655401",
               "versionCodes": null,
               "isExperimental": false,
               "minSdk": null,
@@ -59,6 +66,20 @@
           "formFactor": "MOBILE",
           "targets": [
             {
+              "version": "8.2.0.1023899193",
+              "versionCodes": null,
+              "isExperimental": true,
+              "minSdk": null,
+              "description": null
+            },
+            {
+              "version": "8.1.0.1023737660",
+              "versionCodes": null,
+              "isExperimental": true,
+              "minSdk": null,
+              "description": null
+            },
+            {
               "version": "8.1.0.1020990585",
               "versionCodes": null,
               "isExperimental": true,
@@ -67,13 +88,6 @@
             },
             {
               "version": "8.0.0.1011730683",
-              "versionCodes": null,
-              "isExperimental": true,
-              "minSdk": null,
-              "description": null
-            },
-            {
-              "version": "7.99.0.1007655401",
               "versionCodes": null,
               "isExperimental": false,
               "minSdk": null,
@@ -96,7 +110,7 @@
     },
     {
       "name": "DCIM & backup control",
-      "description": "Disables always on backup for the Camera and other DCIM folders, allowing individual folder control, adds an 'Upload photos only' toggle to Morphe Settings to skip videos in automatic backup, and exports memory collages and creations to DCIM/Google Photos for quota-free backup.",
+      "description": "Disables always on backup for the Camera and other DCIM folders, allowing individual folder control, adds an 'Upload photos only' toggle to Morphe Settings to skip videos in automatic backup, allows hiding the Camera roll and customizing timeline folders without cloud backup, and exports memory collages and creations to DCIM/Google Photos for quota-free backup.",
       "default": true,
       "category": null,
       "compatiblePackages": [
@@ -110,6 +124,20 @@
           "formFactor": "MOBILE",
           "targets": [
             {
+              "version": "8.2.0.1023899193",
+              "versionCodes": null,
+              "isExperimental": true,
+              "minSdk": null,
+              "description": null
+            },
+            {
+              "version": "8.1.0.1023737660",
+              "versionCodes": null,
+              "isExperimental": true,
+              "minSdk": null,
+              "description": null
+            },
+            {
               "version": "8.1.0.1020990585",
               "versionCodes": null,
               "isExperimental": true,
@@ -118,13 +146,6 @@
             },
             {
               "version": "8.0.0.1011730683",
-              "versionCodes": null,
-              "isExperimental": true,
-              "minSdk": null,
-              "description": null
-            },
-            {
-              "version": "7.99.0.1007655401",
               "versionCodes": null,
               "isExperimental": false,
               "minSdk": null,
@@ -151,6 +172,20 @@
           "formFactor": "MOBILE",
           "targets": [
             {
+              "version": "8.2.0.1023899193",
+              "versionCodes": null,
+              "isExperimental": true,
+              "minSdk": null,
+              "description": null
+            },
+            {
+              "version": "8.1.0.1023737660",
+              "versionCodes": null,
+              "isExperimental": true,
+              "minSdk": null,
+              "description": null
+            },
+            {
               "version": "8.1.0.1020990585",
               "versionCodes": null,
               "isExperimental": true,
@@ -159,13 +194,6 @@
             },
             {
               "version": "8.0.0.1011730683",
-              "versionCodes": null,
-              "isExperimental": true,
-              "minSdk": null,
-              "description": null
-            },
-            {
-              "version": "7.99.0.1007655401",
               "versionCodes": null,
               "isExperimental": false,
               "minSdk": null,
@@ -192,6 +220,20 @@
           "formFactor": "MOBILE",
           "targets": [
             {
+              "version": "8.2.0.1023899193",
+              "versionCodes": null,
+              "isExperimental": true,
+              "minSdk": null,
+              "description": null
+            },
+            {
+              "version": "8.1.0.1023737660",
+              "versionCodes": null,
+              "isExperimental": true,
+              "minSdk": null,
+              "description": null
+            },
+            {
               "version": "8.1.0.1020990585",
               "versionCodes": null,
               "isExperimental": true,
@@ -200,13 +242,6 @@
             },
             {
               "version": "8.0.0.1011730683",
-              "versionCodes": null,
-              "isExperimental": true,
-              "minSdk": null,
-              "description": null
-            },
-            {
-              "version": "7.99.0.1007655401",
               "versionCodes": null,
               "isExperimental": false,
               "minSdk": null,
@@ -243,6 +278,20 @@
           "formFactor": "MOBILE",
           "targets": [
             {
+              "version": "8.2.0.1023899193",
+              "versionCodes": null,
+              "isExperimental": true,
+              "minSdk": null,
+              "description": null
+            },
+            {
+              "version": "8.1.0.1023737660",
+              "versionCodes": null,
+              "isExperimental": true,
+              "minSdk": null,
+              "description": null
+            },
+            {
               "version": "8.1.0.1020990585",
               "versionCodes": null,
               "isExperimental": true,
@@ -251,13 +300,6 @@
             },
             {
               "version": "8.0.0.1011730683",
-              "versionCodes": null,
-              "isExperimental": true,
-              "minSdk": null,
-              "description": null
-            },
-            {
-              "version": "7.99.0.1007655401",
               "versionCodes": null,
               "isExperimental": false,
               "minSdk": null,
@@ -284,6 +326,20 @@
           "formFactor": "MOBILE",
           "targets": [
             {
+              "version": "8.2.0.1023899193",
+              "versionCodes": null,
+              "isExperimental": true,
+              "minSdk": null,
+              "description": null
+            },
+            {
+              "version": "8.1.0.1023737660",
+              "versionCodes": null,
+              "isExperimental": true,
+              "minSdk": null,
+              "description": null
+            },
+            {
               "version": "8.1.0.1020990585",
               "versionCodes": null,
               "isExperimental": true,
@@ -292,13 +348,6 @@
             },
             {
               "version": "8.0.0.1011730683",
-              "versionCodes": null,
-              "isExperimental": true,
-              "minSdk": null,
-              "description": null
-            },
-            {
-              "version": "7.99.0.1007655401",
               "versionCodes": null,
               "isExperimental": false,
               "minSdk": null,
