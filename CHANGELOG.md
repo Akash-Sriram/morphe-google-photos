@@ -1,3 +1,24 @@
+## [1.19.0-dev.2](https://github.com/Akash-Sriram/morphe-google-photos/compare/v1.19.0-dev.1...v1.19.0-dev.2) (2026-11-18)
+
+### 🐛 Bug Fixes
+
+* **Google Photos - Backup:** silence MORPHE_BACKUP loop logging and cap diagnostic session file size ([f64f326](https://github.com/Akash-Sriram/morphe-google-photos/commit/f64f32607a4e903d664088965975d0f23168fd34))
+* **Google Photos - Gms:** resolve auto account switcher popup and enhance registered account resolution for v8.2 ([610b3fd](https://github.com/Akash-Sriram/morphe-google-photos/commit/610b3fd7a217a0aae16e81bb299a03ee4e3d392e))
+* **Google Photos:** protect diagnostic logs and shared reports ([10b74e2](https://github.com/Akash-Sriram/morphe-google-photos/commit/10b74e2a6938d238440d79fcef9f8dd4b6ef7584))
+* **Google Photos:** secure media downloads and exports ([33eb81d](https://github.com/Akash-Sriram/morphe-google-photos/commit/33eb81db9405ee61bff952b581ea6aaacf183078))
+* **Google Photos - Security:** enforce LF line endings for shell scripts ([f013255](https://github.com/Akash-Sriram/morphe-google-photos/commit/f013255bff954879d98c540d6127845132bf3dd7))
+* **Google Photos - Theme:** ensure solid AMOLED black background for Theme.Photos.ThemedTransparent ([5079063](https://github.com/Akash-Sriram/morphe-google-photos/commit/5079063231663e7c179eeb4b69c3fe54ffbaae03))
+* **Google Photos - Toolkit:** update v8.2 obfuscation mappings, direct restore interface, and media engine hooks ([6250831](https://github.com/Akash-Sriram/morphe-google-photos/commit/6250831fb2b2ce97ba54730bc107d5bc94a3566c))
+
+### ✨ New Features
+
+* **Google Photos - Compat:** add Google Photos v8.1.0.1023737660 target ([c282625](https://github.com/Akash-Sriram/morphe-google-photos/commit/c2826259fc4fac278247d2d843931ccd1801d5aa))
+* **Google Photos:** add support and fix fingerprints for 8.2.0.1023899193 ([a26dd0f](https://github.com/Akash-Sriram/morphe-google-photos/commit/a26dd0f2b138605e3ffe2225715059c989a488d4))
+
+### 🚀 Updated App Support
+
+* **Google Photos - Compat:** next app version release ([cac0487](https://github.com/Akash-Sriram/morphe-google-photos/commit/cac0487f6409d11fdd7dce50db27e07b167ba11c))
+
 ## [1.19.0-dev.1](https://github.com/Akash-Sriram/morphe-google-photos/compare/v1.18.0...v1.19.0-dev.1) (2026-11-18)
 
 ### 🐛 Bug Fixes
