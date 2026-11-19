@@ -133,7 +133,7 @@ public class GmsCoreSupportPatch {
     }
 
     public static Object onLuvhAEntry(Object ludhObj, Boolean isConnected) {
-        return sanitizeLudh(ludhObj, null);
+        return ludhObj;
     }
 
     public static Object onLuvhAReturn(Object luvk) {
@@ -141,122 +141,22 @@ public class GmsCoreSupportPatch {
     }
 
     public static boolean onCheckBackupAccountLinked(boolean originalVal, Object luslObj) {
-        logBackup("[Lusl.b CHECK] Suppressing auto-account-switcher popup in Backup Settings LaunchedEffect (originalVal=" + originalVal + ")");
-        return true;
+        try {
+            int activeId = resolveRegisteredAccountId(Utils.getContext());
+            if (activeId >= 0) {
+                logBackup("[Lusl.b CHECK] Suppressing auto-account-switcher popup (active registered account id=" + activeId + ")");
+                return true;
+            }
+        } catch (Throwable ignored) {}
+        return originalVal;
     }
 
     public static Object sanitizeLudh(Object ludhObj) {
-        return sanitizeLudh(ludhObj, null);
+        return ludhObj;
     }
 
-    /**
-     * Sanitizes Google Photos BackupPreferences (Ludh) on MicroG/LineageOS.
-     * When backup account ID is -1 (unlinked), this resolves the active registered account ID
-     * from accounts.xml and builds a valid Ludh instance using the internal builder (Ludg),
-     * ensuring backup settings UI treats the active account as linked and avoids triggering
-     * the auto-account-switcher dialog.
-     */
     public static Object sanitizeLudh(Object ludhObj, Context context) {
-        if (ludhObj == null) {
-            return null;
-        }
-        try {
-            Class<?> ludhClass = ludhObj.getClass();
-            Field bField = ludhClass.getDeclaredField("b");
-            bField.setAccessible(true);
-            int accountId = bField.getInt(ludhObj);
-
-            // Fast path: if account is already linked, return immediately without allocations or logging
-            if (accountId >= 0) {
-                return ludhObj;
-            }
-
-            if (context == null) {
-                context = Utils.getContext();
-            }
-
-            int activeId = resolveRegisteredAccountId(context);
-            if (activeId < 0) {
-                return ludhObj;
-            }
-
-            logBackup("[sanitizeLudh] Resolving unlinked accountId=" + accountId + " -> registered activeId=" + activeId);
-
-            // Find builder class from Ludh constructor: Ludh(Ludg)
-            Class<?> builderClass = null;
-            for (Constructor<?> ctor : ludhClass.getDeclaredConstructors()) {
-                Class<?>[] params = ctor.getParameterTypes();
-                if (params.length == 1 && !params[0].isPrimitive() && !params[0].getName().equals("android.os.Parcel")) {
-                    builderClass = params[0];
-                    break;
-                }
-            }
-            if (builderClass == null) {
-                logBackup("[sanitizeLudh] Error: builder class not found for " + ludhClass.getName());
-                return ludhObj;
-            }
-
-            Object builder = builderClass.getDeclaredConstructor().newInstance();
-            Method copyMethod = null;
-            for (Method m : builderClass.getDeclaredMethods()) {
-                if (m.getParameterTypes().length == 1 && m.getParameterTypes()[0].equals(ludhClass)) {
-                    copyMethod = m;
-                    break;
-                }
-            }
-            if (copyMethod != null) {
-                copyMethod.invoke(builder, ludhObj);
-            }
-
-            // Set accountId on builder (field "a")
-            Field builderA = builderClass.getDeclaredField("a");
-            builderA.setAccessible(true);
-            builderA.setInt(builder, activeId);
-
-            // Ensure required enum fields are populated
-            for (Method m : builderClass.getDeclaredMethods()) {
-                Class<?>[] pTypes = m.getParameterTypes();
-                if (pTypes.length == 1 && pTypes[0].isEnum()) {
-                    Object[] enumConstants = pTypes[0].getEnumConstants();
-                    if (enumConstants != null && enumConstants.length > 0) {
-                        try {
-                            m.invoke(builder, enumConstants[0]);
-                        } catch (Throwable ignored) {}
-                    }
-                }
-            }
-
-            // Build new Ludh
-            Method buildMethod = null;
-            for (Method m : builderClass.getDeclaredMethods()) {
-                if (m.getParameterTypes().length == 0 && m.getReturnType().equals(ludhClass)) {
-                    buildMethod = m;
-                    break;
-                }
-            }
-            if (buildMethod == null) {
-                logBackup("[sanitizeLudh] Error: build method not found on " + builderClass.getName());
-                return ludhObj;
-            }
-            Object sanitized = buildMethod.invoke(builder);
-
-            // Persist to photos.backup.backup_prefs so background sync recognizes the account
-            if (context != null) {
-                SharedPreferences backupPrefs = context.getSharedPreferences("photos.backup.backup_prefs", Context.MODE_PRIVATE);
-                if (backupPrefs.getInt("backup_prefs_account_id", -1) != activeId) {
-                    backupPrefs.edit()
-                            .putInt("backup_prefs_account_id", activeId)
-                            .putBoolean("photos.backup.selective_backup_enabled", false)
-                            .apply();
-                }
-            }
-
-            logBackup("[sanitizeLudh] SUCCESS: Built sanitized Ludh with activeId=" + activeId);
-            return sanitized;
-        } catch (Throwable t) {
-            logBackupError("[sanitizeLudh] Error sanitizing Ludh", t);
-            return ludhObj;
-        }
+        return ludhObj;
     }
 
     /**
@@ -311,22 +211,24 @@ public class GmsCoreSupportPatch {
                         String configuredEmail = accountsPrefs.getString(backupAccountId + ".account_name", null);
                         if (configuredEmail != null && !configuredEmail.trim().isEmpty()) {
                             email = configuredEmail;
-                            isBackupEnabled = true;
                         }
                     } else {
-                        // Fallback: check if active account in Photos exists
+                        // Fallback: resolve active account in Photos
                         int activeKey = accountsPrefs.getInt("key.active-account-key", -1);
                         if (activeKey >= 0) {
                             String activeEmail = accountsPrefs.getString(activeKey + ".account_name", null);
                             if (activeEmail != null && !activeEmail.trim().isEmpty()) {
                                 email = activeEmail;
-                                isBackupEnabled = true;
-                                backupPrefs.edit().putInt("backup_prefs_account_id", activeKey).apply();
                             }
                         }
                     }
-                } else if (!isBackupEnabled && backupAccountId >= 0) {
+                }
+
+                // Synchronize backup enabled state with Google Photos native backup preference
+                if (backupAccountId >= 0) {
                     isBackupEnabled = true;
+                } else {
+                    isBackupEnabled = false;
                 }
             }
 
