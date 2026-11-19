@@ -1,3 +1,14 @@
+## [1.19.0-dev.4](https://github.com/Akash-Sriram/morphe-google-photos/compare/v1.19.0-dev.3...v1.19.0-dev.4) (2026-11-19)
+
+### 🐛 Bug Fixes
+
+* **Google Photos - Backup:** decouple account presence from backup toggle and synchronize state with backup_prefs ([d4fcef7](https://github.com/Akash-Sriram/morphe-google-photos/commit/d4fcef724404fb56da8af2b98b7e2a3c20890124))
+* **Google Photos - Mfy:** restore stock Google Photos storefront lifecycle without artificial legacy assistant fallback ([5bc48e5](https://github.com/Akash-Sriram/morphe-google-photos/commit/5bc48e5fe90cdb2f80a665febca2049e388446dc))
+
+### ✨ New Features
+
+* **Google Photos - Flags:** add reels-style create tab and remix hub flags to curated registry and baseline configuration ([16b1112](https://github.com/Akash-Sriram/morphe-google-photos/commit/16b1112ceba6a776fcc58e4cc6ec362c0f0760bc))
+
 ## [1.19.0-dev.3](https://github.com/Akash-Sriram/morphe-google-photos/compare/v1.19.0-dev.2...v1.19.0-dev.3) (2026-11-19)
 
 ### 🐛 Bug Fixes
