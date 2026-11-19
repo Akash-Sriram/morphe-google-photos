@@ -464,14 +464,12 @@ public class LocalCreationDownloader {
 
     private static Class<?> getStatusInterface(ClassLoader cl) {
         if (sStatusInterfaceResolved) return sCachedStatusInterface;
-        try {
-            sCachedStatusInterface = Class.forName("soc", true, cl);
-        } catch (Throwable t1) {
+        String[] interfaceCandidates = new String[]{"tac", "slm", "soc"};
+        for (String ifaceName : interfaceCandidates) {
             try {
-                sCachedStatusInterface = Class.forName("slm", true, cl);
-            } catch (Throwable t2) {
-                sCachedStatusInterface = null;
-            }
+                sCachedStatusInterface = Class.forName(ifaceName, true, cl);
+                if (sCachedStatusInterface != null) break;
+            } catch (Throwable ignored) {}
         }
         sStatusInterfaceResolved = true;
         return sCachedStatusInterface;
@@ -481,8 +479,8 @@ public class LocalCreationDownloader {
         ClassLoader cl = LocalCreationDownloader.class.getClassLoader();
         Class<?> statusInterface = getStatusInterface(cl);
         if (saved) {
-            // sob.a represents Saved
-            String[] savedClasses = new String[]{"sob", "sll"};
+            // sob.a / sll.a / tab.a represents Saved
+            String[] savedClasses = new String[]{"tab", "sob", "sll"};
             for (String clsName : savedClasses) {
                 try {
                     Class<?> cls = Class.forName(clsName, true, cl);
@@ -496,8 +494,8 @@ public class LocalCreationDownloader {
                 } catch (Throwable ignored) {}
             }
         } else {
-            // soa.a represents Saving
-            String[] savingClasses = new String[]{"soa", "slk"};
+            // soa.a / slk.a / taa.a represents Saving
+            String[] savingClasses = new String[]{"taa", "soa", "slk"};
             for (String clsName : savingClasses) {
                 try {
                     Class<?> cls = Class.forName(clsName, true, cl);
