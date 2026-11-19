@@ -21,6 +21,8 @@ import android.os.Bundle;
 import android.os.Environment;
 import android.os.Handler;
 import android.os.Looper;
+import android.os.Parcelable;
+import android.os.SystemClock;
 import android.provider.MediaStore;
 import app.morphe.extension.shared.diagnostics.SafeLog;
 import android.widget.Toast;
@@ -77,6 +79,7 @@ public class LocalCreationDownloader {
     private static final ExecutorService EXECUTOR = Executors.newSingleThreadExecutor();
     private static final Handler MAIN_HANDLER = new Handler(Looper.getMainLooper());
     private static final Set<String> sSavedKeys = Collections.synchronizedSet(new HashSet<>());
+    private static final Set<String> sSavingKeys = Collections.synchronizedSet(new HashSet<>());
     private static final Map<String, Object> sCardMediaMap = new ConcurrentHashMap<>();
     private static final Map<Object, Object> sWsfMediaMap = new ConcurrentHashMap<>();
     private static final Map<String, Object> sIdMediaMap = new ConcurrentHashMap<>();
@@ -289,7 +292,7 @@ public class LocalCreationDownloader {
 
             if (allAlreadySaved) {
                 SafeLog.i(TAG, "Creation is already saved locally on device. Suppressing duplicate download.");
-                notifySaveListeners(saveCreationMixin, mediaList);
+                notifySaveSuccess(saveCreationMixin, mediaList, SystemClock.elapsedRealtime());
                 notifyStoryUi(saveCreationMixin);
                 return true;
             }
@@ -313,18 +316,26 @@ public class LocalCreationDownloader {
                 return false;
             }
 
-            // Immediately mark items as saved synchronously to suppress consecutive clicks
+            final long startTimeMs = SystemClock.elapsedRealtime();
+
+            // Mark items as saving so isCreationSaved() returns false during the save process
+            // and allows the toolbar button to display the saving state
+            final Set<String> currentSavingKeys = new HashSet<>();
             for (Object media : items) {
                 if (media == null) continue;
                 String itemKey = extractItemKey(media);
+                if (itemKey != null) currentSavingKeys.add(itemKey);
                 CreationTime time = extractCreationTime(media);
-                String fileName = (time != null && time.utcMs > 0) ? getOfficialCollageFileName(time) : null;
-                long utcMs = time != null ? time.utcMs : 0;
-                recordSavedItem(appContext, itemKey, null, fileName, null, utcMs);
+                if (time != null && time.utcMs > 0) {
+                    currentSavingKeys.add("ts_" + time.utcMs);
+                    String fileName = getOfficialCollageFileName(time);
+                    if (fileName != null) currentSavingKeys.add("file_" + fileName);
+                }
             }
+            sSavingKeys.addAll(currentSavingKeys);
 
-            // Immediately notify story UI and listeners so the button changes to Saved / hides
-            notifySaveListeners(saveCreationMixin, mediaList);
+            // Notify listeners that saving has started (triggers Saving state in toolbar)
+            notifySaveStarted(saveCreationMixin, mediaList);
             notifyStoryUi(saveCreationMixin);
 
             SafeLog.i(TAG, "Intercepted creation save request for " + items.size() + " item(s). Redirecting to DCIM/Google Photos.");
@@ -341,9 +352,18 @@ public class LocalCreationDownloader {
 
                 final int saved = successCount;
                 MAIN_HANDLER.post(() -> {
+                    sSavingKeys.removeAll(currentSavingKeys);
                     if (saved > 0) {
                         SafeLog.i(TAG, "Successfully exported " + saved + " creation(s) to DCIM/Google Photos.");
-                        notifySaveListeners(saveCreationMixin, mediaList);
+                        for (Object media : items) {
+                            if (media == null) continue;
+                            String itemKey = extractItemKey(media);
+                            CreationTime time = extractCreationTime(media);
+                            String fileName = (time != null && time.utcMs > 0) ? getOfficialCollageFileName(time) : null;
+                            long utcMs = time != null ? time.utcMs : 0;
+                            recordSavedItem(appContext, itemKey, null, fileName, null, utcMs);
+                        }
+                        notifySaveSuccess(saveCreationMixin, mediaList, startTimeMs);
                         notifyStoryUi(saveCreationMixin);
                         if (appContext != null) {
                             Toast.makeText(appContext, "Saved creation to Google Photos", Toast.LENGTH_SHORT).show();
@@ -1448,6 +1468,11 @@ public class LocalCreationDownloader {
             String fileName = (time != null && time.utcMs > 0) ? getOfficialCollageFileName(time) : null;
             String animFileName = (time != null && time.utcMs > 0) ? ("IMG_" + time.formatLocalFileName() + "-ANIMATION.mp4") : null;
             long utcMs = time != null ? time.utcMs : 0;
+
+            if (key != null && sSavingKeys.contains(key)) return false;
+            if (fileName != null && sSavingKeys.contains("file_" + fileName)) return false;
+            if (animFileName != null && sSavingKeys.contains("file_" + animFileName)) return false;
+            if (utcMs > 0 && sSavingKeys.contains("ts_" + utcMs)) return false;
 
             if (key != null && sSavedKeys.contains(key)) return true;
             if (fileName != null && sSavedKeys.contains("file_" + fileName)) return true;
@@ -2588,14 +2613,15 @@ public class LocalCreationDownloader {
         return null;
     }
 
-    private static void notifySaveListeners(Object mixin, Object mediaList) {
-        // Direct call to Lakxr->c(Lcchb) which notifies save listeners
+    private static void notifySaveStarted(Object mixin, Object mediaList) {
+        if (mixin == null || mediaList == null) return;
+        // Direct call to SaveCreationMixin->c(cgmi) which notifies listeners that save started
         try {
             for (Method m : mixin.getClass().getDeclaredMethods()) {
                 if (m.getName().equals("c") && m.getParameterTypes().length == 1) {
                     m.setAccessible(true);
                     m.invoke(mixin, mediaList);
-                    SafeLog.d(TAG, "Invoked mixin.c(mediaList) directly");
+                    SafeLog.d(TAG, "Invoked mixin.c(mediaList) directly for save start");
                     return;
                 }
             }
@@ -2617,6 +2643,152 @@ public class LocalCreationDownloader {
                         SafeLog.w(TAG, "Failed invoking notify method", t);
                     }
                 }
+            }
+        }
+    }
+
+    private static void notifySaveSuccess(Object mixin, Object mediaList, long startTimeMs) {
+        if (mixin == null) return;
+
+        Bundle bundle = new Bundle();
+        ArrayList<Parcelable> parcelableList = new ArrayList<>();
+        if (mediaList instanceof Collection) {
+            for (Object o : (Collection<?>) mediaList) {
+                if (o instanceof Parcelable) {
+                    parcelableList.add((Parcelable) o);
+                }
+            }
+        } else if (mediaList instanceof Iterable) {
+            for (Object o : (Iterable<?>) mediaList) {
+                if (o instanceof Parcelable) {
+                    parcelableList.add((Parcelable) o);
+                }
+            }
+        }
+        bundle.putParcelableArrayList("com.google.android.apps.photos.core.media_list", parcelableList);
+        bundle.putLong("launch_realtime_millis", startTimeMs);
+
+        // 1. Invoke mixin.i() if available (analytics/logger "memory_creation_saved")
+        try {
+            for (Method m : mixin.getClass().getDeclaredMethods()) {
+                if (m.getParameterTypes().length == 0 && m.getReturnType() == void.class && m.getName().length() == 1) {
+                    m.setAccessible(true);
+                    m.invoke(mixin);
+                    SafeLog.d(TAG, "Invoked mixin." + m.getName() + "()");
+                    break;
+                }
+            }
+        } catch (Throwable t) {
+            SafeLog.w(TAG, "Failed invoking mixin 0-arg method", t);
+        }
+
+        // 2. Invoke mixin.d(Bundle) to trigger official save success flow
+        boolean successInvoked = false;
+        try {
+            for (Method m : mixin.getClass().getDeclaredMethods()) {
+                if (m.getParameterTypes().length == 1 &&
+                    m.getParameterTypes()[0] == Bundle.class &&
+                    m.getReturnType() == void.class) {
+                    m.setAccessible(true);
+                    m.invoke(mixin, bundle);
+                    successInvoked = true;
+                    SafeLog.i(TAG, "Invoked mixin." + m.getName() + "(Bundle) for save success completion");
+                    break;
+                }
+            }
+        } catch (Throwable t) {
+            SafeLog.w(TAG, "Failed invoking mixin(Bundle)", t);
+        }
+
+        // 3. Fallback: Directly inspect listeners in mixin to ensure aojc.h = true and aojc.g = SAVED
+        forceSetListenersSaved(mixin);
+    }
+
+    private static void forceSetListenersSaved(Object mixin) {
+        if (mixin == null) return;
+        try {
+            for (Field f : mixin.getClass().getDeclaredFields()) {
+                f.setAccessible(true);
+                Object wrapper = f.get(mixin);
+                if (wrapper == null) continue;
+                Object unwrapped = null;
+                try {
+                    Method aMethod = wrapper.getClass().getMethod("a");
+                    unwrapped = aMethod.invoke(wrapper);
+                } catch (Throwable ignored) {
+                    try {
+                        Method getMethod = wrapper.getClass().getMethod("get");
+                        unwrapped = getMethod.invoke(wrapper);
+                    } catch (Throwable ignored2) {}
+                }
+                if (unwrapped == null) {
+                    unwrapped = wrapper;
+                }
+                if (unwrapped instanceof Iterable) {
+                    for (Object listener : (Iterable<?>) unwrapped) {
+                        if (listener == null) continue;
+                        applySavedToListener(listener);
+                    }
+                } else {
+                    applySavedToListener(unwrapped);
+                }
+            }
+        } catch (Throwable t) {
+            SafeLog.w(TAG, "Error in forceSetListenersSaved", t);
+        }
+    }
+
+    private static void applySavedToListener(Object obj) {
+        if (obj == null) return;
+        try {
+            updateAojcInstance(obj);
+            for (Field lf : obj.getClass().getDeclaredFields()) {
+                lf.setAccessible(true);
+                Object target = lf.get(obj);
+                if (target != null && target != obj) {
+                    updateAojcInstance(target);
+                }
+            }
+        } catch (Throwable ignored) {}
+    }
+
+    private static void updateAojcInstance(Object candidate) {
+        if (candidate == null) return;
+        Class<?> clazz = candidate.getClass();
+        Field booleanHField = null;
+        Field enumGField = null;
+        Object savedEnumVal = null;
+        for (Field f : clazz.getDeclaredFields()) {
+            if (f.getType() == boolean.class) {
+                booleanHField = f;
+            } else if (f.getType().isEnum()) {
+                Object[] constants = f.getType().getEnumConstants();
+                if (constants != null && constants.length == 3) {
+                    enumGField = f;
+                    savedEnumVal = constants[2];
+                }
+            }
+        }
+        if (booleanHField != null && enumGField != null && savedEnumVal != null) {
+            try {
+                booleanHField.setAccessible(true);
+                booleanHField.setBoolean(candidate, true);
+
+                enumGField.setAccessible(true);
+                enumGField.set(candidate, savedEnumVal);
+
+                for (Method m : clazz.getDeclaredMethods()) {
+                    if (m.getParameterTypes().length == 1 &&
+                        m.getParameterTypes()[0] == enumGField.getType() &&
+                        m.getReturnType() == void.class) {
+                        m.setAccessible(true);
+                        m.invoke(candidate, savedEnumVal);
+                        SafeLog.d(TAG, "Directly updated aojc to SAVED and invoked " + m.getName() + "()");
+                        break;
+                    }
+                }
+            } catch (Throwable t) {
+                SafeLog.w(TAG, "Failed updating aojc instance directly", t);
             }
         }
     }
