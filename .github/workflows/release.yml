@@ -34,6 +34,7 @@ jobs:
         run: |
           git fetch origin "+refs/notes/*:refs/notes/*" || true
           git fetch --tags origin || true
+          git notes --ref=semantic-release-v1.19.0-dev.2 add -f -m '{"channels":["dev"]}' v1.19.0-dev.2 || true
 
       - name: Apply manual release bump override
         if: github.event.inputs.bump != 'auto' && github.event.inputs.bump != ''
