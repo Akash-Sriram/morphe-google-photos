@@ -204,7 +204,6 @@ val mediaEngineAndAIFixesPatch = bytecodePatch(
                 val instructions = bindMethod.implementation?.instructions?.toList()
 
                 // Dynamically resolve helper classes
-                var laqdzClass: String? = null
                 var lapbhClass: String? = null
 
                 instructions?.forEachIndexed { index, instruction ->
@@ -214,7 +213,6 @@ val mediaEngineAndAIFixesPatch = bytecodePatch(
                             !ref.parameterTypes[0].startsWith("Ljava/") && !ref.parameterTypes[1].startsWith("Ljava/") &&
                             (ref.name == "d" || ref.name == "k")
                         ) {
-                            laqdzClass = ref.definingClass
                             val next = instructions.getOrNull(index + 1)
                             if (next is OneRegisterInstruction && next.opcode == Opcode.MOVE_RESULT) {
                                 val reg = next.registerA
@@ -241,22 +239,6 @@ val mediaEngineAndAIFixesPatch = bytecodePatch(
                             lapbhClass = ref.definingClass
                         }
                     }
-                }
-
-                // Patch gatekeeper methods on Laqdz directly
-                if (laqdzClass != null) {
-                    try {
-                        val gatekeeperClass = mutableClassDefBy(laqdzClass)
-                        for (m in gatekeeperClass.methods) {
-                            if (m.returnType == "Z") {
-                                if (m.name == "d") {
-                                    gatekeeperClass.findMutableMethodOf(m).returnEarly(false)
-                                } else if (m.name == "k") {
-                                    gatekeeperClass.findMutableMethodOf(m).returnEarly(true)
-                                }
-                            }
-                        }
-                    } catch (_: Throwable) {}
                 }
 
                 // Force enable Gerwig and memory shape flags on Lapou
