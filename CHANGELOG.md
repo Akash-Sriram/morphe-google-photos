@@ -1,3 +1,21 @@
+## [1.19.0-dev.3](https://github.com/Akash-Sriram/morphe-google-photos/compare/v1.19.0-dev.2...v1.19.0-dev.3) (2026-11-19)
+
+### 🐛 Bug Fixes
+
+* **Google Photos - Ci:** ensure release workflow fetches all tags for semantic-release prerelease detection ([f5230d1](https://github.com/Akash-Sriram/morphe-google-photos/commit/f5230d10f6511e762f9c82f67fedc460d32a3e4b))
+* **Google Photos - Ci:** register missing dev.2 git note to allow dev.3 prerelease increment ([07df95c](https://github.com/Akash-Sriram/morphe-google-photos/commit/07df95cf7b3217d19937bcde7e8845e467312db8))
+* **Google Photos - Ci:** set git identity before creating notes in release workflow ([daf3245](https://github.com/Akash-Sriram/morphe-google-photos/commit/daf3245f7f279a30e70db117963f1bfc2166b72f))
+* **Google Photos - Creations:** resolve timestamp collision causing premature saved state and enhance Glide stream fallback ([dfca715](https://github.com/Akash-Sriram/morphe-google-photos/commit/dfca71530ea87e3c61a7b4e3f8fd7956d5693fec))
+* **Google Photos - Engine:** stop globally patching story gatekeeper Lapqa to restore story save button ([82a4116](https://github.com/Akash-Sriram/morphe-google-photos/commit/82a411644aee6ba015e92bacd90ef7a3156a2cfc))
+* **Google Photos - Fingerprints:** exclude extension class from TimelineQueryBuilderFingerprint ([fc20c49](https://github.com/Akash-Sriram/morphe-google-photos/commit/fc20c4907023a7a5132ed3393979ab0150cbaee3))
+* **Google Photos - Mfy:** add 8.2 status classes (tac, tab, taa) for MFY creation tiles ([c12acf0](https://github.com/Akash-Sriram/morphe-google-photos/commit/c12acf0ead9bb12ec2ecb3d3ce23f4c32461ea51))
+* **Google Photos:** preserve backed-up cloud photos when hiding camera roll ([#89](https://github.com/Akash-Sriram/morphe-google-photos/issues/89)) ([c71fe8f](https://github.com/Akash-Sriram/morphe-google-photos/commit/c71fe8f95f5a4d9a3f8728cd66f5d4a540205c40))
+* **Google Photos - Stories:** notify save success lifecycle to display saved cloud checkmark icon ([3022498](https://github.com/Akash-Sriram/morphe-google-photos/commit/302249844158511c38279d85d55dc88aeaea45a1))
+
+### ✨ New Features
+
+* **Google Photos:** customize timeline folders and camera roll display ([#46](https://github.com/Akash-Sriram/morphe-google-photos/issues/46), [#89](https://github.com/Akash-Sriram/morphe-google-photos/issues/89)) ([3c2a55a](https://github.com/Akash-Sriram/morphe-google-photos/commit/3c2a55a4f224d8aaac4addb97909869c60590805))
+
 ## [1.19.0-dev.2](https://github.com/Akash-Sriram/morphe-google-photos/compare/v1.19.0-dev.1...v1.19.0-dev.2) (2026-11-19)
 
 ### 🐛 Bug Fixes
