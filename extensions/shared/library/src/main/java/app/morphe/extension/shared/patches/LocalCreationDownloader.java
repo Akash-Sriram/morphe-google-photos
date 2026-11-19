@@ -300,19 +300,17 @@ public class LocalCreationDownloader {
 
             final Context appContext = sAppContext != null ? sAppContext : context.getApplicationContext();
 
-            // Pre-validate that at least one item can be resolved to a downloadable URI.
-            // If URI resolution fails (e.g. unknown obfuscation drift), gracefully fallback
-            // to Google Photos standard cloud save so the user's save is never dropped.
-            boolean canResolveLocally = false;
+            // Pre-validate that at least one valid item exists in the request
+            boolean canAttemptSave = false;
             for (Object media : items) {
-                if (media != null && resolveMediaUri(appContext, media) != null) {
-                    canResolveLocally = true;
+                if (media != null) {
+                    canAttemptSave = true;
                     break;
                 }
             }
 
-            if (!canResolveLocally) {
-                SafeLog.w(TAG, "Cannot resolve local URI for creation item(s). Falling back to Google Photos standard cloud save.");
+            if (!canAttemptSave) {
+                SafeLog.w(TAG, "No valid items in save request. Falling back to Google Photos standard cloud save.");
                 return false;
             }
 
@@ -327,7 +325,6 @@ public class LocalCreationDownloader {
                 if (itemKey != null) currentSavingKeys.add(itemKey);
                 CreationTime time = extractCreationTime(media);
                 if (time != null && time.utcMs > 0) {
-                    currentSavingKeys.add("ts_" + time.utcMs);
                     String fileName = getOfficialCollageFileName(time);
                     if (fileName != null) currentSavingKeys.add("file_" + fileName);
                 }
@@ -1467,31 +1464,42 @@ public class LocalCreationDownloader {
             CreationTime time = extractCreationTime(mediaItem);
             String fileName = (time != null && time.utcMs > 0) ? getOfficialCollageFileName(time) : null;
             String animFileName = (time != null && time.utcMs > 0) ? ("IMG_" + time.formatLocalFileName() + "-ANIMATION.mp4") : null;
-            long utcMs = time != null ? time.utcMs : 0;
 
             if (key != null && sSavingKeys.contains(key)) return false;
             if (fileName != null && sSavingKeys.contains("file_" + fileName)) return false;
             if (animFileName != null && sSavingKeys.contains("file_" + animFileName)) return false;
-            if (utcMs > 0 && sSavingKeys.contains("ts_" + utcMs)) return false;
 
-            if (key != null && sSavedKeys.contains(key)) return true;
-            if (fileName != null && sSavedKeys.contains("file_" + fileName)) return true;
-            if (animFileName != null && sSavedKeys.contains("file_" + animFileName)) return true;
-            if (utcMs > 0 && sSavedKeys.contains("ts_" + utcMs)) return true;
+            File gpDir = getGooglePhotosDir();
+
+            if (fileName != null && sSavedKeys.contains("file_" + fileName)) {
+                if (new File(gpDir, fileName).exists()) return true;
+            }
+            if (animFileName != null && sSavedKeys.contains("file_" + animFileName)) {
+                if (new File(gpDir, animFileName).exists()) return true;
+            }
+            if (key != null && sSavedKeys.contains(key)) {
+                if (fileName == null || new File(gpDir, fileName).exists()) return true;
+            }
 
             if (ctx != null) {
                 SharedPreferences prefs = ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
-                if (key != null && (prefs.getBoolean(key, false) || prefs.getBoolean(key + "_saved", false))) {
-                    sSavedKeys.add(key);
-                    return true;
-                }
                 if (fileName != null && prefs.getBoolean("file_" + fileName, false)) {
-                    sSavedKeys.add("file_" + fileName);
-                    return true;
+                    if (new File(gpDir, fileName).exists()) {
+                        sSavedKeys.add("file_" + fileName);
+                        return true;
+                    }
                 }
-                if (utcMs > 0 && prefs.getBoolean("ts_" + utcMs, false)) {
-                    sSavedKeys.add("ts_" + utcMs);
-                    return true;
+                if (animFileName != null && prefs.getBoolean("file_" + animFileName, false)) {
+                    if (new File(gpDir, animFileName).exists()) {
+                        sSavedKeys.add("file_" + animFileName);
+                        return true;
+                    }
+                }
+                if (key != null && (prefs.getBoolean(key, false) || prefs.getBoolean(key + "_saved", false))) {
+                    if (fileName == null || new File(gpDir, fileName).exists()) {
+                        sSavedKeys.add(key);
+                        return true;
+                    }
                 }
             }
         } catch (Throwable t) {
@@ -1640,7 +1648,31 @@ public class LocalCreationDownloader {
             }
         } catch (Throwable ignored) {}
 
-        // 2. Check 0-arg methods returning String
+        // 2. Try f() returning calm (DedupKey/BurstIdentifier)
+        try {
+            Method fMethod = mediaItem.getClass().getMethod("f");
+            Object calm = fMethod.invoke(mediaItem);
+            if (calm != null) {
+                String str = calm.toString();
+                if (str != null && str.length() > 5) {
+                    return "dedup_" + sanitizeFileName(str);
+                }
+            }
+        } catch (Throwable ignored) {}
+
+        // 3. Check toString() for mediaKey, dedupKey, or itm
+        try {
+            String str = mediaItem.toString();
+            if (str != null) {
+                Pattern p = Pattern.compile("(?:mediaKey='|dedupKey='|itm:)([A-Za-z0-9_-]{10,})");
+                Matcher m = p.matcher(str);
+                if (m.find()) {
+                    return "key_" + m.group(1);
+                }
+            }
+        } catch (Throwable ignored) {}
+
+        // 4. Check 0-arg methods returning String
         for (Method m : mediaItem.getClass().getMethods()) {
             if (m.getParameterTypes().length == 0 && m.getReturnType() == String.class) {
                 String name = m.getName().toLowerCase(Locale.US);
@@ -1697,14 +1729,9 @@ public class LocalCreationDownloader {
 
     private static boolean saveSingleItem(Context context, Object mediaItem) {
         Uri mediaUri = resolveMediaUri(context, mediaItem);
-        if (mediaUri == null) {
-            SafeLog.w(TAG, "Could not resolve URI for media item");
-            return false;
-        }
 
-        SafeLog.d(TAG, "Resolved creation URI");
         ContentResolver resolver = context.getContentResolver();
-        String mimeType = resolver.getType(mediaUri);
+        String mimeType = mediaUri != null ? resolver.getType(mediaUri) : null;
         if (mimeType == null) {
             mimeType = "image/jpeg";
         }
@@ -1729,28 +1756,33 @@ public class LocalCreationDownloader {
         try {
             tempFile = File.createTempFile("morphe_creation_", extension, context.getCacheDir());
 
-            if (("http".equalsIgnoreCase(mediaUri.getScheme()) || "https".equalsIgnoreCase(mediaUri.getScheme()))
-                    && !TrustedGoogleMedia.isMediaUrl(mediaUri.toString())) {
-                throw new java.io.IOException("Untrusted media URL blocked");
-            }
-            boolean loaded = !"https".equalsIgnoreCase(mediaUri.getScheme())
-                    && !"http".equalsIgnoreCase(mediaUri.getScheme())
-                    && tryLoadWithGlide(context, mediaItem, mediaUri, tempFile);
-            if (!loaded) {
+            // 1. Try Glide first - handles both mediaItem model directly and mediaUri
+            boolean loaded = tryLoadWithGlide(context, mediaItem, mediaUri, tempFile);
+
+            // 2. If Glide did not produce file and we have a mediaUri, fallback to openMediaStream
+            if (!loaded && mediaUri != null) {
                 SafeLog.d(TAG, "Glide loading did not produce file, falling back to openMediaStream");
+                if (("http".equalsIgnoreCase(mediaUri.getScheme()) || "https".equalsIgnoreCase(mediaUri.getScheme()))
+                        && !TrustedGoogleMedia.isMediaUrl(mediaUri.toString())) {
+                    throw new java.io.IOException("Untrusted media URL blocked");
+                }
                 try (InputStream in = openMediaStream(context, resolver, mediaUri);
                      OutputStream out = new FileOutputStream(tempFile)) {
-                    if (in == null) {
-                        SafeLog.e(TAG, "Failed to open media input stream");
-                        return false;
+                    if (in != null) {
+                        byte[] buffer = new byte[16384];
+                        int len;
+                        while ((len = in.read(buffer)) > 0) {
+                            out.write(buffer, 0, len);
+                        }
+                        out.flush();
+                        loaded = tempFile.length() > 0;
                     }
-                    byte[] buffer = new byte[16384];
-                    int len;
-                    while ((len = in.read(buffer)) > 0) {
-                        out.write(buffer, 0, len);
-                    }
-                    out.flush();
                 }
+            }
+
+            if (!loaded || tempFile.length() == 0) {
+                SafeLog.e(TAG, "Failed to download creation via Glide and openMediaStream");
+                return false;
             }
 
             // For JPEG images, inject EXIF capture timestamp into the temporary file
@@ -1917,9 +1949,6 @@ public class LocalCreationDownloader {
         if (fileName != null) {
             sSavedKeys.add("file_" + fileName);
         }
-        if (utcMs > 0) {
-            sSavedKeys.add("ts_" + utcMs);
-        }
         Context ctx = context != null ? context.getApplicationContext() : getApplicationContext();
         if (ctx == null) return;
         try {
@@ -1935,9 +1964,6 @@ public class LocalCreationDownloader {
             }
             if (fileName != null) {
                 edit.putBoolean("file_" + fileName, true);
-            }
-            if (utcMs > 0) {
-                edit.putBoolean("ts_" + utcMs, true);
             }
             edit.commit(); // synchronous write
         } catch (Throwable ignored) {}
