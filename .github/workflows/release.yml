@@ -28,9 +28,12 @@ jobs:
         uses: actions/checkout@v7
         with:
           fetch-depth: 0
+          fetch-tags: true
 
-      - name: Fetch Git Notes
-        run: git fetch origin "+refs/notes/*:refs/notes/*" || true
+      - name: Fetch Git Notes and Tags
+        run: |
+          git fetch origin "+refs/notes/*:refs/notes/*" || true
+          git fetch --tags origin || true
 
       - name: Apply manual release bump override
         if: github.event.inputs.bump != 'auto' && github.event.inputs.bump != ''
