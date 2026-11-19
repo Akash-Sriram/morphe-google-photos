@@ -24,8 +24,19 @@
 45815129=true # Made For You Carousel & Suggestions
 45815130=true # Remix Creations & Generation Controls
 45815131=true # Tools Module & Saved Creations
-45815512=true
+45815512=true # AuraTab Storefront Master Hub
 45819223=true
+45852461=true # Remix your videos Section Shelf
+45852493=true # Remix your photos Section Shelf
+45854061=true # Storefront Card Ordering & Positioning
+45856154=true # Reels-style 9:16 Vertical Cards Layout
+45856155=true # Auto-looping Video Preview Player
+45850306=true # Video Remix Recipe: Background Swap (Villa, Sunset)
+45850307=true # Video Remix Recipe: Outfit & Style Transfer
+45850308=true # Video Remix Recipe: Cinematic Camera & Moods
+45850309=true # Video Remix Recipe: Lighting & Atmosphere
+45850310=true # Video Remix Recipe: Art Style & Cartoon Filters
+45850311=true # Video Remix Recipe: Ambient FX & Motion Loops
 
 # --- Collages & Scrapbook Engine (124 Flags) ---
 3746=true

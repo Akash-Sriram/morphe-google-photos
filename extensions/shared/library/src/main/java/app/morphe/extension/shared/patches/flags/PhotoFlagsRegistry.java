@@ -65,6 +65,7 @@ public final class PhotoFlagsRegistry {
         CATEGORY_TRIGGERS.put("🪄 AI Photo & Video Editor Tools", "⚡ Triggers: Magic Editor lasso selection, AI Enhance V2 & Bluejay AI backend");
         CATEGORY_TRIGGERS.put("🎞️ Create Tab: Motion & Animation", "⚡ Triggers: Animation tool card, burst loop generator & motion photo stabilizer pill");
         CATEGORY_TRIGGERS.put("🧭 Modern Navigation & Filters", "⚡ Triggers: \"On this device\" media filter pill & local photo isolation");
+        CATEGORY_TRIGGERS.put("🎬 Create Tab & Reels Remix Hub", "⚡ Triggers: Modern AuraTab storefront, video remix recipes & Reels-style preview cards");
         CATEGORY_TRIGGERS.put("⭕ OneGoogle: Subscriber Avatar Rings", "⚡ Triggers: Modern Blue Gemini Aura subscriber ring around avatar");
         initFlags();
     }
@@ -85,6 +86,23 @@ public final class PhotoFlagsRegistry {
 
         // 🧭 Modern Navigation & Filters (1 Flag)
         register("45753590", "On This Device Filter Pill", "Adds top-bar filter button to isolate and display only photos physically stored on the device.", "🧭 Modern Navigation & Filters", "Local Media Filter", FlagType.BOOLEAN, Boolean.TRUE);
+
+        // 🎬 Create Tab & Reels Remix Hub (15 Flags)
+        register("45754248", "Create Tab Master Switch", "Enables the modern AuraTab Create tab on the bottom navigation bar.", "🎬 Create Tab & Reels Remix Hub", "AuraTab Bottom Bar", FlagType.BOOLEAN, Boolean.TRUE);
+        register("45754250", "Storefront Hero Banner", "Displays dynamic top hero banner and interactive creation cards.", "🎬 Create Tab & Reels Remix Hub", "Hero Banner", FlagType.BOOLEAN, Boolean.TRUE);
+        register("45774010", "Storefront Suggestion Chips", "Top quick-action suggestion pills for fast creation shortcuts.", "🎬 Create Tab & Reels Remix Hub", "Suggestion Chips", FlagType.BOOLEAN, Boolean.TRUE);
+        register("45778870", "Category Filter Chips", "Filter creation templates by category (Video remix, Moods, etc.).", "🎬 Create Tab & Reels Remix Hub", "Category Chips", FlagType.BOOLEAN, Boolean.TRUE);
+        register("45812600", "Create Tab Tools Grid Layout", "Modern grid layout for creation tools module.", "🎬 Create Tab & Reels Remix Hub", "Tools Grid Layout", FlagType.BOOLEAN, Boolean.TRUE);
+        register("45815512", "AuraTab Storefront Master Hub", "Main storefront orchestrator for creative modules and tools.", "🎬 Create Tab & Reels Remix Hub", "Storefront Hub", FlagType.BOOLEAN, Boolean.TRUE);
+        register("45815129", "Made For You Carousel & Suggestions", "Displays the Made For You carousel and smart suggestions.", "🎬 Create Tab & Reels Remix Hub", "Made For You Shelf", FlagType.BOOLEAN, Boolean.TRUE);
+        register("45815130", "Remix Creations & Generation Controls", "Master toggle for video and photo remix generative controls.", "🎬 Create Tab & Reels Remix Hub", "Remix Generator", FlagType.BOOLEAN, Boolean.TRUE);
+        register("45815131", "Tools Module & Saved Creations Shelf", "Enables tools module and saved creations shelf.", "🎬 Create Tab & Reels Remix Hub", "Saved Creations Shelf", FlagType.BOOLEAN, Boolean.TRUE);
+        register("45852461", "Remix Your Videos Section", "Enables the 'Remix your videos' shelf with short-form templates.", "🎬 Create Tab & Reels Remix Hub", "Video Remix Shelf", FlagType.BOOLEAN, Boolean.TRUE);
+        register("45852493", "Remix Your Photos Section", "Enables the 'Remix your photos' shelf with image restyling.", "🎬 Create Tab & Reels Remix Hub", "Photo Remix Shelf", FlagType.BOOLEAN, Boolean.TRUE);
+        register("45856154", "Reels-Style Vertical Card Layout", "Vertical 9:16 short-form Reels-style cards for video remix previews.", "🎬 Create Tab & Reels Remix Hub", "Reels Cards Layout", FlagType.BOOLEAN, Boolean.TRUE);
+        register("45856155", "Video Preview Auto-Loop Player", "Auto-playing looped video previews inside creation cards.", "🎬 Create Tab & Reels Remix Hub", "Video Loop Player", FlagType.BOOLEAN, Boolean.TRUE);
+        register("45850306", "Video Remix Preset: Background Swap", "Neural video background replacement templates (Villa, Sunset).", "🎬 Create Tab & Reels Remix Hub", "Background Swap", FlagType.BOOLEAN, Boolean.TRUE);
+        register("45850307", "Video Remix Preset: Outfit & Style", "Outfit try-on and generative style transfer templates.", "🎬 Create Tab & Reels Remix Hub", "Outfit Transfer", FlagType.BOOLEAN, Boolean.TRUE);
 
         // ⭕ OneGoogle: Subscriber Avatar Rings (1 Flag)
         register("45781251", "Google One Blue Aura Ring (Gemini Style)", "Enables the modern blue gradient aura ring for Google One instead of the classic 4-color multi-color ring.", "⭕ OneGoogle: Subscriber Avatar Rings", "Google One Blue Ring", FlagType.BOOLEAN, Boolean.TRUE);
