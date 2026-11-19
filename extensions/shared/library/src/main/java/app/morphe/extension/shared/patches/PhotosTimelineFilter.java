@@ -189,11 +189,12 @@ public final class PhotosTimelineFilter {
             result = result.replace("," + DEFAULT_CAMERA_BUCKET_ID + ")", ")");
             result = result.replace("," + DEFAULT_CAMERA_BUCKET_ID + ",", ",");
 
-            // Top-level enforcement of media.in_camera_folder = 0:
+            // Top-level enforcement: hide unbacked-up camera items, but preserve backed-up cloud photos (#89):
+            String cameraFilter = "(media.in_camera_folder = 0 OR media.canonical_media_key IS NOT NULL)";
             if (result.contains("burst_media.bucket_id IS NULL AND")) {
-                result = result.replace("burst_media.bucket_id IS NULL AND", "burst_media.bucket_id IS NULL AND media.in_camera_folder = 0 AND");
+                result = result.replace("burst_media.bucket_id IS NULL AND", "burst_media.bucket_id IS NULL AND " + cameraFilter + " AND");
             } else if (result.contains("burst_media.bucket_id IS NULL")) {
-                result = result.replace("burst_media.bucket_id IS NULL", "burst_media.bucket_id IS NULL AND media.in_camera_folder = 0");
+                result = result.replace("burst_media.bucket_id IS NULL", "burst_media.bucket_id IS NULL AND " + cameraFilter);
             }
         }
 
