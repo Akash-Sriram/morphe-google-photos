@@ -941,90 +941,10 @@ public class LocalCreationDownloader {
     }
 
     /**
-     * Intercepts MFY creations loading in Create Tab (snn.j).
-     * Filters out already saved creations and ensures that at least 8 (or all available) un-saved creations
-     * are loaded from SQLite, replenishing the MFY carousel so it never collapses and always has fresh suggestions.
+     * Retained for backward compatibility. Simply returns sngResult directly without pulling
+     * old historical assistant cards from SQLite, matching official Google Photos behavior.
      */
     public static Object onMfyLoadCreations(Object snnDelegate, Object sngResult) {
-        try {
-            List<?> creations = null;
-            if (sngResult != null) {
-                for (Field f : sngResult.getClass().getDeclaredFields()) {
-                    if (List.class.isAssignableFrom(f.getType())) {
-                        f.setAccessible(true);
-                        creations = (List<?>) f.get(sngResult);
-                        break;
-                    }
-                }
-            }
-
-            // Filter out any creations that are already marked as saved
-            List<Object> unSavedCreations = new ArrayList<>();
-            if (creations != null) {
-                for (Object item : creations) {
-                    String cardId = extractCardIdFromSna(item);
-                    if (cardId == null || !isCardSaved(cardId)) {
-                        unSavedCreations.add(item);
-                    }
-                }
-            }
-
-            // If the loaded creations already have >= 3 un-saved items and no saved items were present, return them directly
-            if (unSavedCreations.size() >= 3 && unSavedCreations.size() == (creations != null ? creations.size() : 0)) {
-                SafeLog.d(TAG, "onMfyLoadCreations: Loaded " + unSavedCreations.size() + " un-saved creations from proto/recent window.");
-                return sngResult;
-            }
-
-            int currentCount = unSavedCreations.size();
-            SafeLog.i(TAG, "onMfyLoadCreations: Un-saved creations count (" + currentCount + ") < 3. Falling back to query all historical creations from assistant_cards...");
-
-            Object delegate = snnDelegate;
-            if (delegate == null || delegate instanceof Map || delegate instanceof Collection) {
-                delegate = sCurrentMfyDelegate;
-                if (delegate == null && sCurrentPresenter != null) {
-                    delegate = sCurrentPresenter.get();
-                }
-            }
-            if (delegate == null) {
-                SafeLog.w(TAG, "onMfyLoadCreations: delegate is null, cannot perform fallback");
-                return sngResult;
-            }
-
-            // Find method d(Instant, boolean, Set) on snnDelegate
-            Method queryAllMethod = null;
-            for (Method m : delegate.getClass().getDeclaredMethods()) {
-                Class<?>[] pTypes = m.getParameterTypes();
-                if (pTypes.length == 3 && pTypes[1] == boolean.class && Set.class.isAssignableFrom(pTypes[2])) {
-                    queryAllMethod = m;
-                    break;
-                }
-            }
-
-            if (queryAllMethod != null) {
-                queryAllMethod.setAccessible(true);
-                // First attempt: diverse categories (z=true)
-                Object fallbackSng = queryAllMethod.invoke(delegate, null, true, new java.util.LinkedHashSet<>());
-                List<?> fallbackList = extractListFromSng(fallbackSng);
-                int fallbackCount = fallbackList != null ? fallbackList.size() : 0;
-                SafeLog.i(TAG, "onMfyLoadCreations: Fallback query (z=true) returned " + fallbackCount + " creations.");
-
-                // If diverse query returned < 3 items, try all categories (z=false)
-                if (fallbackCount < 3) {
-                    fallbackSng = queryAllMethod.invoke(delegate, null, false, new java.util.LinkedHashSet<>());
-                    fallbackList = extractListFromSng(fallbackSng);
-                    fallbackCount = fallbackList != null ? fallbackList.size() : 0;
-                    SafeLog.i(TAG, "onMfyLoadCreations: Fallback query (z=false) returned " + fallbackCount + " creations.");
-                }
-
-                if (fallbackCount > 0) {
-                    return fallbackSng;
-                }
-            } else {
-                SafeLog.w(TAG, "onMfyLoadCreations: Could not find d(Instant, boolean, Set) on " + delegate.getClass().getName());
-            }
-        } catch (Throwable t) {
-            SafeLog.w(TAG, "Error in onMfyLoadCreations fallback", t);
-        }
         return sngResult;
     }
 

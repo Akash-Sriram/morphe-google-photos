@@ -395,65 +395,6 @@ val dcimAndBackupControlPatch = bytecodePatch(
                     """.trimIndent(),
                 )
             }
-
-            // Prevent empty storefront / MFY creation sync from wiping out existing creations in proto
-            val saveCreationsMethod = delegateClassDef.methods.find { m ->
-                m.parameterTypes.size == 4 && m.parameterTypes[0] == "Ljava/util/List;"
-            }
-            if (saveCreationsMethod != null) {
-                val mutableSaveCreationsMethod = delegateClassDef.findMutableMethodOf(saveCreationsMethod)
-                val unitFieldRef = mutableSaveCreationsMethod.implementation?.instructions
-                    ?.filterIsInstance<ReferenceInstruction>()
-                    ?.mapNotNull { it.reference as? FieldReference }
-                    ?.findLast { it.type == it.definingClass }
-                if (unitFieldRef != null) {
-                    val fieldStr = "${unitFieldRef.definingClass}->${unitFieldRef.name}:${unitFieldRef.type}"
-                    mutableSaveCreationsMethod.addInstructions(
-                        0,
-                        """
-                        if-eqz p1, :cond_empty
-                        move-object/16 v0, p1
-                        invoke-interface { v0 }, Ljava/util/List;->isEmpty()Z
-                        move-result v0
-                        if-nez v0, :cond_empty
-                        goto :cond_proceed
-                        :cond_empty
-                        sget-object v0, $fieldStr
-                        return-object v0
-                        :cond_proceed
-                        """.trimIndent(),
-                    )
-                }
-            }
-
-            // Fallback to all assistant cards if proto/14-day window has < 3 creations
-            val loadCreationsMethod = delegateClassDef.methods.find { m ->
-                m.parameterTypes.size == 1 &&
-                    (m.parameterTypes[0] == "Lctwl;" || m.parameterTypes[0] == "Lcvbh;" || m.parameterTypes[0].startsWith("L")) &&
-                    m.returnType == "Ljava/lang/Object;"
-            }
-            if (loadCreationsMethod != null) {
-                val mutableLoadCreationsMethod = delegateClassDef.findMutableMethodOf(loadCreationsMethod)
-                val instructions = mutableLoadCreationsMethod.implementation?.instructions ?: emptyList()
-                val returnIdx = instructions.indexOfLast { it.opcode == Opcode.RETURN_OBJECT }
-                if (returnIdx != -1) {
-                    val returnReg = (instructions.elementAt(returnIdx) as OneRegisterInstruction).registerA
-                    mutableLoadCreationsMethod.addInstructions(
-                        returnIdx,
-                        """
-                        invoke-static { p0, v$returnReg }, Lapp/morphe/extension/shared/patches/LocalCreationDownloader;->onMfyLoadCreations(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;
-                        move-result-object v$returnReg
-                        """.trimIndent(),
-                    )
-                }
-                // Record the real delegate at the start of the method before p0 can be reassigned
-                mutableLoadCreationsMethod.addInstructions(
-                    0,
-                    """
-                    invoke-static { p0 }, Lapp/morphe/extension/shared/patches/LocalCreationDownloader;->onMfyDelegateInit(Ljava/lang/Object;)V
-                    """.trimIndent(),
-                )
-            }
         }
 
         // 3. Fix Create tab save ClassCastException in koo.a
