@@ -282,3 +282,33 @@ internal object GrpcMetadataPutFingerprint : Fingerprint(
             }
     },
 )
+
+/**
+ * Matches the GNP certificate hash calculation method (Lbzxb.b in 8.2.0)
+ * which queries PackageInfo.signatures and computes the SHA-1 digest.
+ */
+internal object GnpCertProviderFingerprint : Fingerprint(
+    returnType = "Ljava/lang/String;",
+    parameters = listOf(),
+    custom = { method, _ ->
+        val instructions = method.implementation?.instructions
+        if (instructions == null) {
+            false
+        } else {
+            var hasSigs = false
+            var hasSha1 = false
+            for (insn in instructions) {
+                val ref = insn.getReference<FieldReference>()
+                if (ref?.name == "signatures") {
+                    hasSigs = true
+                }
+                val strRef = insn.getReference<StringReference>()
+                if (strRef?.string == "SHA-1") {
+                    hasSha1 = true
+                }
+            }
+            hasSigs && hasSha1
+        }
+    },
+)
+

@@ -610,7 +610,20 @@ val gmsCoreSupportPatch = gmsCoreSupportPatch(
             }
         }
 
-        // 12) GNP ("Chime") HTTP Request Builder Header Spoofing
+        // 12) GNP Certificate Provider Spoofing (SHA-1 hash returned to GNP network layer)
+        GnpCertProviderFingerprint.methodOrNull?.let { certMethod ->
+            val certClass = mutableClassDefBy(certMethod.definingClass)
+            val mutableCertMethod = certClass.findMutableMethodOf(certMethod)
+            mutableCertMethod.addInstructions(
+                0,
+                """
+                const-string v0, "24bb24c05e47e0aefa68a58a766179d9b613a600"
+                return-object v0
+                """.trimIndent(),
+            )
+        }
+
+        // 13) GNP ("Chime") HTTP Request Builder Header Spoofing
         GnpRequestBuilderFingerprint.methodOrNull?.let { gnpHeaderMethod ->
             val gnpClass = mutableClassDefBy(gnpHeaderMethod.definingClass)
             val mutableGnpHeaderMethod = gnpClass.findMutableMethodOf(gnpHeaderMethod)
@@ -638,9 +651,26 @@ val gmsCoreSupportPatch = gmsCoreSupportPatch(
                     """.trimIndent(),
                 )
             }
+
+            gnpClass.methods.firstOrNull { m ->
+                m.name == "a" &&
+                    m.returnType == "V" &&
+                    m.parameterTypes.size == 2 &&
+                    m.parameterTypes[0] == "Ljava/lang/Object;" &&
+                    m.parameterTypes[1] == "Ljava/lang/Object;"
+            }?.let { mapPutMethod ->
+                val mutableMapMethod = gnpClass.findMutableMethodOf(mapPutMethod)
+                mutableMapMethod.addInstructions(
+                    0,
+                    """
+                    invoke-static {p1, p2}, Lapp/morphe/extension/shared/patches/GmsCoreSupportPatch;->spoofMetadataValue(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;
+                    move-result-object p2
+                    """.trimIndent(),
+                )
+            }
         }
 
-        // 13) gRPC Metadata Header Spoofing
+        // 14) gRPC Metadata Header Spoofing
         GrpcMetadataPutFingerprint.methodOrNull?.let { grpcPutMethod ->
             val grpcClass = mutableClassDefBy(grpcPutMethod.definingClass)
             val mutableGrpcPutMethod = grpcClass.findMutableMethodOf(grpcPutMethod)
@@ -653,7 +683,7 @@ val gmsCoreSupportPatch = gmsCoreSupportPatch(
             )
         }
 
-        // 14) URLConnection / HttpURLConnection Header Spoofing
+        // 15) URLConnection / HttpURLConnection Header Spoofing
         classDefForEach { classDef ->
             val mutableClass by lazy { mutableClassDefBy(classDef) }
             classDef.methods.forEach { method ->
