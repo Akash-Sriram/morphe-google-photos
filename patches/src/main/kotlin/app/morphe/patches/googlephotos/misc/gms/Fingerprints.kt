@@ -250,8 +250,35 @@ internal object BackupSettingsEntryLaunchedEffectFingerprint : Fingerprint(
     },
 )
 
+/**
+ * Matches the GNP (Google Notifications Platform / Chime) HTTP request builder method (Lcvkn.h in 8.2.0)
+ * which adds headers to requests destined for notifications-pa.googleapis.com.
+ */
+internal object GnpRequestBuilderFingerprint : Fingerprint(
+    parameters = listOf("Ljava/lang/String;", "Ljava/lang/String;"),
+    returnType = "V",
+    custom = { _, classDef ->
+        classDef.methods.any { m ->
+            m.implementation?.instructions?.any { insn ->
+                insn.getReference<StringReference>()?.string == "Property \"headers\" has not been set"
+            } == true
+        }
+    },
+)
 
-
-
-
-
+/**
+ * Matches io.grpc.Metadata.put(Metadata.Key, Object) method (Lcucu.g in 8.2.0).
+ */
+internal object GrpcMetadataPutFingerprint : Fingerprint(
+    returnType = "V",
+    custom = { method, classDef ->
+        method.parameterTypes.size == 2 &&
+            method.parameterTypes[0].startsWith("L") &&
+            method.parameterTypes[1] == "Ljava/lang/Object;" &&
+            classDef.methods.any { m ->
+                m.implementation?.instructions?.any { insn ->
+                    insn.getReference<StringReference>()?.string == "Metadata("
+                } == true
+            }
+    },
+)

@@ -47,6 +47,8 @@ import app.morphe.extension.shared.ui.CustomDialog;
 @SuppressWarnings("unused")
 public class GmsCoreSupportPatch {
     private static final String GOOGLE_PHOTOS_PACKAGE_NAME = "com.google.android.apps.photos";
+    private static final String OFFICIAL_PHOTOS_CERT_SHA1 = "24bb24c05e47e0aefa68a58a766179d9b613a600";
+    private static final String OFFICIAL_PHOTOS_CERT_SHA1_UPPER = "24BB24C05E47E0AEFA68A58A766179D9B613A600";
     private static final String GMS_CORE_PACKAGE_NAME
             = getGmsCoreVendorGroupId() + ".android.gms";
     private static final Uri GMS_CORE_PROVIDER
@@ -78,6 +80,55 @@ public class GmsCoreSupportPatch {
         String originalPackageName = getOriginalPackageName();
         return originalPackageName == null
                 || originalPackageName.equals(context.getPackageName());
+    }
+
+    /**
+     * Spoofs header value if the header key matches X-Android-Package or X-Android-Cert.
+     */
+    public static String spoofHeaderValue(Object headerKey, String value) {
+        if (headerKey == null) {
+            return value;
+        }
+        String keyStr = headerKey.toString();
+        if (keyStr == null || (!keyStr.contains("X-Android-") && !keyStr.contains("x-android-"))) {
+            try {
+                for (Field f : headerKey.getClass().getDeclaredFields()) {
+                    if (f.getType() == String.class) {
+                        f.setAccessible(true);
+                        String s = (String) f.get(headerKey);
+                        if (s != null && (s.equalsIgnoreCase("X-Android-Package") || s.equalsIgnoreCase("X-Android-Cert"))) {
+                            keyStr = s;
+                            break;
+                        }
+                    }
+                }
+            } catch (Throwable ignored) {}
+        }
+        if (keyStr != null) {
+            String lower = keyStr.toLowerCase(Locale.ROOT);
+            if (lower.contains("x-android-package")) {
+                Logger.printInfo(() -> "Spoofing X-Android-Package header from [" + value + "] to [" + GOOGLE_PHOTOS_PACKAGE_NAME + "]");
+                return GOOGLE_PHOTOS_PACKAGE_NAME;
+            }
+            if (lower.contains("x-android-cert")) {
+                String spoofedCert = (value != null && value.matches(".*[A-F].*"))
+                        ? OFFICIAL_PHOTOS_CERT_SHA1_UPPER
+                        : OFFICIAL_PHOTOS_CERT_SHA1;
+                Logger.printInfo(() -> "Spoofing X-Android-Cert header from [" + value + "] to [" + spoofedCert + "]");
+                return spoofedCert;
+            }
+        }
+        return value;
+    }
+
+    /**
+     * Spoofs metadata value (e.g. io.grpc.Metadata.put) for X-Android-Package / X-Android-Cert.
+     */
+    public static Object spoofMetadataValue(Object headerKey, Object value) {
+        if (value instanceof String) {
+            return spoofHeaderValue(headerKey, (String) value);
+        }
+        return value;
     }
 
     public static int resolveRegisteredAccountId(Context context) {
