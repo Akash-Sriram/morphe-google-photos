@@ -626,24 +626,15 @@ val gmsCoreSupportPatch = gmsCoreSupportPatch(
         // 13) GNP ("Chime") HTTP Request Builder Header Spoofing
         GnpRequestBuilderFingerprint.methodOrNull?.let { gnpHeaderMethod ->
             val gnpClass = mutableClassDefBy(gnpHeaderMethod.definingClass)
-            val mutableGnpHeaderMethod = gnpClass.findMutableMethodOf(gnpHeaderMethod)
-            mutableGnpHeaderMethod.addInstructions(
-                0,
-                """
-                invoke-static {p1, p2}, Lapp/morphe/extension/shared/patches/GmsCoreSupportPatch;->spoofHeaderValue(Ljava/lang/Object;Ljava/lang/String;)Ljava/lang/String;
-                move-result-object p2
-                """.trimIndent(),
-            )
 
-            gnpClass.methods.firstOrNull { m ->
-                m.name != gnpHeaderMethod.name &&
-                    m.returnType == "V" &&
+            // Hook all (headerKey, headerValue: String) setters in the builder
+            gnpClass.methods.filter { m ->
+                m.returnType == "V" &&
                     m.parameterTypes.size == 2 &&
-                    m.parameterTypes[1] == "Ljava/lang/String;" &&
-                    m.parameterTypes[0] != "Ljava/lang/String;"
-            }?.let { typedHeaderMethod ->
-                val mutableTypedMethod = gnpClass.findMutableMethodOf(typedHeaderMethod)
-                mutableTypedMethod.addInstructions(
+                    m.parameterTypes[1] == "Ljava/lang/String;"
+            }.forEach { headerMethod ->
+                val mutableMethod = gnpClass.findMutableMethodOf(headerMethod)
+                mutableMethod.addInstructions(
                     0,
                     """
                     invoke-static {p1, p2}, Lapp/morphe/extension/shared/patches/GmsCoreSupportPatch;->spoofHeaderValue(Ljava/lang/Object;Ljava/lang/String;)Ljava/lang/String;
@@ -652,13 +643,13 @@ val gmsCoreSupportPatch = gmsCoreSupportPatch(
                 )
             }
 
-            gnpClass.methods.firstOrNull { m ->
-                m.name == "a" &&
-                    m.returnType == "V" &&
+            // Hook all (metadataKey, metadataValue: Object) setters in the builder
+            gnpClass.methods.filter { m ->
+                m.returnType == "V" &&
                     m.parameterTypes.size == 2 &&
                     m.parameterTypes[0] == "Ljava/lang/Object;" &&
                     m.parameterTypes[1] == "Ljava/lang/Object;"
-            }?.let { mapPutMethod ->
+            }.forEach { mapPutMethod ->
                 val mutableMapMethod = gnpClass.findMutableMethodOf(mapPutMethod)
                 mutableMapMethod.addInstructions(
                     0,
@@ -683,7 +674,7 @@ val gmsCoreSupportPatch = gmsCoreSupportPatch(
             )
         }
 
-        // 15) URLConnection / HttpURLConnection Header Spoofing
+        // 15) HTTP Request Header Spoofing (URLConnection, HttpURLConnection, Cronet UrlRequest, etc.)
         classDefForEach { classDef ->
             val mutableClass by lazy { mutableClassDefBy(classDef) }
             classDef.methods.forEach { method ->
@@ -692,10 +683,11 @@ val gmsCoreSupportPatch = gmsCoreSupportPatch(
                 val indicesToPatch = mutableListOf<Triple<Int, Int, Int>>() // (index, keyReg, valReg)
 
                 instructions.forEachIndexed { index, inst ->
-                    if (inst.opcode == Opcode.INVOKE_VIRTUAL || inst.opcode == Opcode.INVOKE_VIRTUAL_RANGE) {
+                    if (inst.opcode == Opcode.INVOKE_VIRTUAL || inst.opcode == Opcode.INVOKE_VIRTUAL_RANGE ||
+                        inst.opcode == Opcode.INVOKE_INTERFACE || inst.opcode == Opcode.INVOKE_INTERFACE_RANGE) {
                         val ref = (inst as? ReferenceInstruction)?.reference as? MethodReference
-                        if (ref != null && (ref.name == "addRequestProperty" || ref.name == "setRequestProperty") &&
-                            (ref.definingClass == "Ljava/net/URLConnection;" || ref.definingClass == "Ljava/net/HttpURLConnection;") &&
+                        if (ref != null &&
+                            (ref.name == "addRequestProperty" || ref.name == "setRequestProperty" || ref.name == "addHeader") &&
                             ref.parameterTypes.toList() == listOf("Ljava/lang/String;", "Ljava/lang/String;")) {
                             val regs = when (inst) {
                                 is FiveRegisterInstruction -> Pair(inst.registerD, inst.registerE)
@@ -712,10 +704,15 @@ val gmsCoreSupportPatch = gmsCoreSupportPatch(
                 if (indicesToPatch.isNotEmpty()) {
                     val mutableMethod = mutableClass.findMutableMethodOf(method)
                     for ((idx, keyReg, valReg) in indicesToPatch.asReversed()) {
+                        val invokeSmali = if (keyReg < 16 && valReg < 16) {
+                            "invoke-static {v$keyReg, v$valReg}, Lapp/morphe/extension/shared/patches/GmsCoreSupportPatch;->spoofHeaderValue(Ljava/lang/Object;Ljava/lang/String;)Ljava/lang/String;"
+                        } else {
+                            "invoke-static/range {v$keyReg .. v$valReg}, Lapp/morphe/extension/shared/patches/GmsCoreSupportPatch;->spoofHeaderValue(Ljava/lang/Object;Ljava/lang/String;)Ljava/lang/String;"
+                        }
                         mutableMethod.addInstructions(
                             idx,
                             """
-                            invoke-static {v$keyReg, v$valReg}, Lapp/morphe/extension/shared/patches/GmsCoreSupportPatch;->spoofHeaderValue(Ljava/lang/Object;Ljava/lang/String;)Ljava/lang/String;
+                            $invokeSmali
                             move-result-object v$valReg
                             """.trimIndent(),
                         )
