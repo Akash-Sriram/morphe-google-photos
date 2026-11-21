@@ -609,7 +609,323 @@ val gmsCoreSupportPatch = gmsCoreSupportPatch(
                 }
             }
         }
+
+        // 12) GNP Certificate Provider Spoofing (SHA-1 hash returned to GNP network layer)
+        GnpCertProviderFingerprint.methodOrNull?.let { certMethod ->
+            val alreadyHooked = certMethod.implementation?.instructions?.any { insn ->
+                insn.getReference<StringReference>()?.string == "24bb24c05e47e0aefa68a58a766179d9b613a600" ||
+                    insn.getReference<MethodReference>()?.name == "getEffectivePackageSignature"
+            } == true
+            if (!alreadyHooked) {
+                val certClass = mutableClassDefBy(certMethod.definingClass)
+                val mutableCertMethod = certClass.findMutableMethodOf(certMethod)
+                mutableCertMethod.addInstructions(
+                    0,
+                    """
+                    const-string v0, "24bb24c05e47e0aefa68a58a766179d9b613a600"
+                    return-object v0
+                    """.trimIndent(),
+                )
+            }
+        }
+
+        // 13) GNP ("Chime") HTTP Request Builder Header Spoofing
+        GnpRequestBuilderFingerprint.methodOrNull?.let { gnpHeaderMethod ->
+            val gnpClass = mutableClassDefBy(gnpHeaderMethod.definingClass)
+
+            // Hook all (headerKey, headerValue: String) setters in the builder
+            gnpClass.methods.filter { m ->
+                m.returnType == "V" &&
+                    m.parameterTypes.size == 2 &&
+                    m.parameterTypes[1] == "Ljava/lang/String;"
+            }.forEach { headerMethod ->
+                val alreadyHooked = headerMethod.implementation?.instructions?.any { insn ->
+                    insn.getReference<MethodReference>()?.name == "spoofHeaderValue"
+                } == true
+                if (!alreadyHooked) {
+                    val mutableMethod = gnpClass.findMutableMethodOf(headerMethod)
+                    mutableMethod.addInstructions(
+                        0,
+                        """
+                        invoke-static {p1, p2}, Lapp/morphe/extension/shared/patches/GmsCoreSupportPatch;->spoofHeaderValue(Ljava/lang/Object;Ljava/lang/String;)Ljava/lang/String;
+                        move-result-object p2
+                        """.trimIndent(),
+                    )
+                }
+            }
+
+            // Hook all (metadataKey, metadataValue: Object) setters in the builder
+            gnpClass.methods.filter { m ->
+                m.returnType == "V" &&
+                    m.parameterTypes.size == 2 &&
+                    m.parameterTypes[0] == "Ljava/lang/Object;" &&
+                    m.parameterTypes[1] == "Ljava/lang/Object;"
+            }.forEach { mapPutMethod ->
+                val alreadyHooked = mapPutMethod.implementation?.instructions?.any { insn ->
+                    insn.getReference<MethodReference>()?.name == "spoofMetadataValue"
+                } == true
+                if (!alreadyHooked) {
+                    val mutableMapMethod = gnpClass.findMutableMethodOf(mapPutMethod)
+                    mutableMapMethod.addInstructions(
+                        0,
+                        """
+                        invoke-static {p1, p2}, Lapp/morphe/extension/shared/patches/GmsCoreSupportPatch;->spoofMetadataValue(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;
+                        move-result-object p2
+                        """.trimIndent(),
+                    )
+                }
+            }
+        }
+
+        // 14) gRPC Metadata Header Spoofing
+        GrpcMetadataPutFingerprint.methodOrNull?.let { grpcPutMethod ->
+            val alreadyHooked = grpcPutMethod.implementation?.instructions?.any { insn ->
+                insn.getReference<MethodReference>()?.name == "spoofMetadataValue"
+            } == true
+            if (!alreadyHooked) {
+                val grpcClass = mutableClassDefBy(grpcPutMethod.definingClass)
+                val mutableGrpcPutMethod = grpcClass.findMutableMethodOf(grpcPutMethod)
+                mutableGrpcPutMethod.addInstructions(
+                    0,
+                    """
+                    invoke-static {p1, p2}, Lapp/morphe/extension/shared/patches/GmsCoreSupportPatch;->spoofMetadataValue(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;
+                    move-result-object p2
+                    """.trimIndent(),
+                )
+            }
+        }
+
+        // 15) HTTP Request Header Spoofing (URLConnection, HttpURLConnection, Cronet UrlRequest, etc.)
+        classDefForEach { classDef ->
+            val mutableClass by lazy { mutableClassDefBy(classDef) }
+            classDef.methods.forEach { method ->
+                val implementation = method.implementation ?: return@forEach
+                val instructions = implementation.instructions.toList()
+                val indicesToPatch = mutableListOf<Triple<Int, Int, Int>>() // (index, keyReg, valReg)
+
+                instructions.forEachIndexed { index, inst ->
+                    if (inst.opcode == Opcode.INVOKE_VIRTUAL || inst.opcode == Opcode.INVOKE_VIRTUAL_RANGE ||
+                        inst.opcode == Opcode.INVOKE_INTERFACE || inst.opcode == Opcode.INVOKE_INTERFACE_RANGE) {
+                        val ref = (inst as? ReferenceInstruction)?.reference as? MethodReference
+                        if (ref != null &&
+                            (ref.name == "addRequestProperty" || ref.name == "setRequestProperty" || ref.name == "addHeader") &&
+                            ref.parameterTypes.toList() == listOf("Ljava/lang/String;", "Ljava/lang/String;")) {
+                            val alreadySpoofed = (maxOf(0, index - 3) until index).any { prevIdx ->
+                                (instructions[prevIdx] as? ReferenceInstruction)?.reference?.let {
+                                    (it as? MethodReference)?.name == "spoofHeaderValue"
+                                } == true
+                            }
+                            if (!alreadySpoofed) {
+                                val regs = when (inst) {
+                                    is FiveRegisterInstruction -> Pair(inst.registerD, inst.registerE)
+                                    is RegisterRangeInstruction -> Pair(inst.startRegister + 1, inst.startRegister + 2)
+                                    else -> null
+                                }
+                                if (regs != null) {
+                                    indicesToPatch.add(Triple(index, regs.first, regs.second))
+                                }
+                            }
+                        }
+                    }
+                }
+
+                if (indicesToPatch.isNotEmpty()) {
+                    val mutableMethod = mutableClass.findMutableMethodOf(method)
+                    for ((idx, keyReg, valReg) in indicesToPatch.asReversed()) {
+                        val invokeSmali = if (keyReg < 16 && valReg < 16) {
+                            "invoke-static {v$keyReg, v$valReg}, Lapp/morphe/extension/shared/patches/GmsCoreSupportPatch;->spoofHeaderValue(Ljava/lang/Object;Ljava/lang/String;)Ljava/lang/String;"
+                        } else {
+                            "invoke-static/range {v$keyReg .. v$valReg}, Lapp/morphe/extension/shared/patches/GmsCoreSupportPatch;->spoofHeaderValue(Ljava/lang/Object;Ljava/lang/String;)Ljava/lang/String;"
+                        }
+                        mutableMethod.addInstructions(
+                            idx,
+                            """
+                            $invokeSmali
+                            move-result-object v$valReg
+                            """.trimIndent(),
+                        )
+                    }
+                }
+            }
+
+            // Hook GnpHttpResponse constructor to log the response object
+            val hasGnpHttpResponse = classDef.methods.any { m ->
+                m.name == "toString" && m.implementation?.instructions?.any { inst ->
+                    ((inst as? ReferenceInstruction)?.reference as? StringReference)?.string?.contains("GnpHttpResponse{statusCode=") == true
+                } == true
+            }
+            if (hasGnpHttpResponse) {
+                classDef.methods.firstOrNull { it.name == "<init>" && it.parameterTypes.size == 6 && it.parameterTypes[0] == "Ljava/lang/Integer;" }?.let { initMethod ->
+                    val implementation = initMethod.implementation
+                    if (implementation != null) {
+                        val alreadyHooked = implementation.instructions.any { inst ->
+                            ((inst as? ReferenceInstruction)?.reference as? MethodReference)?.name == "onGnpResponseObject"
+                        }
+                        if (!alreadyHooked) {
+                            val returnIdx = implementation.instructions.indexOfLast { it.opcode == Opcode.RETURN_VOID }
+                            if (returnIdx != -1) {
+                                val thisReg = implementation.registerCount - initMethod.parameters.size - 1
+                                val invokeSmali = if (thisReg < 16) {
+                                    "invoke-static {v$thisReg}, Lapp/morphe/extension/shared/patches/GmsCoreSupportPatch;->onGnpResponseObject(Ljava/lang/Object;)V"
+                                } else {
+                                    "invoke-static/range {v$thisReg .. v$thisReg}, Lapp/morphe/extension/shared/patches/GmsCoreSupportPatch;->onGnpResponseObject(Ljava/lang/Object;)V"
+                                }
+                                mutableClass.findMutableMethodOf(initMethod).addInstructions(returnIdx, invokeSmali)
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Hook UrlRequest$Callback methods for Cronet network-level responses
+            if (classDef.superclass == "Lorg/chromium/net/UrlRequest\$Callback;") {
+                classDef.methods.forEach { method ->
+                    val implementation = method.implementation ?: return@forEach
+                    val mutableMethod by lazy { mutableClass.findMutableMethodOf(method) }
+                    val rCount = implementation.registerCount
+                    when (method.name) {
+                        "onResponseStarted" -> {
+                            val alreadyHooked = implementation.instructions.any { inst ->
+                                ((inst as? ReferenceInstruction)?.reference as? MethodReference)?.name == "onCronetResponseStarted"
+                            }
+                            if (!alreadyHooked) {
+                                val infoReg = rCount - 1
+                                val invokeSmali = if (infoReg < 16) {
+                                    "invoke-static {v$infoReg}, Lapp/morphe/extension/shared/patches/GmsCoreSupportPatch;->onCronetResponseStarted(Ljava/lang/Object;)V"
+                                } else {
+                                    "invoke-static/range {v$infoReg .. v$infoReg}, Lapp/morphe/extension/shared/patches/GmsCoreSupportPatch;->onCronetResponseStarted(Ljava/lang/Object;)V"
+                                }
+                                mutableMethod.addInstructions(0, invokeSmali)
+                            }
+                        }
+                        "onSucceeded" -> {
+                            val alreadyHooked = implementation.instructions.any { inst ->
+                                ((inst as? ReferenceInstruction)?.reference as? MethodReference)?.name == "onCronetSucceeded"
+                            }
+                            if (!alreadyHooked) {
+                                val infoReg = rCount - 1
+                                val invokeSmali = if (infoReg < 16) {
+                                    "invoke-static {v$infoReg}, Lapp/morphe/extension/shared/patches/GmsCoreSupportPatch;->onCronetSucceeded(Ljava/lang/Object;)V"
+                                } else {
+                                    "invoke-static/range {v$infoReg .. v$infoReg}, Lapp/morphe/extension/shared/patches/GmsCoreSupportPatch;->onCronetSucceeded(Ljava/lang/Object;)V"
+                                }
+                                mutableMethod.addInstructions(0, invokeSmali)
+                            }
+                        }
+                        "onFailed" -> {
+                            val alreadyHooked = implementation.instructions.any { inst ->
+                                ((inst as? ReferenceInstruction)?.reference as? MethodReference)?.name == "onCronetFailed"
+                            }
+                            if (!alreadyHooked) {
+                                val infoReg = rCount - 2
+                                val errReg = rCount - 1
+                                val invokeSmali = if (infoReg < 16 && errReg < 16) {
+                                    "invoke-static {v$infoReg, v$errReg}, Lapp/morphe/extension/shared/patches/GmsCoreSupportPatch;->onCronetFailed(Ljava/lang/Object;Ljava/lang/Object;)V"
+                                } else {
+                                    "invoke-static/range {v$infoReg .. v$errReg}, Lapp/morphe/extension/shared/patches/GmsCoreSupportPatch;->onCronetFailed(Ljava/lang/Object;Ljava/lang/Object;)V"
+                                }
+                                mutableMethod.addInstructions(0, invokeSmali)
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Hook Cronet UrlRequest dispatch in Labm to log URL and body payload
+            classDef.methods.forEach { method ->
+                val implementation = method.implementation ?: return@forEach
+                val hasNewUrlRequestBuilder = implementation.instructions.any {
+                    it.opcode == Opcode.INVOKE_VIRTUAL &&
+                        ((it as? ReferenceInstruction)?.reference as? MethodReference)?.name == "newUrlRequestBuilder"
+                }
+                if (hasNewUrlRequestBuilder) {
+                    val alreadyHooked = implementation.instructions.any { inst ->
+                        ((inst as? ReferenceInstruction)?.reference as? MethodReference)?.name == "onCronetRequestStarting"
+                    }
+                    if (!alreadyHooked) {
+                        val instructions = implementation.instructions.toList()
+                        val checkCastIdx = instructions.indexOfFirst { inst ->
+                            if (inst.opcode == Opcode.CHECK_CAST) {
+                                val targetType = ((inst as? ReferenceInstruction)?.reference as? TypeReference)?.type
+                                if (targetType != null) {
+                                    val def = classDefByOrNull(targetType)
+                                    def?.fields?.any { it.type == "Ljava/net/URL;" } == true
+                                } else false
+                            } else false
+                        }
+                        if (checkCastIdx != -1) {
+                            val reg = (instructions[checkCastIdx] as OneRegisterInstruction).registerA
+                            val invokeSmali = if (reg < 16) {
+                                "invoke-static {v$reg}, Lapp/morphe/extension/shared/patches/GmsCoreSupportPatch;->onCronetRequestStarting(Ljava/lang/Object;)V"
+                            } else {
+                                "invoke-static/range {v$reg .. v$reg}, Lapp/morphe/extension/shared/patches/GmsCoreSupportPatch;->onCronetRequestStarting(Ljava/lang/Object;)V"
+                            }
+                            mutableClass.findMutableMethodOf(method).addInstructions(checkCastIdx + 1, invokeSmali)
+                        }
+                    }
+                }
+            }
+        }
+
+        // 16) GNP Protobuf Target Package Name Spoofing
+        // Locates methods calling Context.getPackageName() passed to a protobuf builder setter (e.g. ckzr.c)
+        // and spoofs the package name to com.google.android.apps.photos.
+        val targetMethodsToHook = mutableSetOf<Method>()
+        classDefForEach { classDef ->
+            classDef.methods.forEach { method ->
+                val implementation = method.implementation ?: return@forEach
+                val instructions = implementation.instructions.toList()
+                for (i in 0 until instructions.size - 1) {
+                    val inst = instructions[i]
+                    val ref = (inst as? ReferenceInstruction)?.reference as? MethodReference
+                    if (ref != null && ref.name == "getPackageName" && ref.returnType == "Ljava/lang/String;") {
+                        val next = instructions[i + 1]
+                        if (next.opcode == Opcode.MOVE_RESULT_OBJECT) {
+                            val pkgReg = (next as OneRegisterInstruction).registerA
+                            for (j in i + 2 until minOf(i + 15, instructions.size)) {
+                                val checkInst = instructions[j]
+                                if (checkInst.opcode == Opcode.INVOKE_STATIC && checkInst is FiveRegisterInstruction) {
+                                    val targetMr = (checkInst as? ReferenceInstruction)?.reference as? MethodReference
+                                    if (targetMr != null &&
+                                        targetMr.parameterTypes.size == 2 &&
+                                        targetMr.parameterTypes[0] == "Ljava/lang/String;" &&
+                                        targetMr.returnType == "V" &&
+                                        checkInst.registerC == pkgReg
+                                    ) {
+                                        classDefByOrNull(targetMr.definingClass)?.let { defClass ->
+                                            defClass.methods.firstOrNull {
+                                                it.name == targetMr.name && it.parameterTypes == targetMr.parameterTypes
+                                            }?.let { targetMethod ->
+                                                targetMethodsToHook.add(targetMethod)
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        targetMethodsToHook.forEach { targetMethod ->
+            val alreadyHooked = targetMethod.implementation?.instructions?.any { inst ->
+                ((inst as? ReferenceInstruction)?.reference as? MethodReference)?.name == "spoofPackageName"
+            } == true
+            if (!alreadyHooked) {
+                val mutableDefClass = mutableClassDefBy(targetMethod.definingClass)
+                val mutableTargetMethod = mutableDefClass.findMutableMethodOf(targetMethod)
+                mutableTargetMethod.addInstructions(
+                    0,
+                    """
+                    invoke-static {p0}, Lapp/morphe/extension/shared/patches/GmsCoreSupportPatch;->spoofPackageName(Ljava/lang/String;)Ljava/lang/String;
+                    move-result-object p0
+                    """.trimIndent(),
+                )
+            }
+        }
     },
+
     finalizeBlock = {
         if (PackageNameConfig.isPackageNameChangeEnabled) {
             val targetPackageName = PackageNameConfig.effectivePackageName.ifEmpty { MORPHE_PHOTOS_PACKAGE_NAME }
