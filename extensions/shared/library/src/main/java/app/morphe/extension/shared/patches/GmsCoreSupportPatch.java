@@ -132,6 +132,116 @@ public class GmsCoreSupportPatch {
     }
 
     /**
+     * Spoofs the package name sent in GNP / Chime registration and Target protobufs.
+     */
+    public static String spoofPackageName(String packageName) {
+        if (packageName != null && !packageName.equals(GOOGLE_PHOTOS_PACKAGE_NAME)) {
+            String original = getOriginalPackageName();
+            if (packageName.contains("morphe") || packageName.contains("photos") || (original != null && packageName.equals(original))) {
+                Logger.printInfo(() -> "GmsCoreSupportPatch: Spoofing registration package name from [" + packageName + "] to [" + GOOGLE_PHOTOS_PACKAGE_NAME + "]");
+                return GOOGLE_PHOTOS_PACKAGE_NAME;
+            }
+        }
+        return packageName;
+    }
+
+    /**
+     * Intercepts Cronet request starting in Labm to log URL, headers, and body Base64,
+     * and sanitize payload package name for GNP / Chime endpoints.
+     */
+    public static void onCronetRequestStarting(Object requestObj) {
+        try {
+            if (requestObj != null) {
+                Field urlField = requestObj.getClass().getDeclaredField("a");
+                urlField.setAccessible(true);
+                Object url = urlField.get(requestObj);
+
+                Field headersField = requestObj.getClass().getDeclaredField("c");
+                headersField.setAccessible(true);
+                Object headers = headersField.get(requestObj);
+
+                Field bodyField = requestObj.getClass().getDeclaredField("d");
+                bodyField.setAccessible(true);
+                byte[] body = (byte[]) bodyField.get(requestObj);
+
+                if (body != null) {
+                    byte[] oldPkg = "app.morphe.android.apps.photos".getBytes(java.nio.charset.StandardCharsets.UTF_8);
+                    byte[] newPkg = GOOGLE_PHOTOS_PACKAGE_NAME.getBytes(java.nio.charset.StandardCharsets.UTF_8);
+                    byte[] patched = replaceBytesInPayload(body, oldPkg, newPkg);
+
+                    Context ctx = Utils.getContext();
+                    if (ctx != null) {
+                        String currentPkg = ctx.getPackageName();
+                        if (currentPkg != null && !currentPkg.equals(GOOGLE_PHOTOS_PACKAGE_NAME) && !currentPkg.equals("app.morphe.android.apps.photos")) {
+                            patched = replaceBytesInPayload(patched, currentPkg.getBytes(java.nio.charset.StandardCharsets.UTF_8), newPkg);
+                        }
+                    }
+
+                    if (patched != body) {
+                        bodyField.set(requestObj, patched);
+                        body = patched;
+                        Logger.printInfo(() -> "GmsCoreSupportPatch: Sanitized GNP payload body package name to [" + GOOGLE_PHOTOS_PACKAGE_NAME + "]");
+                    }
+                }
+
+                String b64 = (body != null) ? android.util.Base64.encodeToString(body, android.util.Base64.NO_WRAP) : "null";
+                Logger.printInfo(() -> "GNP Request Starting: URL=" + url + ", headers=" + headers + ", bodyB64=" + b64);
+            }
+        } catch (Throwable t) {
+            Logger.printInfo(() -> "GNP Request Starting: error logging/sanitizing request: " + t);
+        }
+    }
+
+    private static byte[] replaceBytesInPayload(byte[] src, byte[] target, byte[] replacement) {
+        if (src == null || target == null || replacement == null || target.length == 0) {
+            return src;
+        }
+        int index = indexOfBytes(src, target, 0);
+        if (index == -1) {
+            return src;
+        }
+        if (target.length == replacement.length) {
+            byte[] copy = src.clone();
+            while (index != -1) {
+                System.arraycopy(replacement, 0, copy, index, replacement.length);
+                index = indexOfBytes(copy, target, index + replacement.length);
+            }
+            return copy;
+        }
+        java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream();
+        int cur = 0;
+        while (index != -1) {
+            out.write(src, cur, index - cur);
+            out.write(replacement, 0, replacement.length);
+            cur = index + target.length;
+            index = indexOfBytes(src, target, cur);
+        }
+        if (cur < src.length) {
+            out.write(src, cur, src.length - cur);
+        }
+        return out.toByteArray();
+    }
+
+    private static int indexOfBytes(byte[] source, byte[] target, int start) {
+        if (source == null || target == null || start < 0 || target.length == 0 || start + target.length > source.length) {
+            return -1;
+        }
+        for (int i = start; i <= source.length - target.length; i++) {
+            boolean match = true;
+            for (int j = 0; j < target.length; j++) {
+                if (source[i + j] != target[j]) {
+                    match = false;
+                    break;
+                }
+            }
+            if (match) {
+                return i;
+            }
+        }
+        return -1;
+    }
+
+    /**
      * Intercepts Cronet onResponseStarted to log HTTP status code, URL, and headers.
      */
     public static void onCronetResponseStarted(Object responseInfo) {
