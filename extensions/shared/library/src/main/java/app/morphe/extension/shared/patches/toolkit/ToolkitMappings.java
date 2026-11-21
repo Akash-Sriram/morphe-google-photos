@@ -103,8 +103,8 @@ public final class ToolkitMappings {
     public static final String[] ARCHIVE_BUILDER_CLASSES = {"rsv", "psy"};
 
     // Move to Trash Action
-    public static final String MOVE_TO_TRASH_ACTION_CLASS = "bgqg";
-    public static final String[] MOVE_TO_TRASH_ACTION_CLASSES = {"bgqg", "bmpy", "bglr", "bfsn", "bfjt", "bjir"};
+    public static final String MOVE_TO_TRASH_ACTION_CLASS = "bmpy";
+    public static final String[] MOVE_TO_TRASH_ACTION_CLASSES = {"bmpy", "bglr", "bfsn", "bfjt", "bjir"};
 
     // Glide Singleton (mdm in 7.98)
     // Glide Singleton

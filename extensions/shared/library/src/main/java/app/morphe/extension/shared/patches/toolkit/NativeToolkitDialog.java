@@ -3,7 +3,19 @@ package app.morphe.extension.shared.patches.toolkit;
 import android.app.Activity;
 import android.app.DatePickerDialog;
 import android.app.Dialog;
+import android.app.Notification;
+import android.app.NotificationChannel;
+import android.app.NotificationManager;
 import android.app.TimePickerDialog;
+import android.os.PowerManager;
+import android.app.PendingIntent;
+import android.content.BroadcastReceiver;
+import android.content.IntentFilter;
+import android.os.StatFs;
+import java.util.Collections;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.Calendar;
 import android.content.ClipData;
 import android.content.ClipboardManager;
@@ -24,6 +36,8 @@ import android.graphics.drawable.RippleDrawable;
 import android.app.KeyguardManager;
 import android.hardware.biometrics.BiometricPrompt;
 import android.net.Uri;
+import android.net.wifi.WifiManager;
+import android.provider.Settings;
 import android.os.Build;
 import android.os.CancellationSignal;
 import android.os.Environment;
@@ -59,11 +73,15 @@ import android.util.TypedValue;
 import android.util.Size;
 import android.media.ThumbnailUtils;
 import android.provider.MediaStore;
+import app.morphe.extension.shared.requests.ExportSafety;
+import app.morphe.extension.shared.requests.MediaExport;
 
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.InputStream;
+import java.io.OutputStream;
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.net.HttpURLConnection;
 import java.net.URL;
@@ -2249,6 +2267,7 @@ public class NativeToolkitDialog {
                 {"toTrash", "Trash", String.valueOf(MaterialVectorDrawable.TYPE_DELETE)},
                 {"restoreTrash", "Restore", String.valueOf(MaterialVectorDrawable.TYPE_REFRESH)},
                 {"exportDcim", "Export DCIM", String.valueOf(MaterialVectorDrawable.TYPE_DOWNLOAD)},
+                {"safeOffload", "Safe Offload", String.valueOf(MaterialVectorDrawable.TYPE_SHIELD)},
                 {"exportMetadata", "Export CSV", String.valueOf(MaterialVectorDrawable.TYPE_EXPORT)}
         };
 
@@ -3078,7 +3097,28 @@ public class NativeToolkitDialog {
         }
 
         if ("exportDcim".equals(actionId)) {
+            File latestFailures = getLatestFailureFile();
+            if (latestFailures != null) {
+                List<StorageScanner.MediaItem> failedItems = loadFailedItemsFromJson(latestFailures);
+                if (!failedItems.isEmpty()) {
+                    new android.app.AlertDialog.Builder(activity)
+                            .setTitle("Retry Previous Failures?")
+                            .setMessage("Found " + failedItems.size() + " item(s) that failed in a previous export.\n\nWould you like to retry those failed items now, or proceed with exporting the " + items.size() + " selected items?")
+                            .setPositiveButton("Retry Failed (" + failedItems.size() + ")", (d, w) -> {
+                                latestFailures.delete();
+                                exportItemsToDcim(activity, failedItems, density, theme);
+                            })
+                            .setNegativeButton("Export Selected (" + items.size() + ")", (d, w) -> {
+                                exportItemsToDcim(activity, items, density, theme);
+                            })
+                            .setNeutralButton("Cancel", null)
+                            .show();
+                    return;
+                }
+            }
             exportItemsToDcim(activity, items, density, theme);
+        } else if ("safeOffload".equals(actionId)) {
+            showSafeOffloadConfirmDialog(activity, items, density, theme);
         } else if ("exportMetadata".equals(actionId)) {
             new android.app.AlertDialog.Builder(activity).setTitle("Export CSV")
                 .setItems(new String[]{"Basic CSV", "Full CSV (includes locations, descriptions and private links)"}, (d, which) -> {
@@ -3189,6 +3229,7 @@ public class NativeToolkitDialog {
                 {"toTrash", "Trash"},
                 {"restoreTrash", "Restore"},
                 {"exportDcim", "Export to DCIM"},
+                {"safeOffload", "Safe Offload (Free Cloud Space)"},
                 {"exportMetadata", "Export Metadata (CSV)"}
         };
 
@@ -3550,9 +3591,8 @@ public class NativeToolkitDialog {
                 if (!dir.exists()) dir.mkdirs();
                 String name = "Google_Photos_Toolkit_" + FILE_DATE_FORMAT.format(new Date()) + ".csv";
                 File file = new File(dir, name);
-                String csv = StorageScanner.exportToCsv(items, full);
-                try (FileOutputStream fos = new FileOutputStream(file)) {
-                    fos.write(csv.getBytes(StandardCharsets.UTF_8));
+                try (java.io.BufferedWriter bw = new java.io.BufferedWriter(new java.io.OutputStreamWriter(new FileOutputStream(file), StandardCharsets.UTF_8), 65536)) {
+                    StorageScanner.exportToCsv(items, full, bw);
                 }
                 MAIN_HANDLER.post(() -> {
                     Toast.makeText(activity, "Saved CSV with " + items.size() + " items to Download/" + name, Toast.LENGTH_LONG).show();
@@ -3782,7 +3822,16 @@ public class NativeToolkitDialog {
         return null;
     }
 
-    private static void downloadRemoteFile(String urlStr, File dst, String authToken) throws Exception {
+    private static long downloadRemoteStream(String urlStr, OutputStream out, String authToken) throws Exception {
+        return downloadRemoteStream(urlStr, out, authToken, null);
+    }
+
+    /**
+     * Downloads a remote stream, calling {@code chunkCallback} with each chunk's byte count after every write.
+     * Pass {@code null} for chunkCallback to skip per-chunk progress (identical to the no-callback overload).
+     */
+    private static long downloadRemoteStream(String urlStr, OutputStream out, String authToken,
+                                             java.util.function.LongConsumer chunkCallback) throws Exception {
         HttpURLConnection conn = TrustedGoogleMedia.open(urlStr, authToken);
         int code = conn.getResponseCode();
         // Public Google CDN media can still be downloaded without credentials.
@@ -3795,16 +3844,139 @@ public class NativeToolkitDialog {
             conn.disconnect();
             throw new TrustedGoogleMedia.DownloadException(code == 401 || code == 403 ? TrustedGoogleMedia.Reason.AUTH_FAILED : TrustedGoogleMedia.Reason.HTTP_ERROR, "HTTP " + code);
         }
-        try (InputStream in = conn.getInputStream();
-             FileOutputStream out = new FileOutputStream(dst)) {
+        long totalWritten = 0;
+        try (InputStream in = conn.getInputStream()) {
             byte[] buf = new byte[65536];
             int len;
             while ((len = in.read(buf)) > 0) {
                 out.write(buf, 0, len);
+                totalWritten += len;
+                if (chunkCallback != null) chunkCallback.accept(len);
             }
             out.flush();
         } finally {
             conn.disconnect();
+        }
+        return totalWritten;
+    }
+
+    private static void downloadRemoteFile(String urlStr, File dst, String authToken) throws Exception {
+        try (FileOutputStream out = new FileOutputStream(dst)) {
+            downloadRemoteStream(urlStr, out, authToken);
+        }
+    }
+
+    private static boolean isNetworkOutageError(Throwable t) {
+        if (t == null) return false;
+        Throwable cur = t;
+        while (cur != null) {
+            if (cur instanceof java.net.UnknownHostException
+                    || cur instanceof java.net.ConnectException
+                    || cur instanceof java.net.NoRouteToHostException) {
+                return true;
+            }
+            String msg = cur.getMessage();
+            if (msg != null && (msg.contains("No address associated with hostname")
+                    || msg.contains("Connection refused")
+                    || msg.contains("Network unreachable")
+                    || msg.contains("Software caused connection abort")
+                    || msg.contains("Failed to connect to"))) {
+                return true;
+            }
+            cur = cur.getCause();
+        }
+        return false;
+    }
+
+    public static class NetworkCircuitBreaker {
+        private final java.util.concurrent.atomic.AtomicBoolean isTripped = new java.util.concurrent.atomic.AtomicBoolean(false);
+        private final Object pauseLock = new Object();
+        private final Context context;
+        private final NotificationManager nm;
+        private final Notification.Builder notifBuilder;
+        private final int notifId;
+        private final TextView tvStatus;
+
+        public NetworkCircuitBreaker(Context context, NotificationManager nm, Notification.Builder notifBuilder, int notifId, TextView tvStatus) {
+            this.context = context;
+            this.nm = nm;
+            this.notifBuilder = notifBuilder;
+            this.notifId = notifId;
+            this.tvStatus = tvStatus;
+        }
+
+        public void tripAndBlockUntilRestored(String failedHost, boolean[] isCancelled) {
+            if (isCancelled[0]) return;
+            if (isTripped.compareAndSet(false, true)) {
+                Logger.printInfo(() -> "NetworkCircuitBreaker tripped due to network outage on " + failedHost);
+                boolean isBgRestricted = false;
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && context != null) {
+                    try {
+                        PowerManager pm = (PowerManager) context.getSystemService(Context.POWER_SERVICE);
+                        if (pm != null && !pm.isIgnoringBatteryOptimizations(context.getPackageName())) {
+                            isBgRestricted = true;
+                        }
+                    } catch (Throwable ignored) {}
+                }
+
+                int attempts = 0;
+                final int maxAttempts = 48; // 48 * 2.5s = 120s max wait
+                while (!isCancelled[0] && attempts < maxAttempts) {
+                    attempts++;
+                    final int elapsedSec = (int) (attempts * 2.5f);
+                    String statusMsg = isBgRestricted
+                            ? "Export paused (Background network restricted) • Open Google Photos to resume (" + elapsedSec + "s / 120s)..."
+                            : "Network disconnected • Waiting for internet (" + elapsedSec + "s / 120s)...";
+                    updateOutageStatus(statusMsg);
+                    try {
+                        Thread.sleep(2500);
+                    } catch (InterruptedException ignored) {}
+                    if (isCancelled[0]) break;
+                    if (probeConnectivity()) {
+                        Logger.printInfo(() -> "Network connectivity restored after " + elapsedSec + "s! Resetting circuit breaker.");
+                        break;
+                    }
+                }
+                synchronized (pauseLock) {
+                    isTripped.set(false);
+                    pauseLock.notifyAll();
+                }
+            } else {
+                synchronized (pauseLock) {
+                    while (isTripped.get() && !isCancelled[0]) {
+                        try {
+                            pauseLock.wait(1000);
+                        } catch (InterruptedException ignored) {}
+                    }
+                }
+            }
+        }
+
+        private boolean probeConnectivity() {
+            try {
+                java.net.InetAddress addr = java.net.InetAddress.getByName("lh3.googleusercontent.com");
+                return addr != null;
+            } catch (Throwable t) {
+                try {
+                    java.net.InetAddress addr2 = java.net.InetAddress.getByName("clients3.google.com");
+                    return addr2 != null;
+                } catch (Throwable ignored) {}
+                return false;
+            }
+        }
+
+        private void updateOutageStatus(String statusText) {
+            MAIN_HANDLER.post(() -> {
+                if (tvStatus != null) {
+                    tvStatus.setText(statusText);
+                }
+            });
+            if (nm != null && notifBuilder != null) {
+                try {
+                    notifBuilder.setContentText(statusText);
+                    nm.notify(notifId, notifBuilder.build());
+                } catch (Throwable ignored) {}
+            }
         }
     }
 
@@ -3979,9 +4151,155 @@ public class NativeToolkitDialog {
         }
     }
 
+    private static void showSafeOffloadConfirmDialog(Activity activity, List<StorageScanner.MediaItem> items, float density, Theme theme) {
+        if (activity == null || items == null || items.isEmpty()) return;
+        long totalBytes = 0;
+        int quotaCount = 0;
+        for (StorageScanner.MediaItem it : items) {
+            totalBytes += Math.max(0, it.sizeBytes);
+            if (it.quotaBytes > 0) quotaCount++;
+        }
+        String sizeStr = StorageScanner.formatBytes(totalBytes);
+        String msg = "Safe Offload guarantees zero data loss:\n\n"
+                + "1. Original photos/videos will be exported to Pictures/GooglePhotos_Export.\n"
+                + "2. Download integrity is verified byte-by-byte.\n"
+                + "3. Dedup links are broken so future backups won't consume storage.\n"
+                + "4. Only successfully verified items are moved to Google Cloud Trash to free your storage quota.\n\n"
+                + "Items: " + items.size() + " (" + sizeStr + ")\n"
+                + (quotaCount > 0 ? "Quota-consuming items: " + quotaCount + "\n\n" : "\n")
+                + "Would you like to start Safe Offload?";
+
+        new android.app.AlertDialog.Builder(activity)
+                .setTitle("Safe Offload to Device")
+                .setMessage(msg)
+                .setPositiveButton("Start Safe Offload", (d, w) -> exportItemsToDcim(activity, items, density, theme, true))
+                .setNegativeButton("Cancel", null)
+                .show();
+    }
+
+    private static File getLatestFailureFile() {
+        try {
+            File exportDir = new File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES), "GooglePhotos_Export");
+            if (!exportDir.exists()) return null;
+            File[] files = exportDir.listFiles((dir, name) -> name.startsWith("export_failures_") && name.endsWith(".json"));
+            if (files == null || files.length == 0) return null;
+            File latest = files[0];
+            for (File f : files) {
+                if (f.lastModified() > latest.lastModified()) latest = f;
+            }
+            return latest;
+        } catch (Throwable ignored) {
+            return null;
+        }
+    }
+
+    private static List<StorageScanner.MediaItem> loadFailedItemsFromJson(File jsonFile) {
+        List<StorageScanner.MediaItem> result = new ArrayList<>();
+        if (jsonFile == null || !jsonFile.exists()) return result;
+        try (FileInputStream fis = new FileInputStream(jsonFile)) {
+            byte[] data = new byte[(int) jsonFile.length()];
+            int read = 0;
+            while (read < data.length) {
+                int r = fis.read(data, read, data.length - read);
+                if (r < 0) break;
+                read += r;
+            }
+            String content = new String(data, StandardCharsets.UTF_8);
+            org.json.JSONArray arr = new org.json.JSONArray(content);
+            for (int i = 0; i < arr.length(); i++) {
+                org.json.JSONObject obj = arr.getJSONObject(i);
+                StorageScanner.MediaItem item = new StorageScanner.MediaItem(
+                        obj.optString("dedupKey", ""),
+                        obj.optString("mediaKey", ""),
+                        obj.optString("filename", "Unknown"),
+                        obj.optLong("sizeBytes", 0),
+                        0, // quotaBytes
+                        obj.optLong("captureTimestamp", 0),
+                        obj.optString("remoteUrl", ""),
+                        0, // trashTimestamp
+                        0, 0, // width, height
+                        obj.optLong("duration", 0),
+                        false, false, false,
+                        obj.optString("mimeType", null),
+                        0.0, 0.0, ""
+                );
+                result.add(item);
+            }
+        } catch (Throwable t) {
+            Logger.printException(() -> "Error parsing failure JSON: " + jsonFile.getName(), t);
+        }
+        return result;
+    }
+
     private static void exportItemsToDcim(Activity activity, List<StorageScanner.MediaItem> items, float density, Theme theme) {
+        exportItemsToDcim(activity, items, density, theme, false);
+    }
+
+    private static void exportItemsToDcim(Activity activity, List<StorageScanner.MediaItem> items, float density, Theme theme, boolean deleteFromCloudAfter) {
         if (items == null || items.isEmpty()) return;
 
+        // Pre-Flight Storage Check with StatFs
+        long totalEstimatedBytes = 0;
+        for (StorageScanner.MediaItem it : items) {
+            totalEstimatedBytes += Math.max(0, it.sizeBytes);
+        }
+        if (totalEstimatedBytes > 0) {
+            try {
+                StatFs stat = new StatFs(Environment.getExternalStorageDirectory().getPath());
+                long available = stat.getAvailableBytes();
+                long required = (long) (totalEstimatedBytes * 1.05); // 5% safety margin
+                if (available < required + (500L * 1024 * 1024)) { // 500MB safety buffer
+                    String reqStr = StorageScanner.formatBytes(required);
+                    String availStr = StorageScanner.formatBytes(available);
+                    final long finalEstBytes = totalEstimatedBytes;
+                    new android.app.AlertDialog.Builder(activity)
+                            .setTitle("Low Device Storage Warning")
+                            .setMessage("Exporting requires approx " + reqStr + ", but only " + availStr + " is free on device. Continuing may fail due to insufficient storage space.\n\nDo you want to proceed anyway?")
+                            .setPositiveButton("Proceed Anyway", (d, w) -> checkBatteryOptimizationAndStart(activity, items, density, theme, deleteFromCloudAfter, finalEstBytes))
+                            .setNegativeButton("Cancel", null)
+                            .show();
+                    return;
+                }
+            } catch (Throwable t) {
+                Logger.printDebug(() -> "StatFs check error: " + t.getMessage());
+            }
+        }
+        checkBatteryOptimizationAndStart(activity, items, density, theme, deleteFromCloudAfter, totalEstimatedBytes);
+    }
+
+    private static void checkBatteryOptimizationAndStart(Activity activity, List<StorageScanner.MediaItem> items, float density, Theme theme, boolean deleteFromCloudAfter, long totalEstimatedBytes) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && activity != null && !activity.isFinishing()) {
+            try {
+                PowerManager pm = (PowerManager) activity.getSystemService(Context.POWER_SERVICE);
+                if (pm != null && !pm.isIgnoringBatteryOptimizations(activity.getPackageName())) {
+                    new android.app.AlertDialog.Builder(activity)
+                            .setTitle("Unrestricted Background Export")
+                            .setMessage("To allow exporting photos in the background or with the screen turned off, Android requires battery optimization to be unrestricted for Google Photos.\n\nWithout this, Android automatically suspends network access after 15 seconds when the app is minimized or screen is locked.\n\nWould you like to allow unrestricted background activity?")
+                            .setPositiveButton("Allow", (d, w) -> {
+                                try {
+                                    Intent intent = new Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS);
+                                    intent.setData(Uri.parse("package:" + activity.getPackageName()));
+                                    activity.startActivity(intent);
+                                } catch (Throwable t) {
+                                    try {
+                                        Intent intent = new Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS);
+                                        activity.startActivity(intent);
+                                    } catch (Throwable ignored) {}
+                                }
+                                startExportExecution(activity, items, density, theme, deleteFromCloudAfter, totalEstimatedBytes);
+                            })
+                            .setNegativeButton("Skip (Keep Screen On)", (d, w) -> startExportExecution(activity, items, density, theme, deleteFromCloudAfter, totalEstimatedBytes))
+                            .show();
+                    return;
+                }
+            } catch (Throwable t) {
+                Logger.printDebug(() -> "Battery optimization check error: " + t.getMessage());
+            }
+        }
+        startExportExecution(activity, items, density, theme, deleteFromCloudAfter, totalEstimatedBytes);
+    }
+
+    private static void startExportExecution(Activity activity, List<StorageScanner.MediaItem> items, float density, Theme theme, boolean deleteFromCloudAfter, long totalEstimatedBytes) {
         Dialog progressDialog = new Dialog(activity);
         progressDialog.requestWindowFeature(Window.FEATURE_NO_TITLE);
         progressDialog.setCancelable(false);
@@ -3992,7 +4310,7 @@ public class NativeToolkitDialog {
         pRoot.setBackground(createRoundedDrawable(theme.surface, 20 * density));
 
         TextView tvTitle = new TextView(activity);
-        tvTitle.setText("Exporting to DCIM");
+        tvTitle.setText(deleteFromCloudAfter ? "Safe Offload (Export & Free Cloud)" : "Exporting to DCIM");
         tvTitle.setTextSize(16f);
         tvTitle.setTypeface(null, Typeface.BOLD);
         tvTitle.setTextColor(theme.textPrimary);
@@ -4002,8 +4320,20 @@ public class NativeToolkitDialog {
         tvStatus.setText("Preparing 0 / " + items.size() + "...");
         tvStatus.setTextSize(12f);
         tvStatus.setTextColor(theme.textSecondary);
-        tvStatus.setPadding(0, (int) (6 * density), 0, (int) (12 * density));
+        tvStatus.setPadding(0, (int) (6 * density), 0, (int) (6 * density));
         pRoot.addView(tvStatus);
+
+        // Per-worker live rows — one per concurrent download slot
+        final TextView[] tvWorkers = new TextView[3];
+        for (int wi = 0; wi < 3; wi++) {
+            tvWorkers[wi] = new TextView(activity);
+            tvWorkers[wi].setTextSize(11f);
+            tvWorkers[wi].setTextColor(theme.textSecondary);
+            tvWorkers[wi].setTypeface(android.graphics.Typeface.MONOSPACE);
+            tvWorkers[wi].setPadding(0, (int) (1 * density), 0, (int) (1 * density));
+            tvWorkers[wi].setVisibility(View.GONE);
+            pRoot.addView(tvWorkers[wi]);
+        }
 
         ProgressBar pBar = new ProgressBar(activity, null, android.R.attr.progressBarStyleHorizontal);
         pBar.setMax(items.size());
@@ -4014,230 +4344,879 @@ public class NativeToolkitDialog {
         LinearLayout.LayoutParams pLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, (int) (6 * density));
         pRoot.addView(pBar, pLp);
 
+        TextView tvBgHint = new TextView(activity);
+        tvBgHint.setText("Export runs in background with multi-worker pipeline. You can turn off the screen or leave the app.");
+        tvBgHint.setTextSize(11f);
+        tvBgHint.setTextColor(theme.textSecondary);
+        tvBgHint.setPadding(0, (int) (8 * density), 0, (int) (12 * density));
+        pRoot.addView(tvBgHint);
+
+        LinearLayout btnRow = new LinearLayout(activity);
+        btnRow.setOrientation(LinearLayout.HORIZONTAL);
+        btnRow.setGravity(Gravity.END | Gravity.CENTER_VERTICAL);
+
+        final boolean[] isCancelled = new boolean[]{false};
+
+        TextView btnBackground = new TextView(activity);
+        btnBackground.setText("Run in Background");
+        btnBackground.setTextSize(12f);
+        btnBackground.setTypeface(null, Typeface.BOLD);
+        btnBackground.setTextColor(theme.primary);
+        btnBackground.setPadding((int) (12 * density), (int) (6 * density), (int) (12 * density), (int) (6 * density));
+        btnBackground.setBackground(createRoundedDrawable(theme.surfaceContainer, 12 * density));
+        btnBackground.setClickable(true);
+        btnBackground.setFocusable(true);
+        btnBackground.setOnClickListener(v -> {
+            try { progressDialog.dismiss(); } catch (Throwable ignored) {}
+            Toast.makeText(activity, "Export continuing in background. Check notifications.", Toast.LENGTH_SHORT).show();
+        });
+        btnRow.addView(btnBackground);
+
+        View spacer = new View(activity);
+        btnRow.addView(spacer, new LinearLayout.LayoutParams((int) (10 * density), 0));
+
         TextView btnCancel = new TextView(activity);
         btnCancel.setText("Cancel");
         btnCancel.setTextSize(12f);
         btnCancel.setTypeface(null, Typeface.BOLD);
-        btnCancel.setTextColor(theme.primary);
-        btnCancel.setGravity(Gravity.END);
-        btnCancel.setPadding(0, (int) (12 * density), 0, 0);
-        final boolean[] isCancelled = new boolean[]{false};
+        btnCancel.setTextColor(theme.textSecondary);
+        btnCancel.setPadding((int) (8 * density), (int) (6 * density), (int) (8 * density), (int) (6 * density));
+        btnCancel.setClickable(true);
+        btnCancel.setFocusable(true);
         btnCancel.setOnClickListener(v -> {
             isCancelled[0] = true;
             btnCancel.setText("Cancelling...");
         });
-        pRoot.addView(btnCancel);
+        btnRow.addView(btnCancel);
+
+        pRoot.addView(btnRow);
 
         progressDialog.setContentView(pRoot);
         progressDialog.show();
         Window pw = progressDialog.getWindow();
         if (pw != null) {
             pw.setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
+            pw.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
             int sw = activity.getResources().getDisplayMetrics().widthPixels;
             pw.setLayout(Math.min((int) (sw * 0.88f), (int) (400 * density)), ViewGroup.LayoutParams.WRAP_CONTENT);
         }
 
+        // Notification setup
+        final int NOTIF_ID = 0x4D5058; // "MPX"
+        NotificationManager nm = null;
+        try {
+            nm = (NotificationManager) activity.getSystemService(Context.NOTIFICATION_SERVICE);
+        } catch (Throwable ignored) {}
+
+        final String channelId = "morphe_export";
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && nm != null) {
+            try {
+                NotificationChannel channel = new NotificationChannel(channelId, "Media Export", NotificationManager.IMPORTANCE_LOW);
+                channel.setDescription("Shows progress when exporting media to device storage");
+                channel.enableVibration(false);
+                channel.setSound(null, null);
+                nm.createNotificationChannel(channel);
+            } catch (Throwable t) {
+                Logger.printDebug(() -> "Could not create notification channel: " + t.getMessage());
+            }
+        }
+
+        // Register dynamic cancel receiver
+        final String cancelAction = "app.morphe.android.apps.photos.ACTION_CANCEL_EXPORT_" + System.currentTimeMillis();
+        final BroadcastReceiver cancelReceiver = new BroadcastReceiver() {
+            @Override
+            public void onReceive(Context context, Intent intent) {
+                isCancelled[0] = true;
+                MAIN_HANDLER.post(() -> {
+                    try { btnCancel.setText("Cancelling..."); } catch (Throwable ignored) {}
+                });
+            }
+        };
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                activity.registerReceiver(cancelReceiver, new IntentFilter(cancelAction), Context.RECEIVER_NOT_EXPORTED);
+            } else {
+                activity.registerReceiver(cancelReceiver, new IntentFilter(cancelAction));
+            }
+        } catch (Throwable ignored) {}
+
+        Notification.Builder notifBuilder = Build.VERSION.SDK_INT >= Build.VERSION_CODES.O
+                ? new Notification.Builder(activity, channelId)
+                : new Notification.Builder(activity);
+        notifBuilder.setContentTitle(deleteFromCloudAfter ? "Safe Offload to Device" : "Exporting to DCIM")
+                .setContentText("Preparing 0 of " + items.size() + "...")
+                .setSmallIcon(android.R.drawable.stat_sys_download)
+                .setOngoing(true)
+                .setOnlyAlertOnce(true)
+                .setProgress(items.size(), 0, false);
+
+        // Tap-to-Open Content Intent
+        try {
+            Intent openIntent = activity.getPackageManager().getLaunchIntentForPackage(activity.getPackageName());
+            if (openIntent != null) {
+                openIntent.setFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP | Intent.FLAG_ACTIVITY_CLEAR_TOP);
+                PendingIntent openPi = PendingIntent.getActivity(activity, 0, openIntent,
+                        Build.VERSION.SDK_INT >= Build.VERSION_CODES.M ? PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE : PendingIntent.FLAG_UPDATE_CURRENT);
+                notifBuilder.setContentIntent(openPi);
+            }
+        } catch (Throwable ignored) {}
+
+        // In-Tray Cancel Action Button
+        try {
+            Intent cancelIntent = new Intent(cancelAction);
+            cancelIntent.setPackage(activity.getPackageName());
+            PendingIntent cancelPi = PendingIntent.getBroadcast(activity, 1, cancelIntent,
+                    Build.VERSION.SDK_INT >= Build.VERSION_CODES.M ? PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE : PendingIntent.FLAG_UPDATE_CURRENT);
+            Notification.Action cancelActionBtn = new Notification.Action.Builder(
+                    android.R.drawable.ic_menu_close_clear_cancel, "Cancel", cancelPi).build();
+            notifBuilder.addAction(cancelActionBtn);
+        } catch (Throwable ignored) {}
+
+        if (nm != null) {
+            try { nm.notify(NOTIF_ID, notifBuilder.build()); } catch (Throwable ignored) {}
+        }
+
+        final NotificationManager finalNm = nm;
+
+        MAIN_HANDLER.post(() -> {
+            try { activity.getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON); } catch (Throwable ignored) {}
+        });
+
         THREAD_POOL.execute(() -> {
-            int successCount = 0;
-            List<ExportFailure> failures = new ArrayList<>();
-            List<String> exportedPaths = new ArrayList<>();
-            List<String> unchangedPaths = new ArrayList<>();
+            PowerManager pm = null;
+            PowerManager.WakeLock wakeLock = null;
+            WifiManager wm = null;
+            WifiManager.WifiLock wifiLock = null;
+            try {
+                pm = (PowerManager) activity.getSystemService(Context.POWER_SERVICE);
+                if (pm != null) {
+                    wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "Morphe:ToolkitExportWakeLock");
+                    wakeLock.acquire(4 * 60 * 60 * 1000L); // 4-hour safety timeout
+                }
+            } catch (Throwable t) {
+                Logger.printDebug(() -> "Could not acquire WakeLock: " + t.getMessage());
+            }
+            try {
+                wm = (WifiManager) activity.getApplicationContext().getSystemService(Context.WIFI_SERVICE);
+                if (wm != null) {
+                    wifiLock = wm.createWifiLock(WifiManager.WIFI_MODE_FULL_HIGH_PERF, "Morphe:ToolkitExportWifiLock");
+                    wifiLock.acquire();
+                }
+            } catch (Throwable t) {
+                Logger.printDebug(() -> "Could not acquire WifiLock: " + t.getMessage());
+            }
+
+            try {
+            final List<ExportFailure> failures = Collections.synchronizedList(new ArrayList<>());
+            final List<String> exportedPaths = Collections.synchronizedList(new ArrayList<>());
+            final List<String> unchangedPaths = Collections.synchronizedList(new ArrayList<>());
+            final List<StorageScanner.MediaItem> itemsToTrash = Collections.synchronizedList(new ArrayList<>());
             File exportDir = new File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES), "GooglePhotos_Export");
             if (!exportDir.exists()) exportDir.mkdirs();
 
             // Pre-fetch auth token for active Google Photos account
+            final String preferredAcc = currentAccount != null ? currentAccount.accountName : null;
             String authToken = null;
+            final long[] lastTokenFetch = new long[]{System.currentTimeMillis()};
             try {
-                String preferredAcc = currentAccount != null ? currentAccount.accountName : null;
                 authToken = app.morphe.extension.shared.patches.LocalCreationDownloader.getAuthToken(activity, preferredAcc);
             } catch (Throwable t) {
                 Logger.printInfo(() -> "Could not obtain auth token for export: " + t.getMessage());
             }
+            final String[] tokenRef = new String[]{authToken};
+            final long startTime = System.currentTimeMillis();
 
-            for (int i = 0; i < items.size(); i++) {
+            // ── Live progress infrastructure ─────────────────────────────────────────
+            // Per-worker progress state: keyed by thread-ID assigned at worker start
+            final class WorkerProgress {
+                volatile String name = "";          // active file display name (truncated)
+                final AtomicLong itemBytes = new AtomicLong(0);   // bytes received for current file
+                volatile long itemTotal = 0;        // expected bytes (0 = unknown)
+                volatile boolean paused = false;    // true when circuit-breaker is active
+            }
+            final ConcurrentHashMap<Long, WorkerProgress> workerMap = new ConcurrentHashMap<>();
+
+            // 8-second rolling speed window: ArrayDeque of [timestampMs, cumulativeBytes] pairs
+            final java.util.ArrayDeque<long[]> speedWindow = new java.util.ArrayDeque<>();
+            final Object speedLock = new Object();
+
+            // Total bytes counters
+            final AtomicLong totalBytesDownloaded = new AtomicLong(0);
+            // Pre-sum estimated bytes; use 5 MB per photo, 200 MB per video as fallback if sizeBytes == 0
+            long estTotal = 0;
+            for (StorageScanner.MediaItem mi : items) {
+                if (mi.sizeBytes > 0) {
+                    estTotal += mi.sizeBytes;
+                } else {
+                    boolean looksLikeVideo = ExportSafety.isVideo(
+                            mi.filename != null ? mi.filename : "", mi.mimeType, mi.duration);
+                    estTotal += looksLikeVideo ? 200L * 1024 * 1024 : 5L * 1024 * 1024;
+                }
+            }
+            final long totalEstimatedBytesForProgress = Math.max(1, estTotal);
+
+            // Per-item retry counter: dedupKey → retryCount
+            final ConcurrentHashMap<String, Integer> retryCountMap = new ConcurrentHashMap<>();
+            // Items queued for retry (pushed back after transient failure)
+            final java.util.concurrent.LinkedBlockingQueue<StorageScanner.MediaItem> retryQueue =
+                    new java.util.concurrent.LinkedBlockingQueue<>();
+
+            // Helper: Unicode block mini-bar  ▏▎▍▌▋▊▉█  (10 chars = 80 steps)
+            // Returns a fixed 10-char string.
+            java.util.function.BiFunction<Long, Long, String> miniBar = (received, total) -> {
+                if (total <= 0) return "░░░░░░░░░░";
+                int filled = (int) Math.min(80, Math.max(0, (received * 80) / total));
+                int fullBlocks = filled / 8;
+                int partial = filled % 8;
+                final char[] blocks = {' ', '▏', '▎', '▍', '▌', '▋', '▊', '▉'};
+                StringBuilder sb = new StringBuilder(10);
+                for (int i = 0; i < fullBlocks && i < 10; i++) sb.append('█');
+                if (fullBlocks < 10) {
+                    sb.append(partial > 0 ? blocks[partial] : '░');
+                    for (int i = fullBlocks + 1; i < 10; i++) sb.append('░');
+                }
+                return sb.toString();
+            };
+
+            // Helper: truncate filename to maxLen chars with middle ellipsis
+            java.util.function.BiFunction<String, Integer, String> truncName = (name, maxLen) -> {
+                if (name == null || name.length() <= maxLen) return name != null ? name : "";
+                int half = (maxLen - 1) / 2;
+                return name.substring(0, half) + "…" + name.substring(name.length() - (maxLen - half - 1));
+            };
+
+            // Helper: format bytes as "1.2 GB", "345 MB", "12 KB"
+            java.util.function.LongUnaryOperator[] fmtBytes = new java.util.function.LongUnaryOperator[0]; // placeholder
+            // We'll use an inline lambda:
+            java.util.function.Function<Long, String> fmtB = (b) -> {
+                if (b >= 1024L * 1024 * 1024) return String.format(Locale.US, "%.1f GB", b / (1024.0 * 1024 * 1024));
+                if (b >= 1024L * 1024)        return String.format(Locale.US, "%.1f MB", b / (1024.0 * 1024));
+                if (b >= 1024L)               return String.format(Locale.US, "%d KB", b / 1024);
+                return b + " B";
+            };
+
+            // ── 750ms ticker thread ───────────────────────────────────────────────────
+            final java.util.concurrent.ScheduledExecutorService ticker =
+                    java.util.concurrent.Executors.newSingleThreadScheduledExecutor();
+            final AtomicInteger completedCount = new AtomicInteger(0);
+            final AtomicInteger successCount = new AtomicInteger(0);
+
+            ticker.scheduleAtFixedRate(() -> {
+                try {
+                    int done = completedCount.get();
+                    int remaining = items.size() - done;
+                    int failCount = failures.size();
+                    long nowMs = System.currentTimeMillis();
+                    long totalBytes = totalBytesDownloaded.get();
+
+                    // 8-second rolling speed
+                    double speedMBs = 0;
+                    synchronized (speedLock) {
+                        speedWindow.addLast(new long[]{nowMs, totalBytes});
+                        while (!speedWindow.isEmpty() && nowMs - speedWindow.peekFirst()[0] > 8000) {
+                            speedWindow.pollFirst();
+                        }
+                        if (speedWindow.size() >= 2) {
+                            long[] oldest = speedWindow.peekFirst();
+                            long[] newest = speedWindow.peekLast();
+                            long deltaBytes = newest[1] - oldest[1];
+                            long deltaMs = newest[0] - oldest[0];
+                            if (deltaMs > 0) speedMBs = (deltaBytes / (1024.0 * 1024.0)) / (deltaMs / 1000.0);
+                        }
+                    }
+
+                    // ETA by bytes remaining
+                    long bytesLeft = Math.max(0, totalEstimatedBytesForProgress - totalBytes);
+                    long etaSec = (speedMBs > 0.01) ? (long) (bytesLeft / (1024.0 * 1024.0 * speedMBs)) : 0;
+                    String etaStr = etaSec > 0 ? (etaSec > 60 ? "~" + (etaSec / 60) + "m left" : "~" + etaSec + "s left") : "";
+                    String speedStr = speedMBs >= 0.1 ? String.format(Locale.US, "%.1f MB/s", speedMBs) : "";
+
+                    // Byte-weighted progress bar fill
+                    int byteBarMax = 1000;
+                    int byteBarProgress = (int) Math.min(byteBarMax, (totalBytes * byteBarMax) / totalEstimatedBytesForProgress);
+
+                    // Build per-worker rows for BigTextStyle + dialog
+                    StringBuilder expandedText = new StringBuilder();
+                    WorkerProgress[] activeWorkers = workerMap.values().toArray(new WorkerProgress[0]);
+                    int workerSlot = 0;
+                    for (WorkerProgress wp : activeWorkers) {
+                        if (workerSlot >= 3) break;
+                        String row;
+                        if (wp.paused) {
+                            row = truncName.apply(wp.name, 18) + "  ⏸ Network paused…";
+                        } else {
+                            long ib = wp.itemBytes.get();
+                            long it = wp.itemTotal;
+                            String bar = miniBar.apply(ib, it);
+                            String recvStr = fmtB.apply(ib);
+                            String pctStr = it > 0 ? " (" + Math.min(100, (int) ((ib * 100) / it)) + "%)" : "";
+                            String totalStr = it > 0 ? "/" + fmtB.apply(it) : "";
+                            row = truncName.apply(wp.name, 16) + "  " + bar + "  " + recvStr + totalStr + pctStr;
+                        }
+                        if (expandedText.length() > 0) expandedText.append("\n");
+                        expandedText.append(row);
+
+                        final String dialogRow = row;
+                        final int slot = workerSlot;
+                        MAIN_HANDLER.post(() -> {
+                            try {
+                                if (slot < tvWorkers.length) {
+                                    tvWorkers[slot].setText(dialogRow);
+                                    tvWorkers[slot].setVisibility(View.VISIBLE);
+                                }
+                            } catch (Throwable ignored) {}
+                        });
+                        workerSlot++;
+                    }
+                    // Hide unused worker slots
+                    for (int s = workerSlot; s < 3; s++) {
+                        final int slot = s;
+                        MAIN_HANDLER.post(() -> {
+                            try { tvWorkers[slot].setVisibility(View.GONE); } catch (Throwable ignored) {}
+                        });
+                    }
+
+                    // Build collapsed + title lines
+                    String failLabel = failCount > 0 ? " • " + failCount + " ✗" : "";
+                    String collapsedTitle = remaining + " remaining" + failLabel;
+                    String workerCount = activeWorkers.length > 0 ? activeWorkers.length + " file" + (activeWorkers.length > 1 ? "s" : "") : done + " done";
+                    String collapsedText = workerCount
+                            + (speedStr.isEmpty() ? "" : " • " + speedStr)
+                            + (etaStr.isEmpty() ? "" : " • " + etaStr);
+
+                    // Update dialog counter row
+                    MAIN_HANDLER.post(() -> {
+                        try {
+                            if (progressDialog.isShowing()) {
+                                tvStatus.setText(collapsedTitle);
+                                pBar.setMax(byteBarMax);
+                                pBar.setProgress(byteBarProgress);
+                            }
+                        } catch (Throwable ignored) {}
+                    });
+
+                    // Post notification with BigTextStyle
+                    if (finalNm != null) {
+                        try {
+                            Notification.BigTextStyle bigStyle = new Notification.BigTextStyle()
+                                    .bigText(expandedText.length() > 0 ? expandedText.toString() : collapsedText);
+                            notifBuilder.setContentTitle(collapsedTitle)
+                                    .setContentText(collapsedText)
+                                    .setStyle(bigStyle)
+                                    .setProgress(byteBarMax, byteBarProgress, false);
+                            finalNm.notify(NOTIF_ID, notifBuilder.build());
+                        } catch (Throwable ignored) {}
+                    }
+                } catch (Throwable ignored) {}
+            }, 750, 750, TimeUnit.MILLISECONDS);
+
+            final int numWorkers = Math.min(3, Math.max(1, items.size()));
+            final ExecutorService workerPool = Executors.newFixedThreadPool(numWorkers);
+            final AtomicInteger itemIndex = new AtomicInteger(0);
+            final NetworkCircuitBreaker circuitBreaker = new NetworkCircuitBreaker(activity, finalNm, notifBuilder, NOTIF_ID, tvStatus);
+
+
+            try {
+                for (int w = 0; w < numWorkers; w++) {
+                    workerPool.execute(() -> {
+                        // Register this worker thread in the live progress map
+                        long threadId = Thread.currentThread().getId();
+                        WorkerProgress wp = new WorkerProgress();
+                        workerMap.put(threadId, wp);
+                        try {
+                        while (!isCancelled[0]) {
+                            // Drain retry queue first, then advance main index
+                            StorageScanner.MediaItem nextItem = retryQueue.poll();
+                            if (nextItem == null) {
+                                int idx = itemIndex.getAndIncrement();
+                                if (idx >= items.size()) break;
+                                nextItem = items.get(idx);
+                            }
+                            final StorageScanner.MediaItem item = nextItem;
+
+                            // Auto-refresh token if older than 45 minutes
+                            long now = System.currentTimeMillis();
+                            if (now - lastTokenFetch[0] > 45 * 60 * 1000L) {
+                                synchronized (tokenRef) {
+                                    if (System.currentTimeMillis() - lastTokenFetch[0] > 45 * 60 * 1000L) {
+                                        try {
+                                            tokenRef[0] = app.morphe.extension.shared.patches.LocalCreationDownloader.getAuthToken(activity, preferredAcc);
+                                            lastTokenFetch[0] = System.currentTimeMillis();
+                                        } catch (Throwable ignored) {}
+                                    }
+                                }
+                            }
+
+                            String lastError = null;
+                            boolean itemSucceeded = false;
+                            String itemError = null;
+                            try {
+                                String rawName = (item.filename != null && !item.filename.trim().isEmpty())
+                                        ? item.filename.trim()
+                                        : ("photo_" + item.captureTimestamp);
+                                boolean initialIsVideo = ExportSafety.isVideo(rawName, item.mimeType, item.duration);
+                                String baseName = rawName;
+                                if (!baseName.contains(".")) {
+                                    baseName += initialIsVideo ? ".mp4" : ".jpg";
+                                }
+
+                                baseName = ExportSafety.filename(baseName);
+                                final boolean isVideo = initialIsVideo || ExportSafety.isVideo(baseName, item.mimeType, item.duration);
+                                String resolvedMime = ExportSafety.resolveMimeType(baseName, item.mimeType);
+
+                                // Set worker progress metadata for this item
+                                wp.name = baseName;
+                                wp.itemTotal = item.sizeBytes > 0 ? item.sizeBytes : 0;
+                                wp.itemBytes.set(0);
+                                wp.paused = false;
+
+                                // Fast-skip checkpoint guard: skip items already exported to disk with valid size
+                                File existingExported = new File(exportDir, baseName);
+                                if (existingExported.exists() && existingExported.length() > 0 && (item.sizeBytes <= 0 || existingExported.length() >= item.sizeBytes * 0.9)) {
+                                    exportedPaths.add(existingExported.getAbsolutePath());
+                                    successCount.incrementAndGet();
+                                    if (deleteFromCloudAfter) {
+                                        itemsToTrash.add(item);
+                                    }
+                                    completedCount.incrementAndGet();
+                                    wp.name = "";
+                                    continue;
+                                }
+
+                                if (item.quotaBytes > 0) {
+                                    // Quota items: modify EXIF via DedupBreaker to prevent deduplication
+                                    File destFile = File.createTempFile("morphe_export_", ".tmp", activity.getCacheDir());
+                                    try {
+                                        boolean copied = false;
+                                        // 1. Direct file path
+                                        if (item.remoteUrl != null && (item.remoteUrl.startsWith("/") || item.remoteUrl.startsWith("file://"))) {
+                                            String localP = item.remoteUrl.startsWith("file://") ? item.remoteUrl.substring(7) : item.remoteUrl;
+                                            File localFile = new File(localP);
+                                            if (localFile.exists() && localFile.canRead()) {
+                                                try {
+                                                    copyFile(localFile, destFile);
+                                                    copied = destFile.exists() && destFile.length() > 0;
+                                                } catch (Throwable t) {
+                                                    lastError = "Local copy error: " + t.getMessage();
+                                                }
+                                            }
+                                        }
+
+                                        // 2. Query local_media SQLite path via dedupKey
+                                        if (!copied && currentAccount != null) {
+                                            try {
+                                                String localDbPath = StorageScanner.resolveLocalFilePath(currentAccount, item.dedupKey);
+                                                if (localDbPath != null) {
+                                                    if (localDbPath.startsWith("content://")) {
+                                                        try (InputStream is = activity.getContentResolver().openInputStream(Uri.parse(localDbPath));
+                                                             FileOutputStream fos = new FileOutputStream(destFile)) {
+                                                            if (is != null) {
+                                                                byte[] buf = new byte[65536];
+                                                                int r;
+                                                                while ((r = is.read(buf)) != -1) fos.write(buf, 0, r);
+                                                                fos.flush();
+                                                                copied = destFile.exists() && destFile.length() > 0;
+                                                            }
+                                                        }
+                                                    } else {
+                                                        File lf = new File(localDbPath);
+                                                        if (lf.exists() && lf.canRead()) {
+                                                            copyFile(lf, destFile);
+                                                            copied = destFile.exists() && destFile.length() > 0;
+                                                        }
+                                                    }
+                                                }
+                                            } catch (Throwable t) {
+                                                lastError = "Local DB path resolution error: " + t.getMessage();
+                                            }
+                                        }
+
+                                        // 3. Remote authenticated download
+                                        if (!copied && item.remoteUrl != null && TrustedGoogleMedia.isMediaUrl(item.remoteUrl)) {
+                                            String dlUrl = item.remoteUrl;
+                                            if (dlUrl.contains("=")) {
+                                                dlUrl = dlUrl.replaceAll("=.*$", isVideo ? "=dv" : "=d");
+                                            } else {
+                                                dlUrl = dlUrl + (isVideo ? "=dv" : "=d");
+                                            }
+
+                                            int retries = 0;
+                                            while (!copied && retries < 4 && !isCancelled[0]) {
+                                                try {
+                                                    downloadRemoteFile(dlUrl, destFile, tokenRef[0]);
+                                                    copied = destFile.exists() && destFile.length() > 0;
+                                                } catch (Throwable t) {
+                                                    lastError = t.getMessage();
+                                                    if (isNetworkOutageError(t)) {
+                                                        circuitBreaker.tripAndBlockUntilRestored(dlUrl, isCancelled);
+                                                        continue;
+                                                    }
+                                                    boolean isAuthError = t instanceof TrustedGoogleMedia.DownloadException
+                                                            && ((TrustedGoogleMedia.DownloadException) t).reason == TrustedGoogleMedia.Reason.AUTH_FAILED;
+                                                    if (isAuthError) {
+                                                        try {
+                                                            synchronized (tokenRef) {
+                                                                app.morphe.extension.shared.patches.LocalCreationDownloader.invalidateAuthToken(activity, tokenRef[0]);
+                                                                tokenRef[0] = app.morphe.extension.shared.patches.LocalCreationDownloader.getAuthToken(activity, preferredAcc);
+                                                                lastTokenFetch[0] = System.currentTimeMillis();
+                                                            }
+                                                            downloadRemoteFile(dlUrl, destFile, tokenRef[0]);
+                                                            copied = destFile.exists() && destFile.length() > 0;
+                                                            if (copied) break;
+                                                        } catch (Throwable tAuthRetry) {
+                                                            lastError = tAuthRetry.getMessage();
+                                                        }
+                                                    }
+
+                                                    retries++;
+                                                    try { Thread.sleep(Math.min(4000, 1000L * retries)); } catch (InterruptedException ignored) {}
+                                                }
+                                            }
+                                        }
+
+                                        if (copied) {
+                                            try {
+                                                if (!DedupBreaker.tag(destFile, "morphe-reupload:" + item.dedupKey)) {
+                                                    unchangedPaths.add(destFile.getAbsolutePath());
+                                                }
+                                            } catch (Throwable t) {
+                                                unchangedPaths.add(destFile.getAbsolutePath());
+                                                Logger.printException(() -> "Could not tag exported quota item " + "[MEDIA]", t);
+                                            }
+                                            long fileLen = destFile.length();
+                                            totalBytesDownloaded.addAndGet(fileLen);
+                                            String pubPath = MediaExport.publish(activity, destFile, baseName, resolvedMime);
+                                            exportedPaths.add(pubPath);
+                                            successCount.incrementAndGet();
+                                            if (deleteFromCloudAfter && fileLen > 0 && (item.sizeBytes <= 0 || fileLen >= item.sizeBytes * 0.9)) {
+                                                itemsToTrash.add(item);
+                                            }
+                                            itemSucceeded = true;
+                                        } else {
+                                            itemError = (lastError != null ? lastError : "Source media not found or inaccessible")
+                                                    + " (preview fallback is disabled for quota items)";
+                                            final String errLog = lastError;
+                                            Logger.printInfo(() -> "Export failed for " + "[MEDIA]" + ": " + errLog);
+                                        }
+                                    } finally {
+                                        destFile.delete();
+                                    }
+                                } else {
+                                    // Non-quota items: Zero-Copy streaming directly to MediaStore
+                                    final AtomicLong itemStreamBytes = new AtomicLong(0);
+                                    try {
+                                        String pubUri = MediaExport.publishStream(activity, baseName, resolvedMime, out -> {
+                                            boolean streamed = false;
+                                            // 1. Direct file path
+                                            if (item.remoteUrl != null && (item.remoteUrl.startsWith("/") || item.remoteUrl.startsWith("file://"))) {
+                                                String localP = item.remoteUrl.startsWith("file://") ? item.remoteUrl.substring(7) : item.remoteUrl;
+                                                File localFile = new File(localP);
+                                                if (localFile.exists() && localFile.canRead()) {
+                                                    try (InputStream fis = new FileInputStream(localFile)) {
+                                                        byte[] buf = new byte[65536];
+                                                        int r;
+                                                        while ((r = fis.read(buf)) != -1) {
+                                                            out.write(buf, 0, r);
+                                                            itemStreamBytes.addAndGet(r);
+                                                        }
+                                                        streamed = true;
+                                                    }
+                                                }
+                                            }
+
+                                            // 2. Query local_media SQLite path via dedupKey
+                                            if (!streamed && currentAccount != null) {
+                                                String localDbPath = StorageScanner.resolveLocalFilePath(currentAccount, item.dedupKey);
+                                                if (localDbPath != null) {
+                                                    if (localDbPath.startsWith("content://")) {
+                                                        try (InputStream is = activity.getContentResolver().openInputStream(Uri.parse(localDbPath))) {
+                                                            if (is != null) {
+                                                                byte[] buf = new byte[65536];
+                                                                int r;
+                                                                while ((r = is.read(buf)) != -1) {
+                                                                    out.write(buf, 0, r);
+                                                                    itemStreamBytes.addAndGet(r);
+                                                                }
+                                                                streamed = true;
+                                                            }
+                                                        }
+                                                    } else {
+                                                         File lf = new File(localDbPath);
+                                                        if (lf.exists() && lf.canRead()) {
+                                                            try (InputStream fis = new FileInputStream(lf)) {
+                                                                byte[] buf = new byte[65536];
+                                                                int r;
+                                                                while ((r = fis.read(buf)) != -1) {
+                                                                    out.write(buf, 0, r);
+                                                                    long added = r;
+                                                                    totalBytesDownloaded.addAndGet(added);
+                                                                    wp.itemBytes.addAndGet(added);
+                                                                    itemStreamBytes.addAndGet(added);
+                                                                }
+                                                                streamed = true;
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            }
+
+                                            // 3. Authenticated remote streaming with live per-chunk progress
+                                            if (!streamed && item.remoteUrl != null && TrustedGoogleMedia.isMediaUrl(item.remoteUrl)) {
+                                                String dlUrl = item.remoteUrl;
+                                                if (dlUrl.contains("=")) {
+                                                    dlUrl = dlUrl.replaceAll("=.*$", isVideo ? "=dv" : "=d");
+                                                } else {
+                                                    dlUrl = dlUrl + (isVideo ? "=dv" : "=d");
+                                                }
+
+                                                int sRetries = 0;
+                                                while (!streamed && sRetries < 4 && !isCancelled[0]) {
+                                                    try {
+                                                        // Chunk callback: update totalBytesDownloaded + wp.itemBytes live
+                                                        java.util.function.LongConsumer chunkCb = (len) -> {
+                                                            totalBytesDownloaded.addAndGet(len);
+                                                            wp.itemBytes.addAndGet(len);
+                                                            itemStreamBytes.addAndGet(len);
+                                                        };
+                                                        long written = downloadRemoteStream(dlUrl, out, tokenRef[0], chunkCb);
+                                                        streamed = written > 0;
+                                                    } catch (Throwable t) {
+                                                        if (isNetworkOutageError(t)) {
+                                                            wp.paused = true;
+                                                            circuitBreaker.tripAndBlockUntilRestored(dlUrl, isCancelled);
+                                                            wp.paused = false;
+                                                            continue;
+                                                        }
+                                                        boolean isAuthError = t instanceof TrustedGoogleMedia.DownloadException
+                                                                && ((TrustedGoogleMedia.DownloadException) t).reason == TrustedGoogleMedia.Reason.AUTH_FAILED;
+                                                        if (isAuthError) {
+                                                            try {
+                                                                synchronized (tokenRef) {
+                                                                    app.morphe.extension.shared.patches.LocalCreationDownloader.invalidateAuthToken(activity, tokenRef[0]);
+                                                                    tokenRef[0] = app.morphe.extension.shared.patches.LocalCreationDownloader.getAuthToken(activity, preferredAcc);
+                                                                    lastTokenFetch[0] = System.currentTimeMillis();
+                                                                }
+                                                                java.util.function.LongConsumer chunkCb2 = (len) -> {
+                                                                    totalBytesDownloaded.addAndGet(len);
+                                                                    wp.itemBytes.addAndGet(len);
+                                                                    itemStreamBytes.addAndGet(len);
+                                                                };
+                                                                long written = downloadRemoteStream(dlUrl, out, tokenRef[0], chunkCb2);
+                                                                streamed = written > 0;
+                                                                if (streamed) break;
+                                                            } catch (Throwable ignored) {}
+                                                        }
+
+                                                        sRetries++;
+                                                        try { Thread.sleep(Math.min(4000, 1000L * sRetries)); } catch (InterruptedException ignored) {}
+                                                    }
+                                                }
+                                            }
+
+                                            // 3c. Fallback to cached bitmap for images only
+                                            if (!streamed && !isVideo) {
+                                                try {
+                                                    int accountId = currentAccount != null ? currentAccount.accountId : -1;
+                                                    Bitmap bm = fetchThumbSync(activity, item.remoteUrl, accountId);
+                                                    if (bm != null) {
+                                                        ByteArrayOutputStream baos = new ByteArrayOutputStream();
+                                                        bm.compress(Bitmap.CompressFormat.JPEG, 95, baos);
+                                                        byte[] bmBytes = baos.toByteArray();
+                                                        out.write(bmBytes);
+                                                        totalBytesDownloaded.addAndGet(bmBytes.length);
+                                                        wp.itemBytes.addAndGet(bmBytes.length);
+                                                        itemStreamBytes.addAndGet(bmBytes.length);
+                                                        streamed = true;
+                                                    }
+                                                } catch (Throwable ignored) {}
+                                            }
+
+                                            if (!streamed) {
+                                                throw new IOException("Failed to retrieve or stream media content");
+                                            }
+                                        });
+
+                                        long writtenBytes = itemStreamBytes.get();
+                                        // totalBytesDownloaded already updated per-chunk; don't double-add
+                                        exportedPaths.add(pubUri);
+                                        successCount.incrementAndGet();
+                                        if (deleteFromCloudAfter && writtenBytes > 0 && (item.sizeBytes <= 0 || writtenBytes >= item.sizeBytes * 0.9)) {
+                                            itemsToTrash.add(item);
+                                        }
+                                        itemSucceeded = true;
+                                    } catch (Throwable t) {
+                                        itemError = t.getMessage() != null ? t.getMessage() : t.getClass().getSimpleName();
+                                    }
+                                }
+                            } catch (Throwable t) {
+                                Logger.printException(() -> "Error exporting item " + "[MEDIA]", t);
+                                itemError = t.getMessage() != null ? t.getMessage() : t.getClass().getSimpleName();
+                            }
+
+                            if (itemSucceeded) {
+                                completedCount.incrementAndGet();
+                            } else {
+                                String key = item.dedupKey != null ? item.dedupKey : (item.filename != null ? item.filename : item.remoteUrl);
+                                int retries = retryCountMap.getOrDefault(key != null ? key : "", 0);
+                                if (!isCancelled[0] && retries < 3 && key != null) {
+                                    retryCountMap.put(key, retries + 1);
+                                    retryQueue.offer(item);
+                                    Logger.printInfo(() -> "Re-queuing failed item (attempt " + (retries + 1) + "/3): " + item.filename);
+                                } else {
+                                    failures.add(new ExportFailure(item, item.filename, itemError != null ? itemError : "Export failed"));
+                                    completedCount.incrementAndGet();
+                                }
+                            }
+                            wp.name = "";
+                            wp.itemBytes.set(0);
+                            wp.paused = false;
+                        }
+                        } finally {
+                            workerMap.remove(threadId);
+                        }
+                    });
+                }
+
+                workerPool.shutdown();
+                try {
+                    workerPool.awaitTermination(6, TimeUnit.HOURS);
+                } catch (InterruptedException ignored) {}
+
                 if (isCancelled[0]) {
-                    for (int j = i; j < items.size(); j++) {
+                    int nextIdx = itemIndex.get();
+                    for (int j = nextIdx; j < items.size(); j++) {
                         StorageScanner.MediaItem skippedItem = items.get(j);
                         failures.add(new ExportFailure(skippedItem, skippedItem.filename, "Export cancelled by user"));
                     }
-                    break;
                 }
-                StorageScanner.MediaItem item = items.get(i);
-                final int currentIdx = i + 1;
-                MAIN_HANDLER.post(() -> {
-                    tvStatus.setText("Exporting " + currentIdx + " of " + items.size() + "\n" + (item.filename != null ? item.filename : "item"));
-                    pBar.setProgress(currentIdx);
-                });
+            } finally {
+                ticker.shutdownNow();
+            }
 
-                String lastError = null;
+            // Persist failures to JSON if any items permanently failed
+            if (!failures.isEmpty()) {
                 try {
-                    String baseName = (item.filename != null && !item.filename.trim().isEmpty())
-                            ? item.filename.trim()
-                            : ("photo_" + item.captureTimestamp + (item.mimeType != null && item.mimeType.contains("video") ? ".mp4" : ".jpg"));
-                    if (!baseName.contains(".")) {
-                        baseName += (item.mimeType != null && item.mimeType.contains("video")) ? ".mp4" : ".jpg";
-                    }
-
-                    baseName = app.morphe.extension.shared.requests.ExportSafety.filename(baseName);
-                    File destFile = File.createTempFile("morphe_export_", ".tmp", activity.getCacheDir());
-                    try {
-                    boolean copied = false;
-                    // 1. Direct file path from remoteUrl
-                    if (item.remoteUrl != null && (item.remoteUrl.startsWith("/") || item.remoteUrl.startsWith("file://"))) {
-                        String localP = item.remoteUrl.startsWith("file://") ? item.remoteUrl.substring(7) : item.remoteUrl;
-                        File localFile = new File(localP);
-                        if (localFile.exists() && localFile.canRead()) {
-                            try {
-                                copyFile(localFile, destFile);
-                                copied = destFile.exists() && destFile.length() > 0;
-                            } catch (Throwable t) {
-                                lastError = "Local copy error: " + t.getMessage();
-                            }
+                    SimpleDateFormat sdf = new SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US);
+                    File jsonFile = new File(exportDir, "export_failures_" + sdf.format(new Date()) + ".json");
+                    org.json.JSONArray arr = new org.json.JSONArray();
+                    for (ExportFailure ef : failures) {
+                        org.json.JSONObject obj = new org.json.JSONObject();
+                        obj.put("filename", ef.filename);
+                        obj.put("reason", ef.reason);
+                        if (ef.item != null) {
+                            obj.put("dedupKey", ef.item.dedupKey != null ? ef.item.dedupKey : "");
+                            obj.put("mediaKey", ef.item.mediaKey != null ? ef.item.mediaKey : "");
+                            obj.put("remoteUrl", ef.item.remoteUrl != null ? ef.item.remoteUrl : "");
+                            obj.put("mimeType", ef.item.mimeType != null ? ef.item.mimeType : "");
+                            obj.put("sizeBytes", ef.item.sizeBytes);
+                            obj.put("captureTimestamp", ef.item.captureTimestamp);
+                            obj.put("duration", ef.item.duration);
                         }
+                        arr.put(obj);
                     }
-
-                    // 2. Query local_media SQLite path via dedupKey
-                    if (!copied && currentAccount != null) {
-                        try {
-                            String localDbPath = StorageScanner.resolveLocalFilePath(currentAccount, item.dedupKey);
-                            if (localDbPath != null) {
-                                if (localDbPath.startsWith("content://")) {
-                                    try (InputStream is = activity.getContentResolver().openInputStream(Uri.parse(localDbPath));
-                                         FileOutputStream fos = new FileOutputStream(destFile)) {
-                                        if (is != null) {
-                                            byte[] buf = new byte[65536];
-                                            int r;
-                                            while ((r = is.read(buf)) != -1) {
-                                                fos.write(buf, 0, r);
-                                            }
-                                            fos.flush();
-                                            copied = destFile.exists() && destFile.length() > 0;
-                                        }
-                                    } catch (Throwable t) {
-                                        lastError = "Content resolver stream error: " + t.getMessage();
-                                    }
-                                } else {
-                                    File lf = new File(localDbPath);
-                                    if (lf.exists() && lf.canRead()) {
-                                        copyFile(lf, destFile);
-                                        copied = destFile.exists() && destFile.length() > 0;
-                                    }
-                                }
-                            }
-                        } catch (Throwable t) {
-                            lastError = "Local DB path resolution error: " + t.getMessage();
-                        }
+                    try (FileOutputStream fos = new FileOutputStream(jsonFile)) {
+                        fos.write(arr.toString(2).getBytes(StandardCharsets.UTF_8));
                     }
-
-                    // 3. Authenticated Google Photos Glide download
-                    if (!copied && item.remoteUrl != null && (item.remoteUrl.startsWith("https:") || item.remoteUrl.startsWith("http:"))
-                            && !TrustedGoogleMedia.isMediaUrl(item.remoteUrl)) {
-                        throw new TrustedGoogleMedia.DownloadException(TrustedGoogleMedia.Reason.UNTRUSTED_HOST, "update the patch if Google changed its media host");
-                    }
-                    if (!copied && TrustedGoogleMedia.isMediaUrl(item.remoteUrl)) {
-                        int accountId = currentAccount != null ? currentAccount.accountId : -1;
-                        try {
-                            File remoteCachedFile = null; // HTTP media uses the checked transport below.
-                            if (remoteCachedFile != null && remoteCachedFile.exists() && remoteCachedFile.length() > 0) {
-                                copyFile(remoteCachedFile, destFile);
-                                copied = destFile.exists() && destFile.length() > 0;
-                            }
-                        } catch (Throwable t) {
-                            lastError = "Glide download error: " + t.getMessage();
-                        }
-
-                        // 3b. Authenticated direct HTTP stream with bearer token
-                        if (!copied) {
-                            boolean isVideo = (item.mimeType != null && item.mimeType.contains("video")) || item.duration > 0;
-                            String dlUrl = item.remoteUrl;
-                            if (dlUrl.contains("=")) {
-                                dlUrl = dlUrl.replaceAll("=.*$", isVideo ? "=dv" : "=d");
-                            } else {
-                                dlUrl = dlUrl + (isVideo ? "=dv" : "=d");
-                            }
-
-                            try {
-                                downloadRemoteFile(dlUrl, destFile, authToken);
-                                copied = destFile.exists() && destFile.length() > 0;
-                            } catch (Throwable t) {
-                                lastError = t.getMessage();
-                                // Try fallback to item.remoteUrl directly without suffix
-                                if (!copied && !dlUrl.equals(item.remoteUrl)) {
-                                    try {
-                                        downloadRemoteFile(item.remoteUrl, destFile, authToken);
-                                        copied = destFile.exists() && destFile.length() > 0;
-                                    } catch (Throwable t2) {
-                                        lastError = t2.getMessage();
-                                    }
-                                }
-                            }
-                        }
-
-                        // 3c. Fallback to cached bitmap from fetchThumbSync as last resort (images only)
-                        if (!copied && item.quotaBytes <= 0 && (item.mimeType == null || !item.mimeType.contains("video")) && item.duration <= 0) {
-                            try {
-                                Bitmap bm = fetchThumbSync(activity, item.remoteUrl, accountId);
-                                if (bm != null) {
-                                    try (FileOutputStream fos = new FileOutputStream(destFile)) {
-                                        bm.compress(Bitmap.CompressFormat.JPEG, 95, fos);
-                                        fos.flush();
-                                        copied = destFile.exists() && destFile.length() > 0;
-                                    }
-                                }
-                            } catch (Throwable t) {
-                                lastError = "Thumbnail fallback error: " + t.getMessage();
-                            }
-                        }
-                    }
-
-                    if (copied) {
-                        // A byte-identical backup would re-link to the quota-using original.
-                        if (item.quotaBytes > 0) {
-                            try {
-                                if (!DedupBreaker.tag(destFile, "morphe-reupload:" + item.dedupKey)) {
-                                    unchangedPaths.add(destFile.getAbsolutePath());
-                                }
-                            } catch (Throwable t) {
-                                unchangedPaths.add(destFile.getAbsolutePath());
-                                Logger.printException(() -> "Could not tag exported quota item " + "[MEDIA]", t);
-                            }
-                        }
-                        exportedPaths.add(app.morphe.extension.shared.requests.MediaExport.publish(activity, destFile, baseName, item.mimeType));
-                        successCount++;
-                    } else {
-                        String err = (lastError != null ? lastError : "Source media not found or inaccessible")
-                                + (item.quotaBytes > 0 ? " (preview fallback is disabled for quota items)" : "");
-                        failures.add(new ExportFailure(item, item.filename, err));
-                        Logger.printInfo(() -> "Export failed for " + "[MEDIA]" + ": " + err);
-                    }
-                    } finally { destFile.delete(); }
+                    Logger.printInfo(() -> "Saved " + failures.size() + " export failures to " + jsonFile.getAbsolutePath());
                 } catch (Throwable t) {
-                    Logger.printException(() -> "Error exporting item " + "[MEDIA]", t);
-                    failures.add(new ExportFailure(item, item.filename, t.getMessage() != null ? t.getMessage() : t.getClass().getSimpleName()));
+                    Logger.printException(() -> "Failed to save export failures JSON", t);
                 }
             }
 
-            final int finalSuccess = successCount;
+            final int finalSuccess = successCount.get();
             if (!exportedPaths.isEmpty()) {
                 String[] pathsArray = exportedPaths.stream().filter(path -> !path.startsWith("content:")).toArray(String[]::new);
-                try {
-                    MediaScannerConnection.scanFile(activity, pathsArray, null, (path, uri) -> {
-                        Logger.printInfo(() -> "Exported & indexed in Pictures: " + path);
-                    });
-                } catch (Throwable t) {
-                    Logger.printException(() -> "Error calling MediaScannerConnection", t);
+                if (pathsArray.length > 0) {
+                    try {
+                        MediaScannerConnection.scanFile(activity, pathsArray, null, (path, uri) -> {
+                            Logger.printInfo(() -> "Exported & indexed in Pictures: " + path);
+                        });
+                    } catch (Throwable t) {
+                        Logger.printException(() -> "Error calling MediaScannerConnection", t);
+                    }
+                }
+            }
+
+            // Safe Offload: Free Cloud Space for verified exported items
+            int trashedCount = 0;
+            if (deleteFromCloudAfter && !itemsToTrash.isEmpty() && !isCancelled[0]) {
+                if (finalNm != null) {
+                    try {
+                        notifBuilder.setContentTitle("Freeing Cloud Storage")
+                                .setContentText("Moving " + itemsToTrash.size() + " item(s) to Cloud Trash...")
+                                .setProgress(0, 0, true);
+                        finalNm.notify(NOTIF_ID, notifBuilder.build());
+                    } catch (Throwable ignored) {}
+                }
+                MAIN_HANDLER.post(() -> {
+                    if (progressDialog.isShowing()) {
+                        tvTitle.setText("Freeing Cloud Storage");
+                        tvStatus.setText("Moving " + itemsToTrash.size() + " items to Cloud Trash...");
+                        pBar.setIndeterminate(true);
+                    }
+                });
+
+                int accountId = currentAccount != null ? currentAccount.accountId : -1;
+                boolean trashSuccess = StorageScanner.executeOnlineTrashTask(activity, accountId, itemsToTrash);
+                if (trashSuccess) {
+                    trashedCount = itemsToTrash.size();
+                }
+                StorageScanner.executeDatabaseAction(activity, currentAccount, "toTrash", itemsToTrash, null);
+            }
+
+            final int finalTrashedCount = trashedCount;
+
+            // Update or cancel notification
+            if (finalNm != null) {
+                if (isCancelled[0]) {
+                    try { finalNm.cancel(NOTIF_ID); } catch (Throwable ignored) {}
+                } else {
+                    try {
+                        String title = deleteFromCloudAfter
+                                ? (failures.isEmpty() ? "Safe Offload Complete" : "Safe Offload Finished with Errors")
+                                : (failures.isEmpty() ? "Export Complete" : "Export Completed with Errors");
+                        String desc = deleteFromCloudAfter
+                                ? (finalSuccess + " exported, " + finalTrashedCount + " freed in cloud" + (failures.isEmpty() ? "" : ", " + failures.size() + " failed"))
+                                : (finalSuccess + " exported" + (failures.isEmpty() ? "" : ", " + failures.size() + " failed"));
+                        notifBuilder.setOngoing(false)
+                                .setContentTitle(title)
+                                .setContentText(desc)
+                                .setSmallIcon(android.R.drawable.stat_sys_download_done)
+                                .setProgress(0, 0, false);
+                        finalNm.notify(NOTIF_ID, notifBuilder.build());
+                    } catch (Throwable ignored) {}
                 }
             }
 
             MAIN_HANDLER.post(() -> {
-                if (progressDialog.isShowing()) progressDialog.dismiss();
-                if (failures.isEmpty() && unchangedPaths.isEmpty()) {
-                    String msg = "Exported " + finalSuccess + " item(s) to Pictures/GooglePhotos_Export";
-                    Toast.makeText(activity, msg, Toast.LENGTH_LONG).show();
-                } else {
-                    showExportResultsDialog(activity, finalSuccess, unchangedPaths.size(), failures, density, theme);
+                if (progressDialog.isShowing()) {
+                    try { progressDialog.dismiss(); } catch (Throwable ignored) {}
+                }
+                if (!activity.isFinishing() && !activity.isDestroyed()) {
+                    if (failures.isEmpty() && unchangedPaths.isEmpty()) {
+                        String msg = deleteFromCloudAfter
+                                ? "Safe Offload complete: Exported " + finalSuccess + " item(s) & freed cloud storage."
+                                : "Exported " + finalSuccess + " item(s) to Pictures/GooglePhotos_Export";
+                        Toast.makeText(activity, msg, Toast.LENGTH_LONG).show();
+                    } else {
+                        showExportResultsDialog(activity, finalSuccess, unchangedPaths.size(), failures, density, theme);
+                    }
                 }
             });
+            } finally {
+                if (wakeLock != null && wakeLock.isHeld()) {
+                    try { wakeLock.release(); } catch (Throwable ignored) {}
+                }
+                if (wifiLock != null && wifiLock.isHeld()) {
+                    try { wifiLock.release(); } catch (Throwable ignored) {}
+                }
+                try {
+                    activity.unregisterReceiver(cancelReceiver);
+                } catch (Throwable ignored) {}
+                MAIN_HANDLER.post(() -> {
+                    try { activity.getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON); } catch (Throwable ignored) {}
+                });
+            }
         });
     }
 

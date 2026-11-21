@@ -521,6 +521,12 @@ public class StorageScanner {
                     try { db.close(); } catch (Throwable ignored) {}
                 }
             }
+            try {
+                Context appCtx = app.morphe.extension.shared.Utils.getContextOrNull();
+                if (appCtx != null) {
+                    syncPendingLocalTrash(appCtx, account.accountId);
+                }
+            } catch (Throwable ignored) {}
         }, "morphe-archive-consistency").start();
     }
 
@@ -2562,18 +2568,17 @@ public class StorageScanner {
                 if (!hasTable(db, "remote_media")) return;
 
                 List<MediaItem> pendingItems = new ArrayList<>();
+                Set<String> seenDedupKeys = new HashSet<>();
                 String remoteKeyExpr = hasColumn(db, "remote_media", "remote_media_key") ? "COALESCE(NULLIF(remote_media_key, ''), media_key) AS media_key" : "media_key";
-                String sql = "SELECT DISTINCT r.dedup_key, r.media_key, r.filename, r.size_bytes FROM (" +
-                        "SELECT dedup_key, " + remoteKeyExpr + ", filename, size_bytes FROM remote_media WHERE (state = 2 OR (trash_timestamp IS NOT NULL AND trash_timestamp > 0)) AND (is_archived IS NULL OR is_archived = 0) " +
-                        (hasTable(db, "media") ? "UNION SELECT dedup_key, '' AS media_key, '' as filename, 0 as size_bytes FROM media WHERE (is_deleted = 1 OR (trash_timestamp IS NOT NULL AND trash_timestamp > 0)) AND (is_archived IS NULL OR is_archived = 0)" : "") +
-                        ") r LIMIT 500";
+                String sql = "SELECT dedup_key, " + remoteKeyExpr + ", filename, size_bytes FROM remote_media WHERE (state = 2 OR (trash_timestamp IS NOT NULL AND trash_timestamp > 0)) AND (is_archived IS NULL OR is_archived = 0) " +
+                        (hasTable(db, "media") ? "UNION SELECT dedup_key, '' AS media_key, '' as filename, 0 as size_bytes FROM media WHERE (is_deleted = 1 OR (trash_timestamp IS NOT NULL AND trash_timestamp > 0)) AND (is_archived IS NULL OR is_archived = 0) AND dedup_key NOT IN (SELECT dedup_key FROM remote_media)" : "");
                 try (Cursor c = db.rawQuery(sql, null)) {
                     while (c != null && c.moveToNext()) {
                         String dKey = c.getString(0);
                         String mKey = c.getString(1);
                         String fname = c.getString(2);
                         long sz = c.getLong(3);
-                        if (dKey != null && !dKey.isEmpty()) {
+                        if (dKey != null && !dKey.isEmpty() && seenDedupKeys.add(dKey)) {
                             pendingItems.add(new MediaItem(dKey, mKey, fname, sz, 0, 0, "", 1, 0, 0, 0, false, false, false, "", 0, 0, ""));
                         }
                     }
@@ -2581,7 +2586,11 @@ public class StorageScanner {
 
                 if (!pendingItems.isEmpty()) {
                     Logger.printInfo(() -> "syncPendingLocalTrash: Found " + pendingItems.size() + " locally trashed items pending cloud sync. Syncing...");
-                    executeOnlineTrashTask(context, accountId, pendingItems);
+                    boolean dispatched = executeOnlineTrashTask(context, accountId, pendingItems);
+                    if (dispatched) {
+                        triggerOnlineSync(context, accountId);
+                        notifyUiChanges(context, accountId);
+                    }
                 }
             } catch (Throwable t) {
                 Logger.printException(() -> "Error in syncPendingLocalTrash", t);
@@ -2593,7 +2602,7 @@ public class StorageScanner {
         }).start();
     }
 
-    private static boolean executeOnlineTrashTask(Context context, int accountId, List<MediaItem> items) {
+    public static boolean executeOnlineTrashTask(Context context, int accountId, List<MediaItem> items) {
         if (context == null || items == null || items.isEmpty()) return false;
         SafeLog.i("morphe: StorageScanner", "executeOnlineTrashTask: starting for " + items.size() + " items");
 
@@ -2664,48 +2673,107 @@ public class StorageScanner {
 
                     if (!chunkMediaKeys.isEmpty() || !chunkDedupKeys.isEmpty()) {
                         Class<?> bjirClass = null;
+                        Method rMethod = null;
                         for (String cand : ToolkitMappings.MOVE_TO_TRASH_ACTION_CLASSES) {
-                            bjirClass = ReflectionCache.findClassOrNull(cand);
+                            Class<?> c = ReflectionCache.findClassOrNull(cand);
+                            if (c != null) {
+                                for (Method m : c.getMethods()) {
+                                    if (m.getName().equals("r") && java.lang.reflect.Modifier.isStatic(m.getModifiers()) && m.getParameterTypes().length == 6) {
+                                        bjirClass = c;
+                                        rMethod = m;
+                                        break;
+                                    }
+                                }
+                            }
                             if (bjirClass != null) break;
                         }
-                        if (bjirClass == null) {
-                            throw new ClassNotFoundException("MoveToTrashAction class not found");
+                        if (bjirClass == null || rMethod == null) {
+                            throw new ClassNotFoundException("MoveToTrashAction class with method r not found");
                         }
-                        Class<?> cjizClass = Class.forName("cjiz");
-                        Class<?> romClass = Class.forName("rom");
-                        Method romMethod = romClass.getMethod("b", Context.class);
-                        Object cjizSource = romMethod.invoke(null, context);
+
+                        Class<?> sourceClass = rMethod.getParameterTypes()[5];
+                        Object cjizSource = null;
+                        for (String helperName : new String[]{"udm", "ttk", "trf", "two", "rom", "tpk", "trn"}) {
+                            Class<?> helper = ReflectionCache.findClassOrNull(helperName);
+                            if (helper != null) {
+                                for (Method m : helper.getMethods()) {
+                                    if (java.lang.reflect.Modifier.isStatic(m.getModifiers()) && m.getParameterTypes().length == 1 &&
+                                        Context.class.isAssignableFrom(m.getParameterTypes()[0]) &&
+                                        m.getReturnType().equals(sourceClass)) {
+                                        cjizSource = m.invoke(null, context);
+                                        break;
+                                    }
+                                }
+                            }
+                            if (cjizSource != null) break;
+                        }
 
                         Collection<?> ahnrCol = null;
                         Collection<String> keyStrings = !chunkMediaKeys.isEmpty() ? chunkMediaKeys : chunkDedupKeys;
-                        try {
-                            Class<?> ahnsClass = Class.forName("ahns");
-                            Method aColMethod = ahnsClass.getMethod("a", Collection.class);
-                            ahnrCol = (Collection<?>) aColMethod.invoke(null, keyStrings);
-                        } catch (Throwable ignored) {}
+                        for (String ahnsName : new String[]{"ahns", "ahns_placeholder"}) {
+                            Class<?> ahnsClass = ReflectionCache.findClassOrNull(ahnsName);
+                            if (ahnsClass != null) {
+                                try {
+                                    Method aColMethod = ahnsClass.getMethod("a", Collection.class);
+                                    ahnrCol = (Collection<?>) aColMethod.invoke(null, keyStrings);
+                                    break;
+                                } catch (Throwable ignored) {}
+                            }
+                        }
 
                         Collection<?> col1 = ahnrCol != null ? ahnrCol : Collections.emptyList();
                         Collection<String> col2 = chunkMediaKeys; // Remote media keys for PhotosDeleteItemsRequest!
                         Collection<String> col3 = chunkDedupKeys; // Dedup keys for local tombstone!
                         Collection<?> col4 = ahnrCol != null ? ahnrCol : Collections.emptyList();
 
-                        Method rMethod = bjirClass.getMethod("r", int.class, Collection.class, Collection.class, Collection.class, Collection.class, cjizClass);
                         Object bjirAction = rMethod.invoke(null, accountId, col1, col2, col3, col4, cjizSource);
 
+                        // 1. Try ActionWrapper execution (official ActionQueue mechanism in Google Photos)
                         try {
-                            Method aMethod = bjirClass.getMethod("a", Context.class);
-                            aMethod.invoke(bjirAction, context);
-                        } catch (Throwable ignored) {}
+                            Class<?> actionWrapperClass = Class.forName("com.google.android.apps.photos.actionqueue.ActionWrapper");
+                            for (Constructor<?> ctor : actionWrapperClass.getConstructors()) {
+                                Class<?>[] pts = ctor.getParameterTypes();
+                                if (pts.length == 2 && pts[0] == int.class && pts[1].isAssignableFrom(bjirAction.getClass())) {
+                                    Object wrapper = ctor.newInstance(accountId, bjirAction);
+                                    try {
+                                        actionWrapperClass.getMethod("c").invoke(wrapper);
+                                    } catch (Throwable ignored) {}
+                                    Object res = runTaskSync(context, wrapper);
+                                    if (res != null) {
+                                        int status = getTaskStatusCode(res);
+                                        if (status == 200) {
+                                            chunkSuccess = true;
+                                            SafeLog.i("morphe: StorageScanner", "ActionWrapper online trash succeeded for chunk " + chunkIndex);
+                                        }
+                                    }
+                                    break;
+                                }
+                            }
+                        } catch (Throwable tWrap) {
+                            SafeLog.w("morphe: StorageScanner", "ActionWrapper failed for chunk " + chunkIndex, tWrap);
+                        }
 
-                        Method dMethod = bjirClass.getMethod("d", Context.class, int.class);
-                        Object ltvRes = dMethod.invoke(bjirAction, context, 0);
-                        if (ltvRes != null && ltvRes.toString().contains("SUCCESS")) {
-                            chunkSuccess = true;
-                            SafeLog.i("morphe: StorageScanner", "bjir.d direct RPC succeeded for chunk " + chunkIndex);
+                        // 2. Fallback to direct RPC execution
+                        if (!chunkSuccess) {
+                            try {
+                                Method aMethod = bjirAction.getClass().getMethod("a", Context.class);
+                                aMethod.invoke(bjirAction, context);
+                            } catch (Throwable ignored) {}
+
+                            try {
+                                Method dMethod = bjirAction.getClass().getMethod("d", Context.class, int.class);
+                                Object ltvRes = dMethod.invoke(bjirAction, context, 0);
+                                if (ltvRes != null && ltvRes.toString().contains("SUCCESS")) {
+                                    chunkSuccess = true;
+                                    SafeLog.i("morphe: StorageScanner", "direct RPC d() succeeded for chunk " + chunkIndex);
+                                }
+                            } catch (Throwable tDirect) {
+                                SafeLog.w("morphe: StorageScanner", "direct RPC d() failed for chunk " + chunkIndex, tDirect);
+                            }
                         }
                     }
                 } catch (Throwable tBjir) {
-                    SafeLog.w("morphe: StorageScanner", "bjir fallback failed for chunk " + chunkIndex, tBjir);
+                    SafeLog.w("morphe: StorageScanner", "MoveToTrash Action fallback failed for chunk " + chunkIndex, tBjir);
                 }
             }
 
@@ -4309,6 +4377,31 @@ public class StorageScanner {
             } catch (Throwable ignored) {}
         }
 
+        // Pattern 3: Unix epoch timestamp in milliseconds (13 digits: 15xxxxxxxxxxx to 18xxxxxxxxxxx)
+        Pattern p3 = Pattern.compile(".*?(1[5-8]\\d{11})(?:\\D.*)?$");
+        Matcher m3 = p3.matcher(baseName);
+        if (m3.matches()) {
+            try {
+                long epochMillis = Long.parseLong(m3.group(1));
+                if (epochMillis > 946684800000L && epochMillis < 2524608000000L) { // Year 2000 to 2050
+                    return epochMillis;
+                }
+            } catch (Throwable ignored) {}
+        }
+
+        // Pattern 4: Unix epoch timestamp in seconds (10 digits: 1500000000 to 1899999999)
+        Pattern p4 = Pattern.compile(".*?(1[5-8]\\d{8})(?:\\D.*)?$");
+        Matcher m4 = p4.matcher(baseName);
+        if (m4.matches()) {
+            try {
+                long epochSec = Long.parseLong(m4.group(1));
+                long epochMillis = epochSec * 1000L;
+                if (epochMillis > 946684800000L && epochMillis < 2524608000000L) {
+                    return epochMillis;
+                }
+            } catch (Throwable ignored) {}
+        }
+
         return null;
     }
 
@@ -4379,9 +4472,11 @@ public class StorageScanner {
                 // 2. Local database update
                 if (db != null) {
                     try {
+                        long tzOffset = java.util.TimeZone.getDefault().getOffset(newUtc);
                         ContentValues cv = new ContentValues();
                         cv.put("capture_timestamp", newUtc);
                         cv.put("utc_timestamp", newUtc);
+                        cv.put("timezone_offset", tzOffset);
                         db.update("remote_media", cv, "dedup_key = ?", new String[]{item.dedupKey});
                         if (hasTable(db, "media")) db.update("media", cv, "dedup_key = ?", new String[]{item.dedupKey});
                         if (hasTable(db, "local_media")) db.update("local_media", cv, "dedup_key = ?", new String[]{item.dedupKey});
@@ -4497,6 +4592,10 @@ public class StorageScanner {
                     cr.notifyChange(Uri.parse("content://" + auth + "/collections"), null);
                 } catch (Throwable ignored) {}
             }
+        } catch (Throwable ignored) {}
+
+        try {
+            app.morphe.extension.shared.patches.PhotosTimelineFilter.clearGridCache(context);
         } catch (Throwable ignored) {}
     }
 
@@ -5093,36 +5192,43 @@ public class StorageScanner {
     }
 
     public static String exportToCsv(List<MediaItem> items, boolean full) {
-        StringBuilder sb = new StringBuilder();
-        sb.append(full ? "mediaKey,dedupKey,fileName,takenAt,width,height,durationMs,sizeBytes,takesUpSpace,spaceTakenBytes,isArchived,isFavorite,latitude,longitude,caption,thumbnailUrl\n" : "fileName,takenAt,width,height,durationMs,sizeBytes,isArchived,isFavorite\n");
-        SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", Locale.US);
+        java.io.StringWriter sw = new java.io.StringWriter();
+        try {
+            exportToCsv(items, full, sw);
+        } catch (java.io.IOException ignored) {}
+        return sw.toString();
+    }
 
+    public static void exportToCsv(List<MediaItem> items, boolean full, java.io.Writer writer) throws java.io.IOException {
+        writer.write(full ? "mediaKey,dedupKey,fileName,takenAt,width,height,durationMs,sizeBytes,takesUpSpace,spaceTakenBytes,isArchived,isFavorite,latitude,longitude,caption,thumbnailUrl\n" : "fileName,takenAt,width,height,durationMs,sizeBytes,isArchived,isFavorite\n");
+        SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", Locale.US);
         sdf.setTimeZone(java.util.TimeZone.getTimeZone("UTC"));
+
         for (MediaItem item : items) {
             if (!full) {
-                sb.append(escapeCsv(item.filename)).append(",").append(item.captureTimestamp > 0 ? sdf.format(new Date(item.captureTimestamp)) : "").append(",")
-                    .append(item.width).append(",").append(item.height).append(",").append(item.duration).append(",").append(item.sizeBytes).append(",")
-                    .append(item.isArchived).append(",").append(item.isFavorite).append("\n");
+                writer.write(escapeCsv(item.filename) + "," + (item.captureTimestamp > 0 ? sdf.format(new Date(item.captureTimestamp)) : "") + ","
+                    + item.width + "," + item.height + "," + item.duration + "," + item.sizeBytes + ","
+                    + item.isArchived + "," + item.isFavorite + "\n");
                 continue;
             }
-            sb.append(escapeCsv(item.mediaKey)).append(",");
-            sb.append(escapeCsv(item.dedupKey)).append(",");
-            sb.append(escapeCsv(item.filename)).append(",");
-            sb.append(item.captureTimestamp > 0 ? sdf.format(new Date(item.captureTimestamp)) : "").append(",");
-            sb.append(item.width).append(",");
-            sb.append(item.height).append(",");
-            sb.append(item.duration).append(",");
-            sb.append(item.sizeBytes).append(",");
-            sb.append(item.quotaBytes > 0 ? "true" : "false").append(",");
-            sb.append(item.quotaBytes).append(",");
-            sb.append(item.isArchived).append(",");
-            sb.append(item.isFavorite).append(",");
-            sb.append(item.latitude).append(",");
-            sb.append(item.longitude).append(",");
-            sb.append(escapeCsv(item.caption)).append(",");
-            sb.append(escapeCsv(item.remoteUrl)).append("\n");
+            writer.write(escapeCsv(item.mediaKey) + ",");
+            writer.write(escapeCsv(item.dedupKey) + ",");
+            writer.write(escapeCsv(item.filename) + ",");
+            writer.write((item.captureTimestamp > 0 ? sdf.format(new Date(item.captureTimestamp)) : "") + ",");
+            writer.write(item.width + ",");
+            writer.write(item.height + ",");
+            writer.write(item.duration + ",");
+            writer.write(item.sizeBytes + ",");
+            writer.write((item.quotaBytes > 0 ? "true" : "false") + ",");
+            writer.write(item.quotaBytes + ",");
+            writer.write(item.isArchived + ",");
+            writer.write(item.isFavorite + ",");
+            writer.write(item.latitude + ",");
+            writer.write(item.longitude + ",");
+            writer.write(escapeCsv(item.caption) + ",");
+            writer.write(escapeCsv(item.remoteUrl) + "\n");
         }
-        return sb.toString();
+        writer.flush();
     }
 
     private static String escapeCsv(String val) {

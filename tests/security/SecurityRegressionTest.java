@@ -120,6 +120,40 @@ public final class SecurityRegressionTest {
         before = opened.size();
         TrustedGoogleMedia.open("https://lh3.googleusercontent.com/redirect", "test-secret").disconnect();
         check(opened.get(before + 1).getRequestProperty("Authorization") == null, "Token forwarded across hosts");
+
+        // Media MIME resolution & video detection checks (Issue #92)
+        for (String issueFile : new String[]{
+                "IMG_1516-CINEMATIC.mp4",
+                "IMG20250901112820-CINEMATIC.mp4",
+                "IMG_20250901_204527-CINEMATIC.mp4",
+                "IMG_0245-CINEMATIC.mp4"}) {
+            check("video/mp4".equals(app.morphe.extension.shared.requests.ExportSafety.resolveMimeType(issueFile, null)), "Cinematic null MIME resolution: " + issueFile);
+            check("video/mp4".equals(app.morphe.extension.shared.requests.ExportSafety.resolveMimeType(issueFile, "")), "Cinematic empty MIME resolution: " + issueFile);
+            check("video/mp4".equals(app.morphe.extension.shared.requests.ExportSafety.resolveMimeType(issueFile, "image/jpeg")), "Cinematic conflicting MIME resolution: " + issueFile);
+            check(app.morphe.extension.shared.requests.ExportSafety.isVideo(issueFile, null, 0), "Cinematic isVideo check: " + issueFile);
+            check(app.morphe.extension.shared.requests.ExportSafety.isVideo(issueFile, "image/jpeg", 0), "Cinematic isVideo with image MIME: " + issueFile);
+        }
+
+        for (String issueMov : new String[]{"IMG_0311.MOV", "IMG_0309.MOV"}) {
+            check("video/quicktime".equals(app.morphe.extension.shared.requests.ExportSafety.resolveMimeType(issueMov, null)), "MOV null MIME resolution: " + issueMov);
+            check("video/quicktime".equals(app.morphe.extension.shared.requests.ExportSafety.resolveMimeType(issueMov, "")), "MOV empty MIME resolution: " + issueMov);
+            check("video/quicktime".equals(app.morphe.extension.shared.requests.ExportSafety.resolveMimeType(issueMov, "image/jpeg")), "MOV conflicting MIME resolution: " + issueMov);
+            check(app.morphe.extension.shared.requests.ExportSafety.isVideo(issueMov, null, 0), "MOV isVideo check: " + issueMov);
+        }
+
+        check("image/jpeg".equals(app.morphe.extension.shared.requests.ExportSafety.resolveMimeType("photo.jpg", null)), "JPEG null MIME resolution");
+        check("image/jpeg".equals(app.morphe.extension.shared.requests.ExportSafety.resolveMimeType("photo.jpg", "video/mp4")), "JPEG conflicting MIME resolution");
+        check(!app.morphe.extension.shared.requests.ExportSafety.isVideo("photo.jpg", null, 0), "JPEG isVideo false check");
+        check(app.morphe.extension.shared.requests.ExportSafety.isVideo("photo.jpg", null, 5000), "Duration makes isVideo true");
+        check("image/png".equals(app.morphe.extension.shared.requests.ExportSafety.resolveMimeType("sample.png", null)), "PNG MIME resolution");
+        check("image/heic".equals(app.morphe.extension.shared.requests.ExportSafety.resolveMimeType("sample.heic", null)), "HEIC MIME resolution");
+        check("image/webp".equals(app.morphe.extension.shared.requests.ExportSafety.resolveMimeType("sample.webp", null)), "WEBP MIME resolution");
+        check("video/webm".equals(app.morphe.extension.shared.requests.ExportSafety.resolveMimeType("sample.webm", null)), "WEBM MIME resolution");
+        check("video/x-matroska".equals(app.morphe.extension.shared.requests.ExportSafety.resolveMimeType("sample.mkv", null)), "MKV MIME resolution");
+        check("video/3gpp".equals(app.morphe.extension.shared.requests.ExportSafety.resolveMimeType("sample.3gp", null)), "3GP MIME resolution");
+        check("image/jpeg".equals(app.morphe.extension.shared.requests.ExportSafety.resolveMimeType("no_extension", null)), "Indeterminate default to image/jpeg");
+        check("video/mp4".equals(app.morphe.extension.shared.requests.ExportSafety.resolveMimeType("no_extension", "video/mp4")), "Indeterminate fallback to video");
+
         System.out.println("Passed " + checks + " security checks (no network).");
     }
 }

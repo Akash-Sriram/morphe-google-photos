@@ -2191,6 +2191,19 @@ public class LocalCreationDownloader {
         return null;
     }
 
+    public static void invalidateAuthToken(Context context, String token) {
+        if (token == null || token.isEmpty()) return;
+        if (context == null) context = sAppContext != null ? sAppContext : getApplicationContext();
+        if (context == null) return;
+        try {
+            AccountManager am = AccountManager.get(context);
+            if (am != null) {
+                am.invalidateAuthToken("com.google", token);
+                am.invalidateAuthToken("app.revanced", token);
+            }
+        } catch (Throwable ignored) {}
+    }
+
     private static InputStream openMediaStream(ContentResolver resolver, Uri uri) throws Exception {
         return openMediaStream(sAppContext != null ? sAppContext : getApplicationContext(), resolver, uri);
     }

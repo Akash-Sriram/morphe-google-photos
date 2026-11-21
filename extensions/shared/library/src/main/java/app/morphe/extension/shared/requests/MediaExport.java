@@ -13,21 +13,37 @@ import android.system.OsConstants;
 /** Publishes complete cache files without exposing partial downloads or overwriting files. */
 public final class MediaExport {
     private MediaExport() {}
+    @FunctionalInterface
+    public interface StreamWriter {
+        void writeTo(OutputStream out) throws Exception;
+    }
+
     public static String publish(Context context, File source, String name, String mime) throws Exception {
+        return publishStream(context, name, mime, out -> {
+            try (InputStream in = new FileInputStream(source)) {
+                copy(in, out);
+            }
+        });
+    }
+
+    public static String publishStream(Context context, String name, String mime, StreamWriter writer) throws Exception {
         name = ExportSafety.filename(name);
+        String resolvedMime = ExportSafety.resolveMimeType(name, mime);
+        boolean isVideo = resolvedMime.startsWith("video/");
         if (Build.VERSION.SDK_INT >= 29) {
             ContentValues values = new ContentValues();
             values.put(MediaStore.MediaColumns.DISPLAY_NAME, name);
-            values.put(MediaStore.MediaColumns.MIME_TYPE, mime == null ? "image/jpeg" : mime);
+            values.put(MediaStore.MediaColumns.MIME_TYPE, resolvedMime);
             values.put(MediaStore.MediaColumns.RELATIVE_PATH, "Pictures/GooglePhotos_Export");
             values.put(MediaStore.MediaColumns.IS_PENDING, 1);
-            Uri collection = mime != null && mime.startsWith("video/") ? MediaStore.Video.Media.EXTERNAL_CONTENT_URI : MediaStore.Images.Media.EXTERNAL_CONTENT_URI;
+            Uri collection = isVideo ? MediaStore.Video.Media.EXTERNAL_CONTENT_URI : MediaStore.Images.Media.EXTERNAL_CONTENT_URI;
             Uri uri = context.getContentResolver().insert(collection, values);
             if (uri == null) throw new IOException("EXPORT_CREATE_FAILED");
             try {
-                try (InputStream in = new FileInputStream(source); OutputStream out = context.getContentResolver().openOutputStream(uri)) {
+                try (OutputStream out = context.getContentResolver().openOutputStream(uri)) {
                     if (out == null) throw new IOException("EXPORT_WRITE_FAILED");
-                    copy(in, out);
+                    writer.writeTo(out);
+                    out.flush();
                 }
                 values.clear();
                 values.put(MediaStore.MediaColumns.IS_PENDING, 0);
@@ -44,8 +60,10 @@ public final class MediaExport {
             java.io.FileDescriptor fd;
             try { fd = Os.open(target.getPath(), OsConstants.O_WRONLY | OsConstants.O_CREAT | OsConstants.O_EXCL | OsConstants.O_NOFOLLOW, 0600); }
             catch (android.system.ErrnoException e) { if (e.errno == OsConstants.EEXIST) continue; throw e; }
-            try (InputStream in = new FileInputStream(source); OutputStream out = new FileOutputStream(fd)) { copy(in, out); }
-            catch (Exception e) { target.delete(); throw e; }
+            try (OutputStream out = new FileOutputStream(fd)) {
+                writer.writeTo(out);
+                out.flush();
+            } catch (Exception e) { target.delete(); throw e; }
             return target.getPath();
         }
         throw new IOException("EXPORT_NAME_EXHAUSTED");
