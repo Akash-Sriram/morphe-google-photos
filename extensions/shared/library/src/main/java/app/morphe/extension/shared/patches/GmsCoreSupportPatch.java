@@ -49,6 +49,10 @@ public class GmsCoreSupportPatch {
     private static final String GOOGLE_PHOTOS_PACKAGE_NAME = "com.google.android.apps.photos";
     private static final String OFFICIAL_PHOTOS_CERT_SHA1 = "24bb24c05e47e0aefa68a58a766179d9b613a600";
     private static final String OFFICIAL_PHOTOS_CERT_SHA1_UPPER = "24BB24C05E47E0AEFA68A58A766179D9B613A600";
+
+    public static String getEffectivePackageSignature() {
+        return OFFICIAL_PHOTOS_CERT_SHA1;
+    }
     private static final String GMS_CORE_PACKAGE_NAME
             = getGmsCoreVendorGroupId() + ".android.gms";
     private static final Uri GMS_CORE_PROVIDER
@@ -70,6 +74,11 @@ public class GmsCoreSupportPatch {
 
     private static String getOriginalPackageName() {
        return null; // Modified during patching.
+    }
+
+    public static String getEffectiveOriginalPackageName() {
+        String original = getOriginalPackageName();
+        return original != null ? original : GOOGLE_PHOTOS_PACKAGE_NAME;
     }
 
     /**
@@ -107,8 +116,9 @@ public class GmsCoreSupportPatch {
         if (keyStr != null) {
             String lower = keyStr.toLowerCase(Locale.ROOT);
             if (lower.contains("x-android-package")) {
-                Logger.printInfo(() -> "Spoofing X-Android-Package header from [" + value + "] to [" + GOOGLE_PHOTOS_PACKAGE_NAME + "]");
-                return GOOGLE_PHOTOS_PACKAGE_NAME;
+                String targetPkg = getEffectiveOriginalPackageName();
+                Logger.printInfo(() -> "Spoofing X-Android-Package header from [" + value + "] to [" + targetPkg + "]");
+                return targetPkg;
             }
             if (lower.contains("x-android-cert")) {
                 String spoofedCert = (value != null && value.matches(".*[A-F].*"))
@@ -135,11 +145,13 @@ public class GmsCoreSupportPatch {
      * Spoofs the package name sent in GNP / Chime registration and Target protobufs.
      */
     public static String spoofPackageName(String packageName) {
-        if (packageName != null && !packageName.equals(GOOGLE_PHOTOS_PACKAGE_NAME)) {
+        String targetPkg = getEffectiveOriginalPackageName();
+        if (packageName != null && !packageName.equals(targetPkg)) {
             String original = getOriginalPackageName();
-            if (packageName.contains("morphe") || packageName.contains("photos") || (original != null && packageName.equals(original))) {
-                Logger.printInfo(() -> "GmsCoreSupportPatch: Spoofing registration package name from [" + packageName + "] to [" + GOOGLE_PHOTOS_PACKAGE_NAME + "]");
-                return GOOGLE_PHOTOS_PACKAGE_NAME;
+            if (packageName.contains("morphe") || (original != null && packageName.equals(original)) ||
+                (Utils.getContext() != null && packageName.equals(Utils.getContext().getPackageName()))) {
+                Logger.printInfo(() -> "GmsCoreSupportPatch: Spoofing registration package name from [" + packageName + "] to [" + targetPkg + "]");
+                return targetPkg;
             }
         }
         return packageName;
@@ -165,14 +177,15 @@ public class GmsCoreSupportPatch {
                 byte[] body = (byte[]) bodyField.get(requestObj);
 
                 if (body != null) {
+                    String targetPkg = getEffectiveOriginalPackageName();
                     byte[] oldPkg = "app.morphe.android.apps.photos".getBytes(java.nio.charset.StandardCharsets.UTF_8);
-                    byte[] newPkg = GOOGLE_PHOTOS_PACKAGE_NAME.getBytes(java.nio.charset.StandardCharsets.UTF_8);
+                    byte[] newPkg = targetPkg.getBytes(java.nio.charset.StandardCharsets.UTF_8);
                     byte[] patched = replaceBytesInPayload(body, oldPkg, newPkg);
 
                     Context ctx = Utils.getContext();
                     if (ctx != null) {
                         String currentPkg = ctx.getPackageName();
-                        if (currentPkg != null && !currentPkg.equals(GOOGLE_PHOTOS_PACKAGE_NAME) && !currentPkg.equals("app.morphe.android.apps.photos")) {
+                        if (currentPkg != null && !currentPkg.equals(targetPkg) && !currentPkg.equals("app.morphe.android.apps.photos")) {
                             patched = replaceBytesInPayload(patched, currentPkg.getBytes(java.nio.charset.StandardCharsets.UTF_8), newPkg);
                         }
                     }
@@ -180,7 +193,7 @@ public class GmsCoreSupportPatch {
                     if (patched != body) {
                         bodyField.set(requestObj, patched);
                         body = patched;
-                        Logger.printInfo(() -> "GmsCoreSupportPatch: Sanitized GNP payload body package name to [" + GOOGLE_PHOTOS_PACKAGE_NAME + "]");
+                        Logger.printInfo(() -> "GmsCoreSupportPatch: Sanitized GNP payload body package name to [" + targetPkg + "]");
                     }
                 }
 
