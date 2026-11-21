@@ -720,6 +720,74 @@ val gmsCoreSupportPatch = gmsCoreSupportPatch(
                 }
             }
         }
+
+        // 16) GNP & Cronet HTTP Response Logging: Hook GnpHttpResponse and UrlRequest$Callback
+        classDefForEach { classDef ->
+            val mutableClass by lazy { mutableClassDefBy(classDef) }
+
+            // Hook GnpHttpResponse constructor to log the response object
+            val hasGnpHttpResponse = classDef.methods.any { m ->
+                m.name == "toString" && m.implementation?.instructions?.any { inst ->
+                    ((inst as? ReferenceInstruction)?.reference as? StringReference)?.string?.contains("GnpHttpResponse{statusCode=") == true
+                } == true
+            }
+            if (hasGnpHttpResponse) {
+                classDef.methods.firstOrNull { it.name == "<init>" && it.parameterTypes.size == 6 && it.parameterTypes[0] == "Ljava/lang/Integer;" }?.let { initMethod ->
+                    val implementation = initMethod.implementation
+                    if (implementation != null) {
+                        val returnIdx = implementation.instructions.indexOfLast { it.opcode == Opcode.RETURN_VOID }
+                        if (returnIdx != -1) {
+                            val thisReg = implementation.registerCount - initMethod.parameters.size - 1
+                            val invokeSmali = if (thisReg < 16) {
+                                "invoke-static {v$thisReg}, Lapp/morphe/extension/shared/patches/GmsCoreSupportPatch;->onGnpResponseObject(Ljava/lang/Object;)V"
+                            } else {
+                                "invoke-static/range {v$thisReg .. v$thisReg}, Lapp/morphe/extension/shared/patches/GmsCoreSupportPatch;->onGnpResponseObject(Ljava/lang/Object;)V"
+                            }
+                            mutableClass.findMutableMethodOf(initMethod).addInstructions(returnIdx, invokeSmali)
+                        }
+                    }
+                }
+            }
+
+            // Hook UrlRequest$Callback methods for Cronet network-level responses
+            if (classDef.superclass == "Lorg/chromium/net/UrlRequest\$Callback;") {
+                classDef.methods.forEach { method ->
+                    val implementation = method.implementation ?: return@forEach
+                    val mutableMethod by lazy { mutableClass.findMutableMethodOf(method) }
+                    val rCount = implementation.registerCount
+                    when (method.name) {
+                        "onResponseStarted" -> {
+                            val infoReg = rCount - 1
+                            val invokeSmali = if (infoReg < 16) {
+                                "invoke-static {v$infoReg}, Lapp/morphe/extension/shared/patches/GmsCoreSupportPatch;->onCronetResponseStarted(Ljava/lang/Object;)V"
+                            } else {
+                                "invoke-static/range {v$infoReg .. v$infoReg}, Lapp/morphe/extension/shared/patches/GmsCoreSupportPatch;->onCronetResponseStarted(Ljava/lang/Object;)V"
+                            }
+                            mutableMethod.addInstructions(0, invokeSmali)
+                        }
+                        "onSucceeded" -> {
+                            val infoReg = rCount - 1
+                            val invokeSmali = if (infoReg < 16) {
+                                "invoke-static {v$infoReg}, Lapp/morphe/extension/shared/patches/GmsCoreSupportPatch;->onCronetSucceeded(Ljava/lang/Object;)V"
+                            } else {
+                                "invoke-static/range {v$infoReg .. v$infoReg}, Lapp/morphe/extension/shared/patches/GmsCoreSupportPatch;->onCronetSucceeded(Ljava/lang/Object;)V"
+                            }
+                            mutableMethod.addInstructions(0, invokeSmali)
+                        }
+                        "onFailed" -> {
+                            val infoReg = rCount - 2
+                            val errReg = rCount - 1
+                            val invokeSmali = if (infoReg < 16 && errReg < 16) {
+                                "invoke-static {v$infoReg, v$errReg}, Lapp/morphe/extension/shared/patches/GmsCoreSupportPatch;->onCronetFailed(Ljava/lang/Object;Ljava/lang/Object;)V"
+                            } else {
+                                "invoke-static/range {v$infoReg .. v$errReg}, Lapp/morphe/extension/shared/patches/GmsCoreSupportPatch;->onCronetFailed(Ljava/lang/Object;Ljava/lang/Object;)V"
+                            }
+                            mutableMethod.addInstructions(0, invokeSmali)
+                        }
+                    }
+                }
+            }
+        }
     },
     finalizeBlock = {
         if (PackageNameConfig.isPackageNameChangeEnabled) {

@@ -131,6 +131,58 @@ public class GmsCoreSupportPatch {
         return value;
     }
 
+    /**
+     * Intercepts Cronet onResponseStarted to log HTTP status code, URL, and headers.
+     */
+    public static void onCronetResponseStarted(Object responseInfo) {
+        try {
+            if (responseInfo != null) {
+                Method getCode = responseInfo.getClass().getMethod("getHttpStatusCode");
+                Method getUrl = responseInfo.getClass().getMethod("getUrl");
+                Method getMsg = responseInfo.getClass().getMethod("getHttpStatusText");
+                int code = (Integer) getCode.invoke(responseInfo);
+                String url = (String) getUrl.invoke(responseInfo);
+                String msg = (String) getMsg.invoke(responseInfo);
+                Logger.printInfo(() -> "GNP Cronet ResponseStarted: HTTP " + code + " (" + msg + ") for URL: " + url);
+            }
+        } catch (Throwable t) {
+            Logger.printInfo(() -> "GNP Cronet ResponseStarted: info=" + responseInfo);
+        }
+    }
+
+    /**
+     * Intercepts Cronet onFailed to log any Cronet network exceptions.
+     */
+    public static void onCronetFailed(Object responseInfo, Object cronetException) {
+        Logger.printInfo(() -> "GNP Cronet Failed: info=" + responseInfo + ", error=" + cronetException);
+    }
+
+    /**
+     * Intercepts Cronet onSucceeded.
+     */
+    public static void onCronetSucceeded(Object responseInfo) {
+        try {
+            if (responseInfo != null) {
+                Method getCode = responseInfo.getClass().getMethod("getHttpStatusCode");
+                Method getUrl = responseInfo.getClass().getMethod("getUrl");
+                int code = (Integer) getCode.invoke(responseInfo);
+                String url = (String) getUrl.invoke(responseInfo);
+                Logger.printInfo(() -> "GNP Cronet Succeeded: HTTP " + code + " for URL: " + url);
+            }
+        } catch (Throwable t) {
+            Logger.printInfo(() -> "GNP Cronet Succeeded: info=" + responseInfo);
+        }
+    }
+
+    /**
+     * Intercepts GnpHttpResponse constructor to log status code, message, error, and response body.
+     */
+    public static void onGnpResponseObject(Object obj) {
+        if (obj != null) {
+            Logger.printInfo(() -> "GNP HTTP Response: " + obj.toString());
+        }
+    }
+
     public static int resolveRegisteredAccountId(Context context) {
         return resolveRegisteredAccountId(context, null);
     }
