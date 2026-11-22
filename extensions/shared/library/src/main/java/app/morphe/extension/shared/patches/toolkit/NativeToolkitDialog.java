@@ -7875,7 +7875,7 @@ public class NativeToolkitDialog {
         row.setPadding((int) (2 * density), (int) (2 * density), (int) (2 * density), (int) (2 * density));
 
         // Preset 1: Burst & Duplicates
-        row.addView(createPresetCard(activity, "🔁", "Burst Duplicates", "0.80 similarity", density, theme, () -> {
+        row.addView(createPresetCard(activity, MaterialVectorDrawable.TYPE_REFRESH, "Burst Duplicates", "0.80", density, theme, () -> {
             StorageScanner.FilterCriteria c = new StorageScanner.FilterCriteria();
             c.source = StorageScanner.SourceType.LIBRARY;
             c.similarityThreshold = 0.80f;
@@ -7883,7 +7883,7 @@ public class NativeToolkitDialog {
         }));
 
         // Preset 2: Old Screenshots
-        row.addView(createPresetCard(activity, "📱", "Old Screenshots", "> 90 days old", density, theme, () -> {
+        row.addView(createPresetCard(activity, MaterialVectorDrawable.TYPE_PHOTO, "Old Screenshots", "> 90d", density, theme, () -> {
             StorageScanner.FilterCriteria c = new StorageScanner.FilterCriteria();
             c.source = StorageScanner.SourceType.LIBRARY;
             c.mediaType = "image";
@@ -7893,7 +7893,7 @@ public class NativeToolkitDialog {
         }));
 
         // Preset 3: Heavy Videos
-        row.addView(createPresetCard(activity, "🎬", "Heavy Videos", "> 500 MB", density, theme, () -> {
+        row.addView(createPresetCard(activity, MaterialVectorDrawable.TYPE_VIDEO, "Heavy Videos", "> 500 MB", density, theme, () -> {
             StorageScanner.FilterCriteria c = new StorageScanner.FilterCriteria();
             c.source = StorageScanner.SourceType.LIBRARY;
             c.mediaType = "video";
@@ -7902,7 +7902,7 @@ public class NativeToolkitDialog {
         }));
 
         // Preset 4: Quota Hogs
-        row.addView(createPresetCard(activity, "☁️", "Quota Hogs", "Consuming quota", density, theme, () -> {
+        row.addView(createPresetCard(activity, MaterialVectorDrawable.TYPE_SHIELD, "Quota Hogs", "Cloud", density, theme, () -> {
             StorageScanner.FilterCriteria c = new StorageScanner.FilterCriteria();
             c.source = StorageScanner.SourceType.LIBRARY;
             c.space = StorageScanner.SpaceFilter.CONSUMING;
@@ -7911,7 +7911,7 @@ public class NativeToolkitDialog {
         }));
 
         // Preset 5: Chat Media
-        row.addView(createPresetCard(activity, "💬", "Chat Media", "WhatsApp & TG", density, theme, () -> {
+        row.addView(createPresetCard(activity, MaterialVectorDrawable.TYPE_FOLDER, "Chat Media", "WhatsApp", density, theme, () -> {
             StorageScanner.FilterCriteria c = new StorageScanner.FilterCriteria();
             c.source = StorageScanner.SourceType.LIBRARY;
             c.fileNameRegex = "(?i).*(IMG-WA|VID-WA|WhatsApp|Telegram).*";
@@ -7922,28 +7922,37 @@ public class NativeToolkitDialog {
         return hScroll;
     }
 
-    private static View createPresetCard(Activity activity, String emoji, String title, String subtitle,
+    private static View createPresetCard(Activity activity, int iconType, String title, String subtitle,
                                          float density, Theme theme, Runnable onClick) {
         LinearLayout card = new LinearLayout(activity);
         card.setOrientation(LinearLayout.HORIZONTAL);
         card.setGravity(Gravity.CENTER_VERTICAL);
-        int padH = (int) (12 * density);
-        int padV = (int) (7 * density);
+        int padH = (int) (10 * density);
+        int padV = (int) (6 * density);
         card.setPadding(padH, padV, padH, padV);
-        card.setBackground(createActionPillDrawable(theme.surfaceContainer, 18 * density));
+
+        GradientDrawable bg = new GradientDrawable();
+        bg.setColor(theme.surface);
+        bg.setCornerRadius(16 * density);
+        bg.setStroke((int) (1 * density), theme.outline);
+        card.setBackground(bg);
+
         LinearLayout.LayoutParams cLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        cLp.rightMargin = (int) (8 * density);
+        cLp.rightMargin = (int) (6 * density);
         card.setLayoutParams(cLp);
 
-        TextView tvEmoji = new TextView(activity);
-        tvEmoji.setText(emoji);
-        tvEmoji.setTextSize(13f);
-        card.addView(tvEmoji);
+        ImageView ivIcon = new ImageView(activity);
+        ivIcon.setImageDrawable(new MaterialVectorDrawable(iconType, theme.textSecondary));
+        int icSize = (int) (14 * density);
+        LinearLayout.LayoutParams icLp = new LinearLayout.LayoutParams(icSize, icSize);
+        icLp.rightMargin = (int) (5 * density);
+        ivIcon.setLayoutParams(icLp);
+        card.addView(ivIcon);
 
         TextView tvTitle = new TextView(activity);
-        tvTitle.setText(" " + title);
+        tvTitle.setText(title);
         tvTitle.setTextSize(11f);
-        tvTitle.setTypeface(null, Typeface.BOLD);
+        tvTitle.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
         tvTitle.setTextColor(theme.textPrimary);
         card.addView(tvTitle);
 
@@ -7956,7 +7965,7 @@ public class NativeToolkitDialog {
         TextView tvSub = new TextView(activity);
         tvSub.setText(subtitle);
         tvSub.setTextSize(10f);
-        tvSub.setTextColor(theme.primary);
+        tvSub.setTextColor(theme.textSecondary);
         card.addView(tvSub);
 
         card.setClickable(true);
@@ -8124,29 +8133,28 @@ public class NativeToolkitDialog {
         actionsRow.setOrientation(LinearLayout.HORIZONTAL);
         actionsRow.setGravity(Gravity.CENTER_VERTICAL);
 
-        // Action 1: Trash (High Contrast for both Dark & Light themes)
+        // Minimal, Unified Material 3 Action Pills
+        // Action 1: Trash (subtle danger tint)
         int trashText = theme.isDark ? 0xFFFFB4AB : 0xFFBA1A1A;
-        int trashBg   = theme.isDark ? 0x33FFB4AB : 0xFFFFDAD6;
-        TextView btnTrash = createDockedActionButton(activity, "🗑️ Trash", trashText, trashBg, density, theme, () -> {
-            TextView target = actionButtonsMap.get("to_trash");
+        int trashBg   = theme.isDark ? 0x22FFB4AB : 0x1AE53935;
+        TextView btnTrash = createDockedActionButton(activity, "Trash", MaterialVectorDrawable.TYPE_DELETE, trashText, trashBg, density, theme, () -> {
+            TextView target = actionButtonsMap.get("toTrash");
             if (target != null) target.performClick();
         });
         actionsRow.addView(btnTrash);
 
-        // Action 2: Export (High Contrast for both Dark & Light themes)
-        int exportText = theme.isDark ? theme.primary : theme.onPrimaryContainer;
-        int exportBg   = theme.primaryContainer;
-        TextView btnExport = createDockedActionButton(activity, "💾 Export", exportText, exportBg, density, theme, () -> {
-            TextView target = actionButtonsMap.get("export_dcim");
+        // Action 2: Export (clean neutral tonal pill)
+        int actionText = theme.textPrimary;
+        int actionBg = theme.surface;
+        TextView btnExport = createDockedActionButton(activity, "Export", MaterialVectorDrawable.TYPE_DOWNLOAD, actionText, actionBg, density, theme, () -> {
+            TextView target = actionButtonsMap.get("exportDcim");
             if (target != null) target.performClick();
         });
         actionsRow.addView(btnExport);
 
-        // Action 3: Offload (High Contrast for both Dark & Light themes)
-        int offloadText = theme.isDark ? 0xFF70F7E3 : 0xFF006A60;
-        int offloadBg   = theme.isDark ? 0x26006A60 : 0xFFCCE8E3;
-        TextView btnOffload = createDockedActionButton(activity, "☁️ Offload", offloadText, offloadBg, density, theme, () -> {
-            TextView target = actionButtonsMap.get("safe_offload");
+        // Action 3: Offload (clean neutral tonal pill)
+        TextView btnOffload = createDockedActionButton(activity, "Offload", MaterialVectorDrawable.TYPE_SHIELD, actionText, actionBg, density, theme, () -> {
+            TextView target = actionButtonsMap.get("safeOffload");
             if (target != null) target.performClick();
         });
         actionsRow.addView(btnOffload);
@@ -8156,16 +8164,29 @@ public class NativeToolkitDialog {
         return bar;
     }
 
-    private static TextView createDockedActionButton(Activity activity, String label, int textColor, int bgColor, float density, Theme theme, Runnable onClick) {
+    private static TextView createDockedActionButton(Activity activity, String label, int iconType, int textColor, int bgColor, float density, Theme theme, Runnable onClick) {
         TextView btn = new TextView(activity);
         btn.setText(label);
         btn.setTextSize(11f);
-        btn.setTypeface(null, Typeface.BOLD);
+        btn.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
         btn.setTextColor(textColor);
+        btn.setGravity(Gravity.CENTER);
+
+        MaterialVectorDrawable icon = new MaterialVectorDrawable(iconType, textColor);
+        icon.setBounds(0, 0, (int) (13 * density), (int) (13 * density));
+        btn.setCompoundDrawables(icon, null, null, null);
+        btn.setCompoundDrawablePadding((int) (4 * density));
+
         btn.setPadding((int) (9 * density), (int) (6 * density), (int) (9 * density), (int) (6 * density));
-        btn.setBackground(createActionPillDrawable(bgColor, 12 * density));
+
+        GradientDrawable bg = new GradientDrawable();
+        bg.setColor(bgColor);
+        bg.setCornerRadius(14 * density);
+        bg.setStroke((int) (1 * density), theme.outline);
+        btn.setBackground(bg);
+
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        lp.leftMargin = (int) (4 * density);
+        lp.leftMargin = (int) (5 * density);
         btn.setLayoutParams(lp);
         btn.setClickable(true);
         btn.setFocusable(true);
