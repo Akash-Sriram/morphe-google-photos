@@ -320,6 +320,8 @@ public class NativeToolkitDialog {
         Runnable[] updateChipsAndBadgeRef = new Runnable[1];
         Runnable[] onRefreshRef = new Runnable[1];
         final TextView[] btnSelectDuplicatesRef = new TextView[1];
+        final View[] floatingActionBarRef = new View[1];
+        final TextView tvFloatingSummary = new TextView(activity);
 
         // ─────────────────────────────────────────────────────────────────────
         // Query Execution Engine
@@ -531,6 +533,35 @@ public class NativeToolkitDialog {
                 leftPane = workflowLayout;
                 rightPane = workflowLayout;
             }
+
+        // Preset selector callback
+        CriteriaConsumer applyPreset = presetCriteria -> {
+            currentCriteria = presetCriteria;
+            selectedMediaKeys.clear();
+            if (floatingActionBarRef[0] != null) floatingActionBarRef[0].setVisibility(View.GONE);
+            if (updateChipsAndBadgeRef[0] != null) updateChipsAndBadgeRef[0].run();
+            if (runScanRef[0] != null) runScanRef[0].run();
+        };
+
+        // One-Tap Quick Clean Presets
+        View presetsView = buildQuickCleanPresets(activity, density, theme, applyPreset);
+        leftPane.addView(presetsView);
+
+        // Async load storage breakdown
+        final LinearLayout storageContainer = new LinearLayout(activity);
+        storageContainer.setOrientation(LinearLayout.VERTICAL);
+        leftPane.addView(storageContainer);
+
+        THREAD_POOL.execute(() -> {
+            if (currentAccount != null) {
+                StorageScanner.StorageBreakdown breakdown = StorageScanner.getStorageSummary(currentAccount);
+                MAIN_HANDLER.post(() -> {
+                    View barView = buildStorageBreakdownBar(activity, density, theme, breakdown, applyPreset);
+                    storageContainer.removeAllViews();
+                    storageContainer.addView(barView);
+                });
+            }
+        });
 
         // ─────────────────────────────────────────────────────────────────────
         // STEP 1: CHOOSE SOURCE (Collapsible)
@@ -1168,6 +1199,20 @@ public class NativeToolkitDialog {
         updateSelectionSummaryRef[0] = () -> {
             int selCount = selectedMediaKeys.size();
             tvActionsActiveBadge.setText(selCount + " selected");
+            if (floatingActionBarRef[0] != null) {
+                if (selCount > 0) {
+                    long selBytes = 0;
+                    for (StorageScanner.MediaItem it : allQueriedItems) {
+                        if (selectedMediaKeys.contains(getItemKey(it))) {
+                            selBytes += (it.quotaBytes > 0 ? it.quotaBytes : it.sizeBytes);
+                        }
+                    }
+                    tvFloatingSummary.setText(selCount + " sel • " + StorageScanner.formatBytes(selBytes));
+                    floatingActionBarRef[0].setVisibility(View.VISIBLE);
+                } else {
+                    floatingActionBarRef[0].setVisibility(View.GONE);
+                }
+            }
         };
 
         btnSort.setOnClickListener(v -> {
@@ -1200,6 +1245,7 @@ public class NativeToolkitDialog {
 
         btnClearSelect.setOnClickListener(v -> {
             selectedMediaKeys.clear();
+            if (floatingActionBarRef[0] != null) floatingActionBarRef[0].setVisibility(View.GONE);
             updateSelectionSummaryRef[0].run();
             renderResults(activity, resultsListContainer, allQueriedItems, selectedMediaKeys, isGridViewRef[0], updateSelectionSummaryRef[0], density, theme, currentPageRef);
         });
@@ -1216,6 +1262,9 @@ public class NativeToolkitDialog {
             selectedMediaKeys.clear();
             if (btnSelectDuplicatesRef[0] != null) {
                 btnSelectDuplicatesRef[0].setVisibility(View.GONE);
+            }
+            if (floatingActionBarRef[0] != null) {
+                floatingActionBarRef[0].setVisibility(View.GONE);
             }
             if (updateSelectionSummaryRef[0] != null) updateSelectionSummaryRef[0].run();
 
@@ -1251,8 +1300,17 @@ public class NativeToolkitDialog {
 
         btnClose.setOnClickListener(v -> dialog.dismiss());
 
+        // Floating action bar
+        View floatingActionBar = buildFloatingActionBar(activity, density, theme, tvFloatingSummary, actionButtonsMap);
+        floatingActionBarRef[0] = floatingActionBar;
+
+        FrameLayout dialogFrame = new FrameLayout(activity);
+        dialogFrame.setLayoutParams(new ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        dialogFrame.addView(root);
+        dialogFrame.addView(floatingActionBar);
+
         // Window size - popup-friendly (94% width, 88% height)
-        dialog.setContentView(root);
+        dialog.setContentView(dialogFrame);
         dialog.setOnDismissListener(d -> {
             if (PhenotypeFlagManager.getCurrentOpenDialog() == dialog) {
                 PhenotypeFlagManager.setCurrentOpenDialog(null);
@@ -7670,5 +7728,292 @@ public class NativeToolkitDialog {
         }
 
         if (onSuccess != null) onSuccess.run();
+    }
+
+    public interface CriteriaConsumer {
+        void accept(StorageScanner.FilterCriteria criteria);
+    }
+
+    private static View buildQuickCleanPresets(Activity activity, float density, Theme theme,
+                                               CriteriaConsumer onPresetSelected) {
+        HorizontalScrollView hScroll = new HorizontalScrollView(activity);
+        hScroll.setHorizontalScrollBarEnabled(false);
+        LinearLayout.LayoutParams hLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        hLp.topMargin = (int) (4 * density);
+        hLp.bottomMargin = (int) (6 * density);
+        hScroll.setLayoutParams(hLp);
+
+        LinearLayout row = new LinearLayout(activity);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setPadding((int) (2 * density), (int) (2 * density), (int) (2 * density), (int) (2 * density));
+
+        // Preset 1: Burst & Duplicates
+        row.addView(createPresetCard(activity, "🔁", "Burst Duplicates", "0.80 similarity", density, theme, () -> {
+            StorageScanner.FilterCriteria c = new StorageScanner.FilterCriteria();
+            c.source = StorageScanner.SourceType.LIBRARY;
+            c.similarityThreshold = 0.80f;
+            onPresetSelected.accept(c);
+        }));
+
+        // Preset 2: Old Screenshots
+        row.addView(createPresetCard(activity, "📱", "Old Screenshots", "> 90 days old", density, theme, () -> {
+            StorageScanner.FilterCriteria c = new StorageScanner.FilterCriteria();
+            c.source = StorageScanner.SourceType.LIBRARY;
+            c.mediaType = "image";
+            c.fileNameRegex = "(?i).*screenshot.*";
+            c.higherBoundaryDate = System.currentTimeMillis() - (90L * 24 * 3600 * 1000);
+            onPresetSelected.accept(c);
+        }));
+
+        // Preset 3: Heavy Videos
+        row.addView(createPresetCard(activity, "🎬", "Heavy Videos", "> 500 MB", density, theme, () -> {
+            StorageScanner.FilterCriteria c = new StorageScanner.FilterCriteria();
+            c.source = StorageScanner.SourceType.LIBRARY;
+            c.mediaType = "video";
+            c.lowerBoundarySize = 500L * 1024 * 1024;
+            onPresetSelected.accept(c);
+        }));
+
+        // Preset 4: Quota Hogs
+        row.addView(createPresetCard(activity, "☁️", "Quota Hogs", "Consuming quota", density, theme, () -> {
+            StorageScanner.FilterCriteria c = new StorageScanner.FilterCriteria();
+            c.source = StorageScanner.SourceType.LIBRARY;
+            c.space = StorageScanner.SpaceFilter.CONSUMING;
+            c.quality = "original";
+            onPresetSelected.accept(c);
+        }));
+
+        // Preset 5: Chat Media
+        row.addView(createPresetCard(activity, "💬", "Chat Media", "WhatsApp & TG", density, theme, () -> {
+            StorageScanner.FilterCriteria c = new StorageScanner.FilterCriteria();
+            c.source = StorageScanner.SourceType.LIBRARY;
+            c.fileNameRegex = "(?i).*(IMG-WA|VID-WA|WhatsApp|Telegram).*";
+            onPresetSelected.accept(c);
+        }));
+
+        hScroll.addView(row);
+        return hScroll;
+    }
+
+    private static View createPresetCard(Activity activity, String emoji, String title, String subtitle,
+                                         float density, Theme theme, Runnable onClick) {
+        LinearLayout card = new LinearLayout(activity);
+        card.setOrientation(LinearLayout.VERTICAL);
+        card.setGravity(Gravity.CENTER_VERTICAL);
+        int padH = (int) (12 * density);
+        int padV = (int) (8 * density);
+        card.setPadding(padH, padV, padH, padV);
+        card.setBackground(createRoundedDrawable(theme.surfaceContainer, 12 * density));
+        LinearLayout.LayoutParams cLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        cLp.rightMargin = (int) (8 * density);
+        card.setLayoutParams(cLp);
+
+        LinearLayout top = new LinearLayout(activity);
+        top.setOrientation(LinearLayout.HORIZONTAL);
+        top.setGravity(Gravity.CENTER_VERTICAL);
+
+        TextView tvEmoji = new TextView(activity);
+        tvEmoji.setText(emoji);
+        tvEmoji.setTextSize(13f);
+        top.addView(tvEmoji);
+
+        TextView tvTitle = new TextView(activity);
+        tvTitle.setText(" " + title);
+        tvTitle.setTextSize(11f);
+        tvTitle.setTypeface(null, Typeface.BOLD);
+        tvTitle.setTextColor(theme.textPrimary);
+        top.addView(tvTitle);
+        card.addView(top);
+
+        TextView tvSub = new TextView(activity);
+        tvSub.setText(subtitle);
+        tvSub.setTextSize(9f);
+        tvSub.setTextColor(theme.primary);
+        tvSub.setPadding((int) (2 * density), (int) (2 * density), 0, 0);
+        card.addView(tvSub);
+
+        card.setClickable(true);
+        card.setFocusable(true);
+        card.setOnClickListener(v -> onClick.run());
+        return card;
+    }
+
+    private static View buildStorageBreakdownBar(Activity activity, float density, Theme theme,
+                                                 StorageScanner.StorageBreakdown b,
+                                                 CriteriaConsumer onFilterTrigger) {
+        LinearLayout container = new LinearLayout(activity);
+        container.setOrientation(LinearLayout.VERTICAL);
+        LinearLayout.LayoutParams cLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        cLp.topMargin = (int) (2 * density);
+        cLp.bottomMargin = (int) (8 * density);
+        container.setLayoutParams(cLp);
+
+        // Multi-segment proportional bar
+        LinearLayout bar = new LinearLayout(activity);
+        bar.setOrientation(LinearLayout.HORIZONTAL);
+        bar.setBackground(createRoundedDrawable(theme.surfaceContainer, 6 * density));
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+            bar.setClipToOutline(true);
+        }
+        LinearLayout.LayoutParams bLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, (int) (8 * density));
+        bLp.bottomMargin = (int) (6 * density);
+        bar.setLayoutParams(bLp);
+
+        long total = Math.max(1, b.totalBytes);
+        float pWeight = Math.max(0.02f, (float) b.photoBytes / total);
+        float vWeight = Math.max(0.02f, (float) b.videoBytes / total);
+        float sWeight = Math.max(0.01f, (float) b.screenshotBytes / total);
+        float otherWeight = Math.max(0.02f, 1.0f - (pWeight + vWeight + sWeight));
+
+        int colPhoto = 0xFF4C8DF6;      // Material Blue
+        int colVideo = 0xFFA87FFB;      // Material Purple
+        int colScreenshot = 0xFFFFB74D; // Material Orange
+        int colOther = 0xFF26A69A;      // Material Teal
+
+        View vPhoto = new View(activity);
+        vPhoto.setBackgroundColor(colPhoto);
+        bar.addView(vPhoto, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, pWeight));
+
+        View vVideo = new View(activity);
+        vVideo.setBackgroundColor(colVideo);
+        bar.addView(vVideo, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, vWeight));
+
+        View vScreen = new View(activity);
+        vScreen.setBackgroundColor(colScreenshot);
+        bar.addView(vScreen, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, sWeight));
+
+        View vOther = new View(activity);
+        vOther.setBackgroundColor(colOther);
+        bar.addView(vOther, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, otherWeight));
+
+        container.addView(bar);
+
+        // Legend row with tap to filter
+        HorizontalScrollView hLegend = new HorizontalScrollView(activity);
+        hLegend.setHorizontalScrollBarEnabled(false);
+        LinearLayout legendRow = new LinearLayout(activity);
+        legendRow.setOrientation(LinearLayout.HORIZONTAL);
+
+        legendRow.addView(createLegendItem(activity, "● Photos: " + StorageScanner.formatBytes(b.photoBytes), colPhoto, density, theme, () -> {
+            StorageScanner.FilterCriteria c = new StorageScanner.FilterCriteria();
+            c.mediaType = "image";
+            onFilterTrigger.accept(c);
+        }));
+
+        legendRow.addView(createLegendItem(activity, "● Videos: " + StorageScanner.formatBytes(b.videoBytes), colVideo, density, theme, () -> {
+            StorageScanner.FilterCriteria c = new StorageScanner.FilterCriteria();
+            c.mediaType = "video";
+            onFilterTrigger.accept(c);
+        }));
+
+        legendRow.addView(createLegendItem(activity, "● Screenshots: " + StorageScanner.formatBytes(b.screenshotBytes), colScreenshot, density, theme, () -> {
+            StorageScanner.FilterCriteria c = new StorageScanner.FilterCriteria();
+            c.mediaType = "image";
+            c.fileNameRegex = "(?i).*screenshot.*";
+            onFilterTrigger.accept(c);
+        }));
+
+        legendRow.addView(createLegendItem(activity, "● Quota: " + StorageScanner.formatBytes(b.quotaBytes), 0xFFFF7043, density, theme, () -> {
+            StorageScanner.FilterCriteria c = new StorageScanner.FilterCriteria();
+            c.space = StorageScanner.SpaceFilter.CONSUMING;
+            onFilterTrigger.accept(c);
+        }));
+
+        hLegend.addView(legendRow);
+        container.addView(hLegend);
+        return container;
+    }
+
+    private static View createLegendItem(Activity activity, String label, int dotColor, float density, Theme theme, Runnable onClick) {
+        TextView tv = new TextView(activity);
+        tv.setText(label);
+        tv.setTextSize(10f);
+        tv.setTypeface(null, Typeface.BOLD);
+        tv.setTextColor(dotColor);
+        tv.setPadding((int) (6 * density), (int) (3 * density), (int) (6 * density), (int) (3 * density));
+        tv.setBackground(createActionPillDrawable(theme.surfaceContainer, 8 * density));
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        lp.rightMargin = (int) (6 * density);
+        tv.setLayoutParams(lp);
+        tv.setClickable(true);
+        tv.setFocusable(true);
+        tv.setOnClickListener(v -> onClick.run());
+        return tv;
+    }
+
+    private static View buildFloatingActionBar(Activity activity, float density, Theme theme,
+                                               TextView tvFloatingSummary,
+                                               Map<String, TextView> actionButtonsMap) {
+        FrameLayout floatingWrapper = new FrameLayout(activity);
+        FrameLayout.LayoutParams wrapLp = new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL
+        );
+        wrapLp.bottomMargin = (int) (20 * density);
+        floatingWrapper.setLayoutParams(wrapLp);
+        floatingWrapper.setVisibility(View.GONE);
+
+        LinearLayout pill = new LinearLayout(activity);
+        pill.setOrientation(LinearLayout.HORIZONTAL);
+        pill.setGravity(Gravity.CENTER_VERTICAL);
+        pill.setPadding((int) (14 * density), (int) (7 * density), (int) (14 * density), (int) (7 * density));
+
+        GradientDrawable pillBg = createRoundedDrawable(theme.surfaceContainer, 24 * density);
+        pillBg.setStroke((int) (1.5f * density), theme.outline);
+        pill.setBackground(pillBg);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+            pill.setElevation(14 * density);
+        }
+
+        // Summary text
+        tvFloatingSummary.setTextSize(11f);
+        tvFloatingSummary.setTypeface(null, Typeface.BOLD);
+        tvFloatingSummary.setTextColor(theme.primary);
+        LinearLayout.LayoutParams sumLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        sumLp.rightMargin = (int) (10 * density);
+        tvFloatingSummary.setLayoutParams(sumLp);
+        pill.addView(tvFloatingSummary);
+
+        // Quick Action 1: Trash
+        TextView btnTrash = createFloatingQuickButton(activity, "🗑️ Trash", 0xFFFFB4AB, density, theme, () -> {
+            TextView target = actionButtonsMap.get("to_trash");
+            if (target != null) target.performClick();
+        });
+        pill.addView(btnTrash);
+
+        // Quick Action 2: Export
+        TextView btnExport = createFloatingQuickButton(activity, "💾 Export", theme.primary, density, theme, () -> {
+            TextView target = actionButtonsMap.get("export_dcim");
+            if (target != null) target.performClick();
+        });
+        pill.addView(btnExport);
+
+        // Quick Action 3: Offload
+        TextView btnOffload = createFloatingQuickButton(activity, "☁️ Offload", 0xFF70F7E3, density, theme, () -> {
+            TextView target = actionButtonsMap.get("safe_offload");
+            if (target != null) target.performClick();
+        });
+        pill.addView(btnOffload);
+
+        floatingWrapper.addView(pill);
+        return floatingWrapper;
+    }
+
+    private static TextView createFloatingQuickButton(Activity activity, String label, int textColor, float density, Theme theme, Runnable onClick) {
+        TextView btn = new TextView(activity);
+        btn.setText(label);
+        btn.setTextSize(10.5f);
+        btn.setTypeface(null, Typeface.BOLD);
+        btn.setTextColor(textColor);
+        btn.setPadding((int) (9 * density), (int) (5 * density), (int) (9 * density), (int) (5 * density));
+        btn.setBackground(createActionPillDrawable(theme.primaryContainer, 12 * density));
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        lp.leftMargin = (int) (5 * density);
+        btn.setLayoutParams(lp);
+        btn.setClickable(true);
+        btn.setFocusable(true);
+        btn.setOnClickListener(v -> onClick.run());
+        return btn;
     }
 }

@@ -531,6 +531,69 @@ public class StorageScanner {
         }, "morphe-archive-consistency").start();
     }
 
+    public static class StorageBreakdown {
+        public long photoBytes = 0;
+        public int photoCount = 0;
+        public long videoBytes = 0;
+        public int videoCount = 0;
+        public long screenshotBytes = 0;
+        public int screenshotCount = 0;
+        public long quotaBytes = 0;
+        public int quotaCount = 0;
+        public long totalBytes = 0;
+        public int totalCount = 0;
+    }
+
+    public static StorageBreakdown getStorageSummary(AccountInfo account) {
+        StorageBreakdown b = new StorageBreakdown();
+        if (account == null) return b;
+        File dbFile = new File(account.dbPath);
+        if (!dbFile.exists()) return b;
+
+        SQLiteDatabase db = null;
+        try {
+            db = SQLiteDatabase.openDatabase(dbFile.getAbsolutePath(), null, SQLiteDatabase.OPEN_READONLY | SQLiteDatabase.ENABLE_WRITE_AHEAD_LOGGING);
+            tuneDatabasePerformance(db);
+            String table = hasTable(db, "remote_media") ? "remote_media" : "media";
+            if (!hasTable(db, table)) return b;
+
+            String sql = "SELECT " +
+                    "SUM(CASE WHEN mime_type LIKE 'video/%' THEN coalesce(size_bytes, 0) ELSE 0 END), " +
+                    "COUNT(CASE WHEN mime_type LIKE 'video/%' THEN 1 END), " +
+                    "SUM(CASE WHEN mime_type LIKE 'image/%' AND filename NOT LIKE 'Screenshot%' AND filename NOT LIKE 'Screenshot_%' THEN coalesce(size_bytes, 0) ELSE 0 END), " +
+                    "COUNT(CASE WHEN mime_type LIKE 'image/%' AND filename NOT LIKE 'Screenshot%' AND filename NOT LIKE 'Screenshot_%' THEN 1 END), " +
+                    "SUM(CASE WHEN filename LIKE 'Screenshot%' OR filename LIKE 'Screenshot_%' THEN coalesce(size_bytes, 0) ELSE 0 END), " +
+                    "COUNT(CASE WHEN filename LIKE 'Screenshot%' OR filename LIKE 'Screenshot_%' THEN 1 END), " +
+                    "SUM(CASE WHEN quota_charged_bytes > 0 THEN quota_charged_bytes ELSE 0 END), " +
+                    "COUNT(CASE WHEN quota_charged_bytes > 0 THEN 1 END), " +
+                    "SUM(coalesce(size_bytes, 0)), " +
+                    "COUNT(1) " +
+                    "FROM " + table + " WHERE (trash_timestamp IS NULL OR trash_timestamp = 0)";
+
+            try (Cursor c = db.rawQuery(sql, null)) {
+                if (c != null && c.moveToFirst()) {
+                    b.videoBytes = c.getLong(0);
+                    b.videoCount = c.getInt(1);
+                    b.photoBytes = c.getLong(2);
+                    b.photoCount = c.getInt(3);
+                    b.screenshotBytes = c.getLong(4);
+                    b.screenshotCount = c.getInt(5);
+                    b.quotaBytes = c.getLong(6);
+                    b.quotaCount = c.getInt(7);
+                    b.totalBytes = c.getLong(8);
+                    b.totalCount = c.getInt(9);
+                }
+            }
+        } catch (Throwable t) {
+            SafeLog.e("morphe: StorageScanner", "getStorageSummary error: " + t.getMessage(), t);
+        } finally {
+            if (db != null) {
+                try { db.close(); } catch (Throwable ignored) {}
+            }
+        }
+        return b;
+    }
+
     public static List<AlbumInfo> getAvailableAlbums(AccountInfo account) {
         List<AlbumInfo> albums = new ArrayList<>();
         if (account == null) return albums;
