@@ -3541,13 +3541,70 @@ public class NativeToolkitDialog {
     }
 
     private static void executeDbActionAsync(Activity activity, String actionId, List<StorageScanner.MediaItem> items, String param, Runnable[] refreshRunner) {
+        final int itemCount = (items != null) ? items.size() : 0;
+        final boolean isBulk = itemCount >= 25;
+
+        final String actionTitle;
+        if ("toTrash".equals(actionId)) actionTitle = "Moving to Trash";
+        else if ("restoreTrash".equals(actionId)) actionTitle = "Restoring from Trash";
+        else if ("lock".equals(actionId)) actionTitle = "Moving to Locked Folder";
+        else if ("unLock".equals(actionId)) actionTitle = "Moving out of Locked Folder";
+        else if ("setDateFromFilename".equals(actionId)) actionTitle = "Updating Dates from Filename";
+        else if ("toArchive".equals(actionId)) actionTitle = "Archiving Media";
+        else if ("unArchive".equals(actionId)) actionTitle = "Un-Archiving Media";
+        else if ("toFavorite".equals(actionId)) actionTitle = "Adding to Favorites";
+        else if ("unFavorite".equals(actionId)) actionTitle = "Removing from Favorites";
+        else if ("toNewAlbum".equals(actionId) || "toExistingAlbum".equals(actionId)) actionTitle = "Adding to Album";
+        else if ("safeOffload".equals(actionId)) actionTitle = "Safe Offload";
+        else actionTitle = "Processing Media";
+
         MAIN_HANDLER.post(() -> {
             if (sProgressBar != null) sProgressBar.setVisibility(View.VISIBLE);
             if (sTvProgressInfo != null) {
-                sTvProgressInfo.setText("Processing " + (items != null ? items.size() : 0) + " items...");
+                sTvProgressInfo.setText("Processing " + itemCount + " items...");
                 sTvProgressInfo.setVisibility(View.VISIBLE);
             }
+            if (isBulk && activity != null) {
+                Toast.makeText(activity, actionTitle + " for " + itemCount + " items running in background.", Toast.LENGTH_SHORT).show();
+            }
         });
+
+        final int ACTION_NOTIF_ID = 0x4D5041; // "MPA"
+        final NotificationManager nm = (activity != null) ? (NotificationManager) activity.getSystemService(Context.NOTIFICATION_SERVICE) : null;
+        final String channelId = "morphe_actions";
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && nm != null) {
+            try {
+                NotificationChannel channel = new NotificationChannel(channelId, "Toolkit Batch Actions", NotificationManager.IMPORTANCE_LOW);
+                channel.setDescription("Shows progress when running batch actions in Morphe Toolkit");
+                channel.enableVibration(false);
+                channel.setSound(null, null);
+                nm.createNotificationChannel(channel);
+            } catch (Throwable ignored) {}
+        }
+
+        final Notification.Builder actionNotifBuilder;
+        if (isBulk && nm != null) {
+            Notification.Builder nb = Build.VERSION.SDK_INT >= Build.VERSION_CODES.O
+                    ? new Notification.Builder(activity, channelId)
+                    : new Notification.Builder(activity);
+            nb.setContentTitle(actionTitle)
+              .setContentText("Processing " + itemCount + " items...")
+              .setSmallIcon(android.R.drawable.stat_notify_sync)
+              .setOngoing(true);
+            try {
+                Intent openIntent = activity.getPackageManager().getLaunchIntentForPackage(activity.getPackageName());
+                if (openIntent != null) {
+                    PendingIntent openPi = PendingIntent.getActivity(activity, 0, openIntent,
+                            Build.VERSION.SDK_INT >= Build.VERSION_CODES.M ? PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE : PendingIntent.FLAG_UPDATE_CURRENT);
+                    nb.setContentIntent(openPi);
+                }
+            } catch (Throwable ignored) {}
+            actionNotifBuilder = nb;
+            try { nm.notify(ACTION_NOTIF_ID, actionNotifBuilder.build()); } catch (Throwable ignored) {}
+        } else {
+            actionNotifBuilder = null;
+        }
+
         StorageScanner.sActionProgressCallback = msg -> {
             MAIN_HANDLER.post(() -> {
                 if (sTvProgressInfo != null) {
@@ -3555,32 +3612,68 @@ public class NativeToolkitDialog {
                     sTvProgressInfo.setVisibility(View.VISIBLE);
                 }
             });
+            if (actionNotifBuilder != null && nm != null) {
+                try {
+                    actionNotifBuilder.setContentText(msg);
+                    nm.notify(ACTION_NOTIF_ID, actionNotifBuilder.build());
+                } catch (Throwable ignored) {}
+            }
         };
+
         THREAD_POOL.execute(() -> {
-            StorageScanner.ActionResult res = StorageScanner.executeDatabaseAction(activity, currentAccount, actionId, items, param);
-            StorageScanner.sActionProgressCallback = null;
-            MAIN_HANDLER.post(() -> {
-                if (sProgressBar != null) sProgressBar.setVisibility(View.GONE);
-                if (sTvProgressInfo != null) {
-                    sTvProgressInfo.setText("");
-                    sTvProgressInfo.setVisibility(View.GONE);
-                }
-                Toast.makeText(activity, res.message, Toast.LENGTH_SHORT).show();
-                if (res.success) {
-                    if ("toTrash".equals(actionId) && currentCriteria.source == StorageScanner.SourceType.ALBUMS) {
-                        currentCriteria.albumsInclude.clear();
+            PowerManager.WakeLock wakeLock = null;
+            if (isBulk && activity != null) {
+                try {
+                    PowerManager pm = (PowerManager) activity.getSystemService(Context.POWER_SERVICE);
+                    if (pm != null) {
+                        wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "Morphe:ToolkitActionWakeLock");
+                        wakeLock.acquire(30 * 60 * 1000L); // 30-min timeout
                     }
-                    if (currentAccount != null) {
-                        availableAlbums = StorageScanner.getAvailableAlbums(currentAccount);
-                        if (sRepopulateAlbumCardsRunnable != null) {
-                            sRepopulateAlbumCardsRunnable.run();
+                } catch (Throwable ignored) {}
+            }
+
+            try {
+                StorageScanner.ActionResult res = StorageScanner.executeDatabaseAction(activity, currentAccount, actionId, items, param);
+                StorageScanner.sActionProgressCallback = null;
+
+                if (actionNotifBuilder != null && nm != null) {
+                    try {
+                        actionNotifBuilder.setContentText(res.message)
+                                .setOngoing(false);
+                        nm.notify(ACTION_NOTIF_ID, actionNotifBuilder.build());
+                        MAIN_HANDLER.postDelayed(() -> {
+                            try { nm.cancel(ACTION_NOTIF_ID); } catch (Throwable ignored) {}
+                        }, 5000L);
+                    } catch (Throwable ignored) {}
+                }
+
+                MAIN_HANDLER.post(() -> {
+                    if (sProgressBar != null) sProgressBar.setVisibility(View.GONE);
+                    if (sTvProgressInfo != null) {
+                        sTvProgressInfo.setText("");
+                        sTvProgressInfo.setVisibility(View.GONE);
+                    }
+                    Toast.makeText(activity, res.message, Toast.LENGTH_SHORT).show();
+                    if (res.success) {
+                        if ("toTrash".equals(actionId) && currentCriteria.source == StorageScanner.SourceType.ALBUMS) {
+                            currentCriteria.albumsInclude.clear();
+                        }
+                        if (currentAccount != null) {
+                            availableAlbums = StorageScanner.getAvailableAlbums(currentAccount);
+                            if (sRepopulateAlbumCardsRunnable != null) {
+                                sRepopulateAlbumCardsRunnable.run();
+                            }
+                        }
+                        if (refreshRunner != null && refreshRunner[0] != null) {
+                            refreshRunner[0].run();
                         }
                     }
-                    if (refreshRunner != null && refreshRunner[0] != null) {
-                        refreshRunner[0].run();
-                    }
+                });
+            } finally {
+                if (wakeLock != null && wakeLock.isHeld()) {
+                    try { wakeLock.release(); } catch (Throwable ignored) {}
                 }
-            });
+            }
         });
     }
 
@@ -4417,10 +4510,19 @@ public class NativeToolkitDialog {
         Window pw = progressDialog.getWindow();
         if (pw != null) {
             pw.setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
-            pw.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
             int sw = activity.getResources().getDisplayMetrics().widthPixels;
             pw.setLayout(Math.min((int) (sw * 0.88f), (int) (400 * density)), ViewGroup.LayoutParams.WRAP_CONTENT);
         }
+
+        // Default to background: auto-minimize dialog after starting so screen/user isn't blocked
+        MAIN_HANDLER.postDelayed(() -> {
+            try {
+                if (progressDialog.isShowing()) {
+                    progressDialog.dismiss();
+                    Toast.makeText(activity, "Export continuing in background. Check notifications.", Toast.LENGTH_SHORT).show();
+                }
+            } catch (Throwable ignored) {}
+        }, 1500L);
 
         // Notification setup
         final int NOTIF_ID = 0x4D5058; // "MPX"
@@ -4498,10 +4600,6 @@ public class NativeToolkitDialog {
         }
 
         final NotificationManager finalNm = nm;
-
-        MAIN_HANDLER.post(() -> {
-            try { activity.getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON); } catch (Throwable ignored) {}
-        });
 
         THREAD_POOL.execute(() -> {
             PowerManager pm = null;
@@ -4598,6 +4696,13 @@ public class NativeToolkitDialog {
                 return b + " B";
             };
 
+            // ── Dynamic concurrency & worker infrastructure ────────────────────────
+            final int numWorkers = Math.min(6, Math.max(1, items.size()));
+            final ThermalGovernor thermalGovernor = new ThermalGovernor(numWorkers);
+            final ExecutorService workerPool = Executors.newFixedThreadPool(numWorkers);
+            final AtomicInteger itemIndex = new AtomicInteger(0);
+            final NetworkCircuitBreaker circuitBreaker = new NetworkCircuitBreaker(activity, finalNm, notifBuilder, NOTIF_ID, tvStatus);
+
             // ── 750ms ticker thread ───────────────────────────────────────────────────
             final java.util.concurrent.ScheduledExecutorService ticker =
                     java.util.concurrent.Executors.newSingleThreadScheduledExecutor();
@@ -4606,6 +4711,11 @@ public class NativeToolkitDialog {
 
             ticker.scheduleAtFixedRate(() -> {
                 try {
+                    thermalGovernor.update(activity);
+                    int activeGovWorkers = thermalGovernor.getActiveRunningCount();
+                    float devTemp = thermalGovernor.getCurrentTempC();
+                    String thermalStr = (devTemp > 0 ? String.format(Locale.US, " • %.0f°C", devTemp) : "");
+
                     int done = completedCount.get();
                     int remaining = items.size() - done;
                     int failCount = failures.size();
@@ -4655,9 +4765,12 @@ public class NativeToolkitDialog {
                         }
                     }
 
+                    int displayWorkers = activeGovWorkers > 0 ? activeGovWorkers : activeCount;
+                    String govStatus = displayWorkers + " workers" + thermalStr;
+
                     // Build collapsed + title lines
                     String failLabel = failCount > 0 ? " • " + failCount + " ✗" : "";
-                    String collapsedTitle = remaining + " remaining" + failLabel + (speedStr.isEmpty() ? "" : " • " + speedStr);
+                    String collapsedTitle = remaining + " remaining" + failLabel + (speedStr.isEmpty() ? "" : " • " + speedStr) + " • " + govStatus;
                     String collapsedText = done + " of " + items.size() + " (" + fmtB.apply(totalBytes) + " / " + fmtB.apply(totalEstimatedBytesForProgress) + ")"
                             + (etaStr.isEmpty() ? "" : " • " + etaStr);
 
@@ -4669,7 +4782,9 @@ public class NativeToolkitDialog {
                         expandedText.append("\nSpeed: ").append(speedStr.isEmpty() ? "Calculating..." : speedStr);
                         if (!etaStr.isEmpty()) expandedText.append(" • ").append(etaStr);
                     }
-                    expandedText.append("\nActive: ").append(activeCount).append(" downloads in parallel");
+                    expandedText.append("\nActive: ").append(displayWorkers).append(" downloads in parallel");
+                    expandedText.append("\nThermals: ").append(thermalGovernor.getStateLabel());
+                    expandedText.append("\nTarget Concurrency: ").append(thermalGovernor.getTargetConcurrency()).append(" workers");
                     if (!largeFileDetails.isEmpty()) {
                         for (int li = 0; li < Math.min(3, largeFileDetails.size()); li++) {
                             expandedText.append("\n📹 ").append(largeFileDetails.get(li));
@@ -4680,8 +4795,8 @@ public class NativeToolkitDialog {
                     final String dialogDetailText;
                     if (!largeFileDetails.isEmpty()) {
                         dialogDetailText = "📹 " + largeFileDetails.get(0);
-                    } else if (activeCount > 0) {
-                        dialogDetailText = "⚡ " + activeCount + " downloads active in parallel";
+                    } else if (displayWorkers > 0) {
+                        dialogDetailText = "⚡ " + displayWorkers + " active workers" + thermalStr;
                     } else {
                         dialogDetailText = "";
                     }
@@ -4719,11 +4834,6 @@ public class NativeToolkitDialog {
                 } catch (Throwable ignored) {}
             }, 750, 750, TimeUnit.MILLISECONDS);
 
-            final int numWorkers = Math.min(6, Math.max(1, items.size()));
-            final ExecutorService workerPool = Executors.newFixedThreadPool(numWorkers);
-            final AtomicInteger itemIndex = new AtomicInteger(0);
-            final NetworkCircuitBreaker circuitBreaker = new NetworkCircuitBreaker(activity, finalNm, notifBuilder, NOTIF_ID, tvStatus);
-
 
             try {
                 for (int w = 0; w < numWorkers; w++) {
@@ -4734,8 +4844,16 @@ public class NativeToolkitDialog {
                         workerMap.put(threadId, wp);
                         try {
                         while (!isCancelled[0]) {
-                            // Drain retry queue first, then advance main index
-                            StorageScanner.MediaItem nextItem = retryQueue.poll();
+                            // Thermal governor slot acquisition
+                            if (!thermalGovernor.acquireSlot(isCancelled)) {
+                                break;
+                            }
+                            try {
+                                if (thermalGovernor.getPacingDelayMs() > 0) {
+                                    try { Thread.sleep(thermalGovernor.getPacingDelayMs()); } catch (InterruptedException ignored) {}
+                                }
+                                // Drain retry queue first, then advance main index
+                                StorageScanner.MediaItem nextItem = retryQueue.poll();
                             if (nextItem == null) {
                                 int idx = itemIndex.getAndIncrement();
                                 if (idx >= items.size()) break;
@@ -5121,6 +5239,9 @@ public class NativeToolkitDialog {
                             wp.name = "";
                             wp.itemBytes.set(0);
                             wp.paused = false;
+                            } finally {
+                                thermalGovernor.releaseSlot();
+                            }
                         }
                         } finally {
                             workerMap.remove(threadId);
