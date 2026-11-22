@@ -2257,7 +2257,8 @@ public class StorageScanner {
                             List<?> res = (List<?>) m.invoke(null, context, mediaCollection, featuresRequest);
                             if (res != null) return res;
                         } catch (Throwable t) {
-                            Logger.printInfo(() -> "3-arg loader invocation error: " + t.getMessage());
+                            Throwable cause = t.getCause() != null ? t.getCause() : t;
+                            SafeLog.w("morphe: StorageScanner", "3-arg loader invocation error: " + cause, cause);
                         }
                     }
                 }
@@ -2286,7 +2287,10 @@ public class StorageScanner {
                         }
                         List<?> res = (List<?>) m.invoke(null, args);
                         if (res != null) return res;
-                    } catch (Throwable ignored) {}
+                    } catch (Throwable t) {
+                        Throwable cause = t.getCause() != null ? t.getCause() : t;
+                        SafeLog.w("morphe: StorageScanner", "N-arg loader invocation error: " + cause, cause);
+                    }
                 }
             }
         }
@@ -2413,8 +2417,14 @@ public class StorageScanner {
         try {
             Class<?> ahnjClass = null;
             for (String name : new String[]{"ahnj", "ahed", "ahdy"}) {
-                ahnjClass = ReflectionCache.findClassOrNull(name);
-                if (ahnjClass != null) break;
+                Class<?> c = ReflectionCache.findClassOrNull(name);
+                if (c != null) {
+                    try {
+                        c.getConstructor(long.class);
+                        ahnjClass = c;
+                        break;
+                    } catch (NoSuchMethodException ignored) {}
+                }
             }
             List<Object> idList = new ArrayList<>(mediaIds.size());
             if (ahnjClass != null) {
@@ -2861,6 +2871,17 @@ public class StorageScanner {
     }
 
     private static Object createTrashMediaCollection(int accountId) {
+        for (String[] pair : ToolkitMappings.TRASH_FACTORIES) {
+            try {
+                Class<?> fClass = ReflectionCache.findClassOrNull(pair[0]);
+                if (fClass != null) {
+                    Method m = fClass.getMethod(pair[1], int.class);
+                    Object coll = m.invoke(null, accountId);
+                    if (coll != null) return coll;
+                }
+            } catch (Throwable ignored) {}
+        }
+
         try {
             Class<?> fClass = ReflectionCache.findClassOrNull(ToolkitMappings.TRASH_FACTORY_CLASS);
             if (fClass != null) {

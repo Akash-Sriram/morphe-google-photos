@@ -48,9 +48,17 @@ public final class ToolkitMappings {
 
     // Trash Collection (MediaCollection for Trash/Bin)
     public static final String TRASH_COLLECTION_CLASS = "bmrd";
-    public static final String TRASH_FACTORY_CLASS = "bhdo";
-    public static final String TRASH_FACTORY_METHOD = "a";
-    public static final String[] TRASH_COLLECTION_CLASSES = {"bmrd", "bhdo", "blja", "bliu", "bnew", "blvo", "bmcu", "bjjo", "bjjq"};
+    public static final String TRASH_FACTORY_CLASS = "bmqw";
+    public static final String TRASH_FACTORY_METHOD = "b";
+    public static final String[][] TRASH_FACTORIES = {
+        {"bmqw", "b"}, // 8.2.0.1026567706
+        {"bliu", "b"}, // 8.1.0
+        {"bnew", "b"},
+        {"blvo", "b"},
+        {"bmcu", "b"},
+        {"bjjo", "b"}
+    };
+    public static final String[] TRASH_COLLECTION_CLASSES = {"bmrd", "bmqw", "blja", "bliu", "bnew", "blvo", "bmcu", "bjjo", "bjjq"};
 
     // Keys Media Collection (Loads items given remote media keys)
     public static final String KEYS_COLLECTION_CLASS = "qhs";

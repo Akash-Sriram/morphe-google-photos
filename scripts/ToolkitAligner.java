@@ -45,7 +45,7 @@ public class ToolkitAligner {
         public String[] marsRemoveConfig = {"okp", "bcpt", "mo", "tbw", "s"};
         public String marsCollectionClass = "ammr";
         public String trashCollectionClass = "bmrd";
-        public String trashFactoryClass = "bmrd";
+        public String trashFactoryClass = "bmqw";
         public String trashFactoryMethod = "b";
         public String keysCollectionClass = "qhs";
         public String keysCollectionMethod = "f";
@@ -516,20 +516,37 @@ public class ToolkitAligner {
             }
         }
 
-        // 13. Trash Factory (e.g. bliu.b)
+        // 13. Trash Factory (e.g. bmqw.b or bliu.b)
         ClassDef trashCollDef = allClasses.get("L" + res.trashCollectionClass.replace('.', '/') + ";");
         if (trashCollDef != null) {
+            String targetTrashDesc = "L" + res.trashCollectionClass.replace('.', '/') + ";";
             for (ClassDef cd : classList) {
                 if (cd.getType().length() > 8) continue;
                 for (Method m : cd.getMethods()) {
                     if (java.lang.reflect.Modifier.isStatic(m.getAccessFlags()) &&
                         m.getParameters().size() == 1 && m.getParameters().get(0).getType().equals("I") &&
-                        (m.getReturnType().equals(mediaCollIface) || m.getReturnType().equals("Lbypn;") || m.getReturnType().equals("L" + res.trashCollectionClass.replace('.', '/') + ";"))) {
-                        res.trashFactoryClass = simpleClassName(cd.getType());
-                        res.trashFactoryMethod = m.getName();
-                        break;
+                        m.getImplementation() != null) {
+                        boolean createsTrash = false;
+                        for (Instruction inst : m.getImplementation().getInstructions()) {
+                            if (inst instanceof ReferenceInstruction) {
+                                Object ref = ((ReferenceInstruction) inst).getReference();
+                                if (ref instanceof MethodReference) {
+                                    MethodReference mr = (MethodReference) ref;
+                                    if (mr.getName().equals("<init>") && mr.getDefiningClass().equals(targetTrashDesc)) {
+                                        createsTrash = true;
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+                        if (createsTrash) {
+                            res.trashFactoryClass = simpleClassName(cd.getType());
+                            res.trashFactoryMethod = m.getName();
+                            break;
+                        }
                     }
                 }
+                if (res.trashFactoryClass != null && !res.trashFactoryClass.equals(res.trashCollectionClass)) break;
             }
         }
 
@@ -779,7 +796,15 @@ public class ToolkitAligner {
         sb.append("    public static final String TRASH_COLLECTION_CLASS = \"").append(res.trashCollectionClass).append("\";\n");
         sb.append("    public static final String TRASH_FACTORY_CLASS = \"").append(res.trashFactoryClass).append("\";\n");
         sb.append("    public static final String TRASH_FACTORY_METHOD = \"").append(res.trashFactoryMethod).append("\";\n");
-        sb.append("    public static final String[] TRASH_COLLECTION_CLASSES = ").append(formatArray(res.trashCollectionClass, res.trashFactoryClass, "bmrd", "blja", "bliu", "bnew", "blvo", "bmcu", "bjjo", "bjjq")).append(";\n\n");
+        sb.append("    public static final String[][] TRASH_FACTORIES = {\n");
+        sb.append("        {\"").append(res.trashFactoryClass).append("\", \"").append(res.trashFactoryMethod).append("\"}, // ").append(res.apkVersion).append("\n");
+        sb.append("        {\"bliu\", \"b\"}, // 8.1.0\n");
+        sb.append("        {\"bnew\", \"b\"},\n");
+        sb.append("        {\"blvo\", \"b\"},\n");
+        sb.append("        {\"bmcu\", \"b\"},\n");
+        sb.append("        {\"bjjo\", \"b\"}\n");
+        sb.append("    };\n");
+        sb.append("    public static final String[] TRASH_COLLECTION_CLASSES = ").append(formatArray(res.trashCollectionClass, res.trashFactoryClass, "bmrd", "bmqw", "blja", "bliu", "bnew", "blvo", "bmcu", "bjjo", "bjjq")).append(";\n\n");
 
         sb.append("    // Keys Media Collection (Loads items given remote media keys)\n");
         sb.append("    public static final String KEYS_COLLECTION_CLASS = \"").append(res.keysCollectionClass).append("\";\n");
