@@ -34,37 +34,55 @@ public class ToolkitAligner {
 
     public static class AlignmentResult {
         public String apkVersion = "Unknown";
-        public String serviceLocatorClass = "cbnw";
+        public String serviceLocatorClass = "cdhf";
         public String serviceLocatorMethod = "e";
-        public String taskRunnerClass = "bbmd";
+        public String taskRunnerClass = "bcpr";
         public String taskRunnerSyncMethod = "c";
-        public String addMediaToAlbumBuilderClass = "opc";
+        public String addMediaToAlbumBuilderClass = "pdd";
         public String addMediaToEnvelopeBuilderClass = "aphh";
-        public String privateAlbumRemoveClass = "omn";
-        public String privateAlbumRemoveMethod = "a";
-        public String[] marsRemoveConfig = {"nyp", "bbmf", "ms", "snb", "w"};
-        public String marsCollectionClass = "alrk";
-        public String trashCollectionClass = "blja";
-        public String trashFactoryClass = "bliu";
+        public String privateAlbumRemoveClass = "pcw";
+        public String privateAlbumRemoveMethod = "i";
+        public String[] marsRemoveConfig = {"okp", "bcpt", "mo", "tbw", "s"};
+        public String marsCollectionClass = "ammr";
+        public String trashCollectionClass = "bmrd";
+        public String trashFactoryClass = "bmrd";
         public String trashFactoryMethod = "b";
-        public String keysCollectionClass = "pti";
+        public String keysCollectionClass = "qhs";
         public String keysCollectionMethod = "f";
-        public String keysCollectionBuilder = "pth";
-        public String coreMediaLoaderClass = "yrq";
+        public String keysCollectionBuilder = "qhr";
+        public String coreMediaLoaderClass = "zgu";
         public String coreMediaLoaderMethod = "B";
-        public String featuresRequestBuilderClass = "yqd";
-        public String featuresRequestClass = "yqf";
-        public String dedupKeyFeatureClass = "abmv";
-        public String remoteMediaKeyFeatureClass = "nfl";
-        public String actionFlusherClass = "aqgz";
-        public String archiveServiceClass = "rsr";
+        public String featuresRequestBuilderClass = "zev";
+        public String featuresRequestClass = "zex";
+        public String dedupKeyFeatureClass = "acdt";
+        public String remoteMediaKeyFeatureClass = "nrm";
+        public String actionFlusherClass = "arfq";
+        public String archiveServiceClass = "shd";
         public String archiveServiceMethod = "a";
         public String archiveBuilderClass = "rsv";
         public String archiveActionClass = "rsw";
-        public String moveToTrashActionClass = "bfjt";
-        public String glideSingletonClass = "mdm";
-        public String remoteMediaModelClass = null;
-        public String remoteMediaOptionsClass = null;
+        public String moveToTrashActionClass = "bgqg";
+        public String glideSingletonClass = "mpa";
+        public String remoteMediaModelClass = "anof";
+        public String remoteMediaOptionsClass = "anog";
+    }
+
+    private static Set<String> getAllInterfaces(String iface, Map<String, ClassDef> allClasses) {
+        Set<String> res = new LinkedHashSet<>();
+        Queue<String> q = new LinkedList<>();
+        q.add(iface);
+        while (!q.isEmpty()) {
+            String curr = q.poll();
+            if (res.add(curr)) {
+                ClassDef cd = allClasses.get(curr);
+                if (cd != null) {
+                    for (String sub : cd.getInterfaces()) {
+                        q.add(sub);
+                    }
+                }
+            }
+        }
+        return res;
     }
 
     private static String stripDescriptor(String type) {
@@ -234,9 +252,52 @@ public class ToolkitAligner {
             }
         }
 
+        // 5.5. Detect MediaCollection interface and Feature interface dynamically
+        String mediaCollIface = null;
+        for (ClassDef cd : classList) {
+            for (Method m : cd.getMethods()) {
+                if (m.getName().equals("e") && m.getParameters().isEmpty() && m.getReturnType().equals("Ljava/lang/String;")) {
+                    MethodImplementation impl = m.getImplementation();
+                    if (impl != null) {
+                        for (Instruction inst : impl.getInstructions()) {
+                            if (inst instanceof ReferenceInstruction) {
+                                Object ref = ((ReferenceInstruction) inst).getReference();
+                                if (ref instanceof StringReference && "com.google.android.apps.photos.trash.data.TrashCore".equals(((StringReference) ref).getString())) {
+                                    for (String iface : cd.getInterfaces()) {
+                                        if (!iface.startsWith("Landroid/")) {
+                                            mediaCollIface = iface;
+                                            break;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            if (mediaCollIface != null) break;
+        }
+        if (mediaCollIface == null) mediaCollIface = "Lbypn;";
+
+        String featureIface = null;
+        Set<String> allIfaces = getAllInterfaces(mediaCollIface, allClasses);
+        for (String ifc : allIfaces) {
+            ClassDef cd = allClasses.get(ifc);
+            if (cd != null) {
+                for (Method m : cd.getMethods()) {
+                    if (m.getName().equals("b") && m.getParameters().size() == 1 && m.getParameters().get(0).getType().equals("Ljava/lang/Class;")) {
+                        featureIface = m.getReturnType();
+                        break;
+                    }
+                }
+            }
+            if (featureIface != null) break;
+        }
+        if (featureIface == null) featureIface = "Lbypk;";
+
         // 6. MediaCollections scan via stable e() string identifiers
         for (ClassDef cd : classList) {
-            if (cd.getInterfaces().contains("Lbypn;")) {
+            if (cd.getInterfaces().contains(mediaCollIface) || cd.getInterfaces().contains("Lbypn;")) {
                 for (Method m : cd.getMethods()) {
                     if (m.getName().equals("e") && m.getParameters().isEmpty() && m.getReturnType().equals("Ljava/lang/String;")) {
                         MethodImplementation impl = m.getImplementation();
@@ -268,12 +329,12 @@ public class ToolkitAligner {
             }
         }
 
-        // 7. KeysMediaCollection: class in p* implementing bypn with static method f(int, List)
+        // 7. KeysMediaCollection: class implementing mediaCollIface with static method f(int, List)
         for (ClassDef cd : classList) {
-            if (cd.getType().startsWith("Lp") && cd.getInterfaces().contains("Lbypn;")) {
+            if (cd.getInterfaces().contains(mediaCollIface) || cd.getInterfaces().contains("Lbypn;")) {
                 for (Method m : cd.getMethods()) {
                     if (java.lang.reflect.Modifier.isStatic(m.getAccessFlags()) &&
-                        m.getReturnType().equals("Lbypn;") &&
+                        (m.getReturnType().equals(mediaCollIface) || m.getReturnType().equals("Lbypn;")) &&
                         m.getParameters().size() == 2 &&
                         m.getParameters().get(0).getType().equals("I") &&
                         (m.getParameters().get(1).getType().equals("Ljava/util/List;") || m.getParameters().get(1).getType().equals("Ljava/util/Collection;"))) {
@@ -300,7 +361,7 @@ public class ToolkitAligner {
                     m.getReturnType().equals("Ljava/util/List;") &&
                     m.getParameters().size() == 3 &&
                     m.getParameters().get(0).getType().equals("Landroid/content/Context;") &&
-                    m.getParameters().get(1).getType().equals("Lbypn;") &&
+                    (m.getParameters().get(1).getType().equals(mediaCollIface) || m.getParameters().get(1).getType().equals("Lbypn;") || m.getParameters().get(1).getType().equals("Lzgq;")) &&
                     !m.getParameters().get(2).getType().startsWith("Ljava/")) {
                     String featReqType = m.getParameters().get(2).getType();
                     ClassDef featReqClass = allClasses.get(featReqType);
@@ -334,9 +395,9 @@ public class ToolkitAligner {
             if (!"yrq".equals(res.coreMediaLoaderClass) && !"yul".equals(res.coreMediaLoaderClass)) break;
         }
 
-        // 9. DedupKeyFeature & RemoteMediaKeyFeature (implementing bypk)
+        // 9. DedupKeyFeature & RemoteMediaKeyFeature
         for (ClassDef cd : classList) {
-            if (cd.getInterfaces().contains("Lbypk;")) {
+            if (cd.getInterfaces().contains(featureIface) || cd.getInterfaces().contains("Lbypk;")) {
                 for (Method m : cd.getMethods()) {
                     if (m.getName().equals("toString")) {
                         MethodImplementation impl = m.getImplementation();
@@ -463,7 +524,7 @@ public class ToolkitAligner {
                 for (Method m : cd.getMethods()) {
                     if (java.lang.reflect.Modifier.isStatic(m.getAccessFlags()) &&
                         m.getParameters().size() == 1 && m.getParameters().get(0).getType().equals("I") &&
-                        (m.getReturnType().equals("Lbypn;") || m.getReturnType().equals("L" + res.trashCollectionClass.replace('.', '/') + ";"))) {
+                        (m.getReturnType().equals(mediaCollIface) || m.getReturnType().equals("Lbypn;") || m.getReturnType().equals("L" + res.trashCollectionClass.replace('.', '/') + ";"))) {
                         res.trashFactoryClass = simpleClassName(cd.getType());
                         res.trashFactoryMethod = m.getName();
                         break;
@@ -712,13 +773,13 @@ public class ToolkitAligner {
 
         sb.append("    // Mars Collection (MediaCollection for Locked Folder)\n");
         sb.append("    public static final String MARS_COLLECTION_CLASS = \"").append(res.marsCollectionClass).append("\";\n");
-        sb.append("    public static final String[] MARS_COLLECTION_CLASSES = ").append(formatArray(res.marsCollectionClass, "alsd", "alqt", "alww", "ajhx")).append(";\n\n");
+        sb.append("    public static final String[] MARS_COLLECTION_CLASSES = ").append(formatArray(res.marsCollectionClass, "ammr", "alrk", "alsd", "alqt", "alww", "ajhx")).append(";\n\n");
 
         sb.append("    // Trash Collection (MediaCollection for Trash/Bin)\n");
         sb.append("    public static final String TRASH_COLLECTION_CLASS = \"").append(res.trashCollectionClass).append("\";\n");
         sb.append("    public static final String TRASH_FACTORY_CLASS = \"").append(res.trashFactoryClass).append("\";\n");
         sb.append("    public static final String TRASH_FACTORY_METHOD = \"").append(res.trashFactoryMethod).append("\";\n");
-        sb.append("    public static final String[] TRASH_COLLECTION_CLASSES = ").append(formatArray(res.trashCollectionClass, res.trashFactoryClass, "bnew", "blvo", "bmcu", "bjjo", "bjjq")).append(";\n\n");
+        sb.append("    public static final String[] TRASH_COLLECTION_CLASSES = ").append(formatArray(res.trashCollectionClass, res.trashFactoryClass, "bmrd", "blja", "bliu", "bnew", "blvo", "bmcu", "bjjo", "bjjq")).append(";\n\n");
 
         sb.append("    // Keys Media Collection (Loads items given remote media keys)\n");
         sb.append("    public static final String KEYS_COLLECTION_CLASS = \"").append(res.keysCollectionClass).append("\";\n");
@@ -726,22 +787,26 @@ public class ToolkitAligner {
         sb.append("    public static final String KEYS_COLLECTION_BUILDER = \"").append(res.keysCollectionBuilder).append("\";\n");
         sb.append("    public static final String[][] KEYS_COLLECTION_FACTORIES = {\n");
         sb.append("        {\"").append(res.keysCollectionClass).append("\", \"").append(res.keysCollectionMethod).append("\"}, // ").append(res.apkVersion).append("\n");
+        sb.append("        {\"qhs\", \"f\"}, // 8.2.0\n");
+        sb.append("        {\"pti\", \"f\"}, // 8.1.0\n");
         sb.append("        {\"pyk\", \"f\"}, // 7.97.0 arm64\n");
         sb.append("        {\"pvv\", \"f\"}, // 7.97.0 univ\n");
         sb.append("        {\"pzv\", \"f\"}, // 7.97.0 univ\n");
         sb.append("        {\"num\", \"f\"}  // 7.96.0\n");
         sb.append("    };\n");
-        sb.append("    public static final String[] KEYS_COLLECTION_BUILDERS = ").append(formatArray(res.keysCollectionBuilder, "pyj", "pvu", "pzu", "nul")).append(";\n\n");
+        sb.append("    public static final String[] KEYS_COLLECTION_BUILDERS = ").append(formatArray(res.keysCollectionBuilder, "qhr", "pth", "pyj", "pvu", "pzu", "nul")).append(";\n\n");
 
         sb.append("    // Core Media Loader & Features Request\n");
         sb.append("    public static final String CORE_MEDIA_LOADER_CLASS = \"").append(res.coreMediaLoaderClass).append("\";\n");
         sb.append("    public static final String CORE_MEDIA_LOADER_METHOD = \"").append(res.coreMediaLoaderMethod).append("\";\n");
-        sb.append("    public static final String[] CORE_MEDIA_LOADER_CLASSES = ").append(formatArray(res.coreMediaLoaderClass, "yul", "yxq", "zap", "wrl")).append(";\n\n");
+        sb.append("    public static final String[] CORE_MEDIA_LOADER_CLASSES = ").append(formatArray(res.coreMediaLoaderClass, "zgu", "yrq", "yul", "yxq", "zap", "wrl")).append(";\n\n");
 
         sb.append("    public static final String FEATURES_REQUEST_BUILDER_CLASS = \"").append(res.featuresRequestBuilderClass).append("\";\n");
         sb.append("    public static final String FEATURES_REQUEST_CLASS = \"").append(res.featuresRequestClass).append("\";\n");
         sb.append("    public static final String[][] FEATURES_REQUEST_PAIRS = {\n");
         sb.append("        {\"").append(res.featuresRequestBuilderClass).append("\", \"").append(res.featuresRequestClass).append("\"}, // ").append(res.apkVersion).append("\n");
+        sb.append("        {\"zev\", \"zex\"}, // 8.2.0\n");
+        sb.append("        {\"yqd\", \"yqf\"}, // 8.1.0\n");
         sb.append("        {\"wqa\", \"wqb\"}, // 7.97.0\n");
         sb.append("        {\"yta\", \"ytc\"}, // 7.97.0\n");
         sb.append("        {\"yyq\", \"yyr\"}  // 7.97.0 univ\n");
@@ -749,19 +814,19 @@ public class ToolkitAligner {
 
         sb.append("    // DedupKey Feature & RemoteMediaKey Feature\n");
         sb.append("    public static final String DEDUP_KEY_FEATURE_CLASS = \"").append(res.dedupKeyFeatureClass).append("\";\n");
-        sb.append("    public static final String[] DEDUP_KEY_FEATURE_CLASSES = ").append(formatArray(res.dedupKeyFeatureClass, "zon", "zoi", "zog", "zkr")).append(";\n\n");
+        sb.append("    public static final String[] DEDUP_KEY_FEATURE_CLASSES = ").append(formatArray(res.dedupKeyFeatureClass, "acdt", "acds", "abmv", "zon", "zoi", "zog", "zkr")).append(";\n\n");
 
         sb.append("    public static final String REMOTE_MEDIA_KEY_FEATURE_CLASS = \"").append(res.remoteMediaKeyFeatureClass).append("\";\n");
-        sb.append("    public static final String[] REMOTE_MEDIA_KEY_FEATURE_CLASSES = ").append(formatArray(res.remoteMediaKeyFeatureClass, "nfl", "bams", "bamo", "bamk", "azxs")).append(";\n\n");
+        sb.append("    public static final String[] REMOTE_MEDIA_KEY_FEATURE_CLASSES = ").append(formatArray(res.remoteMediaKeyFeatureClass, "nrm", "nfl", "bams", "bamo", "bamk", "azxs")).append(";\n\n");
 
         sb.append("    // Action Queue Flusher (flushes local action mutations)\n");
         sb.append("    public static final String ACTION_FLUSHER_CLASS = \"").append(res.actionFlusherClass).append("\";\n");
-        sb.append("    public static final String[] ACTION_FLUSHER_CLASSES = ").append(formatArray(res.actionFlusherClass, "aqmp", "aqgz", "aqgr", "aokq", "amwa")).append(";\n\n");
+        sb.append("    public static final String[] ACTION_FLUSHER_CLASSES = ").append(formatArray(res.actionFlusherClass, "arfq", "arbz", "aqmp", "aqgz", "aqgr", "aokq", "amwa")).append(";\n\n");
 
         sb.append("    // Archive Service & Actions\n");
         sb.append("    public static final String ARCHIVE_SERVICE_CLASS = \"").append(res.archiveServiceClass).append("\";\n");
         sb.append("    public static final String ARCHIVE_SERVICE_METHOD = \"").append(res.archiveServiceMethod).append("\";\n");
-        sb.append("    public static final String[] ARCHIVE_SERVICE_CLASSES = ").append(formatArray(res.archiveServiceClass, "rvd", "rsr", "psu")).append(";\n\n");
+        sb.append("    public static final String[] ARCHIVE_SERVICE_CLASSES = ").append(formatArray(res.archiveServiceClass, "shd", "scm", "rvd", "rsr", "psu")).append(";\n\n");
 
         sb.append("    public static final String ARCHIVE_BUILDER_CLASS = \"").append(res.archiveBuilderClass).append("\";\n");
         sb.append("    public static final String ARCHIVE_ACTION_CLASS = \"").append(res.archiveActionClass).append("\";\n");
@@ -769,7 +834,7 @@ public class ToolkitAligner {
 
         sb.append("    // Move to Trash Action\n");
         sb.append("    public static final String MOVE_TO_TRASH_ACTION_CLASS = \"").append(res.moveToTrashActionClass).append("\";\n");
-        sb.append("    public static final String[] MOVE_TO_TRASH_ACTION_CLASSES = ").append(formatArray(res.moveToTrashActionClass, "bfsn", "bfjt", "bjir")).append(";\n\n");
+        sb.append("    public static final String[] MOVE_TO_TRASH_ACTION_CLASSES = ").append(formatArray(res.moveToTrashActionClass, "bgqg", "bmpy", "bglr", "bfsn", "bfjt", "bjir")).append(";\n\n");
 
         sb.append("    // Glide Singleton (mdm in 7.98)\n");
         sb.append("    // Glide Singleton\n");
