@@ -2157,47 +2157,116 @@ public final class PhenotypeFlagManager {
         Theme theme = Theme.get(activity);
         SharedPreferences prefs = getPrefs(activity);
 
-        Dialog dialog = new Dialog(activity);
+        boolean isLarge = isLargeScreen(activity);
+
+        Dialog dialog = isLarge ? new Dialog(activity) : new Dialog(activity, android.R.style.Theme_DeviceDefault_NoActionBar);
         dialog.requestWindowFeature(Window.FEATURE_NO_TITLE);
+
+        int statusBarHeight = 0;
+        int sbResId = activity.getResources().getIdentifier("status_bar_height", "dimen", "android");
+        if (sbResId > 0) {
+            statusBarHeight = activity.getResources().getDimensionPixelSize(sbResId);
+        }
+        if (statusBarHeight <= 0) {
+            statusBarHeight = (int) (28 * density);
+        }
+
+        Window window = dialog.getWindow();
+        if (window != null && !isLarge) {
+            window.setBackgroundDrawable(new ColorDrawable(theme.surface));
+            window.clearFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND);
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                window.addFlags(WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS);
+                window.setStatusBarColor(theme.surface);
+                window.setNavigationBarColor(theme.surface);
+            }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                View decor = window.getDecorView();
+                int flags = decor.getSystemUiVisibility();
+                if (!theme.isDark) {
+                    flags |= View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR;
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                        flags |= View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR;
+                    }
+                } else {
+                    flags &= ~View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR;
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                        flags &= ~View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR;
+                    }
+                }
+                decor.setSystemUiVisibility(flags);
+            }
+        }
 
         LinearLayout root = new LinearLayout(activity);
         root.setOrientation(LinearLayout.VERTICAL);
-        root.setBackground(createRoundedDrawable(theme.surface, 28 * density));
-        root.setLayoutParams(new ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-            root.setOutlineProvider(new ViewOutlineProvider() {
-                @Override
-                public void getOutline(View view, Outline outline) {
-                    outline.setRoundRect(0, 0, view.getWidth(), view.getHeight(), 28 * density);
-                }
-            });
-            root.setClipToOutline(true);
+        if (isLarge) {
+            root.setBackground(createRoundedDrawable(theme.surface, 28 * density));
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                root.setOutlineProvider(new ViewOutlineProvider() {
+                    @Override
+                    public void getOutline(View view, Outline outline) {
+                        outline.setRoundRect(0, 0, view.getWidth(), view.getHeight(), 28 * density);
+                    }
+                });
+                root.setClipToOutline(true);
+            }
+        } else {
+            root.setBackgroundColor(theme.surface);
         }
+        root.setLayoutParams(new ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        root.setTag("no_avatar");
 
         // 1. Top Bar
         LinearLayout topBar = new LinearLayout(activity);
         topBar.setOrientation(LinearLayout.HORIZONTAL);
         topBar.setGravity(Gravity.CENTER_VERTICAL);
         int tbPad = (int) (16 * density);
-        topBar.setPadding(tbPad, (int) (12 * density), (int) (10 * density), (int) (8 * density));
+        int initialTopPadding = isLarge ? (int) (12 * density) : (statusBarHeight + (int) (8 * density));
+        topBar.setPadding(tbPad, initialTopPadding, (int) (10 * density), (int) (8 * density));
 
-        FrameLayout iconContainer = new FrameLayout(activity);
-        int icBox = (int) (34 * density);
-        LinearLayout.LayoutParams icBoxLp = new LinearLayout.LayoutParams(icBox, icBox);
-        icBoxLp.setMargins(0, 0, (int) (10 * density), 0);
-        iconContainer.setLayoutParams(icBoxLp);
-        GradientDrawable icBg = new GradientDrawable();
-        icBg.setCornerRadius(10 * density);
-        icBg.setColor(theme.surfaceContainer);
-        iconContainer.setBackground(icBg);
+        if (!isLarge) {
+            FrameLayout btnBack = new FrameLayout(activity);
+            int btnBackSize = (int) (40 * density);
+            LinearLayout.LayoutParams btnBackLp = new LinearLayout.LayoutParams(btnBackSize, btnBackSize);
+            btnBackLp.setMargins(0, 0, (int) (8 * density), 0);
+            btnBack.setLayoutParams(btnBackLp);
+            btnBack.setClickable(true);
+            btnBack.setFocusable(true);
+            btnBack.setBackground(createActionPillDrawable(theme.surfaceContainer, 20 * density));
+            btnBack.setTag("no_avatar");
 
-        ImageView ivLead = new ImageView(activity);
-        ivLead.setImageDrawable(new MaterialVectorDrawable(MaterialVectorDrawable.TYPE_TUNE, theme.primary));
-        int ivLeadSize = (int) (20 * density);
-        FrameLayout.LayoutParams ivLeadLp = new FrameLayout.LayoutParams(ivLeadSize, ivLeadSize, Gravity.CENTER);
-        ivLead.setLayoutParams(ivLeadLp);
-        iconContainer.addView(ivLead);
-        topBar.addView(iconContainer);
+            ImageView ivBack = new ImageView(activity);
+            Drawable backDrawable = getStockDrawable(activity, "quantum_gm_ic_arrow_back_vd_theme_24", theme.textPrimary);
+            if (backDrawable == null) {
+                backDrawable = new MaterialVectorDrawable(MaterialVectorDrawable.TYPE_ARROW_BACK, theme.textPrimary);
+            }
+            ivBack.setImageDrawable(backDrawable);
+            int icBackSize = (int) (22 * density);
+            FrameLayout.LayoutParams ivBackLp = new FrameLayout.LayoutParams(icBackSize, icBackSize, Gravity.CENTER);
+            ivBack.setLayoutParams(ivBackLp);
+            btnBack.addView(ivBack);
+            btnBack.setOnClickListener(v -> dialog.dismiss());
+            topBar.addView(btnBack);
+        } else {
+            FrameLayout iconContainer = new FrameLayout(activity);
+            int icBox = (int) (34 * density);
+            LinearLayout.LayoutParams icBoxLp = new LinearLayout.LayoutParams(icBox, icBox);
+            icBoxLp.setMargins(0, 0, (int) (10 * density), 0);
+            iconContainer.setLayoutParams(icBoxLp);
+            GradientDrawable icBg = new GradientDrawable();
+            icBg.setCornerRadius(10 * density);
+            icBg.setColor(theme.surfaceContainer);
+            iconContainer.setBackground(icBg);
+
+            ImageView ivLead = new ImageView(activity);
+            ivLead.setImageDrawable(new MaterialVectorDrawable(MaterialVectorDrawable.TYPE_TUNE, theme.primary));
+            int ivLeadSize = (int) (20 * density);
+            FrameLayout.LayoutParams ivLeadLp = new FrameLayout.LayoutParams(ivLeadSize, ivLeadSize, Gravity.CENTER);
+            ivLead.setLayoutParams(ivLeadLp);
+            iconContainer.addView(ivLead);
+            topBar.addView(iconContainer);
+        }
 
         LinearLayout titleCol = new LinearLayout(activity);
         titleCol.setOrientation(LinearLayout.VERTICAL);
@@ -2233,7 +2302,9 @@ public final class PhenotypeFlagManager {
         topBar.addView(btnSearch);
         topBar.addView(btnAdd);
         topBar.addView(btnMenu);
-        topBar.addView(btnClose);
+        if (isLarge) {
+            topBar.addView(btnClose);
+        }
         root.addView(topBar);
 
         // 2. Expandable Search Bar
@@ -2433,6 +2504,33 @@ public final class PhenotypeFlagManager {
         });
         bottomDock.addView(btnApply);
         root.addView(bottomDock);
+
+        final int finalSbHeight = statusBarHeight;
+        if (!isLarge) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.KITKAT_WATCH) {
+                root.setOnApplyWindowInsetsListener((v, insets) -> {
+                    int top = finalSbHeight;
+                    int bottom = (int) (14 * density);
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                        int sbTop = insets.getInsets(WindowInsets.Type.statusBars()).top;
+                        int cutoutTop = insets.getInsets(WindowInsets.Type.displayCutout()).top;
+                        top = Math.max(top, Math.max(sbTop, cutoutTop));
+                        int navBottom = insets.getInsets(WindowInsets.Type.navigationBars()).bottom;
+                        int cutoutBottom = insets.getInsets(WindowInsets.Type.displayCutout()).bottom;
+                        bottom = Math.max(bottom, Math.max(navBottom, cutoutBottom));
+                    } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P && insets.getDisplayCutout() != null) {
+                        top = Math.max(top, insets.getDisplayCutout().getSafeInsetTop());
+                        bottom = Math.max(bottom, Math.max(insets.getSystemWindowInsetBottom(), insets.getDisplayCutout().getSafeInsetBottom()));
+                    } else {
+                        top = Math.max(top, insets.getSystemWindowInsetTop());
+                        bottom = Math.max(bottom, insets.getSystemWindowInsetBottom());
+                    }
+                    topBar.setPadding(tbPad, top + (int) (8 * density), (int) (10 * density), (int) (8 * density));
+                    bottomDock.setPadding(dPadH, (int) (8 * density), dPadH, bottom + (int) (6 * density));
+                    return insets;
+                });
+            }
+        }
 
         // Instantiate Adapter
         FlagAdapter adapter = new FlagAdapter(activity, prefs, tvSub, emptyContainer);
@@ -2682,8 +2780,15 @@ public final class PhenotypeFlagManager {
         setCurrentOpenDialog(dialog);
         updateDockTabState(activity, DOCK_TAB_FLAGS);
 
-        // Window size - popup-friendly (94% width, 88% height on phone, adaptive up to 920dp on tablet)
-        applyAdaptiveDialogBounds(dialog, activity);
+        if (isLarge) {
+            applyAdaptiveDialogBounds(dialog, activity);
+        } else {
+            Window win = dialog.getWindow();
+            if (win != null) {
+                win.setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT);
+                win.setGravity(Gravity.CENTER);
+            }
+        }
     }
 
     public static boolean isLargeScreen(Activity activity) {
