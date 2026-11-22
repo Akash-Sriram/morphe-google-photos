@@ -3704,12 +3704,17 @@ public class NativeToolkitDialog {
     }
 
     private static void copyFile(File src, File dst) throws Exception {
+        copyFile(src, dst, null);
+    }
+
+    private static void copyFile(File src, File dst, java.util.function.LongConsumer progressCallback) throws Exception {
         try (InputStream in = new FileInputStream(src);
              FileOutputStream out = new FileOutputStream(dst)) {
             byte[] buf = new byte[65536];
             int len;
             while ((len = in.read(buf)) > 0) {
                 out.write(buf, 0, len);
+                if (progressCallback != null) progressCallback.accept(len);
             }
             out.flush();
         }
@@ -3832,6 +3837,12 @@ public class NativeToolkitDialog {
      */
     private static long downloadRemoteStream(String urlStr, OutputStream out, String authToken,
                                              java.util.function.LongConsumer chunkCallback) throws Exception {
+        return downloadRemoteStream(urlStr, out, authToken, chunkCallback, null);
+    }
+
+    private static long downloadRemoteStream(String urlStr, OutputStream out, String authToken,
+                                             java.util.function.LongConsumer chunkCallback,
+                                             java.util.function.LongConsumer lengthCallback) throws Exception {
         HttpURLConnection conn = TrustedGoogleMedia.open(urlStr, authToken);
         int code = conn.getResponseCode();
         // Public Google CDN media can still be downloaded without credentials.
@@ -3843,6 +3854,10 @@ public class NativeToolkitDialog {
         if (code >= 400) {
             conn.disconnect();
             throw new TrustedGoogleMedia.DownloadException(code == 401 || code == 403 ? TrustedGoogleMedia.Reason.AUTH_FAILED : TrustedGoogleMedia.Reason.HTTP_ERROR, "HTTP " + code);
+        }
+        if (lengthCallback != null) {
+            long cl = conn.getContentLengthLong();
+            if (cl > 0) lengthCallback.accept(cl);
         }
         long totalWritten = 0;
         try (InputStream in = conn.getInputStream()) {
@@ -3861,8 +3876,19 @@ public class NativeToolkitDialog {
     }
 
     private static void downloadRemoteFile(String urlStr, File dst, String authToken) throws Exception {
+        downloadRemoteFile(urlStr, dst, authToken, null, null);
+    }
+
+    private static void downloadRemoteFile(String urlStr, File dst, String authToken,
+                                           java.util.function.LongConsumer chunkCallback) throws Exception {
+        downloadRemoteFile(urlStr, dst, authToken, chunkCallback, null);
+    }
+
+    private static void downloadRemoteFile(String urlStr, File dst, String authToken,
+                                           java.util.function.LongConsumer chunkCallback,
+                                           java.util.function.LongConsumer lengthCallback) throws Exception {
         try (FileOutputStream out = new FileOutputStream(dst)) {
-            downloadRemoteStream(urlStr, out, authToken);
+            downloadRemoteStream(urlStr, out, authToken, chunkCallback, lengthCallback);
         }
     }
 
@@ -4323,17 +4349,12 @@ public class NativeToolkitDialog {
         tvStatus.setPadding(0, (int) (6 * density), 0, (int) (6 * density));
         pRoot.addView(tvStatus);
 
-        // Per-worker live rows — one per concurrent download slot
-        final TextView[] tvWorkers = new TextView[3];
-        for (int wi = 0; wi < 3; wi++) {
-            tvWorkers[wi] = new TextView(activity);
-            tvWorkers[wi].setTextSize(11f);
-            tvWorkers[wi].setTextColor(theme.textSecondary);
-            tvWorkers[wi].setTypeface(android.graphics.Typeface.MONOSPACE);
-            tvWorkers[wi].setPadding(0, (int) (1 * density), 0, (int) (1 * density));
-            tvWorkers[wi].setVisibility(View.GONE);
-            pRoot.addView(tvWorkers[wi]);
-        }
+        final TextView tvActiveDetail = new TextView(activity);
+        tvActiveDetail.setTextSize(11f);
+        tvActiveDetail.setTextColor(theme.textSecondary);
+        tvActiveDetail.setPadding(0, (int) (1 * density), 0, (int) (4 * density));
+        tvActiveDetail.setVisibility(View.GONE);
+        pRoot.addView(tvActiveDetail);
 
         ProgressBar pBar = new ProgressBar(activity, null, android.R.attr.progressBarStyleHorizontal);
         pBar.setMax(items.size());
@@ -4529,9 +4550,10 @@ public class NativeToolkitDialog {
             // ── Live progress infrastructure ─────────────────────────────────────────
             // Per-worker progress state: keyed by thread-ID assigned at worker start
             final class WorkerProgress {
-                volatile String name = "";          // active file display name (truncated)
+                volatile String name = "";          // active file display name
                 final AtomicLong itemBytes = new AtomicLong(0);   // bytes received for current file
                 volatile long itemTotal = 0;        // expected bytes (0 = unknown)
+                volatile boolean isLarge = false;   // true if video or >= 20 MB
                 volatile boolean paused = false;    // true when circuit-breaker is active
             }
             final ConcurrentHashMap<Long, WorkerProgress> workerMap = new ConcurrentHashMap<>();
@@ -4561,23 +4583,6 @@ public class NativeToolkitDialog {
             final java.util.concurrent.LinkedBlockingQueue<StorageScanner.MediaItem> retryQueue =
                     new java.util.concurrent.LinkedBlockingQueue<>();
 
-            // Helper: Unicode block mini-bar  ▏▎▍▌▋▊▉█  (10 chars = 80 steps)
-            // Returns a fixed 10-char string.
-            java.util.function.BiFunction<Long, Long, String> miniBar = (received, total) -> {
-                if (total <= 0) return "░░░░░░░░░░";
-                int filled = (int) Math.min(80, Math.max(0, (received * 80) / total));
-                int fullBlocks = filled / 8;
-                int partial = filled % 8;
-                final char[] blocks = {' ', '▏', '▎', '▍', '▌', '▋', '▊', '▉'};
-                StringBuilder sb = new StringBuilder(10);
-                for (int i = 0; i < fullBlocks && i < 10; i++) sb.append('█');
-                if (fullBlocks < 10) {
-                    sb.append(partial > 0 ? blocks[partial] : '░');
-                    for (int i = fullBlocks + 1; i < 10; i++) sb.append('░');
-                }
-                return sb.toString();
-            };
-
             // Helper: truncate filename to maxLen chars with middle ellipsis
             java.util.function.BiFunction<String, Integer, String> truncName = (name, maxLen) -> {
                 if (name == null || name.length() <= maxLen) return name != null ? name : "";
@@ -4586,8 +4591,6 @@ public class NativeToolkitDialog {
             };
 
             // Helper: format bytes as "1.2 GB", "345 MB", "12 KB"
-            java.util.function.LongUnaryOperator[] fmtBytes = new java.util.function.LongUnaryOperator[0]; // placeholder
-            // We'll use an inline lambda:
             java.util.function.Function<Long, String> fmtB = (b) -> {
                 if (b >= 1024L * 1024 * 1024) return String.format(Locale.US, "%.1f GB", b / (1024.0 * 1024 * 1024));
                 if (b >= 1024L * 1024)        return String.format(Locale.US, "%.1f MB", b / (1024.0 * 1024));
@@ -4635,62 +4638,68 @@ public class NativeToolkitDialog {
                     int byteBarMax = 1000;
                     int byteBarProgress = (int) Math.min(byteBarMax, (totalBytes * byteBarMax) / totalEstimatedBytesForProgress);
 
-                    // Build per-worker rows for BigTextStyle + dialog
-                    StringBuilder expandedText = new StringBuilder();
+                    // Collect active workers and identify large files (videos or files >= 20 MB)
                     WorkerProgress[] activeWorkers = workerMap.values().toArray(new WorkerProgress[0]);
-                    int workerSlot = 0;
+                    int activeCount = 0;
+                    List<String> largeFileDetails = new ArrayList<>();
                     for (WorkerProgress wp : activeWorkers) {
-                        if (workerSlot >= 3) break;
-                        String row;
-                        if (wp.paused) {
-                            row = truncName.apply(wp.name, 18) + "  ⏸ Network paused…";
-                        } else {
+                        if (wp.name != null && !wp.name.isEmpty()) {
+                            activeCount++;
                             long ib = wp.itemBytes.get();
                             long it = wp.itemTotal;
-                            String bar = miniBar.apply(ib, it);
-                            String recvStr = fmtB.apply(ib);
-                            String pctStr = it > 0 ? " (" + Math.min(100, (int) ((ib * 100) / it)) + "%)" : "";
-                            String totalStr = it > 0 ? "/" + fmtB.apply(it) : "";
-                            row = truncName.apply(wp.name, 16) + "  " + bar + "  " + recvStr + totalStr + pctStr;
+                            if (wp.isLarge || it >= 20L * 1024 * 1024 || ib >= 10L * 1024 * 1024) {
+                                String pct = it > 0 ? " (" + Math.min(100, (int) ((ib * 100) / it)) + "%)" : "";
+                                String tot = it > 0 ? " / " + fmtB.apply(it) : "";
+                                largeFileDetails.add(truncName.apply(wp.name, 26) + " • " + fmtB.apply(ib) + tot + pct);
+                            }
                         }
-                        if (expandedText.length() > 0) expandedText.append("\n");
-                        expandedText.append(row);
-
-                        final String dialogRow = row;
-                        final int slot = workerSlot;
-                        MAIN_HANDLER.post(() -> {
-                            try {
-                                if (slot < tvWorkers.length) {
-                                    tvWorkers[slot].setText(dialogRow);
-                                    tvWorkers[slot].setVisibility(View.VISIBLE);
-                                }
-                            } catch (Throwable ignored) {}
-                        });
-                        workerSlot++;
-                    }
-                    // Hide unused worker slots
-                    for (int s = workerSlot; s < 3; s++) {
-                        final int slot = s;
-                        MAIN_HANDLER.post(() -> {
-                            try { tvWorkers[slot].setVisibility(View.GONE); } catch (Throwable ignored) {}
-                        });
                     }
 
                     // Build collapsed + title lines
                     String failLabel = failCount > 0 ? " • " + failCount + " ✗" : "";
-                    String collapsedTitle = remaining + " remaining" + failLabel;
-                    String workerCount = activeWorkers.length > 0 ? activeWorkers.length + " file" + (activeWorkers.length > 1 ? "s" : "") : done + " done";
-                    String collapsedText = workerCount
-                            + (speedStr.isEmpty() ? "" : " • " + speedStr)
+                    String collapsedTitle = remaining + " remaining" + failLabel + (speedStr.isEmpty() ? "" : " • " + speedStr);
+                    String collapsedText = done + " of " + items.size() + " (" + fmtB.apply(totalBytes) + " / " + fmtB.apply(totalEstimatedBytesForProgress) + ")"
                             + (etaStr.isEmpty() ? "" : " • " + etaStr);
+
+                    // Build expanded BigTextStyle
+                    StringBuilder expandedText = new StringBuilder();
+                    expandedText.append("Overall: ").append(done).append(" / ").append(items.size())
+                            .append(" items (").append(fmtB.apply(totalBytes)).append(" / ").append(fmtB.apply(totalEstimatedBytesForProgress)).append(")");
+                    if (!speedStr.isEmpty() || !etaStr.isEmpty()) {
+                        expandedText.append("\nSpeed: ").append(speedStr.isEmpty() ? "Calculating..." : speedStr);
+                        if (!etaStr.isEmpty()) expandedText.append(" • ").append(etaStr);
+                    }
+                    expandedText.append("\nActive: ").append(activeCount).append(" downloads in parallel");
+                    if (!largeFileDetails.isEmpty()) {
+                        for (int li = 0; li < Math.min(3, largeFileDetails.size()); li++) {
+                            expandedText.append("\n📹 ").append(largeFileDetails.get(li));
+                        }
+                    }
+
+                    // Dialog detail row text
+                    final String dialogDetailText;
+                    if (!largeFileDetails.isEmpty()) {
+                        dialogDetailText = "📹 " + largeFileDetails.get(0);
+                    } else if (activeCount > 0) {
+                        dialogDetailText = "⚡ " + activeCount + " downloads active in parallel";
+                    } else {
+                        dialogDetailText = "";
+                    }
 
                     // Update dialog counter row
                     MAIN_HANDLER.post(() -> {
                         try {
                             if (progressDialog.isShowing()) {
-                                tvStatus.setText(collapsedTitle);
+                                tvStatus.setText(done + " / " + items.size() + " • " + fmtB.apply(totalBytes) + " / " + fmtB.apply(totalEstimatedBytesForProgress)
+                                        + (speedStr.isEmpty() ? "" : " • " + speedStr) + (etaStr.isEmpty() ? "" : " (" + etaStr + ")"));
                                 pBar.setMax(byteBarMax);
                                 pBar.setProgress(byteBarProgress);
+                                if (!dialogDetailText.isEmpty()) {
+                                    tvActiveDetail.setText(dialogDetailText);
+                                    tvActiveDetail.setVisibility(View.VISIBLE);
+                                } else {
+                                    tvActiveDetail.setVisibility(View.GONE);
+                                }
                             }
                         } catch (Throwable ignored) {}
                     });
@@ -4699,7 +4708,7 @@ public class NativeToolkitDialog {
                     if (finalNm != null) {
                         try {
                             Notification.BigTextStyle bigStyle = new Notification.BigTextStyle()
-                                    .bigText(expandedText.length() > 0 ? expandedText.toString() : collapsedText);
+                                    .bigText(expandedText.toString());
                             notifBuilder.setContentTitle(collapsedTitle)
                                     .setContentText(collapsedText)
                                     .setStyle(bigStyle)
@@ -4710,7 +4719,7 @@ public class NativeToolkitDialog {
                 } catch (Throwable ignored) {}
             }, 750, 750, TimeUnit.MILLISECONDS);
 
-            final int numWorkers = Math.min(3, Math.max(1, items.size()));
+            final int numWorkers = Math.min(6, Math.max(1, items.size()));
             final ExecutorService workerPool = Executors.newFixedThreadPool(numWorkers);
             final AtomicInteger itemIndex = new AtomicInteger(0);
             final NetworkCircuitBreaker circuitBreaker = new NetworkCircuitBreaker(activity, finalNm, notifBuilder, NOTIF_ID, tvStatus);
@@ -4768,6 +4777,7 @@ public class NativeToolkitDialog {
                                 wp.name = baseName;
                                 wp.itemTotal = item.sizeBytes > 0 ? item.sizeBytes : 0;
                                 wp.itemBytes.set(0);
+                                wp.isLarge = isVideo || item.sizeBytes >= 20L * 1024 * 1024;
                                 wp.paused = false;
 
                                 // Fast-skip checkpoint guard: skip items already exported to disk with valid size
@@ -4780,12 +4790,23 @@ public class NativeToolkitDialog {
                                     }
                                     completedCount.incrementAndGet();
                                     wp.name = "";
+                                    wp.itemBytes.set(0);
+                                    wp.isLarge = false;
                                     continue;
                                 }
 
                                 if (item.quotaBytes > 0) {
                                     // Quota items: modify EXIF via DedupBreaker to prevent deduplication
                                     File destFile = File.createTempFile("morphe_export_", ".tmp", activity.getCacheDir());
+                                    final AtomicLong chunkBytesAccum = new AtomicLong(0);
+                                    java.util.function.LongConsumer chunkCb = (len) -> {
+                                        totalBytesDownloaded.addAndGet(len);
+                                        wp.itemBytes.addAndGet(len);
+                                        chunkBytesAccum.addAndGet(len);
+                                    };
+                                    java.util.function.LongConsumer lengthCb = (cl) -> {
+                                        if (wp.itemTotal <= 0) wp.itemTotal = cl;
+                                    };
                                     try {
                                         boolean copied = false;
                                         // 1. Direct file path
@@ -4794,7 +4815,7 @@ public class NativeToolkitDialog {
                                             File localFile = new File(localP);
                                             if (localFile.exists() && localFile.canRead()) {
                                                 try {
-                                                    copyFile(localFile, destFile);
+                                                    copyFile(localFile, destFile, chunkCb);
                                                     copied = destFile.exists() && destFile.length() > 0;
                                                 } catch (Throwable t) {
                                                     lastError = "Local copy error: " + t.getMessage();
@@ -4813,7 +4834,10 @@ public class NativeToolkitDialog {
                                                             if (is != null) {
                                                                 byte[] buf = new byte[65536];
                                                                 int r;
-                                                                while ((r = is.read(buf)) != -1) fos.write(buf, 0, r);
+                                                                while ((r = is.read(buf)) != -1) {
+                                                                    fos.write(buf, 0, r);
+                                                                    chunkCb.accept(r);
+                                                                }
                                                                 fos.flush();
                                                                 copied = destFile.exists() && destFile.length() > 0;
                                                             }
@@ -4821,7 +4845,7 @@ public class NativeToolkitDialog {
                                                     } else {
                                                         File lf = new File(localDbPath);
                                                         if (lf.exists() && lf.canRead()) {
-                                                            copyFile(lf, destFile);
+                                                            copyFile(lf, destFile, chunkCb);
                                                             copied = destFile.exists() && destFile.length() > 0;
                                                         }
                                                     }
@@ -4843,12 +4867,19 @@ public class NativeToolkitDialog {
                                             int retries = 0;
                                             while (!copied && retries < 4 && !isCancelled[0]) {
                                                 try {
-                                                    downloadRemoteFile(dlUrl, destFile, tokenRef[0]);
+                                                    downloadRemoteFile(dlUrl, destFile, tokenRef[0], chunkCb, lengthCb);
                                                     copied = destFile.exists() && destFile.length() > 0;
                                                 } catch (Throwable t) {
+                                                    long failDelta = chunkBytesAccum.getAndSet(0);
+                                                    if (failDelta > 0) {
+                                                        totalBytesDownloaded.addAndGet(-failDelta);
+                                                        wp.itemBytes.set(0);
+                                                    }
                                                     lastError = t.getMessage();
                                                     if (isNetworkOutageError(t)) {
+                                                        wp.paused = true;
                                                         circuitBreaker.tripAndBlockUntilRestored(dlUrl, isCancelled);
+                                                        wp.paused = false;
                                                         continue;
                                                     }
                                                     boolean isAuthError = t instanceof TrustedGoogleMedia.DownloadException
@@ -4860,10 +4891,15 @@ public class NativeToolkitDialog {
                                                                 tokenRef[0] = app.morphe.extension.shared.patches.LocalCreationDownloader.getAuthToken(activity, preferredAcc);
                                                                 lastTokenFetch[0] = System.currentTimeMillis();
                                                             }
-                                                            downloadRemoteFile(dlUrl, destFile, tokenRef[0]);
+                                                            downloadRemoteFile(dlUrl, destFile, tokenRef[0], chunkCb, lengthCb);
                                                             copied = destFile.exists() && destFile.length() > 0;
                                                             if (copied) break;
                                                         } catch (Throwable tAuthRetry) {
+                                                            long failDeltaAuth = chunkBytesAccum.getAndSet(0);
+                                                            if (failDeltaAuth > 0) {
+                                                                totalBytesDownloaded.addAndGet(-failDeltaAuth);
+                                                                wp.itemBytes.set(0);
+                                                            }
                                                             lastError = tAuthRetry.getMessage();
                                                         }
                                                     }
@@ -4884,7 +4920,12 @@ public class NativeToolkitDialog {
                                                 Logger.printException(() -> "Could not tag exported quota item " + "[MEDIA]", t);
                                             }
                                             long fileLen = destFile.length();
-                                            totalBytesDownloaded.addAndGet(fileLen);
+                                            long streamAdded = chunkBytesAccum.get();
+                                            if (fileLen > streamAdded) {
+                                                long diff = fileLen - streamAdded;
+                                                totalBytesDownloaded.addAndGet(diff);
+                                                wp.itemBytes.addAndGet(diff);
+                                            }
                                             String pubPath = MediaExport.publish(activity, destFile, baseName, resolvedMime);
                                             exportedPaths.add(pubPath);
                                             successCount.incrementAndGet();
@@ -4917,6 +4958,8 @@ public class NativeToolkitDialog {
                                                         int r;
                                                         while ((r = fis.read(buf)) != -1) {
                                                             out.write(buf, 0, r);
+                                                            totalBytesDownloaded.addAndGet(r);
+                                                            wp.itemBytes.addAndGet(r);
                                                             itemStreamBytes.addAndGet(r);
                                                         }
                                                         streamed = true;
@@ -4935,6 +4978,8 @@ public class NativeToolkitDialog {
                                                                 int r;
                                                                 while ((r = is.read(buf)) != -1) {
                                                                     out.write(buf, 0, r);
+                                                                    totalBytesDownloaded.addAndGet(r);
+                                                                    wp.itemBytes.addAndGet(r);
                                                                     itemStreamBytes.addAndGet(r);
                                                                 }
                                                                 streamed = true;
@@ -4978,7 +5023,10 @@ public class NativeToolkitDialog {
                                                             wp.itemBytes.addAndGet(len);
                                                             itemStreamBytes.addAndGet(len);
                                                         };
-                                                        long written = downloadRemoteStream(dlUrl, out, tokenRef[0], chunkCb);
+                                                        java.util.function.LongConsumer lengthCb = (cl) -> {
+                                                            if (wp.itemTotal <= 0) wp.itemTotal = cl;
+                                                        };
+                                                        long written = downloadRemoteStream(dlUrl, out, tokenRef[0], chunkCb, lengthCb);
                                                         streamed = written > 0;
                                                     } catch (Throwable t) {
                                                         if (isNetworkOutageError(t)) {
@@ -5001,7 +5049,10 @@ public class NativeToolkitDialog {
                                                                     wp.itemBytes.addAndGet(len);
                                                                     itemStreamBytes.addAndGet(len);
                                                                 };
-                                                                long written = downloadRemoteStream(dlUrl, out, tokenRef[0], chunkCb2);
+                                                                java.util.function.LongConsumer lengthCb2 = (cl) -> {
+                                                                    if (wp.itemTotal <= 0) wp.itemTotal = cl;
+                                                                };
+                                                                long written = downloadRemoteStream(dlUrl, out, tokenRef[0], chunkCb2, lengthCb2);
                                                                 streamed = written > 0;
                                                                 if (streamed) break;
                                                             } catch (Throwable ignored) {}
