@@ -203,8 +203,17 @@ public class NativeToolkitDialog {
 
         boolean isLarge = PhenotypeFlagManager.isLargeScreen(activity);
 
-        Dialog dialog = isLarge ? new Dialog(activity) : new Dialog(activity, android.R.style.Theme_DeviceDefault_NoActionBar_Fullscreen);
+        Dialog dialog = isLarge ? new Dialog(activity) : new Dialog(activity, android.R.style.Theme_DeviceDefault_NoActionBar);
         dialog.requestWindowFeature(Window.FEATURE_NO_TITLE);
+
+        int statusBarHeight = 0;
+        int sbResId = activity.getResources().getIdentifier("status_bar_height", "dimen", "android");
+        if (sbResId > 0) {
+            statusBarHeight = activity.getResources().getDimensionPixelSize(sbResId);
+        }
+        if (statusBarHeight <= 0) {
+            statusBarHeight = (int) (28 * density);
+        }
 
         Window window = dialog.getWindow();
         if (window != null && !isLarge) {
@@ -262,8 +271,9 @@ public class NativeToolkitDialog {
         topBar.setOrientation(LinearLayout.HORIZONTAL);
         topBar.setGravity(Gravity.CENTER_VERTICAL);
         int tbPad = (int) (16 * density);
-        int tbPadV = (int) (12 * density);
-        topBar.setPadding(tbPad, tbPadV, (int) (12 * density), tbPadV);
+        int tbPadV = (int) (10 * density);
+        int initialTopPadding = isLarge ? tbPadV : (statusBarHeight + tbPadV);
+        topBar.setPadding(tbPad, initialTopPadding, (int) (12 * density), tbPadV);
 
         if (!isLarge) {
             FrameLayout btnBack = new FrameLayout(activity);
@@ -370,21 +380,29 @@ public class NativeToolkitDialog {
 
         final View[] dockedBottomBarRef = new View[1];
         final View[] dockedBottomDividerRef = new View[1];
+        final int finalSbHeight = statusBarHeight;
         if (!isLarge) {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.KITKAT_WATCH) {
                 root.setOnApplyWindowInsetsListener((v, insets) -> {
-                    int top = 0;
-                    int bottom = 0;
+                    int top = finalSbHeight;
+                    int bottom = (int) (14 * density);
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                        top = insets.getInsets(WindowInsets.Type.statusBars()).top;
-                        bottom = insets.getInsets(WindowInsets.Type.navigationBars()).bottom;
+                        int sbTop = insets.getInsets(WindowInsets.Type.statusBars()).top;
+                        int cutoutTop = insets.getInsets(WindowInsets.Type.displayCutout()).top;
+                        top = Math.max(top, Math.max(sbTop, cutoutTop));
+                        int navBottom = insets.getInsets(WindowInsets.Type.navigationBars()).bottom;
+                        int cutoutBottom = insets.getInsets(WindowInsets.Type.displayCutout()).bottom;
+                        bottom = Math.max(bottom, Math.max(navBottom, cutoutBottom));
+                    } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P && insets.getDisplayCutout() != null) {
+                        top = Math.max(top, insets.getDisplayCutout().getSafeInsetTop());
+                        bottom = Math.max(bottom, Math.max(insets.getSystemWindowInsetBottom(), insets.getDisplayCutout().getSafeInsetBottom()));
                     } else {
-                        top = insets.getSystemWindowInsetTop();
-                        bottom = insets.getSystemWindowInsetBottom();
+                        top = Math.max(top, insets.getSystemWindowInsetTop());
+                        bottom = Math.max(bottom, insets.getSystemWindowInsetBottom());
                     }
-                    topBar.setPadding(tbPad, top + (int) (10 * density), (int) (12 * density), (int) (10 * density));
+                    topBar.setPadding(tbPad, top + (int) (8 * density), (int) (12 * density), (int) (8 * density));
                     if (dockedBottomBarRef[0] != null) {
-                        dockedBottomBarRef[0].setPadding((int) (16 * density), (int) (10 * density), (int) (16 * density), bottom + (int) (10 * density));
+                        dockedBottomBarRef[0].setPadding((int) (14 * density), (int) (10 * density), (int) (14 * density), bottom + (int) (10 * density));
                     }
                     return insets;
                 });
@@ -1291,7 +1309,7 @@ public class NativeToolkitDialog {
                             selBytes += (it.quotaBytes > 0 ? it.quotaBytes : it.sizeBytes);
                         }
                     }
-                    tvDockedSummary.setText(selCount + " selected • " + StorageScanner.formatBytes(selBytes));
+                    tvDockedSummary.setText(selCount + " sel • " + StorageScanner.formatBytes(selBytes));
                     dockedBottomBarRef[0].setVisibility(View.VISIBLE);
                     if (dockedBottomDividerRef[0] != null) dockedBottomDividerRef[0].setVisibility(View.VISIBLE);
                 } else {
@@ -8070,9 +8088,9 @@ public class NativeToolkitDialog {
         LinearLayout bar = new LinearLayout(activity);
         bar.setOrientation(LinearLayout.HORIZONTAL);
         bar.setGravity(Gravity.CENTER_VERTICAL);
-        int padH = (int) (16 * density);
-        int padV = (int) (10 * density);
-        bar.setPadding(padH, padV, padH, padV);
+        int padH = (int) (12 * density);
+        int padV = (int) (8 * density);
+        bar.setPadding(padH, padV, padH, (int) (14 * density));
         bar.setBackgroundColor(theme.surfaceContainer);
 
         // Selection Summary Column (Left)
@@ -8081,17 +8099,19 @@ public class NativeToolkitDialog {
         sumCol.setGravity(Gravity.CENTER_VERTICAL);
         sumCol.setLayoutParams(new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
 
-        tvBottomSummary.setTextSize(12.5f);
+        tvBottomSummary.setTextSize(11f);
         tvBottomSummary.setTypeface(null, Typeface.BOLD);
         tvBottomSummary.setTextColor(theme.textPrimary);
+        tvBottomSummary.setSingleLine(true);
+        tvBottomSummary.setEllipsize(TextUtils.TruncateAt.END);
         sumCol.addView(tvBottomSummary);
 
         if (onClearSelect != null) {
             TextView btnClear = new TextView(activity);
             btnClear.setText(" ✕");
-            btnClear.setTextSize(13f);
+            btnClear.setTextSize(12f);
             btnClear.setTextColor(theme.textSecondary);
-            btnClear.setPadding((int) (6 * density), (int) (4 * density), (int) (6 * density), (int) (4 * density));
+            btnClear.setPadding((int) (4 * density), (int) (4 * density), (int) (4 * density), (int) (4 * density));
             btnClear.setClickable(true);
             btnClear.setFocusable(true);
             btnClear.setOnClickListener(v -> onClearSelect.run());
@@ -8104,24 +8124,28 @@ public class NativeToolkitDialog {
         actionsRow.setOrientation(LinearLayout.HORIZONTAL);
         actionsRow.setGravity(Gravity.CENTER_VERTICAL);
 
-        // Action 1: Trash
-        int trashBg = theme.isDark ? 0x33FFB4AB : 0xFFFFDAD6;
-        TextView btnTrash = createDockedActionButton(activity, "🗑️ Trash", 0xFFFFB4AB, trashBg, density, theme, () -> {
+        // Action 1: Trash (High Contrast for both Dark & Light themes)
+        int trashText = theme.isDark ? 0xFFFFB4AB : 0xFFBA1A1A;
+        int trashBg   = theme.isDark ? 0x33FFB4AB : 0xFFFFDAD6;
+        TextView btnTrash = createDockedActionButton(activity, "🗑️ Trash", trashText, trashBg, density, theme, () -> {
             TextView target = actionButtonsMap.get("to_trash");
             if (target != null) target.performClick();
         });
         actionsRow.addView(btnTrash);
 
-        // Action 2: Export
-        TextView btnExport = createDockedActionButton(activity, "💾 Export", theme.primary, theme.primaryContainer, density, theme, () -> {
+        // Action 2: Export (High Contrast for both Dark & Light themes)
+        int exportText = theme.isDark ? theme.primary : theme.onPrimaryContainer;
+        int exportBg   = theme.primaryContainer;
+        TextView btnExport = createDockedActionButton(activity, "💾 Export", exportText, exportBg, density, theme, () -> {
             TextView target = actionButtonsMap.get("export_dcim");
             if (target != null) target.performClick();
         });
         actionsRow.addView(btnExport);
 
-        // Action 3: Offload
-        int offloadBg = theme.isDark ? 0x26006A60 : 0xFFCCE8E3;
-        TextView btnOffload = createDockedActionButton(activity, "☁️ Offload", 0xFF70F7E3, offloadBg, density, theme, () -> {
+        // Action 3: Offload (High Contrast for both Dark & Light themes)
+        int offloadText = theme.isDark ? 0xFF70F7E3 : 0xFF006A60;
+        int offloadBg   = theme.isDark ? 0x26006A60 : 0xFFCCE8E3;
+        TextView btnOffload = createDockedActionButton(activity, "☁️ Offload", offloadText, offloadBg, density, theme, () -> {
             TextView target = actionButtonsMap.get("safe_offload");
             if (target != null) target.performClick();
         });
@@ -8135,13 +8159,13 @@ public class NativeToolkitDialog {
     private static TextView createDockedActionButton(Activity activity, String label, int textColor, int bgColor, float density, Theme theme, Runnable onClick) {
         TextView btn = new TextView(activity);
         btn.setText(label);
-        btn.setTextSize(11.5f);
+        btn.setTextSize(11f);
         btn.setTypeface(null, Typeface.BOLD);
         btn.setTextColor(textColor);
-        btn.setPadding((int) (12 * density), (int) (7 * density), (int) (12 * density), (int) (7 * density));
-        btn.setBackground(createActionPillDrawable(bgColor, 14 * density));
+        btn.setPadding((int) (9 * density), (int) (6 * density), (int) (9 * density), (int) (6 * density));
+        btn.setBackground(createActionPillDrawable(bgColor, 12 * density));
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        lp.leftMargin = (int) (6 * density);
+        lp.leftMargin = (int) (4 * density);
         btn.setLayoutParams(lp);
         btn.setClickable(true);
         btn.setFocusable(true);
