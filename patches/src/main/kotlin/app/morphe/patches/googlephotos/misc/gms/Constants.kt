@@ -13,5 +13,10 @@ internal object Constants {
 
     const val PHOTOS_APPLICATION_CLASS_TYPE =
         "Lcom/google/android/apps/photos/PhotosRoot_Application;"
+
+    /**
+     * SHA-1 of the official release certificate.
+     */
+    const val PHOTOS_PACKAGE_SIGNATURE = "24bb24c05e47e0aefa68a58a766179d9b613a600"
 }
 

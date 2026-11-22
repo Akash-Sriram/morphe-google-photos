@@ -11,35 +11,24 @@ import android.content.Context;
 import android.content.DialogInterface;
 import android.content.Intent;
 import android.content.pm.PackageManager;
-import android.content.SharedPreferences;
 import android.net.Uri;
 import android.os.Build;
-import android.os.Bundle;
 import android.os.PowerManager;
 import android.provider.Settings;
 import android.util.Pair;
-import android.view.View;
-import android.view.ViewGroup;
 import android.widget.LinearLayout;
 
 import androidx.annotation.Nullable;
 
-import java.lang.reflect.Constructor;
-import java.lang.reflect.Field;
-import java.lang.reflect.Method;
 import java.net.HttpURLConnection;
 import java.net.MalformedURLException;
 import java.net.URL;
-import java.util.Collections;
-import java.util.HashSet;
-import java.util.List;
 import java.util.Locale;
-import java.util.Map;
-import java.util.Set;
 
 import app.morphe.extension.shared.Logger;
 import app.morphe.extension.shared.Utils;
-import app.morphe.extension.shared.settings.BaseSettings;
+import app.morphe.extension.shared.patches.backup.PhotosBackupHelper;
+import app.morphe.extension.shared.patches.map.PhotosMapHelper;
 import app.morphe.extension.shared.requests.Requester;
 import app.morphe.extension.shared.requests.Route;
 import app.morphe.extension.shared.ui.CustomDialog;
@@ -48,11 +37,11 @@ import app.morphe.extension.shared.ui.CustomDialog;
 public class GmsCoreSupportPatch {
     private static final String GOOGLE_PHOTOS_PACKAGE_NAME = "com.google.android.apps.photos";
     private static final String OFFICIAL_PHOTOS_CERT_SHA1 = "24bb24c05e47e0aefa68a58a766179d9b613a600";
-    private static final String OFFICIAL_PHOTOS_CERT_SHA1_UPPER = "24BB24C05E47E0AEFA68A58A766179D9B613A600";
 
     public static String getEffectivePackageSignature() {
         return OFFICIAL_PHOTOS_CERT_SHA1;
     }
+
     private static final String GMS_CORE_PACKAGE_NAME
             = getGmsCoreVendorGroupId() + ".android.gms";
     private static final Uri GMS_CORE_PROVIDER
@@ -91,578 +80,12 @@ public class GmsCoreSupportPatch {
                 || originalPackageName.equals(context.getPackageName());
     }
 
-    /**
-     * Spoofs header value if the header key matches X-Android-Package or X-Android-Cert.
-     */
-    public static String spoofHeaderValue(Object headerKey, String value) {
-        if (headerKey == null) {
-            return value;
-        }
-        String keyStr = headerKey.toString();
-        if (keyStr == null || (!keyStr.contains("X-Android-") && !keyStr.contains("x-android-"))) {
-            try {
-                for (Field f : headerKey.getClass().getDeclaredFields()) {
-                    if (f.getType() == String.class) {
-                        f.setAccessible(true);
-                        String s = (String) f.get(headerKey);
-                        if (s != null && (s.equalsIgnoreCase("X-Android-Package") || s.equalsIgnoreCase("X-Android-Cert"))) {
-                            keyStr = s;
-                            break;
-                        }
-                    }
-                }
-            } catch (Throwable ignored) {}
-        }
-        if (keyStr != null) {
-            String lower = keyStr.toLowerCase(Locale.ROOT);
-            if (lower.contains("x-android-package")) {
-                String targetPkg = getEffectiveOriginalPackageName();
-                Logger.printInfo(() -> "Spoofing X-Android-Package header from [" + value + "] to [" + targetPkg + "]");
-                return targetPkg;
-            }
-            if (lower.contains("x-android-cert")) {
-                String spoofedCert = (value != null && value.matches(".*[A-F].*"))
-                        ? OFFICIAL_PHOTOS_CERT_SHA1_UPPER
-                        : OFFICIAL_PHOTOS_CERT_SHA1;
-                Logger.printInfo(() -> "Spoofing X-Android-Cert header from [" + value + "] to [" + spoofedCert + "]");
-                return spoofedCert;
-            }
-        }
-        return value;
-    }
-
-    /**
-     * Spoofs metadata value (e.g. io.grpc.Metadata.put) for X-Android-Package / X-Android-Cert.
-     */
-    public static Object spoofMetadataValue(Object headerKey, Object value) {
-        if (value instanceof String) {
-            return spoofHeaderValue(headerKey, (String) value);
-        }
-        return value;
-    }
-
-    /**
-     * Spoofs the package name sent in GNP / Chime registration and Target protobufs.
-     */
-    public static String spoofPackageName(String packageName) {
-        String targetPkg = getEffectiveOriginalPackageName();
-        if (packageName != null && !packageName.equals(targetPkg)) {
-            String original = getOriginalPackageName();
-            if (packageName.contains("morphe") || (original != null && packageName.equals(original)) ||
-                (Utils.getContext() != null && packageName.equals(Utils.getContext().getPackageName()))) {
-                Logger.printInfo(() -> "GmsCoreSupportPatch: Spoofing registration package name from [" + packageName + "] to [" + targetPkg + "]");
-                return targetPkg;
-            }
-        }
-        return packageName;
-    }
-
-    /**
-     * Intercepts Cronet request starting in Labm to log URL, headers, and body Base64,
-     * and sanitize payload package name for GNP / Chime endpoints.
-     */
-    public static void onCronetRequestStarting(Object requestObj) {
-        try {
-            if (requestObj != null) {
-                Field urlField = requestObj.getClass().getDeclaredField("a");
-                urlField.setAccessible(true);
-                Object url = urlField.get(requestObj);
-
-                Field headersField = requestObj.getClass().getDeclaredField("c");
-                headersField.setAccessible(true);
-                Object headers = headersField.get(requestObj);
-
-                Field bodyField = requestObj.getClass().getDeclaredField("d");
-                bodyField.setAccessible(true);
-                byte[] body = (byte[]) bodyField.get(requestObj);
-
-                if (body != null) {
-                    String targetPkg = getEffectiveOriginalPackageName();
-                    byte[] oldPkg = "app.morphe.android.apps.photos".getBytes(java.nio.charset.StandardCharsets.UTF_8);
-                    byte[] newPkg = targetPkg.getBytes(java.nio.charset.StandardCharsets.UTF_8);
-                    byte[] patched = replaceBytesInPayload(body, oldPkg, newPkg);
-
-                    Context ctx = Utils.getContext();
-                    if (ctx != null) {
-                        String currentPkg = ctx.getPackageName();
-                        if (currentPkg != null && !currentPkg.equals(targetPkg) && !currentPkg.equals("app.morphe.android.apps.photos")) {
-                            patched = replaceBytesInPayload(patched, currentPkg.getBytes(java.nio.charset.StandardCharsets.UTF_8), newPkg);
-                        }
-                    }
-
-                    if (patched != body) {
-                        bodyField.set(requestObj, patched);
-                        body = patched;
-                        Logger.printInfo(() -> "GmsCoreSupportPatch: Sanitized GNP payload body package name to [" + targetPkg + "]");
-                    }
-                }
-
-                String b64 = (body != null) ? android.util.Base64.encodeToString(body, android.util.Base64.NO_WRAP) : "null";
-                Logger.printInfo(() -> "GNP Request Starting: URL=" + url + ", headers=" + headers + ", bodyB64=" + b64);
-            }
-        } catch (Throwable t) {
-            Logger.printInfo(() -> "GNP Request Starting: error logging/sanitizing request: " + t);
-        }
-    }
-
-    private static byte[] replaceBytesInPayload(byte[] src, byte[] target, byte[] replacement) {
-        if (src == null || target == null || replacement == null || target.length == 0) {
-            return src;
-        }
-        int index = indexOfBytes(src, target, 0);
-        if (index == -1) {
-            return src;
-        }
-        if (target.length == replacement.length) {
-            byte[] copy = src.clone();
-            while (index != -1) {
-                System.arraycopy(replacement, 0, copy, index, replacement.length);
-                index = indexOfBytes(copy, target, index + replacement.length);
-            }
-            return copy;
-        }
-        java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream();
-        int cur = 0;
-        while (index != -1) {
-            out.write(src, cur, index - cur);
-            out.write(replacement, 0, replacement.length);
-            cur = index + target.length;
-            index = indexOfBytes(src, target, cur);
-        }
-        if (cur < src.length) {
-            out.write(src, cur, src.length - cur);
-        }
-        return out.toByteArray();
-    }
-
-    private static int indexOfBytes(byte[] source, byte[] target, int start) {
-        if (source == null || target == null || start < 0 || target.length == 0 || start + target.length > source.length) {
-            return -1;
-        }
-        for (int i = start; i <= source.length - target.length; i++) {
-            boolean match = true;
-            for (int j = 0; j < target.length; j++) {
-                if (source[i + j] != target[j]) {
-                    match = false;
-                    break;
-                }
-            }
-            if (match) {
-                return i;
-            }
-        }
-        return -1;
-    }
-
-    /**
-     * Intercepts Cronet onResponseStarted to log HTTP status code, URL, and headers.
-     */
-    public static void onCronetResponseStarted(Object responseInfo) {
-        try {
-            if (responseInfo != null) {
-                Method getCode = responseInfo.getClass().getMethod("getHttpStatusCode");
-                Method getUrl = responseInfo.getClass().getMethod("getUrl");
-                Method getMsg = responseInfo.getClass().getMethod("getHttpStatusText");
-                int code = (Integer) getCode.invoke(responseInfo);
-                String url = (String) getUrl.invoke(responseInfo);
-                String msg = (String) getMsg.invoke(responseInfo);
-                Logger.printInfo(() -> "GNP Cronet ResponseStarted: HTTP " + code + " (" + msg + ") for URL: " + url);
-            }
-        } catch (Throwable t) {
-            Logger.printInfo(() -> "GNP Cronet ResponseStarted: info=" + responseInfo);
-        }
-    }
-
-    /**
-     * Intercepts Cronet onFailed to log any Cronet network exceptions.
-     */
-    public static void onCronetFailed(Object responseInfo, Object cronetException) {
-        Logger.printInfo(() -> "GNP Cronet Failed: info=" + responseInfo + ", error=" + cronetException);
-    }
-
-    /**
-     * Intercepts Cronet onSucceeded.
-     */
-    public static void onCronetSucceeded(Object responseInfo) {
-        try {
-            if (responseInfo != null) {
-                Method getCode = responseInfo.getClass().getMethod("getHttpStatusCode");
-                Method getUrl = responseInfo.getClass().getMethod("getUrl");
-                int code = (Integer) getCode.invoke(responseInfo);
-                String url = (String) getUrl.invoke(responseInfo);
-                Logger.printInfo(() -> "GNP Cronet Succeeded: HTTP " + code + " for URL: " + url);
-            }
-        } catch (Throwable t) {
-            Logger.printInfo(() -> "GNP Cronet Succeeded: info=" + responseInfo);
-        }
-    }
-
-    /**
-     * Intercepts GnpHttpResponse constructor to log status code, message, error, and response body.
-     */
-    public static void onGnpResponseObject(Object obj) {
-        if (obj != null) {
-            Logger.printInfo(() -> "GNP HTTP Response: " + obj.toString());
-        }
-    }
-
-    public static int resolveRegisteredAccountId(Context context) {
-        return resolveRegisteredAccountId(context, null);
-    }
-
-    public static int resolveRegisteredAccountId(Context context, int currentId) {
-        if (currentId >= 0) {
-            return currentId;
-        }
-        return resolveRegisteredAccountId(context, null);
-    }
-
-    public static int resolveBackupAccount(int currentId, String gmsEmail, Object accountStore, Context context) {
-        if (currentId >= 0) {
-            return currentId;
-        }
-        return resolveRegisteredAccountFromEmail(gmsEmail, accountStore, context);
-    }
-
-    // ─────────────────────────────────────────────────────────────────────────
-    // Live Backup Diagnostics & State Sanitization
-    // ─────────────────────────────────────────────────────────────────────────
-
-    public static final String BACKUP_TAG = "MORPHE_BACKUP";
-
-    public static void logBackup(String message) {
-        try {
-            if (BaseSettings.DEBUG.get()) {
-                android.util.Log.d(BACKUP_TAG, message);
-            }
-        } catch (Throwable ignored) {}
-    }
-
-    public static void logBackupError(String message, Throwable t) {
-        try {
-            if (t != null) {
-                android.util.Log.e(BACKUP_TAG, message + ": " + t.getMessage(), t);
-            } else {
-                android.util.Log.e(BACKUP_TAG, message);
-            }
-        } catch (Throwable ignored) {}
-    }
-
-    public static void onAutoBackupSettingsActivityAttachBinder(Activity activity) {
-        try {
-            Intent intent = activity != null ? activity.getIntent() : null;
-            Bundle extras = intent != null ? intent.getExtras() : null;
-            logBackup("[AutoBackupSettingsActivity.onAttachBinder] activity=" + activity + " intent=" + intent + " extras=" + extras);
-        } catch (Throwable t) {
-            logBackupError("[AutoBackupSettingsActivity.onAttachBinder] Error", t);
-        }
-    }
-
-    public static Object onLuvhAEntry(Object ludhObj, Boolean isConnected) {
-        return ludhObj;
-    }
-
-    public static Object onLuvhAReturn(Object luvk) {
-        return luvk;
-    }
-
-    public static boolean onCheckBackupAccountLinked(boolean originalVal, Object luslObj) {
-        try {
-            int activeId = resolveRegisteredAccountId(Utils.getContext());
-            if (activeId >= 0) {
-                logBackup("[Lusl.b CHECK] Suppressing auto-account-switcher popup (active registered account id=" + activeId + ")");
-                return true;
-            }
-        } catch (Throwable ignored) {}
-        return originalVal;
-    }
-
-    public static Object sanitizeLudh(Object ludhObj) {
-        return ludhObj;
-    }
-
-    public static Object sanitizeLudh(Object ludhObj, Context context) {
-        return ludhObj;
-    }
-
-    /**
-     * Sanitizes GMS Core backup settings (uyc) for MicroG and non-certified devices.
-     * When GMS Core returns empty/disabled settings or null selective backup sets,
-     * this resolves the configured backup account from Google Photos preferences
-     * and guarantees a non-null folder set, preventing NullPointerException and fallback to disabled state.
-     */
-    public static Object sanitizeGmsBackupSettings(Object gmsSettings, Context context) {
-        if (gmsSettings == null) {
-            return null;
-        }
-        try {
-            if (context == null) {
-                context = Utils.getContext();
-            }
-            Class<?> uycClass = gmsSettings.getClass();
-            Field aField = uycClass.getDeclaredField("a"); // String (email)
-            Field bField = uycClass.getDeclaredField("b"); // boolean (isBackupEnabled)
-            Field cField = uycClass.getDeclaredField("c"); // boolean (cellularPhotos)
-            Field dField = uycClass.getDeclaredField("d"); // boolean (roaming)
-            Field eField = uycClass.getDeclaredField("e"); // boolean (selectiveBackup)
-            Field fField = uycClass.getDeclaredField("f"); // Set<String> (folders)
-
-            aField.setAccessible(true);
-            bField.setAccessible(true);
-            cField.setAccessible(true);
-            dField.setAccessible(true);
-            eField.setAccessible(true);
-            fField.setAccessible(true);
-
-            String email = (String) aField.get(gmsSettings);
-            boolean isBackupEnabled = bField.getBoolean(gmsSettings);
-            boolean cellularPhotos = cField.getBoolean(gmsSettings);
-            boolean roaming = dField.getBoolean(gmsSettings);
-            boolean selectiveBackup = eField.getBoolean(gmsSettings);
-            @SuppressWarnings("unchecked")
-            Set<String> folders = (Set<String>) fField.get(gmsSettings);
-            if (folders == null) {
-                folders = Collections.emptySet();
-            }
-
-            logBackup("[sanitizeGmsBackupSettings] INPUT: email=" + email + ", isBackupEnabled=" + isBackupEnabled + ", cellular=" + cellularPhotos + ", roaming=" + roaming + ", selective=" + selectiveBackup);
-
-            if (context != null) {
-                SharedPreferences backupPrefs = context.getSharedPreferences("photos.backup.backup_prefs", Context.MODE_PRIVATE);
-                int backupAccountId = backupPrefs.getInt("backup_prefs_account_id", -1);
-                SharedPreferences accountsPrefs = context.getSharedPreferences("accounts", Context.MODE_PRIVATE);
-
-                if (email == null || email.trim().isEmpty()) {
-                    if (backupAccountId >= 0) {
-                        String configuredEmail = accountsPrefs.getString(backupAccountId + ".account_name", null);
-                        if (configuredEmail != null && !configuredEmail.trim().isEmpty()) {
-                            email = configuredEmail;
-                        }
-                    } else {
-                        // Fallback: resolve active account in Photos
-                        int activeKey = accountsPrefs.getInt("key.active-account-key", -1);
-                        if (activeKey >= 0) {
-                            String activeEmail = accountsPrefs.getString(activeKey + ".account_name", null);
-                            if (activeEmail != null && !activeEmail.trim().isEmpty()) {
-                                email = activeEmail;
-                            }
-                        }
-                    }
-                }
-
-                // Synchronize backup enabled state with Google Photos native backup preference
-                if (backupAccountId >= 0) {
-                    isBackupEnabled = true;
-                } else {
-                    isBackupEnabled = false;
-                }
-            }
-
-            Constructor<?> ctor = uycClass.getDeclaredConstructor(
-                    String.class, boolean.class, boolean.class, boolean.class, boolean.class, Set.class
-            );
-            ctor.setAccessible(true);
-            Object sanitized = ctor.newInstance(email, isBackupEnabled, cellularPhotos, roaming, selectiveBackup, folders);
-            final String finalEmail = email;
-            final boolean finalEnabled = isBackupEnabled;
-            logBackup("[sanitizeGmsBackupSettings] SUCCESS: email=" + finalEmail + ", enabled=" + finalEnabled);
-            return sanitized;
-        } catch (Throwable t) {
-            logBackupError("[sanitizeGmsBackupSettings] Error sanitizing settings", t);
-            return gmsSettings;
-        }
-    }
-
-    /**
-     * Resolves the registered Google account ID from Google Photos native prefs (accounts.xml)
-     * or the runtime AccountStore (cbeg).
-     * Used on MicroG / LineageOS / non-certified devices when GMS Core backup account is unavailable.
-     */
-    public static int resolveRegisteredAccountId(Context context, Object accountStore) {
-        if (context == null) {
-            context = Utils.getContext();
-        }
-        if (context == null) return -1;
-        try {
-            // Priority 1: Check existing backup preferences
-            try {
-                SharedPreferences backupPrefs = context.getSharedPreferences("photos.backup.backup_prefs", Context.MODE_PRIVATE);
-                int backupAccountId = backupPrefs.getInt("backup_prefs_account_id", -1);
-                if (backupAccountId >= 0) {
-                    logBackup("Resolved active backup account ID from backup_prefs: " + backupAccountId);
-                    return backupAccountId;
-                }
-            } catch (Throwable ignored) {}
-
-            // Priority 2: Native accounts preferences (accounts.xml)
-            SharedPreferences accountsPrefs = context.getSharedPreferences("accounts", Context.MODE_PRIVATE);
-            int activeKey = accountsPrefs.getInt("key.active-account-key", -1);
-            if (activeKey >= 0) {
-                if (accountStore != null) {
-                    try {
-                        Method pMethod = accountStore.getClass().getMethod("p", int.class);
-                        Boolean isValid = (Boolean) pMethod.invoke(accountStore, activeKey);
-                        if (isValid != null && isValid) {
-                            logBackup("Resolved registered active account key: " + activeKey);
-                            return activeKey;
-                        }
-                    } catch (Throwable ignored) {
-                        logBackup("Resolved active account key from prefs: " + activeKey);
-                        return activeKey;
-                    }
-                } else {
-                    logBackup("Resolved active account key from prefs: " + activeKey);
-                    return activeKey;
-                }
-            }
-
-            // Fallback: check all keys in accountsPrefs map
-            for (Map.Entry<String, ?> entry : accountsPrefs.getAll().entrySet()) {
-                if (entry.getKey().endsWith(".account_name") && entry.getValue() instanceof String) {
-                    try {
-                        int id = Integer.parseInt(entry.getKey().substring(0, entry.getKey().indexOf('.')));
-                        if (id >= 0) {
-                            logBackup("Resolved account ID from prefs map: " + id + " (" + entry.getValue() + ")");
-                            return id;
-                        }
-                    } catch (Throwable ignored) {}
-                }
-            }
-
-            // Priority 3: Explicit accountStore instance
-            if (accountStore != null) {
-                try {
-                    Method hMethod = accountStore.getClass().getMethod("h");
-                    List<?> list = (List<?>) hMethod.invoke(accountStore);
-                    if (list != null && !list.isEmpty()) {
-                        Object first = list.get(0);
-                        if (first instanceof Integer) {
-                            logBackup("Resolved first registered account key: " + first);
-                            return (Integer) first;
-                        }
-                    }
-                } catch (Throwable ignored) {}
-            }
-
-            // Priority 4: Dynamic ServiceLocator resolution for AccountHandler / AccountStore
-            ClassLoader classLoader = context.getClassLoader();
-            String[] locators = {"cdhf", "ccym", "cbyf", "bzoq", "bxoe"};
-            String[] handlers = {"cbne", "cbdz", "cbqo", "cbnu", "cboe", "cbmw"};
-            String[] stores = {"cbnl", "cbeg", "cboi", "cbfc", "cbdr", "cbde"};
-
-            for (String locName : locators) {
-                try {
-                    Class<?> locClass = classLoader.loadClass(locName);
-                    Method eMethod = locClass.getMethod("e", Context.class, Class.class);
-
-                    for (String handlerName : handlers) {
-                        try {
-                            Class<?> hClass = classLoader.loadClass(handlerName);
-                            Object handler = eMethod.invoke(null, context, hClass);
-                            if (handler != null) {
-                                Method dMethod = handler.getClass().getMethod("d");
-                                Integer id = (Integer) dMethod.invoke(handler);
-                                if (id != null && id >= 0) {
-                                    logBackup("Resolved active account ID via ServiceLocator (" + locName + " -> " + handlerName + ".d()): " + id);
-                                    return id;
-                                }
-                            }
-                        } catch (Throwable ignored) {}
-                    }
-
-                    for (String storeName : stores) {
-                        try {
-                            Class<?> sClass = classLoader.loadClass(storeName);
-                            Object store = eMethod.invoke(null, context, sClass);
-                            if (store != null) {
-                                Method hMethod = store.getClass().getMethod("h");
-                                List<?> list = (List<?>) hMethod.invoke(store);
-                                if (list != null && !list.isEmpty()) {
-                                    Object first = list.get(0);
-                                    if (first instanceof Integer && ((Integer) first) >= 0) {
-                                        logBackup("Resolved registered account ID via ServiceLocator (" + locName + " -> " + storeName + ".h()): " + first);
-                                        return (Integer) first;
-                                    }
-                                }
-                            }
-                        } catch (Throwable ignored) {}
-                    }
-                } catch (Throwable ignored) {}
-            }
-        } catch (Throwable t) {
-            logBackupError("Error resolving registered account ID", t);
-        }
-        return -1;
-    }
-
-    /**
-     * Resolves an account ID matching the given GMS Core email (case-insensitive) or falls back
-     * to the currently registered/active account in Google Photos.
-     */
-    public static int resolveRegisteredAccountFromEmail(String gmsEmail, Object accountStore, Context context) {
-        if (accountStore == null && context != null) {
-            try {
-                ClassLoader cl = context.getClassLoader();
-                String[] locators = {"cdhf", "ccym", "cbyf", "bzoq", "bxoe"};
-                String[] stores = {"cbnl", "cbeg", "cboi", "cbfc", "cbdr", "cbde"};
-                for (String loc : locators) {
-                    try {
-                        Class<?> locClass = cl.loadClass(loc);
-                        Method eMethod = locClass.getMethod("e", Context.class, Class.class);
-                        for (String storeName : stores) {
-                            try {
-                                Class<?> sClass = cl.loadClass(storeName);
-                                Object store = eMethod.invoke(null, context, sClass);
-                                if (store != null) {
-                                    accountStore = store;
-                                    break;
-                                }
-                            } catch (Throwable ignored) {}
-                        }
-                        if (accountStore != null) break;
-                    } catch (Throwable ignored) {}
-                }
-            } catch (Throwable ignored) {}
-        }
-        if (accountStore != null) {
-            try {
-                Method hMethod = accountStore.getClass().getMethod("h");
-                List<?> accountIds = (List<?>) hMethod.invoke(accountStore);
-                if (accountIds != null && !accountIds.isEmpty()) {
-                    Method eMethod = accountStore.getClass().getMethod("e", int.class);
-                    if (gmsEmail != null && !gmsEmail.trim().isEmpty()) {
-                        String cleanGms = gmsEmail.trim().toLowerCase(Locale.US);
-                        for (Object idObj : accountIds) {
-                            if (idObj instanceof Integer) {
-                                int id = (Integer) idObj;
-                                Object cbec = eMethod.invoke(accountStore, id);
-                                if (cbec != null) {
-                                    Method getStrMethod = cbec.getClass().getMethod("e", String.class);
-                                    String email = (String) getStrMethod.invoke(cbec, "account_name");
-                                    if (email != null && email.trim().toLowerCase(Locale.US).equals(cleanGms)) {
-                                        Logger.printInfo(() -> "Resolved GMS Core email " + gmsEmail + " to Photos account " + id);
-                                        return id;
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            } catch (Throwable t) {
-                Logger.printException(() -> "Error resolving account from email", t);
-            }
-        }
-        return resolveRegisteredAccountId(context, accountStore);
-    }
-
     private static void open(String queryOrLink) {
         Logger.printInfo(() -> "Opening link: " + queryOrLink);
 
         Intent intent;
         try {
-            // Check if queryOrLink is a valid URL.
             new URL(queryOrLink);
-
             intent = new Intent(Intent.ACTION_VIEW, Uri.parse(queryOrLink));
         } catch (MalformedURLException e) {
             intent = new Intent(Intent.ACTION_WEB_SEARCH);
@@ -679,30 +102,22 @@ public class GmsCoreSupportPatch {
                                                       String dialogMessageRef,
                                                       String positiveButtonTextRef,
                                                       DialogInterface.OnClickListener onPositiveClickListener) {
-        // Use a delay to allow the activity to finish initializing.
-        // Otherwise, if device is in dark mode the dialog is shown with wrong color scheme.
         Utils.runOnMainThreadDelayed(() -> {
-            // Create the custom dialog.
             Pair<Dialog, LinearLayout> dialogPair = CustomDialog.create(
                     context,
-                    str("gms_core_dialog_title"), // Title.
-                    str(dialogMessageRef), // Message.
-                    null, // No EditText.
-                    str(positiveButtonTextRef), // OK button text.
-                    () -> onPositiveClickListener.onClick(null, 0), // Convert DialogInterface.OnClickListener to Runnable.
-                    null, // No Cancel button action.
-                    null, // No Neutral button text.
-                    null, // No Neutral button action.
-                    true // Dismiss dialog when onNeutralClick.
+                    str("gms_core_dialog_title"),
+                    str(dialogMessageRef),
+                    null,
+                    str(positiveButtonTextRef),
+                    () -> onPositiveClickListener.onClick(null, 0),
+                    null,
+                    null,
+                    null,
+                    true
             );
 
             Dialog dialog = dialogPair.first;
-
-            // Do not set cancelable too false to allow using back button to skip the action,
-            // just in case the battery change can never be satisfied.
             dialog.setCancelable(true);
-
-            // Show the dialog
             Utils.showDialog(context, dialog);
         }, 100);
     }
@@ -712,25 +127,20 @@ public class GmsCoreSupportPatch {
      */
     public static void checkGmsCore(Activity context) {
         try {
-            // Verify GmsCore is installed.
             try {
                 PackageManager manager = context.getPackageManager();
                 manager.getPackageInfo(GMS_CORE_PACKAGE_NAME, PackageManager.GET_ACTIVITIES);
             } catch (PackageManager.NameNotFoundException exception) {
                 Logger.printInfo(() -> "GmsCore was not found");
-                // Cannot show a dialog and must show a toast,
-                // because on some installations the app crashes before a dialog can be displayed.
                 Utils.showToastLong(str("gms_core_toast_not_installed_message"));
                 open(getGmsCoreDownload());
                 return;
             }
 
             if (isAndroidAutomotive(context) || isGooglePhotos(context)) {
-                // Ignore Android Automotive devices (Google built-in) and Google Photos,
-                // as Photos does not require persistent background GmsCore services.
                 Logger.printDebug(() -> "Skipping battery optimization check (Automotive or Google Photos)");
                 if (isGooglePhotos(context)) {
-                    checkMicroGLocationPermission(context);
+                    PhotosMapHelper.checkMicroGLocationPermission(context);
                 }
             } else if (batteryOptimizationsEnabled(context)) {
                 Logger.printInfo(() -> "GmsCore is not whitelisted from battery optimizations");
@@ -743,9 +153,7 @@ public class GmsCoreSupportPatch {
             }
 
             if (!isGooglePhotos(context)) {
-                // Check if GmsCore is currently running in the background.
                 var client = context.getContentResolver().acquireContentProviderClient(GMS_CORE_PROVIDER);
-                //noinspection TryFinallyCanBeTryWithResources
                 try {
                     if (client == null) {
                         Logger.printInfo(() -> "GmsCore is not running in the background");
@@ -765,7 +173,7 @@ public class GmsCoreSupportPatch {
         }
     }
 
-    @SuppressLint("BatteryLife") // Permission is part of GmsCore
+    @SuppressLint("BatteryLife")
     private static void openGmsCoreDisableBatteryOptimizationsIntent(Activity activity) {
         Intent intent = new Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS);
         intent.setData(Uri.fromParts("package", GMS_CORE_PACKAGE_NAME, null));
@@ -799,28 +207,18 @@ public class GmsCoreSupportPatch {
 
         String manufacturerPageToOpen;
         if (manufacturerSupported == null) {
-            // Fetch has not completed yet. Only happens on extremely slow internet connections
-            // and the user spends less than 1 second reading what's on screen.
-            // Instead of waiting for the fetch (which may time out),
-            // open the website without a vendor.
             manufacturerPageToOpen = "";
         } else if (manufacturerSupported) {
             manufacturerPageToOpen = BUILD_MANUFACTURER;
         } else {
-            // No manufacturer specific page exists. Open the general page.
             manufacturerPageToOpen = "general";
         }
 
         open(DONT_KILL_MY_APP_URL + manufacturerPageToOpen + DONT_KILL_MY_APP_NAME_PARAMETER);
     }
 
-    /**
-     * @return If GmsCore is not whitelisted from battery optimizations.
-     */
     private static boolean batteryOptimizationsEnabled(Context context) {
-        //noinspection ObsoleteSdkInt
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) {
-            // Android 5.0 does not have battery optimization settings.
             return false;
         }
         var powerManager = (PowerManager) context.getSystemService(Context.POWER_SERVICE);
@@ -837,7 +235,6 @@ public class GmsCoreSupportPatch {
     }
 
     private static String getGmsCoreDownload() {
-        //noinspection SwitchStatementWithTooFewBranches
         return switch (getGmsCoreVendorGroupId()) {
             case "app.revanced" -> "https://morphe.software/microg";
             default -> getGmsCoreVendorGroupId() + ".android.gms";
@@ -848,1468 +245,125 @@ public class GmsCoreSupportPatch {
         return "app.revanced"; // Modified during patching.
     }
 
-    private static final String PREF_IGNORE_MICROG_LOCATION_PROMPT = "morphe_ignore_microg_location_prompt";
-    private static final String MORPHE_PREFERENCES_NAME = "morphe_preferences";
+    // ─────────────────────────────────────────────────────────────────────────
+    // Map & Location Delegation Stubs (Delegating to PhotosMapHelper)
+    // ─────────────────────────────────────────────────────────────────────────
 
-    /**
-     * Checks whether MicroG / GmsCore currently has location permissions granted.
-     */
     public static boolean isMicroGLocationGranted(Context context) {
-        if (context == null) context = Utils.getContext();
-        if (context == null) return true;
-        try {
-            PackageManager pm = context.getPackageManager();
-            boolean fine = pm.checkPermission(android.Manifest.permission.ACCESS_FINE_LOCATION, GMS_CORE_PACKAGE_NAME) == PackageManager.PERMISSION_GRANTED;
-            boolean coarse = pm.checkPermission(android.Manifest.permission.ACCESS_COARSE_LOCATION, GMS_CORE_PACKAGE_NAME) == PackageManager.PERMISSION_GRANTED;
-            return fine || coarse;
-        } catch (Throwable t) {
-            return false;
-        }
+        return PhotosMapHelper.isMicroGLocationGranted(context);
     }
 
     public static boolean isMicroGLocationPromptIgnored(Context context) {
-        if (context == null) context = Utils.getContext();
-        if (context == null) return false;
-        try {
-            return context.getSharedPreferences(MORPHE_PREFERENCES_NAME, Context.MODE_PRIVATE)
-                    .getBoolean(PREF_IGNORE_MICROG_LOCATION_PROMPT, false);
-        } catch (Throwable t) {
-            return false;
-        }
+        return PhotosMapHelper.isMicroGLocationPromptIgnored(context);
     }
 
     public static void setMicroGLocationPromptIgnored(Context context, boolean ignored) {
-        if (context == null) context = Utils.getContext();
-        if (context == null) return;
-        try {
-            context.getSharedPreferences(MORPHE_PREFERENCES_NAME, Context.MODE_PRIVATE)
-                    .edit()
-                    .putBoolean(PREF_IGNORE_MICROG_LOCATION_PROMPT, ignored)
-                    .apply();
-        } catch (Throwable ignoredException) {}
+        PhotosMapHelper.setMicroGLocationPromptIgnored(context, ignored);
     }
 
-    private static void checkMicroGLocationPermission(Activity context) {
-        try {
-            if (isMicroGLocationGranted(context)) {
-                return;
-            }
-            if (isMicroGLocationPromptIgnored(context)) {
-                Logger.printInfo(() -> "MicroG location permission not granted, but user previously selected Ignore");
-                return;
-            }
-
-            Utils.runOnMainThreadDelayed(() -> {
-                try {
-                    if (context.isFinishing()) return;
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.JELLY_BEAN_MR1 && context.isDestroyed()) return;
-
-                    Pair<Dialog, LinearLayout> dialogPair = CustomDialog.create(
-                            context,
-                            "MicroG Location Permission",
-                            "MicroG requires Location permission to display photo location maps and extra info.\n\nWithout this permission, location maps in Google Photos are temporarily disabled to prevent crashes.",
-                            null,
-                            "Open Settings",
-                            () -> {
-                                try {
-                                    Intent intent = new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS);
-                                    intent.setData(Uri.fromParts("package", GMS_CORE_PACKAGE_NAME, null));
-                                    intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-                                    context.startActivity(intent);
-                                } catch (Throwable t) {
-                                    Logger.printException(() -> "Failed to open MicroG settings", t);
-                                }
-                            },
-                            null,
-                            "Ignore",
-                            () -> {
-                                Logger.printInfo(() -> "User selected Ignore on MicroG location prompt");
-                                setMicroGLocationPromptIgnored(context, true);
-                            },
-                            true
-                    );
-
-                    Dialog dialog = dialogPair.first;
-                    dialog.setCancelable(true);
-                    Utils.showDialog(context, dialog);
-                } catch (Throwable t) {
-                    Logger.printException(() -> "Failed to display MicroG location permission dialog", t);
-                }
-            }, 1000);
-        } catch (Throwable t) {
-            Logger.printException(() -> "checkMicroGLocationPermission error", t);
-        }
+    public static void checkMicroGLocationPermission(Activity context) {
+        PhotosMapHelper.checkMicroGLocationPermission(context);
     }
 
-    private static volatile Boolean sMapStyleAvailable = null;
-
-    /**
-     * Checks whether GmsCore has the necessary Mapbox/MicroG style assets installed.
-     * Prevents fatal FileNotFoundException: style-microg-normal-mapbox.json (Issue #67).
-     */
     public static boolean isMapStyleAvailable(Context context) {
-        if (sMapStyleAvailable != null) {
-            return sMapStyleAvailable;
-        }
-        if (context == null) context = Utils.getContext();
-        if (context == null) return false;
-        try {
-            Context gmsContext = context.createPackageContext(GMS_CORE_PACKAGE_NAME, Context.CONTEXT_INCLUDE_CODE | Context.CONTEXT_IGNORE_SECURITY);
-            if (gmsContext != null) {
-                // Try mapbox style first
-                try (java.io.InputStream is = gmsContext.getAssets().open("style-microg-normal-mapbox.json")) {
-                    sMapStyleAvailable = true;
-                    return true;
-                } catch (Throwable ignored) {}
-
-                // Try openfreemap style
-                try (java.io.InputStream is = gmsContext.getAssets().open("style-microg-normal-openfreemap.json")) {
-                    sMapStyleAvailable = true;
-                    return true;
-                } catch (Throwable ignored) {}
-
-                // Try stadia style
-                try (java.io.InputStream is = gmsContext.getAssets().open("style-microg-normal-stadia.json")) {
-                    sMapStyleAvailable = true;
-                    return true;
-                } catch (Throwable ignored) {}
-            }
-        } catch (Throwable t) {
-            Logger.printException(() -> "isMapStyleAvailable check failed", t);
-        }
-        sMapStyleAvailable = false;
-        return false;
+        return PhotosMapHelper.isMapStyleAvailable(context);
     }
 
-    /**
-     * Interceptor for photos.killswitch_info_panel_map.
-     * When MicroG lacks location permission or missing style assets, killswitches
-     * the map to gracefully prevent crashes when pulling up photo details (Issue #67).
-     */
     public static boolean isInfoPanelMapKillswitched(boolean originalValue) {
-        if (originalValue) {
-            return true;
-        }
-        Context ctx = Utils.getContext();
-        if (!isMicroGLocationGranted(ctx)) {
-            Logger.printInfo(() -> "MicroG lacks location permission: killswitching Info Panel map to prevent crash");
-            return true;
-        }
-        if (!isMapStyleAvailable(ctx)) {
-            Logger.printInfo(() -> "MicroG GmsCore lacks Mapbox style assets: killswitching Info Panel map to prevent crash (#67)");
-            return true;
-        }
-        return false;
-    }
-
-    private interface LocationApplier {
-        void onLocation(android.location.Location loc);
-    }
-
-    private static volatile Object sAttachedMapObj;
-    private static volatile LocationSourceBinder sLocationSource;
-    private static volatile android.location.Location sLastLocation;
-    private static android.location.LocationListener sContinuousListener;
-    private static volatile Object sMapExploreController;
-    private static volatile java.lang.ref.WeakReference<Object> sCurrentMixinRef;
-    private static final java.util.concurrent.atomic.AtomicBoolean sIsLocatingAnimation = new java.util.concurrent.atomic.AtomicBoolean(false);
-    private static volatile Object sAppCameraIdleListener;
-    private static volatile Object sAppMapClickListener;
-    private static volatile Object sGoogleMapDelegate;
-    private static final java.util.Set<Object> sWrappedMapObjects = java.util.Collections.newSetFromMap(new java.util.WeakHashMap<>());
-    private static final java.util.concurrent.atomic.AtomicBoolean sInitialSelectionCleared = new java.util.concurrent.atomic.AtomicBoolean(false);
-
-    private static class LocationSourceBinder extends android.os.Binder implements android.os.IInterface {
-        private volatile android.os.IBinder listenerBinder;
-
-        LocationSourceBinder() {
-            attachInterface(this, "com.google.android.gms.maps.internal.ILocationSourceDelegate");
-        }
-
-        @Override
-        public android.os.IBinder asBinder() {
-            return this;
-        }
-
-        @Override
-        protected boolean onTransact(int code, android.os.Parcel data, android.os.Parcel reply, int flags) throws android.os.RemoteException {
-            if (code == INTERFACE_TRANSACTION) {
-                reply.writeString("com.google.android.gms.maps.internal.ILocationSourceDelegate");
-                return true;
-            }
-            if (code == 1 || code == 0) { // activate(IOnLocationChangeListener listener)
-                data.enforceInterface("com.google.android.gms.maps.internal.ILocationSourceDelegate");
-                android.os.IBinder b = data.readStrongBinder();
-                this.listenerBinder = b;
-                app.morphe.extension.shared.diagnostics.SafeLog.d("MorpheLocation", "LocationSourceBinder: activated with listener " + b + " (code " + code + ")");
-                android.location.Location loc = sLastLocation;
-                if (loc == null) {
-                    loc = getSafeLastKnownLocation(Utils.getContext());
-                    if (loc != null) sLastLocation = loc;
-                }
-                if (loc != null) {
-                    pushLocation(loc);
-                }
-                if (reply != null) reply.writeNoException();
-                return true;
-            } else if (code == 2) { // deactivate()
-                data.enforceInterface("com.google.android.gms.maps.internal.ILocationSourceDelegate");
-                app.morphe.extension.shared.diagnostics.SafeLog.d("MorpheLocation", "LocationSourceBinder: deactivate() received, cleared listener");
-                this.listenerBinder = null;
-                if (reply != null) reply.writeNoException();
-                return true;
-            }
-            return super.onTransact(code, data, reply, flags);
-        }
-
-        public void pushLocation(android.location.Location loc) {
-            android.os.IBinder b = this.listenerBinder;
-            if (b == null || loc == null) return;
-            if (!b.isBinderAlive() || !b.pingBinder()) {
-                this.listenerBinder = null;
-                return;
-            }
-            android.location.Location pushLoc = new android.location.Location(loc);
-            if (pushLoc.getProvider() == null || pushLoc.getProvider().isEmpty()) {
-                pushLoc.setProvider("fused");
-            }
-            if (pushLoc.getTime() == 0) {
-                pushLoc.setTime(System.currentTimeMillis());
-            }
-            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.JELLY_BEAN_MR1) {
-                if (pushLoc.getElapsedRealtimeNanos() == 0) {
-                    pushLoc.setElapsedRealtimeNanos(android.os.SystemClock.elapsedRealtimeNanos());
-                }
-            }
-            if (!pushLoc.hasAccuracy() || pushLoc.getAccuracy() <= 0.0f) {
-                pushLoc.setAccuracy(15.0f);
-            }
-
-            for (int code : new int[]{1, 2}) {
-                if (!b.isBinderAlive()) {
-                    this.listenerBinder = null;
-                    break;
-                }
-                android.os.Parcel p = android.os.Parcel.obtain();
-                android.os.Parcel reply = android.os.Parcel.obtain();
-                try {
-                    p.writeInterfaceToken("com.google.android.gms.maps.internal.IOnLocationChangeListener");
-                    p.writeInt(1); // indicates Parcelable exists
-                    pushLoc.writeToParcel(p, 0);
-                    boolean sent = b.transact(code, p, reply, 0);
-                    if (sent) {
-                        reply.readException();
-                        app.morphe.extension.shared.diagnostics.SafeLog.d("MorpheLocation", "Native Location pushed via transact " + code + ": "
-                                + pushLoc.getLatitude() + ", " + pushLoc.getLongitude()
-                                + " (acc=" + pushLoc.getAccuracy() + "m)");
-                        break;
-                    }
-                } catch (Throwable t) {
-                    if (t instanceof android.os.DeadObjectException || !b.isBinderAlive()) {
-                        this.listenerBinder = null;
-                        break;
-                    }
-                } finally {
-                    p.recycle();
-                    reply.recycle();
-                }
-            }
-        }
-    }
-
-    private static boolean isGoogleMapDelegateBinder(android.os.IBinder b) {
-        if (b == null) return false;
-        try {
-            String desc = b.getInterfaceDescriptor();
-            if (desc != null && (desc.equals("com.google.android.gms.maps.internal.IGoogleMapDelegate")
-                    || desc.endsWith("IGoogleMapDelegate"))) {
-                return true;
-            }
-        } catch (Throwable ignored) {}
-        return false;
-    }
-
-    private static boolean isValidBinderCandidate(android.os.IBinder b) {
-        if (b == null) return false;
-        try {
-            String desc = b.getInterfaceDescriptor();
-            if (desc != null && (desc.contains("UiSettings") || desc.contains("Projection")
-                    || desc.contains("Panorama") || desc.contains("LocationSource"))) {
-                return false;
-            }
-        } catch (Throwable ignored) {}
-        return true;
-    }
-
-    private static android.os.IBinder extractMapBinder(Object mapObj) {
-        if (mapObj == null) return null;
-        try {
-            android.os.IBinder fallback = null;
-            for (Class<?> clazz = mapObj.getClass(); clazz != null && clazz != Object.class; clazz = clazz.getSuperclass()) {
-                for (java.lang.reflect.Field f : clazz.getDeclaredFields()) {
-                    f.setAccessible(true);
-                    Object val = f.get(mapObj);
-                    if (val == null) continue;
-
-                    if (val instanceof android.os.IInterface) {
-                        android.os.IBinder b = ((android.os.IInterface) val).asBinder();
-                        if (isGoogleMapDelegateBinder(b)) {
-                            app.morphe.extension.shared.diagnostics.SafeLog.d("MorpheLocation", "Found IGoogleMapDelegate directly: " + b);
-                            return b;
-                        }
-                        if (fallback == null && isValidBinderCandidate(b)) fallback = b;
-                    } else if (val instanceof android.os.IBinder) {
-                        android.os.IBinder b = (android.os.IBinder) val;
-                        if (isGoogleMapDelegateBinder(b)) {
-                            app.morphe.extension.shared.diagnostics.SafeLog.d("MorpheLocation", "Found IGoogleMapDelegate IBinder: " + b);
-                            return b;
-                        }
-                        if (fallback == null && isValidBinderCandidate(b)) fallback = b;
-                    } else {
-                        try {
-                            java.lang.reflect.Field mRemote = val.getClass().getDeclaredField("mRemote");
-                            mRemote.setAccessible(true);
-                            Object remoteObj = mRemote.get(val);
-                            if (remoteObj instanceof android.os.IBinder) {
-                                android.os.IBinder b = (android.os.IBinder) remoteObj;
-                                if (isGoogleMapDelegateBinder(b)) {
-                                    app.morphe.extension.shared.diagnostics.SafeLog.d("MorpheLocation", "Found IGoogleMapDelegate in mRemote: " + b);
-                                    return b;
-                                }
-                                if (fallback == null && isValidBinderCandidate(b)) fallback = b;
-                            }
-                        } catch (Throwable ignored) {}
-
-                        for (java.lang.reflect.Field sf : val.getClass().getDeclaredFields()) {
-                            sf.setAccessible(true);
-                            Object sval = sf.get(val);
-                            if (sval instanceof android.os.IBinder) {
-                                android.os.IBinder b = (android.os.IBinder) sval;
-                                if (isGoogleMapDelegateBinder(b)) {
-                                    app.morphe.extension.shared.diagnostics.SafeLog.d("MorpheLocation", "Found IGoogleMapDelegate in subfield: " + b);
-                                    return b;
-                                }
-                                if (fallback == null && isValidBinderCandidate(b)) fallback = b;
-                            } else if (sval instanceof android.os.IInterface) {
-                                android.os.IBinder b = ((android.os.IInterface) sval).asBinder();
-                                if (isGoogleMapDelegateBinder(b)) {
-                                    app.morphe.extension.shared.diagnostics.SafeLog.d("MorpheLocation", "Found IGoogleMapDelegate in subfield IInterface: " + b);
-                                    return b;
-                                }
-                                if (fallback == null && isValidBinderCandidate(b)) fallback = b;
-                            }
-                        }
-                    }
-                }
-            }
-            if (fallback != null) {
-                app.morphe.extension.shared.diagnostics.SafeLog.w("MorpheLocation", "Using fallback binder: " + fallback);
-                return fallback;
-            }
-        } catch (Throwable t) {
-            app.morphe.extension.shared.diagnostics.SafeLog.e("MorpheLocation", "Error extracting map binder", t);
-        }
-        return null;
-    }
-
-    private static Object extractGoogleMapDelegate(Object mapObj) {
-        if (mapObj == null) return null;
-        try {
-            for (Class<?> clazz = mapObj.getClass(); clazz != null && clazz != Object.class; clazz = clazz.getSuperclass()) {
-                for (java.lang.reflect.Field f : clazz.getDeclaredFields()) {
-                    f.setAccessible(true);
-                    Object val = f.get(mapObj);
-                    if (val == null) continue;
-                    if (val instanceof android.os.IInterface) {
-                        android.os.IBinder b = ((android.os.IInterface) val).asBinder();
-                        if (isGoogleMapDelegateBinder(b)) {
-                            return val;
-                        }
-                    }
-                }
-            }
-        } catch (Throwable ignored) {}
-        return null;
-    }
-
-    private static Object getMapClickListener() {
-        if (sAppMapClickListener != null) return sAppMapClickListener;
-        Object delegate = sGoogleMapDelegate;
-        if (delegate == null && sAttachedMapObj != null) {
-            delegate = extractGoogleMapDelegate(sAttachedMapObj);
-            if (delegate != null) sGoogleMapDelegate = delegate;
-        }
-        if (delegate != null) {
-            for (Class<?> c = delegate.getClass(); c != null && c != Object.class; c = c.getSuperclass()) {
-                for (java.lang.reflect.Field f : c.getDeclaredFields()) {
-                    if (f.getName().contains("mapClickListener") || f.getName().contains("MapClick")) {
-                        try {
-                            f.setAccessible(true);
-                            Object listener = f.get(delegate);
-                            if (listener != null) {
-                                sAppMapClickListener = listener;
-                                app.morphe.extension.shared.diagnostics.SafeLog.d("MorpheLocation", "Discovered mapClickListener on delegate: " + listener);
-                                return listener;
-                            }
-                        } catch (Throwable ignored) {}
-                    }
-                }
-            }
-        }
-        return null;
-    }
-
-    private static void wrapGoogleMapIfNeeded(Object mapObj) {
-        if (mapObj == null || sWrappedMapObjects.contains(mapObj)) return;
-        sWrappedMapObjects.add(mapObj);
-        try {
-            Object delegate = extractGoogleMapDelegate(mapObj);
-            if (delegate != null) {
-                sGoogleMapDelegate = delegate;
-                app.morphe.extension.shared.diagnostics.SafeLog.d("MorpheLocation", "Captured sGoogleMapDelegate: " + delegate.getClass().getName());
-            }
-        } catch (Throwable t) {
-            app.morphe.extension.shared.diagnostics.SafeLog.e("MorpheLocation", "Failed to wrap GoogleMap delegate", t);
-        }
-    }
-
-    public static void clearMarkerSelection() {
-        // No-op: Marker selection is natively managed by Google Photos.
-        // Firing synthetic onMapClick at the camera target coordinates actively selects/locks
-        // the marker, causing a purple circle selection ring and switching off aggregate viewport mode.
+        return PhotosMapHelper.isInfoPanelMapKillswitched(originalValue);
     }
 
     public static int adjustScrollPosition(int pos) {
-        if (pos <= 1) {
-            app.morphe.extension.shared.diagnostics.SafeLog.d("MorpheLocation", "adjustScrollPosition: adjusting pos " + pos + " to 0 (top header)");
-            return 0;
-        }
-        return pos;
+        return PhotosMapHelper.adjustScrollPosition(pos);
     }
 
     public static int adjustScrollOffset(int pos, int offset) {
-        if (pos <= 1) {
-            app.morphe.extension.shared.diagnostics.SafeLog.d("MorpheLocation", "adjustScrollOffset: resetting offset " + offset + " to 0 for pos " + pos);
-            return 0;
-        }
-        return offset;
+        return PhotosMapHelper.adjustScrollOffset(pos, offset);
     }
 
     public static int adjustScrollTargetPosition(int pos) {
-        return adjustScrollPosition(pos);
+        return PhotosMapHelper.adjustScrollTargetPosition(pos);
+    }
+
+    public static void clearMarkerSelection() {
+        PhotosMapHelper.clearMarkerSelection();
     }
 
     public static android.location.Location getSafeLastKnownLocation(Context context) {
-        if (context == null) context = Utils.getContext();
-        if (context == null) return sLastLocation;
-        try {
-            android.location.LocationManager lm = (android.location.LocationManager) context.getSystemService(Context.LOCATION_SERVICE);
-            if (lm != null) {
-                if (android.os.Build.VERSION.SDK_INT >= 31) {
-                    try {
-                        if (lm.isProviderEnabled(android.location.LocationManager.FUSED_PROVIDER)) {
-                            android.location.Location l = lm.getLastKnownLocation(android.location.LocationManager.FUSED_PROVIDER);
-                            if (l != null) return l;
-                        }
-                    } catch (Throwable ignored) {}
-                }
-                try {
-                    if (lm.isProviderEnabled(android.location.LocationManager.GPS_PROVIDER)) {
-                        android.location.Location l = lm.getLastKnownLocation(android.location.LocationManager.GPS_PROVIDER);
-                        if (l != null) return l;
-                    }
-                } catch (Throwable ignored) {}
-                try {
-                    if (lm.isProviderEnabled(android.location.LocationManager.NETWORK_PROVIDER)) {
-                        android.location.Location l = lm.getLastKnownLocation(android.location.LocationManager.NETWORK_PROVIDER);
-                        if (l != null) return l;
-                    }
-                } catch (Throwable ignored) {}
-                try {
-                    android.location.Location l = lm.getLastKnownLocation(android.location.LocationManager.PASSIVE_PROVIDER);
-                    if (l != null) return l;
-                } catch (Throwable ignored) {}
-            }
-        } catch (Throwable ignored) {}
-        return sLastLocation;
+        return PhotosMapHelper.getSafeLastKnownLocation(context);
     }
-
-    private static void setLocationSource(android.os.IBinder mapBinder, android.os.IBinder locationSource) {
-        if (mapBinder == null || locationSource == null) return;
-        android.os.Parcel data = android.os.Parcel.obtain();
-        android.os.Parcel reply = android.os.Parcel.obtain();
-        try {
-            data.writeInterfaceToken("com.google.android.gms.maps.internal.IGoogleMapDelegate");
-            data.writeStrongBinder(locationSource);
-            // In IGoogleMapDelegate.aidl:
-            // TRANSACTION_setLocationSource = FIRST_CALL_TRANSACTION + 23 = 24
-            boolean success = mapBinder.transact(24, data, reply, 0);
-            if (success) {
-                reply.readException();
-                app.morphe.extension.shared.diagnostics.SafeLog.d("MorpheLocation", "Successfully called setLocationSource (transact 24)");
-            } else {
-                app.morphe.extension.shared.diagnostics.SafeLog.w("MorpheLocation", "transact 24 for setLocationSource returned false");
-            }
-        } catch (Throwable t) {
-            app.morphe.extension.shared.diagnostics.SafeLog.w("MorpheLocation", "transact 24 for setLocationSource failed", t);
-        } finally {
-            data.recycle();
-            reply.recycle();
-        }
-
-        // Direct reflection & engine neutralization if local GoogleMapImpl
-        try {
-            Object target = mapBinder;
-            if (target instanceof android.os.IInterface) {
-                target = ((android.os.IInterface) target).asBinder();
-            }
-            Class<?> clazz = target.getClass();
-            for (java.lang.reflect.Method m : clazz.getMethods()) {
-                if ("setLocationSource".equals(m.getName()) && m.getParameterTypes().length == 1) {
-                    m.setAccessible(true);
-                    m.invoke(target, locationSource);
-                    app.morphe.extension.shared.diagnostics.SafeLog.d("MorpheLocation", "Invoked setLocationSource directly on " + clazz.getSimpleName());
-                    break;
-                }
-            }
-            // Overwrite defaultLocationEngine with locationEngine so fallback to GoogleLocationEngine is impossible
-            java.lang.reflect.Field fDefault = null;
-            java.lang.reflect.Field fCurrent = null;
-            for (Class<?> c = clazz; c != null && c != Object.class; c = c.getSuperclass()) {
-                for (java.lang.reflect.Field f : c.getDeclaredFields()) {
-                    if ("defaultLocationEngine".equals(f.getName())) fDefault = f;
-                    if ("locationEngine".equals(f.getName())) fCurrent = f;
-                }
-            }
-            if (fDefault != null && fCurrent != null) {
-                fDefault.setAccessible(true);
-                fCurrent.setAccessible(true);
-                Object currentEngine = fCurrent.get(target);
-                if (currentEngine != null) {
-                    fDefault.set(target, currentEngine);
-                    app.morphe.extension.shared.diagnostics.SafeLog.d("MorpheLocation", "Successfully replaced defaultLocationEngine with SourceLocationEngine on " + clazz.getSimpleName());
-                }
-            }
-        } catch (Throwable t) {
-            app.morphe.extension.shared.diagnostics.SafeLog.w("MorpheLocation", "Direct setLocationSource reflection failed", t);
-        }
-    }
-
-    private static void setMyLocationEnabled(android.os.IBinder mapBinder, boolean enabled) {
-        if (mapBinder == null) return;
-        android.os.Parcel data = android.os.Parcel.obtain();
-        android.os.Parcel reply = android.os.Parcel.obtain();
-        try {
-            data.writeInterfaceToken("com.google.android.gms.maps.internal.IGoogleMapDelegate");
-            data.writeInt(enabled ? 1 : 0);
-            // In IGoogleMapDelegate.aidl:
-            // TRANSACTION_setMyLocationEnabled = FIRST_CALL_TRANSACTION + 21 = 22
-            boolean success = mapBinder.transact(22, data, reply, 0);
-            if (success) {
-                reply.readException();
-                app.morphe.extension.shared.diagnostics.SafeLog.d("MorpheLocation", "Successfully called setMyLocationEnabled (transact 22)");
-            }
-        } catch (Throwable t) {
-            app.morphe.extension.shared.diagnostics.SafeLog.w("MorpheLocation", "transact 22 for setMyLocationEnabled failed", t);
-        } finally {
-            data.recycle();
-            reply.recycle();
-        }
-    }
-
-    private static boolean isMapObject(Object obj) {
-        if (obj == null) return false;
-        Class<?> cls = obj.getClass();
-        for (java.lang.reflect.Method m : cls.getMethods()) {
-            if (m.getReturnType() != null && m.getReturnType().getName().contains("CameraPosition")) {
-                return true;
-            }
-        }
-        boolean hasLocationOrCamera = false;
-        for (java.lang.reflect.Method m : cls.getMethods()) {
-            if (m.getName().equals("f") && m.getParameterTypes().length == 1 && m.getParameterTypes()[0] == boolean.class) {
-                hasLocationOrCamera = true;
-            }
-            if ((m.getName().equals("t") || m.getName().equals("s") || m.getName().equals("r") || m.getName().equals("v") || m.getName().equals("u"))
-                    && (m.getParameterTypes().length == 1 || m.getParameterTypes().length == 2)) {
-                if (hasLocationOrCamera) return true;
-            }
-        }
-        return hasLocationOrCamera;
-    }
-
-    private static Object findMapObject(Object mixin) {
-        if (mixin == null) return null;
-        Class<?> clazz = mixin.getClass();
-        for (java.lang.reflect.Field f : clazz.getDeclaredFields()) {
-            try {
-                f.setAccessible(true);
-                Object val = f.get(mixin);
-                if (val == null) continue;
-
-                if (isMapObject(val)) {
-                    return val;
-                }
-
-                // Check if val is a Lazy/Provider/Holder
-                for (java.lang.reflect.Method m : val.getClass().getDeclaredMethods()) {
-                    if ((m.getName().equals("a") || m.getName().equals("get")) && m.getParameterTypes().length == 0) {
-                        try {
-                            m.setAccessible(true);
-                            Object inner = m.invoke(val);
-                            if (inner != null && isMapObject(inner)) {
-                                return inner;
-                            }
-                        } catch (Throwable ignored) {}
-                    }
-                }
-            } catch (Throwable ignored) {}
-        }
-        return null;
-    }
-
-    private static volatile Class<?> sCachedCameraUpdateFactoryClass = null;
-
-    private static Object createCameraUpdate(ClassLoader cl, Object latLng, float zoom) {
-        if (latLng == null) return null;
-        Class<?> latLngClass = latLng.getClass();
-
-        if (sCachedCameraUpdateFactoryClass != null) {
-            Object cu = invokeCameraUpdateFactory(sCachedCameraUpdateFactoryClass, latLng, zoom, latLngClass);
-            if (cu != null) return cu;
-        }
-
-        String[] knownClasses = new String[]{
-            "bqyk", "defpackage.bqyk",
-            "bqll", "defpackage.bqll",
-            "bqbb", "defpackage.bqbb",
-            "bprq", "defpackage.bprq",
-            "brwd", "defpackage.brwd",
-            "com.google.android.gms.maps.CameraUpdateFactory"
-        };
-        for (String clsName : knownClasses) {
-            try {
-                Class<?> c = null;
-                try { c = Class.forName(clsName); } catch (Throwable ignored) {}
-                if (c == null && cl != null) {
-                    try { c = cl.loadClass(clsName); } catch (Throwable ignored) {}
-                }
-                if (c != null) {
-                    Object cu = invokeCameraUpdateFactory(c, latLng, zoom, latLngClass);
-                    if (cu != null) {
-                        sCachedCameraUpdateFactoryClass = c;
-                        return cu;
-                    }
-                }
-            } catch (Throwable ignored) {}
-        }
-
-        // Dynamic DEX scanning fallback if class name changed in newer/older versions
-        if (cl != null) {
-            try {
-                Class<?> current = cl.getClass();
-                java.lang.reflect.Field pathListField = null;
-                while (current != null && current != Object.class) {
-                    try {
-                        pathListField = current.getDeclaredField("pathList");
-                        break;
-                    } catch (NoSuchFieldException e) {
-                        current = current.getSuperclass();
-                    }
-                }
-                if (pathListField != null) {
-                    pathListField.setAccessible(true);
-                    Object pathList = pathListField.get(cl);
-                    java.lang.reflect.Field dexElementsField = pathList.getClass().getDeclaredField("dexElements");
-                    dexElementsField.setAccessible(true);
-                    Object[] dexElements = (Object[]) dexElementsField.get(pathList);
-                    for (Object element : dexElements) {
-                        java.lang.reflect.Field dexFileField = element.getClass().getDeclaredField("dexFile");
-                        dexFileField.setAccessible(true);
-                        dalvik.system.DexFile dexFile = (dalvik.system.DexFile) dexFileField.get(element);
-                        if (dexFile != null) {
-                            java.util.Enumeration<String> entries = dexFile.entries();
-                            while (entries.hasMoreElements()) {
-                                String className = entries.nextElement();
-                                int dotIdx = className.lastIndexOf('.');
-                                String simpleName = dotIdx >= 0 ? className.substring(dotIdx + 1) : className;
-                                if (simpleName.length() <= 4 || simpleName.endsWith("CameraUpdateFactory")) {
-                                    try {
-                                        Class<?> candidate = cl.loadClass(className);
-                                        Object cu = invokeCameraUpdateFactory(candidate, latLng, zoom, latLngClass);
-                                        if (cu != null) {
-                                            sCachedCameraUpdateFactoryClass = candidate;
-                                            app.morphe.extension.shared.diagnostics.SafeLog.d("MorpheLocation", "Discovered CameraUpdateFactory dynamically: " + className);
-                                            return cu;
-                                        }
-                                    } catch (Throwable ignored) {}
-                                }
-                            }
-                        }
-                    }
-                }
-            } catch (Throwable t) {
-                app.morphe.extension.shared.diagnostics.SafeLog.w("MorpheLocation", "Dynamic CameraUpdateFactory scan failed", t);
-            }
-        }
-
-        return null;
-    }
-
-    private static Object invokeCameraUpdateFactory(Class<?> c, Object latLng, float zoom, Class<?> latLngClass) {
-        try {
-            for (java.lang.reflect.Method m : c.getMethods()) {
-                if (java.lang.reflect.Modifier.isStatic(m.getModifiers())) {
-                    Class<?>[] pts = m.getParameterTypes();
-                    if (pts.length == 2 && pts[0] == latLngClass && (pts[1] == float.class || pts[1] == Float.class)) {
-                        m.setAccessible(true);
-                        Object cu = m.invoke(null, latLng, zoom);
-                        if (cu != null) return cu;
-                    }
-                }
-            }
-            for (java.lang.reflect.Method m : c.getMethods()) {
-                if (java.lang.reflect.Modifier.isStatic(m.getModifiers())) {
-                    Class<?>[] pts = m.getParameterTypes();
-                    if (pts.length == 1 && pts[0] == latLngClass) {
-                        m.setAccessible(true);
-                        Object cu = m.invoke(null, latLng);
-                        if (cu != null) return cu;
-                    }
-                }
-            }
-        } catch (Throwable ignored) {}
-        return null;
-    }
-
-    private static Object findMapExploreController(Object mixinObj) {
-        if (mixinObj == null) return null;
-        try {
-            Class<?> mixinClass = mixinObj.getClass();
-            Context context = null;
-            for (java.lang.reflect.Field f : mixinClass.getDeclaredFields()) {
-                if (Context.class.isAssignableFrom(f.getType())) {
-                    f.setAccessible(true);
-                    context = (Context) f.get(mixinObj);
-                    break;
-                }
-            }
-            if (context == null) return null;
-            Activity activity = null;
-            Context cur = context;
-            while (cur instanceof android.content.ContextWrapper) {
-                if (cur instanceof Activity) {
-                    activity = (Activity) cur;
-                    break;
-                }
-                cur = ((android.content.ContextWrapper) cur).getBaseContext();
-            }
-            if (activity == null) return null;
-
-            for (Class<?> c = activity.getClass(); c != null && c != Object.class; c = c.getSuperclass()) {
-                for (java.lang.reflect.Field f : c.getDeclaredFields()) {
-                    f.setAccessible(true);
-                    Object val = f.get(activity);
-                    if (val != null) {
-                        String valCls = val.getClass().getName().toLowerCase(Locale.ROOT);
-                        if (valCls.contains("mapexplore")) {
-                            app.morphe.extension.shared.diagnostics.SafeLog.d("MorpheLocation", "Found MapExploreController by name: " + f.getName() + " (" + val.getClass().getName() + ")");
-                            return val;
-                        }
-                        try {
-                            val.getClass().getDeclaredMethod("ba");
-                            app.morphe.extension.shared.diagnostics.SafeLog.d("MorpheLocation", "Found MapExploreController in field: " + f.getName() + " (" + val.getClass().getName() + ")");
-                            return val;
-                        } catch (NoSuchMethodException ignored) {}
-                    }
-                }
-            }
-
-            try {
-                Class<?> faClass = Class.forName("androidx.fragment.app.FragmentActivity");
-                if (faClass.isInstance(activity)) {
-                    java.lang.reflect.Method mGetFM = faClass.getMethod("getSupportFragmentManager");
-                    Object fm = mGetFM.invoke(activity);
-                    if (fm != null) {
-                        java.lang.reflect.Method mGetFrags = fm.getClass().getMethod("getFragments");
-                        java.util.List<?> frags = (java.util.List<?>) mGetFrags.invoke(fm);
-                        if (frags != null) {
-                            for (Object frag : frags) {
-                                if (frag != null && frag.getClass().getName().toLowerCase(Locale.ROOT).contains("mapexplore")) {
-                                    app.morphe.extension.shared.diagnostics.SafeLog.d("MorpheLocation", "Found MapExplore fragment: " + frag.getClass().getName());
-                                    return frag;
-                                }
-                            }
-                        }
-                    }
-                }
-            } catch (Throwable ignored) {}
-        } catch (Throwable t) {
-            app.morphe.extension.shared.diagnostics.SafeLog.e("MorpheLocation", "Error finding MapExploreController", t);
-        }
-        return null;
-    }
-
-    private static void refreshPhotosForCurrentBounds(Object controller) {
-        // No-op: Photos updates viewport bounds query via onCameraIdle natively.
-        // Calling obfuscated methods (ba) in 7.95 causes UI state corruption and blanks the header.
-    }
-
-    // Set to true after the first field dump so we only dump once.
-    private static final java.util.concurrent.atomic.AtomicBoolean sDumpedGoogleMapImplFields =
-            new java.util.concurrent.atomic.AtomicBoolean(false);
-
-    /**
-     * Fires the GMS OnCameraIdleListener that Google Photos registered via
-     * IGoogleMapDelegate.setOnCameraIdleListener (transaction 32 on GoogleMapImpl).
-     *
-     * KEY: sGoogleMapDelegate is a client-side IInterface proxy. The OnCameraIdleListener is
-     * stored on the SERVER side — MicroG's GoogleMapImpl, which is the Binder itself.
-     * Since MicroG runs in-process, sGoogleMapDelegate.asBinder() IS the GoogleMapImpl object,
-     * and we can walk its fields directly.
-     *
-     * We walk the fields of GoogleMapImpl looking for any stored IInterface / IBinder whose
-     * interface descriptor contains "CameraIdle" and call onCameraIdle() on it.
-     *
-     * Fallback: call onCameraIdle() as a named method directly on GoogleMapImpl itself
-     * (MicroG might dispatch internally without storing as a named binder field).
-     */
-    private static final android.os.Handler sCameraIdleHandler = new android.os.Handler(android.os.Looper.getMainLooper());
-    private static final Runnable sCameraIdleRunnable = () -> doTriggerGmsCameraIdle();
-
-    private static void triggerGmsCameraIdle() {
-        sCameraIdleHandler.removeCallbacks(sCameraIdleRunnable);
-        sCameraIdleHandler.postDelayed(sCameraIdleRunnable, 100);
-    }
-
-    private static void doTriggerGmsCameraIdle() {
-        Object delegate = sGoogleMapDelegate;
-        if (delegate == null) return;
-        try {
-            // Step 1: Obtain the server-side GoogleMapImpl.
-            // sGoogleMapDelegate is a client IInterface proxy. asBinder() returns the actual
-            // GoogleMapImpl Binder object (same process, so no BinderProxy intermediary).
-            android.os.IBinder serverBinder = null;
-            if (delegate instanceof android.os.IInterface) {
-                serverBinder = ((android.os.IInterface) delegate).asBinder();
-            } else if (delegate instanceof android.os.IBinder) {
-                serverBinder = (android.os.IBinder) delegate;
-            }
-
-            app.morphe.extension.shared.diagnostics.SafeLog.d("MorpheLocation",
-                    "triggerGmsCameraIdle: serverBinder=" +
-                    (serverBinder != null ? serverBinder.getClass().getName() : "null") +
-                    " isLocalBinder=" + (serverBinder instanceof android.os.Binder));
-
-            // Diagnostic: dump GoogleMapImpl fields once to identify the listener field name.
-            if (serverBinder != null && sDumpedGoogleMapImplFields.compareAndSet(false, true)) {
-                StringBuilder sb = new StringBuilder("GoogleMapImpl fields: ");
-                for (Class<?> c = serverBinder.getClass(); c != null && c != Object.class; c = c.getSuperclass()) {
-                    for (java.lang.reflect.Field f : c.getDeclaredFields()) {
-                        f.setAccessible(true);
-                        Object val;
-                        try { val = f.get(serverBinder); } catch (Throwable e) { val = "<err>"; }
-                        sb.append(f.getName()).append("=").append(val == null ? "null" : val.getClass().getSimpleName()).append(", ");
-                    }
-                }
-                app.morphe.extension.shared.diagnostics.SafeLog.d("MorpheLocation", sb.toString());
-            }
-
-            // Step 2: Walk GoogleMapImpl's fields (server side) for the stored listener.
-            if (serverBinder != null && searchAndFireCameraIdleListener(serverBinder)) return;
-
-            // Step 3: Also try delegate proxy's fields in case it's a local Binder subclass itself.
-            if (delegate != serverBinder && searchAndFireCameraIdleListener(delegate)) return;
-
-            // Step 4: Last resort — call onCameraIdle() directly on GoogleMapImpl via reflection.
-            // MicroG may handle it internally by dispatching to all registered listeners.
-            if (serverBinder != null) {
-                for (java.lang.reflect.Method m : serverBinder.getClass().getDeclaredMethods()) {
-                    if ("onCameraIdle".equals(m.getName()) && m.getParameterTypes().length == 0) {
-                        m.setAccessible(true);
-                        m.invoke(serverBinder);
-                        app.morphe.extension.shared.diagnostics.SafeLog.d("MorpheLocation",
-                                "triggerGmsCameraIdle: called onCameraIdle() directly on GoogleMapImpl");
-                        return;
-                    }
-                }
-                // Also check superclasses
-                for (Class<?> c = serverBinder.getClass().getSuperclass(); c != null && c != Object.class; c = c.getSuperclass()) {
-                    for (java.lang.reflect.Method m : c.getDeclaredMethods()) {
-                        if ("onCameraIdle".equals(m.getName()) && m.getParameterTypes().length == 0) {
-                            m.setAccessible(true);
-                            m.invoke(serverBinder);
-                            app.morphe.extension.shared.diagnostics.SafeLog.d("MorpheLocation",
-                                    "triggerGmsCameraIdle: called onCameraIdle() on superclass " + c.getSimpleName());
-                            return;
-                        }
-                    }
-                }
-            }
-
-            app.morphe.extension.shared.diagnostics.SafeLog.w("MorpheLocation",
-                    "triggerGmsCameraIdle: could not fire camera-idle event");
-        } catch (Throwable t) {
-            app.morphe.extension.shared.diagnostics.SafeLog.e("MorpheLocation", "triggerGmsCameraIdle failed", t);
-        }
-    }
-
-    /**
-     * Walks obj's fields (and superclass fields) looking for any stored IInterface/IBinder
-     * whose interface descriptor contains "cameraidle" (case-insensitive), then invokes
-     * onCameraIdle() on it via reflection or Binder transaction.
-     *
-     * @return true if successfully invoked, false if not found
-     */
-    private static boolean searchAndFireCameraIdleListener(Object obj) {
-        for (Class<?> c = obj.getClass(); c != null && c != Object.class; c = c.getSuperclass()) {
-            for (java.lang.reflect.Field f : c.getDeclaredFields()) {
-                f.setAccessible(true);
-                Object val;
-                try { val = f.get(obj); } catch (Throwable ignored) { continue; }
-                if (val == null) continue;
-
-                android.os.IBinder binder = null;
-                if (val instanceof android.os.IBinder) {
-                    binder = (android.os.IBinder) val;
-                } else if (val instanceof android.os.IInterface) {
-                    binder = ((android.os.IInterface) val).asBinder();
-                }
-
-                if (binder != null) {
-                    String descriptor = null;
-                    try { descriptor = binder.getInterfaceDescriptor(); } catch (Throwable ignored) {}
-                    if (descriptor != null && descriptor.toLowerCase().contains("cameraidle")) {
-                        app.morphe.extension.shared.diagnostics.SafeLog.d("MorpheLocation",
-                                "searchAndFire: found CameraIdle listener in field " + f.getName() +
-                                " descriptor=" + descriptor + " on " + c.getSimpleName());
-                        // Try direct reflection first
-                        try {
-                            java.lang.reflect.Method m = val.getClass().getMethod("onCameraIdle");
-                            m.invoke(val);
-                            app.morphe.extension.shared.diagnostics.SafeLog.d("MorpheLocation", "searchAndFire: invoked via reflection");
-                            return true;
-                        } catch (NoSuchMethodException | IllegalAccessException | java.lang.reflect.InvocationTargetException ignored) {}
-                        // Try binder transaction (code 1 = first method = onCameraIdle)
-                        try {
-                            android.os.Parcel data = android.os.Parcel.obtain();
-                            android.os.Parcel reply = android.os.Parcel.obtain();
-                            try {
-                                data.writeInterfaceToken(descriptor);
-                                binder.transact(1, data, reply, 0);
-                                reply.readException();
-                                app.morphe.extension.shared.diagnostics.SafeLog.d("MorpheLocation", "searchAndFire: invoked via transact(1)");
-                            } finally {
-                                data.recycle();
-                                reply.recycle();
-                            }
-                            return true;
-                        } catch (Throwable t) {
-                            app.morphe.extension.shared.diagnostics.SafeLog.w("MorpheLocation", "searchAndFire: transact failed", t);
-                        }
-                    }
-                }
-            }
-        }
-        return false;
-    }
-
 
     public static void onCurrentLocationMixinTintUpdated(Object mixinObj, boolean active) {
-        if (!active) {
-            StackTraceElement[] stack = Thread.currentThread().getStackTrace();
-            for (StackTraceElement elem : stack) {
-                if ("onClick".equals(elem.getMethodName())) {
-                    app.morphe.extension.shared.diagnostics.SafeLog.d("MorpheLocation", "CurrentLocationMixin.b(false) invoked from onClick! Redirecting to handleCurrentLocation()");
-                    handleCurrentLocation(mixinObj);
-                    return;
-                }
-            }
-        }
+        PhotosMapHelper.onCurrentLocationMixinTintUpdated(mixinObj, active);
     }
 
     public static void initMapLocation(Object mixinObj) {
-        if (mixinObj == null) return;
-        try {
-            if (!isMicroGLocationGranted(Utils.getContext())) {
-                app.morphe.extension.shared.diagnostics.SafeLog.d("MorpheLocation", "initMapLocation skipped: MicroG location permission not granted");
-                return;
-            }
-            app.morphe.extension.shared.diagnostics.SafeLog.d("MorpheLocation", "initMapLocation called for: " + mixinObj.getClass().getName());
-
-            // Clean up any lingering continuous location listener from prior map session
-            if (sContinuousListener != null) {
-                try {
-                    Context ctx = Utils.getContext();
-                    if (ctx != null) {
-                        android.location.LocationManager lm = (android.location.LocationManager) ctx.getSystemService(Context.LOCATION_SERVICE);
-                        if (lm != null) {
-                            lm.removeUpdates(sContinuousListener);
-                            app.morphe.extension.shared.diagnostics.SafeLog.d("MorpheLocation", "initMapLocation: unregistered previous sContinuousListener");
-                        }
-                    }
-                } catch (Throwable ignored) {}
-                sContinuousListener = null;
-            }
-
-            // Reset static state for new map session
-            sAttachedMapObj = null;
-            sLocationSource = null;
-            sGoogleMapDelegate = null;
-            sMapExploreController = null;
-            sCameraIdleHandler.removeCallbacksAndMessages(null);
-            sIsLocatingAnimation.set(false);
-
-            sCurrentMixinRef = new java.lang.ref.WeakReference<>(mixinObj);
-            sInitialSelectionCleared.set(false);
-            if (sMapExploreController == null) {
-                sMapExploreController = findMapExploreController(mixinObj);
-            }
-
-            // Seed last known location immediately
-            android.location.Location initLoc = getSafeLastKnownLocation(Utils.getContext());
-            if (initLoc != null) {
-                sLastLocation = initLoc;
-                app.morphe.extension.shared.diagnostics.SafeLog.d("MorpheLocation", "initMapLocation: seeded sLastLocation=" + initLoc.getLatitude() + "," + initLoc.getLongitude());
-            }
-
-            final Object finalMixin = mixinObj;
-            Runnable pollRunnable = new Runnable() {
-                int attempts = 0;
-                @Override
-                public void run() {
-                    try {
-                        Object mapObj = findMapObject(finalMixin);
-                        if (mapObj != null) {
-                            app.morphe.extension.shared.diagnostics.SafeLog.d("MorpheLocation", "initMapLocation: mapObj found on attempt " + attempts);
-                            wrapGoogleMapIfNeeded(mapObj);
-                            android.os.IBinder mapBinder = extractMapBinder(mapObj);
-                            if (mapBinder != null) {
-                                if (sLocationSource == null) {
-                                    sLocationSource = new LocationSourceBinder();
-                                }
-                                if (sAttachedMapObj != mapObj || sLocationSource.listenerBinder == null) {
-                                    sAttachedMapObj = mapObj;
-                                    setLocationSource(mapBinder, sLocationSource);
-                                }
-                            }
-                        } else if (attempts < 8) {
-                            attempts++;
-                            new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(this, 300);
-                        }
-                    } catch (Throwable t) {
-                        app.morphe.extension.shared.diagnostics.SafeLog.e("MorpheLocation", "initMapLocation error in poll", t);
-                    }
-                }
-            };
-            // Run attempt 0 immediately so locationSource is bound before map finishes loading
-            pollRunnable.run();
-        } catch (Throwable t) {
-            app.morphe.extension.shared.diagnostics.SafeLog.e("MorpheLocation", "initMapLocation outer exception", t);
-        }
+        PhotosMapHelper.initMapLocation(mixinObj);
     }
 
-    @SuppressLint({"MissingPermission", "NewApi"})
     public static void handleCurrentLocation(Object currentLocMixinObj) {
-        if (currentLocMixinObj == null) return;
-        try {
-            app.morphe.extension.shared.diagnostics.SafeLog.d("MorpheLocation", "handleCurrentLocation triggered with: " + currentLocMixinObj.getClass().getName());
-            Class<?> clazz = currentLocMixinObj.getClass();
-            Context context = null;
-            for (java.lang.reflect.Field f : clazz.getDeclaredFields()) {
-                if (Context.class.isAssignableFrom(f.getType())) {
-                    f.setAccessible(true);
-                    context = (Context) f.get(currentLocMixinObj);
-                    break;
-                }
-            }
-            if (context == null) {
-                app.morphe.extension.shared.diagnostics.SafeLog.e("MorpheLocation", "Context not found on mixin");
-                return;
-            }
+        PhotosMapHelper.handleCurrentLocation(currentLocMixinObj);
+    }
 
-            final Context finalContext = context;
-            final Object finalMixin = currentLocMixinObj;
+    // ─────────────────────────────────────────────────────────────────────────
+    // Backup Delegation Stubs (Delegating to PhotosBackupHelper)
+    // ─────────────────────────────────────────────────────────────────────────
 
-            // Check runtime permissions
-            boolean hasFine = context.checkCallingOrSelfPermission(android.Manifest.permission.ACCESS_FINE_LOCATION) == android.content.pm.PackageManager.PERMISSION_GRANTED;
-            boolean hasCoarse = context.checkCallingOrSelfPermission(android.Manifest.permission.ACCESS_COARSE_LOCATION) == android.content.pm.PackageManager.PERMISSION_GRANTED;
-            if (!hasFine && !hasCoarse) {
-                app.morphe.extension.shared.diagnostics.SafeLog.w("MorpheLocation", "Location permission not granted to Google Photos");
-                Activity activity = null;
-                Context cur = context;
-                while (cur instanceof android.content.ContextWrapper) {
-                    if (cur instanceof Activity) {
-                        activity = (Activity) cur;
-                        break;
-                    }
-                    cur = ((android.content.ContextWrapper) cur).getBaseContext();
-                }
-                if (activity != null) {
-                    final Activity finalAct = activity;
-                    new android.os.Handler(android.os.Looper.getMainLooper()).post(() -> {
-                        try {
-                            android.widget.Toast.makeText(finalAct, "Location permission required for map", android.widget.Toast.LENGTH_SHORT).show();
-                            if (android.os.Build.VERSION.SDK_INT >= 23) {
-                                finalAct.requestPermissions(new String[]{
-                                    android.Manifest.permission.ACCESS_FINE_LOCATION,
-                                    android.Manifest.permission.ACCESS_COARSE_LOCATION
-                                }, 1001);
-                            }
-                        } catch (Throwable t) {
-                            app.morphe.extension.shared.diagnostics.SafeLog.e("MorpheLocation", "Failed to request location permissions", t);
-                        }
-                    });
-                }
-                return;
-            }
+    public static final String BACKUP_TAG = PhotosBackupHelper.BACKUP_TAG;
 
-            if (!isMicroGLocationGranted(context)) {
-                app.morphe.extension.shared.diagnostics.SafeLog.w("MorpheLocation", "Location permission not granted to MicroG");
-                Activity activity = null;
-                Context cur = context;
-                while (cur instanceof android.content.ContextWrapper) {
-                    if (cur instanceof Activity) {
-                        activity = (Activity) cur;
-                        break;
-                    }
-                    cur = ((android.content.ContextWrapper) cur).getBaseContext();
-                }
-                if (activity != null) {
-                    checkMicroGLocationPermission(activity);
-                }
-                return;
-            }
+    public static void logBackup(String message) {
+        PhotosBackupHelper.logBackup(message);
+    }
 
-            android.location.LocationManager lm = (android.location.LocationManager) context.getSystemService(Context.LOCATION_SERVICE);
-            if (lm == null) {
-                app.morphe.extension.shared.diagnostics.SafeLog.e("MorpheLocation", "LocationManager is null");
-                return;
-            }
+    public static void logBackupError(String message, Throwable t) {
+        PhotosBackupHelper.logBackupError(message, t);
+    }
 
-            boolean isGpsEnabled = false;
-            boolean isNetworkEnabled = false;
-            boolean isFusedEnabled = false;
-            try {
-                isGpsEnabled = lm.isProviderEnabled(android.location.LocationManager.GPS_PROVIDER);
-            } catch (Exception ignored) {}
-            try {
-                isNetworkEnabled = lm.isProviderEnabled(android.location.LocationManager.NETWORK_PROVIDER);
-            } catch (Exception ignored) {}
-            try {
-                if (android.os.Build.VERSION.SDK_INT >= 31) {
-                    isFusedEnabled = lm.isProviderEnabled(android.location.LocationManager.FUSED_PROVIDER);
-                }
-            } catch (Exception ignored) {}
+    public static Object sanitizeLudh(Object ludhObj) {
+        return PhotosBackupHelper.sanitizeLudh(ludhObj);
+    }
 
-            if (!isGpsEnabled && !isNetworkEnabled && !isFusedEnabled) {
-                app.morphe.extension.shared.diagnostics.SafeLog.w("MorpheLocation", "Location providers are disabled on device");
-                new android.os.Handler(android.os.Looper.getMainLooper()).post(() -> {
-                    try {
-                        android.widget.Toast.makeText(finalContext, "Please enable Location in device settings", android.widget.Toast.LENGTH_SHORT).show();
-                    } catch (Throwable ignored) {}
-                });
-                return;
-            }
+    public static Object sanitizeLudh(Object ludhObj, Context context) {
+        return PhotosBackupHelper.sanitizeLudh(ludhObj, context);
+    }
 
-            // Stop any previous listener before registering a new one
-            if (sContinuousListener != null) {
-                try {
-                    lm.removeUpdates(sContinuousListener);
-                } catch (Throwable ignored) {}
-                sContinuousListener = null;
-            }
+    public static Object sanitizeGmsBackupSettings(Object gmsSettings, Context context) {
+        return PhotosBackupHelper.sanitizeGmsBackupSettings(gmsSettings, context);
+    }
 
-            sCurrentMixinRef = new java.lang.ref.WeakReference<>(currentLocMixinObj);
-            sIsLocatingAnimation.set(true);
-            if (sMapExploreController == null) {
-                sMapExploreController = findMapExploreController(currentLocMixinObj);
-            }
+    public static int resolveRegisteredAccountId(Context context) {
+        return PhotosBackupHelper.resolveRegisteredAccountId(context);
+    }
 
-            // Reset pending flag 'j'
-            for (java.lang.reflect.Field f : clazz.getDeclaredFields()) {
-                if (f.getType() == boolean.class && f.getName().equals("j")) {
-                    try {
-                        f.setAccessible(true);
-                        f.setBoolean(finalMixin, false);
-                    } catch (Exception ignored) {}
-                }
-            }
+    public static int resolveRegisteredAccountId(Context context, int currentId) {
+        return PhotosBackupHelper.resolveRegisteredAccountId(context, currentId);
+    }
 
-            // Reset 'h' to false immediately so click is never swallowed as a toggle-off
-            for (java.lang.reflect.Field f : clazz.getDeclaredFields()) {
-                if (f.getType() == boolean.class && f.getName().equals("h")) {
-                    try {
-                        f.setAccessible(true);
-                        f.setBoolean(finalMixin, false);
-                    } catch (Throwable ignored) {}
-                }
-            }
+    public static int resolveRegisteredAccountId(Context context, Object accountStore) {
+        return PhotosBackupHelper.resolveRegisteredAccountId(context, accountStore);
+    }
 
-            final java.util.concurrent.atomic.AtomicBoolean cameraAnimated = new java.util.concurrent.atomic.AtomicBoolean(false);
+    public static int resolveRegisteredAccountFromEmail(String gmsEmail, Object accountStore, Context context) {
+        return PhotosBackupHelper.resolveRegisteredAccountFromEmail(gmsEmail, accountStore, context);
+    }
 
-            LocationApplier applyLocation = (loc) -> {
-                if (loc == null) return;
-                sLastLocation = loc;
-                app.morphe.extension.shared.diagnostics.SafeLog.d("MorpheLocation", "Applying location: " + loc.getLatitude() + ", " + loc.getLongitude());
+    public static int resolveBackupAccount(int currentId, String gmsEmail, Object accountStore, Context context) {
+        return PhotosBackupHelper.resolveBackupAccount(currentId, gmsEmail, accountStore, context);
+    }
 
-                new android.os.Handler(android.os.Looper.getMainLooper()).post(() -> {
-                    try {
-                        Object mapObj = findMapObject(finalMixin);
-                        if (mapObj == null) {
-                            app.morphe.extension.shared.diagnostics.SafeLog.e("MorpheLocation", "Map object not found on mixin");
-                            return;
-                        }
-                        wrapGoogleMapIfNeeded(mapObj);
+    public static void onAutoBackupSettingsActivityAttachBinder(Activity activity) {
+        PhotosBackupHelper.onAutoBackupSettingsActivityAttachBinder(activity);
+    }
 
-                        // Wire custom LocationSource to map if needed
-                        android.os.IBinder mapBinder = extractMapBinder(mapObj);
-                        if (mapBinder != null) {
-                            if (sLocationSource == null) {
-                                sLocationSource = new LocationSourceBinder();
-                            }
-                            if (sAttachedMapObj != mapObj || sLocationSource.listenerBinder == null) {
-                                sAttachedMapObj = mapObj;
-                                setLocationSource(mapBinder, sLocationSource);
-                            }
-                            // Always ensure myLocation is enabled on the map binder
-                            setMyLocationEnabled(mapBinder, true);
-                        }
-                        try {
-                            for (java.lang.reflect.Method m : mapObj.getClass().getMethods()) {
-                                if (m.getName().equals("f") && m.getParameterTypes().length == 1 && m.getParameterTypes()[0] == boolean.class) {
-                                    m.invoke(mapObj, true);
-                                    app.morphe.extension.shared.diagnostics.SafeLog.d("MorpheLocation", "Invoked map.f(true)");
-                                    break;
-                                }
-                            }
-                        } catch (Throwable ignored) {}
+    public static Object onLuvhAEntry(Object ludhObj, Boolean isConnected) {
+        return PhotosBackupHelper.onLuvhAEntry(ludhObj, isConnected);
+    }
 
-                        if (sLocationSource != null) {
-                            sLocationSource.pushLocation(loc);
-                        }
+    public static Object onLuvhAReturn(Object luvk) {
+        return PhotosBackupHelper.onLuvhAReturn(luvk);
+    }
 
-                        // Animate camera once per FAB click
-                        if (cameraAnimated.compareAndSet(false, true)) {
-                            // Unregister continuous listener immediately once camera is animated to current location
-                            if (sContinuousListener != null) {
-                                try {
-                                    lm.removeUpdates(sContinuousListener);
-                                    app.morphe.extension.shared.diagnostics.SafeLog.d("MorpheLocation", "handleCurrentLocation: unregistered sContinuousListener after camera animation");
-                                } catch (Throwable ignored) {}
-                                sContinuousListener = null;
-                            }
-                            try {
-                                Class<?> latLngClass = Class.forName("com.google.android.gms.maps.model.LatLng", true, clazz.getClassLoader());
-                                Object latLng = latLngClass.getConstructor(double.class, double.class)
-                                        .newInstance(loc.getLatitude(), loc.getLongitude());
-
-                                Object camUpdate = createCameraUpdate(clazz.getClassLoader(), latLng, 15.0f);
-                                if (camUpdate != null) {
-                                    boolean animated = false;
-                                    Class<?> cuClass = camUpdate.getClass();
-                                    for (java.lang.reflect.Method m : mapObj.getClass().getMethods()) {
-                                        Class<?>[] pts = m.getParameterTypes();
-                                        if (pts.length == 2 && (pts[0].isAssignableFrom(cuClass) || cuClass.isAssignableFrom(pts[0]))
-                                                && (pts[1] == int.class || pts[1] == Integer.class)) {
-                                            try {
-                                                m.setAccessible(true);
-                                                m.invoke(mapObj, camUpdate, 500);
-                                                app.morphe.extension.shared.diagnostics.SafeLog.d("MorpheLocation", "Invoked map." + m.getName() + "(camUpdate, 500)");
-                                                animated = true;
-                                                break;
-                                            } catch (Throwable t) {
-                                                app.morphe.extension.shared.diagnostics.SafeLog.w("MorpheLocation", "Failed invoking " + m.getName() + "(camUpdate, 500)", t);
-                                            }
-                                        }
-                                    }
-                                    if (!animated) {
-                                        for (java.lang.reflect.Method m : mapObj.getClass().getMethods()) {
-                                            Class<?>[] pts = m.getParameterTypes();
-                                            if (pts.length == 1 && (pts[0].isAssignableFrom(cuClass) || cuClass.isAssignableFrom(pts[0]))) {
-                                                try {
-                                                    m.setAccessible(true);
-                                                    m.invoke(mapObj, camUpdate);
-                                                    app.morphe.extension.shared.diagnostics.SafeLog.d("MorpheLocation", "Invoked map." + m.getName() + "(camUpdate)");
-                                                    animated = true;
-                                                    break;
-                                                } catch (Throwable t) {
-                                                    app.morphe.extension.shared.diagnostics.SafeLog.w("MorpheLocation", "Failed invoking " + m.getName() + "(camUpdate)", t);
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                            } catch (Throwable t) {
-                                app.morphe.extension.shared.diagnostics.SafeLog.w("MorpheLocation", "Camera animation failed", t);
-                            }
-
-                            // Trigger camera idle fallback after animation time in case camera was already near target
-                            sCameraIdleHandler.removeCallbacks(sCameraIdleRunnable);
-                            sCameraIdleHandler.postDelayed(sCameraIdleRunnable, 600);
-
-                            // Synchronize FAB active state reliably
-                            for (java.lang.reflect.Field f : clazz.getDeclaredFields()) {
-                                if (f.getType() == boolean.class && f.getName().equals("h")) {
-                                    try {
-                                        f.setAccessible(true);
-                                        f.setBoolean(finalMixin, true);
-                                    } catch (Throwable ignored) {}
-                                }
-                            }
-
-                            for (java.lang.reflect.Method m : clazz.getDeclaredMethods()) {
-                                if (m.getName().equals("b") && m.getParameterTypes().length == 1 && m.getParameterTypes()[0] == boolean.class) {
-                                    try {
-                                        m.setAccessible(true);
-                                        m.invoke(finalMixin, true);
-                                        app.morphe.extension.shared.diagnostics.SafeLog.d("MorpheLocation", "Invoked mixin.b(true)");
-                                    } catch (Throwable ignored) {}
-                                    break;
-                                }
-                            }
-
-                            // Directly tint FloatingActionButton drawable if present
-                            for (java.lang.reflect.Field f : clazz.getDeclaredFields()) {
-                                if (f.getName().equals("m")) {
-                                    try {
-                                        f.setAccessible(true);
-                                        Object fab = f.get(finalMixin);
-                                        if (fab instanceof android.widget.ImageView) {
-                                            android.widget.ImageView fabView = (android.widget.ImageView) fab;
-                                            if (fabView.getDrawable() != null) {
-                                                fabView.getDrawable().mutate().setTint(0xFF1A73E8);
-                                                app.morphe.extension.shared.diagnostics.SafeLog.d("MorpheLocation", "Directly tinted FAB drawable to active blue");
-                                            }
-                                        }
-                                    } catch (Throwable ignored) {}
-                                }
-                            }
-
-                            new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(() -> {
-                                sIsLocatingAnimation.set(false);
-                            }, 600);
-                        }
-                    } catch (Throwable t) {
-                        app.morphe.extension.shared.diagnostics.SafeLog.e("MorpheLocation", "Error applying location to map", t);
-                    }
-                });
-            };
-
-            // 1. Try last known location first for immediate response
-            android.location.Location lastLoc = null;
-            if (android.os.Build.VERSION.SDK_INT >= 31 && isFusedEnabled) {
-                try {
-                    lastLoc = lm.getLastKnownLocation(android.location.LocationManager.FUSED_PROVIDER);
-                } catch (Exception ignored) {}
-            }
-            if (lastLoc == null && isGpsEnabled) {
-                try {
-                    lastLoc = lm.getLastKnownLocation(android.location.LocationManager.GPS_PROVIDER);
-                } catch (Exception ignored) {}
-            }
-            if (lastLoc == null && isNetworkEnabled) {
-                try {
-                    lastLoc = lm.getLastKnownLocation(android.location.LocationManager.NETWORK_PROVIDER);
-                } catch (Exception ignored) {}
-            }
-            if (lastLoc == null) {
-                try {
-                    lastLoc = lm.getLastKnownLocation(android.location.LocationManager.PASSIVE_PROVIDER);
-                } catch (Exception ignored) {}
-            }
-            if (lastLoc == null) {
-                lastLoc = sLastLocation;
-            }
-
-            if (lastLoc != null) {
-                app.morphe.extension.shared.diagnostics.SafeLog.d("MorpheLocation", "Found lastKnownLocation: " + lastLoc);
-                applyLocation.onLocation(lastLoc);
-            }
-
-            // 2. Request fresh location updates if camera has not animated yet
-            final boolean finalGps = isGpsEnabled;
-            final boolean finalNetwork = isNetworkEnabled;
-            final boolean finalFused = isFusedEnabled;
-            new android.os.Handler(android.os.Looper.getMainLooper()).post(() -> {
-                try {
-                    if (sContinuousListener == null && !cameraAnimated.get()) {
-                        sContinuousListener = new android.location.LocationListener() {
-                            @Override
-                            public void onLocationChanged(android.location.Location location) {
-                                if (location == null) return;
-                                sLastLocation = location;
-                                LocationSourceBinder src = sLocationSource;
-                                if (src != null) {
-                                    src.pushLocation(location);
-                                }
-                                applyLocation.onLocation(location);
-                                // Unregister listener once a fresh fix is received
-                                try {
-                                    lm.removeUpdates(this);
-                                    app.morphe.extension.shared.diagnostics.SafeLog.d("MorpheLocation", "sContinuousListener: received fix, removed updates");
-                                } catch (Throwable ignored) {}
-                                if (sContinuousListener == this) {
-                                    sContinuousListener = null;
-                                }
-                            }
-                            @Override public void onStatusChanged(String provider, int status, android.os.Bundle extras) {}
-                            @Override public void onProviderEnabled(String provider) {}
-                            @Override public void onProviderDisabled(String provider) {}
-                        };
-                        if (android.os.Build.VERSION.SDK_INT >= 31 && finalFused) {
-                            try {
-                                lm.requestLocationUpdates(android.location.LocationManager.FUSED_PROVIDER, 1000L, 1.0f, sContinuousListener, android.os.Looper.getMainLooper());
-                            } catch (Throwable ignored) {}
-                        }
-                        if (finalGps) {
-                            try {
-                                lm.requestLocationUpdates(android.location.LocationManager.GPS_PROVIDER, 1000L, 1.0f, sContinuousListener, android.os.Looper.getMainLooper());
-                            } catch (Throwable ignored) {}
-                        }
-                        if (finalNetwork) {
-                            try {
-                                lm.requestLocationUpdates(android.location.LocationManager.NETWORK_PROVIDER, 1000L, 1.0f, sContinuousListener, android.os.Looper.getMainLooper());
-                            } catch (Throwable ignored) {}
-                        }
-                        app.morphe.extension.shared.diagnostics.SafeLog.d("MorpheLocation", "Registered single-burst LocationListener for map centering");
-
-                        // Safety timeout: unregister after 10 seconds in case no GPS fix is received
-                        new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(() -> {
-                            if (sContinuousListener != null) {
-                                try {
-                                    lm.removeUpdates(sContinuousListener);
-                                    app.morphe.extension.shared.diagnostics.SafeLog.d("MorpheLocation", "LocationListener timed out after 10s, removed updates");
-                                } catch (Throwable ignored) {}
-                                sContinuousListener = null;
-                            }
-                            sIsLocatingAnimation.set(false);
-                        }, 10000);
-                    }
-                } catch (Throwable t) {
-                    app.morphe.extension.shared.diagnostics.SafeLog.w("MorpheLocation", "Failed to register location updates", t);
-                }
-            });
-
-            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
-                if (android.os.Build.VERSION.SDK_INT >= 31 && finalFused) {
-                    try {
-                        lm.getCurrentLocation(android.location.LocationManager.FUSED_PROVIDER, null, context.getMainExecutor(), loc -> applyLocation.onLocation(loc));
-                    } catch (Exception ignored) {}
-                }
-                if (isGpsEnabled) {
-                    try {
-                        lm.getCurrentLocation(android.location.LocationManager.GPS_PROVIDER, null, context.getMainExecutor(), loc -> applyLocation.onLocation(loc));
-                    } catch (Exception ignored) {}
-                }
-                if (isNetworkEnabled) {
-                    try {
-                        lm.getCurrentLocation(android.location.LocationManager.NETWORK_PROVIDER, null, context.getMainExecutor(), loc -> applyLocation.onLocation(loc));
-                    } catch (Exception ignored) {}
-                }
-            }
-        } catch (Throwable t) {
-            app.morphe.extension.shared.diagnostics.SafeLog.e("MorpheLocation", "handleCurrentLocation exception", t);
-        }
+    public static boolean onCheckBackupAccountLinked(boolean originalVal, Object luslObj) {
+        return PhotosBackupHelper.onCheckBackupAccountLinked(originalVal, luslObj);
     }
 }

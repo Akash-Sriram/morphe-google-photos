@@ -5,10 +5,12 @@
 package app.morphe.patches.shared.misc.gms
 
 import app.morphe.patcher.Fingerprint
-import app.morphe.util.getReference
+import app.morphe.patcher.InstructionLocation.MatchAfterImmediately
+import app.morphe.patcher.InstructionLocation.MatchAfterWithin
+import app.morphe.patcher.methodCall
+import app.morphe.patcher.opcode
 import com.android.tools.smali.dexlib2.AccessFlags
-import com.android.tools.smali.dexlib2.iface.reference.FieldReference
-import com.android.tools.smali.dexlib2.iface.reference.StringReference
+import com.android.tools.smali.dexlib2.Opcode
 
 internal object GooglePlayUtilityFingerprint : Fingerprint(
     accessFlags = listOf(AccessFlags.PUBLIC, AccessFlags.STATIC),
@@ -45,64 +47,42 @@ internal object OriginalPackageNameExtensionFingerprint : Fingerprint(
 )
 
 /**
- * Matches the GNP (Google Notifications Platform / Chime) HTTP request builder method
- * which adds headers to requests destined for notifications-pa.googleapis.com.
+ * The GNP request header filters. With an API key, X-Android-Package is set to
+ * Context.getPackageName() and X-Android-Cert to the SHA-1 of the app signature.
  */
-internal object GnpRequestBuilderFingerprint : Fingerprint(
-    parameters = listOf("Ljava/lang/String;", "Ljava/lang/String;"),
-    returnType = "V",
-    custom = { _, classDef ->
-        classDef.methods.any { m ->
-            m.implementation?.instructions?.any { insn ->
-                insn.getReference<StringReference>()?.string == "Property \"headers\" has not been set"
-            } == true
-        }
-    },
+private fun gnpAndroidHeadersFilters() = listOf(
+    methodCall(smali = "Landroid/content/Context;->getPackageName()Ljava/lang/String;"),
+    opcode(Opcode.MOVE_RESULT_OBJECT, location = MatchAfterImmediately()),
+    // Sets the X-Android-Package header.
+    methodCall(
+        parameters = listOf("L", "Ljava/lang/String;"),
+        returnType = "V",
+        location = MatchAfterWithin(3)
+    ),
+    // Sets the X-Android-Cert header.
+    methodCall(
+        parameters = listOf("L", "Ljava/lang/String;"),
+        returnType = "V",
+        location = MatchAfterWithin(5)
+    )
 )
 
 /**
- * Matches io.grpc.Metadata.put(Metadata.Key, Object) method across Google apps.
+ * Adds the authentication headers of GNP registration requests (notifications-pa.googleapis.com).
  */
-internal object GrpcMetadataPutFingerprint : Fingerprint(
-    returnType = "V",
-    custom = { method, classDef ->
-        method.parameterTypes.size == 2 &&
-            method.parameterTypes[0].startsWith("L") &&
-            method.parameterTypes[1] == "Ljava/lang/Object;" &&
-            classDef.methods.any { m ->
-                m.implementation?.instructions?.any { insn ->
-                    insn.getReference<StringReference>()?.string == "Metadata("
-                } == true
-            }
-    },
+internal object GnpRegistrationHeadersFingerprint : Fingerprint(
+    filters = gnpAndroidHeadersFilters(),
+    strings = listOf("One of Account Name, Zwieback or API Key must be set.")
+)
+
+private object GnpRequestHeadersClassFingerprint : Fingerprint(
+    strings = listOf("One of Account representation or API Key must be set.")
 )
 
 /**
- * Matches the GNP certificate hash calculation method in com.google.android.libraries.notifications
- * which queries PackageInfo.signatures and computes the SHA-1 digest.
+ * Adds the authentication headers of the other GNP requests.
  */
-internal object GnpCertProviderFingerprint : Fingerprint(
-    returnType = "Ljava/lang/String;",
-    parameters = listOf(),
-    custom = { method, _ ->
-        val instructions = method.implementation?.instructions
-        if (instructions == null) {
-            false
-        } else {
-            var hasSigs = false
-            var hasSha1 = false
-            for (insn in instructions) {
-                val ref = insn.getReference<FieldReference>()
-                if (ref?.name == "signatures") {
-                    hasSigs = true
-                }
-                val strRef = insn.getReference<StringReference>()
-                if (strRef?.string == "SHA-1") {
-                    hasSha1 = true
-                }
-            }
-            hasSigs && hasSha1
-        }
-    },
+internal object GnpRequestHeadersFingerprint : Fingerprint(
+    classFingerprint = GnpRequestHeadersClassFingerprint,
+    filters = gnpAndroidHeadersFilters()
 )
-
