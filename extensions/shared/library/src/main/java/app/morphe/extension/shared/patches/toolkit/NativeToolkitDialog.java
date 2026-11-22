@@ -319,6 +319,7 @@ public class NativeToolkitDialog {
         Runnable[] updateSelectionSummaryRef = new Runnable[1];
         Runnable[] updateChipsAndBadgeRef = new Runnable[1];
         Runnable[] onRefreshRef = new Runnable[1];
+        final TextView[] btnSelectDuplicatesRef = new TextView[1];
 
         // ─────────────────────────────────────────────────────────────────────
         // Query Execution Engine
@@ -414,8 +415,16 @@ public class NativeToolkitDialog {
 
                     final List<StorageScanner.MediaItem> finalResults = resultItems;
                     final Set<String> newSelectedKeys = new HashSet<>();
-                    for (StorageScanner.MediaItem it : finalResults) {
-                        newSelectedKeys.add(getItemKey(it));
+                    if (currentCriteria.similarityThreshold > 0) {
+                        for (StorageScanner.MediaItem it : finalResults) {
+                            if (it.isDuplicate) {
+                                newSelectedKeys.add(getItemKey(it));
+                            }
+                        }
+                    } else {
+                        for (StorageScanner.MediaItem it : finalResults) {
+                            newSelectedKeys.add(getItemKey(it));
+                        }
                     }
 
                     MAIN_HANDLER.post(() -> {
@@ -424,6 +433,10 @@ public class NativeToolkitDialog {
                         allQueriedItems = new ArrayList<>(finalResults);
                         selectedMediaKeys.clear();
                         selectedMediaKeys.addAll(newSelectedKeys);
+
+                        if (btnSelectDuplicatesRef[0] != null) {
+                            btnSelectDuplicatesRef[0].setVisibility(currentCriteria.similarityThreshold > 0 ? View.VISIBLE : View.GONE);
+                        }
 
                         tvScanButtonLabel.setText("Scan & Filter (" + allQueriedItems.size() + ")");
                         int consuming = 0;
@@ -434,7 +447,17 @@ public class NativeToolkitDialog {
                                 totalQuotaBytes += it.quotaBytes;
                             }
                         }
-                        tvResultsStatus.setText(allQueriedItems.size() + " matched • " + consuming + " consuming (" + StorageScanner.formatBytes(totalQuotaBytes) + ")");
+                        if (currentCriteria.similarityThreshold > 0) {
+                            int dupCount = 0;
+                            int clusterCount = 0;
+                            for (StorageScanner.MediaItem it : allQueriedItems) {
+                                if (it.isDuplicate) dupCount++;
+                                if (it.clusterId > clusterCount) clusterCount = it.clusterId;
+                            }
+                            tvResultsStatus.setText(clusterCount + " duplicate sets (" + dupCount + " duplicates selected, " + (allQueriedItems.size() - dupCount) + " kept) • " + StorageScanner.formatBytes(totalQuotaBytes));
+                        } else {
+                            tvResultsStatus.setText(allQueriedItems.size() + " matched • " + consuming + " consuming (" + StorageScanner.formatBytes(totalQuotaBytes) + ")");
+                        }
                         currentPageRef[0] = 0;
                         if (updateSelectionSummaryRef[0] != null) updateSelectionSummaryRef[0].run();
                         renderResults(activity, resultsListContainer, allQueriedItems, selectedMediaKeys, isGridViewRef[0], updateSelectionSummaryRef[0], density, theme, currentPageRef);
@@ -1059,6 +1082,22 @@ public class NativeToolkitDialog {
         controlsRow.setGravity(Gravity.CENTER_VERTICAL);
         controlsRow.setPadding((int) (28 * density), 0, 0, 0);
 
+        TextView btnSelectDuplicates = new TextView(activity);
+        btnSelectDuplicatesRef[0] = btnSelectDuplicates;
+        btnSelectDuplicates.setText("Duplicates (Keep Best)");
+        btnSelectDuplicates.setTextSize(11f);
+        btnSelectDuplicates.setTypeface(null, Typeface.BOLD);
+        btnSelectDuplicates.setTextColor(theme.primary);
+        btnSelectDuplicates.setBackground(createActionPillDrawable(theme.surfaceContainer, 10 * density));
+        btnSelectDuplicates.setPadding((int) (8 * density), (int) (3 * density), (int) (8 * density), (int) (3 * density));
+        LinearLayout.LayoutParams dupLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        dupLp.rightMargin = (int) (5 * density);
+        btnSelectDuplicates.setLayoutParams(dupLp);
+        btnSelectDuplicates.setClickable(true);
+        btnSelectDuplicates.setFocusable(true);
+        btnSelectDuplicates.setVisibility(View.GONE);
+        controlsRow.addView(btnSelectDuplicates);
+
         TextView btnSelectAll = new TextView(activity);
         btnSelectAll.setText("All");
         btnSelectAll.setTextSize(11f);
@@ -1140,6 +1179,17 @@ public class NativeToolkitDialog {
             }, density, theme);
         });
 
+        btnSelectDuplicates.setOnClickListener(v -> {
+            selectedMediaKeys.clear();
+            for (StorageScanner.MediaItem it : allQueriedItems) {
+                if (it.isDuplicate) {
+                    selectedMediaKeys.add(getItemKey(it));
+                }
+            }
+            updateSelectionSummaryRef[0].run();
+            renderResults(activity, resultsListContainer, allQueriedItems, selectedMediaKeys, isGridViewRef[0], updateSelectionSummaryRef[0], density, theme, currentPageRef);
+        });
+
         btnSelectAll.setOnClickListener(v -> {
             for (StorageScanner.MediaItem it : allQueriedItems) {
                 selectedMediaKeys.add(getItemKey(it));
@@ -1164,6 +1214,9 @@ public class NativeToolkitDialog {
             currentCriteria = new StorageScanner.FilterCriteria();
             currentSortOrder = SortOrder.DATE_DESC;
             selectedMediaKeys.clear();
+            if (btnSelectDuplicatesRef[0] != null) {
+                btnSelectDuplicatesRef[0].setVisibility(View.GONE);
+            }
             if (updateSelectionSummaryRef[0] != null) updateSelectionSummaryRef[0].run();
 
             tvSourceActiveBadge.setText(currentCriteria.source.displayName);
@@ -6101,6 +6154,26 @@ public class NativeToolkitDialog {
                 bLp.setMargins(0, 0, (int) (4 * density), (int) (4 * density));
                 tile.addView(badge, bLp);
 
+                // Keep vs Duplicate badge overlay for similarity clusters
+                if (item.clusterId > 0) {
+                    TextView simBadge = new TextView(activity);
+                    simBadge.setTextSize(8f);
+                    simBadge.setTypeface(null, Typeface.BOLD);
+                    simBadge.setPadding((int) (5 * density), (int) (1.5f * density), (int) (5 * density), (int) (1.5f * density));
+                    if (item.isDuplicate) {
+                        simBadge.setText("Duplicate #" + item.clusterId);
+                        simBadge.setTextColor(0xFFFFD8E4);
+                        simBadge.setBackground(createRoundedDrawable(0xDD7D2938, 4 * density));
+                    } else {
+                        simBadge.setText("★ Keep #" + item.clusterId);
+                        simBadge.setTextColor(0xFFD0E8FF);
+                        simBadge.setBackground(createRoundedDrawable(0xDD004A77, 4 * density));
+                    }
+                    FrameLayout.LayoutParams sLp = new FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.TOP | Gravity.END);
+                    sLp.setMargins(0, (int) (4 * density), (int) (4 * density), 0);
+                    tile.addView(simBadge, sLp);
+                }
+
                 // Checkbox touch target container
                 FrameLayout checkContainer = new FrameLayout(activity);
                 int ccSize = (int) (38 * density);
@@ -6247,7 +6320,9 @@ public class NativeToolkitDialog {
 
                 String sub = item.getFormattedSize();
                 if (item.captureTimestamp > 0) sub += " • " + DATE_FORMAT.format(new Date(item.captureTimestamp));
-                if (item.clusterId > 0) sub += " • Similar #" + item.clusterId;
+                if (item.clusterId > 0) {
+                    sub += item.isDuplicate ? " • [Duplicate #" + item.clusterId + "]" : " • [★ Keep #" + item.clusterId + "]";
+                }
                 if (item.caption != null && !item.caption.trim().isEmpty()) {
                     sub += "\n💬 " + item.caption.trim();
                 }

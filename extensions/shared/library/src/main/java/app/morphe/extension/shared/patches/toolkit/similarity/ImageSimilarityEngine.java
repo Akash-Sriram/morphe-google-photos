@@ -71,7 +71,49 @@ public final class ImageSimilarityEngine {
     }
 
     /**
+     * Quality comparison to determine which item in a duplicate cluster to keep as the "Original / Best".
+     * Order of preference:
+     * 1. Favorite items (user explicitly favorited).
+     * 2. Higher resolution (width * height).
+     * 3. Larger file size / quota bytes (less compressed).
+     * 4. Earliest capture timestamp (original shot).
+     */
+    public static int compareQuality(MediaItem a, MediaItem b) {
+        if (a == null && b == null) return 0;
+        if (a == null) return 1;
+        if (b == null) return -1;
+
+        // 1. Favor favorite items
+        if (a.isFavorite != b.isFavorite) {
+            return a.isFavorite ? -1 : 1;
+        }
+
+        // 2. Favor higher resolution
+        long resA = (long) a.width * a.height;
+        long resB = (long) b.width * b.height;
+        if (resA != resB) {
+            return Long.compare(resB, resA);
+        }
+
+        // 3. Favor larger file size
+        long sizeA = a.sizeBytes > 0 ? a.sizeBytes : a.quotaBytes;
+        long sizeB = b.sizeBytes > 0 ? b.sizeBytes : b.quotaBytes;
+        if (sizeA != sizeB) {
+            return Long.compare(sizeB, sizeA);
+        }
+
+        // 4. Favor earlier capture date
+        if (a.captureTimestamp > 0 && b.captureTimestamp > 0 && a.captureTimestamp != b.captureTimestamp) {
+            return Long.compare(a.captureTimestamp, b.captureTimestamp);
+        }
+
+        return 0;
+    }
+
+    /**
      * Groups similar media items into duplicate clusters according to the given threshold.
+     * Items in each cluster are sorted by quality, with the best item at index 0 (isDuplicate = false)
+     * and redundant items at index 1..N (isDuplicate = true).
      */
     public static List<List<MediaItem>> clusterSimilarItems(List<MediaItem> items, float threshold, int hashSize) {
         List<List<MediaItem>> clusters = new ArrayList<>();
@@ -105,6 +147,18 @@ public final class ImageSimilarityEngine {
         }
 
         clusters.removeIf(cluster -> cluster.size() <= 1);
+
+        int cId = 1;
+        for (List<MediaItem> cluster : clusters) {
+            cluster.sort((a, b) -> compareQuality(a, b));
+            for (int i = 0; i < cluster.size(); i++) {
+                MediaItem it = cluster.get(i);
+                it.clusterId = cId;
+                it.isDuplicate = (i > 0);
+            }
+            cId++;
+        }
+
         return clusters;
     }
 }

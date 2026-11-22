@@ -244,6 +244,7 @@ public class StorageScanner {
         public final String caption;
         public long perceptualHash = 0;
         public int clusterId = -1;
+        public boolean isDuplicate = false;
         public boolean isCloudBackedUp = false;
 
         public MediaItem(String dedupKey, String mediaKey, String filename, long sizeBytes,
