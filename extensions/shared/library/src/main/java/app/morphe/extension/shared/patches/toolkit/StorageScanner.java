@@ -1480,7 +1480,7 @@ public class StorageScanner {
                 }
             } catch (Throwable ignored) {}
         }
-        return null;
+        return StructuralSymbolResolver.resolveServiceLocator(context, serviceClass);
     }
 
     public static void flushActionQueue(Context context, int accountId, long actionId) {
@@ -2202,6 +2202,10 @@ public class StorageScanner {
     }
 
     private static Object createMediaCollectionForKeys(int accountId, List<String> mediaKeys) {
+        return createMediaCollectionForKeys(null, accountId, mediaKeys);
+    }
+
+    private static Object createMediaCollectionForKeys(Context context, int accountId, List<String> mediaKeys) {
         if (mediaKeys == null || mediaKeys.isEmpty()) return null;
         // 1. Static factory f(int accountId, List mediaKeys)
         for (String[] pair : ToolkitMappings.KEYS_COLLECTION_FACTORIES) {
@@ -2231,7 +2235,7 @@ public class StorageScanner {
                 }
             } catch (Throwable ignored) {}
         }
-        return null;
+        return StructuralSymbolResolver.resolveKeysMediaCollection(context, accountId, mediaKeys);
     }
 
     private static volatile Class<?> sCoreMediaLoaderClass = null;
@@ -2550,7 +2554,7 @@ public class StorageScanner {
             for (int i = 0; i < keys.size(); i += chunkSize) {
                 List<String> chunkKeys = keys.subList(i, Math.min(i + chunkSize, keys.size()));
                 try {
-                    Object mediaCollection = createMediaCollectionForKeys(accountId, chunkKeys);
+                    Object mediaCollection = createMediaCollectionForKeys(context, accountId, chunkKeys);
                     if (mediaCollection == null) continue;
                     List<?> loaded = loadMediaCollection(context, mediaCollection);
                     if (loaded != null && !loaded.isEmpty()) {
@@ -2935,6 +2939,10 @@ public class StorageScanner {
     }
 
     private static Object createTrashMediaCollection(int accountId) {
+        return createTrashMediaCollection(null, accountId);
+    }
+
+    private static Object createTrashMediaCollection(Context context, int accountId) {
         for (String[] pair : ToolkitMappings.TRASH_FACTORIES) {
             try {
                 Class<?> fClass = ReflectionCache.findClassOrNull(pair[0]);
@@ -2977,13 +2985,13 @@ public class StorageScanner {
                 }
             } catch (Throwable ignored) {}
         }
-        return null;
+        return StructuralSymbolResolver.resolveTrashMediaCollection(context, accountId);
     }
 
     private static void syncCloudTrashToLocalDb(Context context, AccountInfo account) {
         if (context == null || account == null) return;
         try {
-            Object trashCollectionRef = createTrashMediaCollection(account.accountId);
+            Object trashCollectionRef = createTrashMediaCollection(context, account.accountId);
             if (trashCollectionRef == null) {
                 SafeLog.w("morphe: StorageScanner", "syncCloudTrashToLocalDb: Trash collection ref not found");
                 return;
@@ -3061,7 +3069,7 @@ public class StorageScanner {
         if (context == null || items == null || items.isEmpty()) return result;
 
         try {
-            Object trashCollectionRef = createTrashMediaCollection(accountId);
+            Object trashCollectionRef = createTrashMediaCollection(context, accountId);
             if (trashCollectionRef == null) {
                 SafeLog.w("morphe: StorageScanner", "loadTrashMediaItems: Failed to create TrashMediaCollection");
                 return result;
@@ -3781,6 +3789,46 @@ public class StorageScanner {
                             }
                         }
                     } catch (Throwable ignored) {}
+                }
+
+                if (task == null) {
+                    String[] dynCfg = StructuralSymbolResolver.resolveMarsRemoveConfig(context);
+                    if (dynCfg != null) {
+                        try {
+                            Class<?> argClass = Class.forName(dynCfg[0]);
+                            Constructor<?> argCtor = null;
+                            for (Constructor<?> c : argClass.getDeclaredConstructors()) {
+                                if (c.getParameterTypes().length == 3) {
+                                    argCtor = c;
+                                    break;
+                                }
+                            }
+                            if (argCtor != null) {
+                                argCtor.setAccessible(true);
+                                Object argInstance = (argCtor.getParameterTypes()[0] == int.class)
+                                    ? argCtor.newInstance(accountId, immutableList, 7)
+                                    : argCtor.newInstance(immutableList, accountId, 7);
+                                Class<?> enumClass = Class.forName(dynCfg[1]);
+                                Object enumVal = enumClass.getField(dynCfg[2]).get(null);
+                                Class<?> builderClass = Class.forName(dynCfg[3]);
+                                Method builderMethod = null;
+                                for (Method m : builderClass.getMethods()) {
+                                    if (m.getName().equals(dynCfg[4]) && m.getParameterTypes().length == 4) {
+                                        builderMethod = m;
+                                        break;
+                                    }
+                                }
+                                if (builderMethod != null) {
+                                    builderMethod.setAccessible(true);
+                                    Object qdp = builderMethod.invoke(null, taskName, enumVal, "mars_remove_result", argInstance);
+                                    if (qdp != null) {
+                                        Object qdn = qdp.getClass().getMethod("b").invoke(qdp);
+                                        task = qdn.getClass().getMethod("a").invoke(qdn);
+                                    }
+                                }
+                            }
+                        } catch (Throwable ignored) {}
+                    }
                 }
 
                 if (task != null) {

@@ -916,9 +916,25 @@ public class ToolkitAligner {
 
     public static void main(String[] args) {
         if (args.length < 1) {
-            System.err.println("Usage: java ToolkitAligner <path-to-google-photos.apk> [path-to-ToolkitMappings.java]");
+            System.err.println("Usage: java ToolkitAligner [--version-only] <path-to-google-photos.apk> [path-to-ToolkitMappings.java]");
             System.exit(1);
         }
+
+        if (args[0].equals("--version-only")) {
+            if (args.length < 2) {
+                System.err.println("Usage: java ToolkitAligner --version-only <path-to-google-photos.apk>");
+                System.exit(1);
+            }
+            File apk = new File(args[1]);
+            if (!apk.exists()) {
+                System.err.println("Error: APK not found at " + apk.getAbsolutePath());
+                System.exit(1);
+            }
+            String v = extractVersionName(apk);
+            System.out.println(v);
+            System.exit(0);
+        }
+
         File apk = new File(args[0]);
         if (!apk.exists()) {
             System.err.println("Error: APK not found at " + apk.getAbsolutePath());
