@@ -1,3 +1,9 @@
+## [1.19.0-dev.6](https://github.com/Akash-Sriram/morphe-google-photos/compare/v1.19.0-dev.5...v1.19.0-dev.6) (2026-11-22)
+
+### ✨ New Features
+
+* **Google Photos - Toolkit:** self-sustaining version-resilient pipeline and runtime structural resolver ([96878d3](https://github.com/Akash-Sriram/morphe-google-photos/commit/96878d3f708c826ab8663f092f4093cb4a07c030))
+
 ## [1.19.0-dev.5](https://github.com/Akash-Sriram/morphe-google-photos/compare/v1.19.0-dev.4...v1.19.0-dev.5) (2026-11-22)
 
 ### 🐛 Bug Fixes
