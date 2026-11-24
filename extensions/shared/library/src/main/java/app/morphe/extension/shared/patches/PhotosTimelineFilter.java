@@ -189,8 +189,13 @@ public final class PhotosTimelineFilter {
             result = result.replace("," + DEFAULT_CAMERA_BUCKET_ID + ")", ")");
             result = result.replace("," + DEFAULT_CAMERA_BUCKET_ID + ",", ",");
 
-            // Top-level enforcement: hide unbacked-up camera items, but preserve backed-up cloud photos (#89):
-            String cameraFilter = "(media.in_camera_folder = 0 OR media.canonical_media_key IS NOT NULL)";
+            // Top-level enforcement: hide unbacked-up camera items, but preserve active backed-up cloud photos (#89):
+            // Cloud photos only bypass camera hiding if they are actively in the cloud (not trashed or deleted):
+            String activeCloudCondition = "(media.canonical_media_key IS NOT NULL " +
+                    "AND (media.trash_timestamp IS NULL OR media.trash_timestamp = 0) " +
+                    "AND media.is_deleted = 0 " +
+                    "AND media.dedup_key IN (SELECT dedup_key FROM remote_media WHERE state = 0))";
+            String cameraFilter = "(media.in_camera_folder = 0 OR " + activeCloudCondition + ")";
             if (result.contains("burst_media.bucket_id IS NULL AND")) {
                 result = result.replace("burst_media.bucket_id IS NULL AND", "burst_media.bucket_id IS NULL AND " + cameraFilter + " AND");
             } else if (result.contains("burst_media.bucket_id IS NULL")) {
@@ -208,7 +213,12 @@ public final class PhotosTimelineFilter {
                 first = false;
             }
             String buckets = bucketList.toString();
-            String customMatch = "media.dedup_key IN (SELECT dedup_key FROM local_media WHERE bucket_id IN (" + buckets + "))";
+            String customMatch = "(media.dedup_key IN (SELECT dedup_key FROM local_media WHERE bucket_id IN (" + buckets + ") " +
+                    "AND (state = 0 OR state IS NULL) " +
+                    "AND (desired_state != 2 OR desired_state IS NULL) " +
+                    "AND (trash_timestamp IS NULL OR trash_timestamp = 0)) " +
+                    "AND (media.trash_timestamp IS NULL OR media.trash_timestamp = 0) " +
+                    "AND media.is_deleted = 0)";
 
             // Allow custom buckets through the is_hidden filter in inner subqueries and header queries:
             if (result.contains("+media.is_hidden = 0")) {
@@ -277,6 +287,22 @@ public final class PhotosTimelineFilter {
         return dir;
     }
 
+    public static boolean isTrashFolder(String relPath, String name) {
+        if (name != null) {
+            String lower = name.toLowerCase(java.util.Locale.ROOT);
+            if (lower.contains(".trash") || lower.contains(".trashed") || lower.equals("trash") || lower.equals("bin") || lower.equals("recycle bin") || lower.contains("lost+found")) {
+                return true;
+            }
+        }
+        if (relPath != null) {
+            String lower = relPath.toLowerCase(java.util.Locale.ROOT);
+            if (lower.contains(".trash") || lower.contains(".trashed") || lower.contains("/trash") || lower.contains("lost+found")) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     /**
      * Queries local_media and MediaStore for all device folders that currently contain images or videos.
      * Extracts relative paths to disambiguate folders with identical names under different parent directories.
@@ -302,7 +328,8 @@ public final class PhotosTimelineFilter {
                         try (android.database.sqlite.SQLiteDatabase db = context.openOrCreateDatabase(dbName, Context.MODE_PRIVATE, null)) {
                             try (Cursor c = db.rawQuery(
                                     "SELECT bucket_id, folder_name, filepath, COUNT(*) " +
-                                    "FROM local_media GROUP BY bucket_id", null)) {
+                                    "FROM local_media WHERE (state = 0 OR state IS NULL) AND (trash_timestamp IS NULL OR trash_timestamp = 0) " +
+                                    "GROUP BY bucket_id", null)) {
                                 if (c != null) {
                                     while (c.moveToNext()) {
                                         String bId = c.getString(0);
@@ -316,6 +343,8 @@ public final class PhotosTimelineFilter {
 
                                         String relPath = extractRelativePath(fPath);
                                         if (relPath.isEmpty() && isCam) relPath = "DCIM/Camera";
+
+                                        if (!isCam && isTrashFolder(relPath, fName)) continue;
 
                                         String dispName = (fName != null && !fName.isEmpty()) ? fName : (isCam ? "Camera" : relPath);
 
@@ -381,6 +410,8 @@ public final class PhotosTimelineFilter {
 
                         String relPath = extractRelativePath(fPath);
                         if (relPath.isEmpty() && isCam) relPath = "DCIM/Camera";
+
+                        if (!isCam && isTrashFolder(relPath, fName)) continue;
 
                         String dispName = (fName != null && !fName.isEmpty()) ? fName : (isCam ? "Camera" : relPath);
 
