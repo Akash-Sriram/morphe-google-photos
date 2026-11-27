@@ -22,13 +22,7 @@ import com.android.tools.smali.dexlib2.iface.instruction.formats.Instruction35c
 import com.android.tools.smali.dexlib2.iface.reference.FieldReference
 import com.android.tools.smali.dexlib2.iface.reference.MethodReference
 
-@Suppress("unused")
-val mediaEngineAndAIFixesPatch = bytecodePatch(
-    name = "Media engine & AI fixes",
-    description = "Bypasses the 0MB Mobile Data Download check for AI models and fixes font loading across Stories and UI to prevent blank text and fallback fonts.",
-    default = true,
-) {
-    compatibleWith(AppCompatibilities.GOOGLE_PHOTOS)
+internal val mediaEngineAndAIFixesPatch = bytecodePatch {
     dependsOn(sharedExtensionPatch)
 
     execute {

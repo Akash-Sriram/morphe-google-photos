@@ -50,13 +50,7 @@ private val SYSTEM_PROPERTY_OVERRIDES = mapOf(
     "ro.build.fingerprint"                to "google/marlin/marlin:10/QP1A.191005.007.A3/5972272:user/release-keys",
 )
 
-@Suppress("unused")
-val spoofFeaturesPatch = bytecodePatch(
-    name = "Spoof features",
-    description = "Spoofs the device to enable Google Pixel exclusive features, including unlimited storage.",
-    default = true,
-) {
-    compatibleWith(AppCompatibilities.GOOGLE_PHOTOS)
+internal val spoofFeaturesPatch = bytecodePatch {
 
     dependsOn(
         spoofBuildInfoPatch,

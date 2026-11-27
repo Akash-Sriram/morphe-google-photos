@@ -16,14 +16,23 @@ import com.android.tools.smali.dexlib2.iface.instruction.NarrowLiteralInstructio
 import com.android.tools.smali.dexlib2.iface.instruction.OneRegisterInstruction
 import com.android.tools.smali.dexlib2.iface.instruction.ReferenceInstruction
 import com.android.tools.smali.dexlib2.iface.reference.MethodReference
+import app.morphe.patches.googlephotos.misc.backup.dcimAndBackupControlPatch
+import app.morphe.patches.googlephotos.misc.engine.mediaEngineAndAIFixesPatch
+import app.morphe.patches.googlephotos.misc.features.spoofFeaturesPatch
 
 @Suppress("unused")
 val phenotypeFlagManagerPatch = bytecodePatch(
-    name = "Flag manager & Toolkit",
-    description = "Enables an in-app flag manager and Morphe toolkit in Photos Settings to toggle experimental UI redesigns, video editor tools, and feature flags.",
+    name = "Morphe Core",
+    description = "The Morphe core engine: adds an in-app Morphe Settings panel with flag manager, toolkit, " +
+        "backup & storage controls (DCIM folder management, Upload photos only toggle, timeline folder " +
+        "customization), Pixel feature & backup spoofing (Pixel XL / Pixel 5 profiles), and media engine & AI " +
+        "fixes (model download bypass, font loading, memory carousel). Required for standard Morphe builds.",
     default = true,
 ) {
     compatibleWith(AppCompatibilities.GOOGLE_PHOTOS)
+    dependsOn(dcimAndBackupControlPatch)
+    dependsOn(mediaEngineAndAIFixesPatch)
+    dependsOn(spoofFeaturesPatch)
 
     execute {
         SettingsActivityV2OnCreateFingerprint.method.addInstruction(

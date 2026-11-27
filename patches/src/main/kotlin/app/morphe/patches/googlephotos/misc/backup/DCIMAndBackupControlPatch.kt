@@ -27,16 +27,7 @@ import com.android.tools.smali.dexlib2.iface.reference.MethodReference
 import com.android.tools.smali.dexlib2.iface.reference.StringReference
 import com.android.tools.smali.dexlib2.iface.reference.TypeReference
 
-@Suppress("unused")
-val dcimAndBackupControlPatch = bytecodePatch(
-    name = "DCIM & backup control",
-    description = "Disables always on backup for the Camera and other DCIM folders, allowing individual folder control, " +
-        "adds an 'Upload photos only' toggle to Morphe Settings to skip videos in automatic backup, " +
-        "allows hiding the Camera roll and customizing timeline folders without cloud backup, " +
-        "and exports memory collages and creations to DCIM/Google Photos for quota-free backup.",
-    default = true,
-) {
-    compatibleWith(AppCompatibilities.GOOGLE_PHOTOS)
+internal val dcimAndBackupControlPatch = bytecodePatch {
     dependsOn(sharedExtensionPatch)
 
     execute {

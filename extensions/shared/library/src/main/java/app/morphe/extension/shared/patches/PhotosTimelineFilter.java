@@ -145,11 +145,60 @@ public final class PhotosTimelineFilter {
     }
 
     /**
+     * Checks if this query is explicitly scoped to specific folder buckets, the Camera folder,
+     * specific media items (e.g. cover thumbnails for device folders via media_store_id), or memories.
+     * Non-timeline queries must NEVER be filtered or suppressed by timeline rules.
+     *
+     * - Bucket folders: use bucket_id / local_bucket_id markers.
+     * - Camera folder full-screen: uses in_primary_storage and +local_in_camera_folder markers.
+     * - Folder cover thumbnails (Collections -> Camera card preview): use media_store_id / local_media_store_id.
+     * - Memories carousel / stories: use memories.memory_key / FROM memories.
+     */
+    public static boolean isFolderQuery(String sql) {
+        if (sql == null || sql.isEmpty()) return false;
+        // Bucket-based folder queries (Collections -> Screenshots, Downloads, custom folders)
+        if (sql.contains("local_media.bucket_id IN (") ||
+            sql.contains("local_media.bucket_id =") ||
+            sql.contains("local_media.bucket_id=") ||
+            sql.contains("bucket_id IN (") ||
+            sql.contains("bucket_id =")) {
+            return true;
+        }
+        // Camera folder queries (Collections -> Camera full-screen & backup counts)
+        if (sql.contains("in_primary_storage IN") ||
+            sql.contains("+local_in_camera_folder = 1") ||
+            sql.contains("+local_in_camera_folder=1")) {
+            return true;
+        }
+        // Specific item queries & cover thumbnails (e.g. Collections -> Camera folder cover thumbnail via Qrt/Qhv)
+        if (sql.contains("media_store_id =") ||
+            sql.contains("media_store_id=") ||
+            sql.contains("media_store_id IN") ||
+            sql.contains("local_media_store_id =") ||
+            sql.contains("local_media_store_id=") ||
+            sql.contains("local_media_store_id IN")) {
+            return true;
+        }
+        // Memories queries (memories carousel at top of feed)
+        if (sql.contains("FROM memories") ||
+            sql.contains("memories.memory_key IN")) {
+            return true;
+        }
+        return false;
+    }
+
+    /**
      * Final query rewriter called from AllMediaQuery.aH() right before return-object.
      * Intercepts all queries generated for the home feed, MainGridCollection, headers, and counts.
      */
     public static String filterTimelineSqlQuery(String sql) {
         if (sql == null || sql.isEmpty()) return sql;
+
+        // Exempt folder-specific queries (e.g. Collections -> Camera or other device folders)
+        if (isFolderQuery(sql)) {
+            SafeLog.i("PhotosTimelineFilter", "Skipping timeline filter for folder-specific query");
+            return sql;
+        }
 
         Set<String> selectedBuckets = getSelectedCustomBucketIds();
         boolean hideCamera = !selectedBuckets.contains(DEFAULT_CAMERA_BUCKET_ID);
@@ -182,12 +231,6 @@ public final class PhotosTimelineFilter {
             result = result.replace("local_media.in_camera_folder=1", "local_media.in_camera_folder=-1");
             result = result.replace("+local_in_camera_folder = 1", "+local_in_camera_folder = -1");
             result = result.replace("+local_in_camera_folder=1", "+local_in_camera_folder=-1");
-
-            // Strip default camera bucket if present:
-            result = result.replace("local_media.bucket_id IN (" + DEFAULT_CAMERA_BUCKET_ID + ")", "1=0");
-            result = result.replace("local_media.bucket_id IN (" + DEFAULT_CAMERA_BUCKET_ID + ",", "local_media.bucket_id IN (");
-            result = result.replace("," + DEFAULT_CAMERA_BUCKET_ID + ")", ")");
-            result = result.replace("," + DEFAULT_CAMERA_BUCKET_ID + ",", ",");
 
             // Top-level enforcement: hide unbacked-up camera items, but preserve active backed-up cloud photos (#89):
             // Cloud photos only bypass camera hiding if they are actively in the cloud (not trashed or deleted):

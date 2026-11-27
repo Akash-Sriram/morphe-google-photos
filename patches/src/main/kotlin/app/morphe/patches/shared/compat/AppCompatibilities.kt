@@ -15,6 +15,10 @@ internal object AppCompatibilities {
         appIconColor = 0xFC3F3C,
         targets = listOf(
             AppTarget(
+                version = "8.2.1.1030128190",
+                isExperimental = true,
+            ),
+            AppTarget(
                 version = "8.2.0.1026567706",
                 isExperimental = true,
             ),

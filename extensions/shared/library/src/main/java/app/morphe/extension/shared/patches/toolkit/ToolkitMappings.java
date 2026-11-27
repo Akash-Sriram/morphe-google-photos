@@ -2,11 +2,11 @@ package app.morphe.extension.shared.patches.toolkit;
 
 /**
  * Mappings for Google Photos obfuscated internal symbols.
- * Auto-generated and verified by ToolkitAligner for Google Photos 8.2.0.1026567706.
+ * Auto-generated and verified by ToolkitAligner for Google Photos 8.2.1.1030128190.
  */
 public final class ToolkitMappings {
 
-    public static final String TARGET_VERSION = "8.2.0.1026567706";
+    public static final String TARGET_VERSION = "8.2.1.1030128190";
 
     // Service Locator (bzoq in 7.97, cbnw in 7.98)
     public static final String SERVICE_LOCATOR_CLASS = "cdhf";
@@ -34,7 +34,7 @@ public final class ToolkitMappings {
     // Mars Remove Task Config: {argClass, enumClass, enumField, builderClass, builderMethod}
     public static final String[] MARS_REMOVE_CONFIG_CURRENT = {"okp", "bcpt", "mo", "tbw", "s"};
     public static final String[][] MARS_REMOVE_CONFIGS = {
-        {"okp", "bcpt", "mo", "tbw", "s"}, // 8.2.0.1026567706
+        {"okp", "bcpt", "mo", "tbw", "s"}, // 8.2.1.1030128190
         {"oac", "bbuk", "ms", "ssk", "l"}, // 7.99.0.1007655401
         {"odi", "bdft", "ms", "stk", "s"}, // 7.97.0 arm64
         {"oax", "bbzi", "ms", "sgz", "n"}, // 7.97.0 univ
@@ -51,7 +51,7 @@ public final class ToolkitMappings {
     public static final String TRASH_FACTORY_CLASS = "bmqw";
     public static final String TRASH_FACTORY_METHOD = "b";
     public static final String[][] TRASH_FACTORIES = {
-        {"bmqw", "b"}, // 8.2.0.1026567706
+        {"bmqw", "b"}, // 8.2.1.1030128190
         {"bliu", "b"}, // 8.1.0
         {"bnew", "b"},
         {"blvo", "b"},
@@ -65,7 +65,7 @@ public final class ToolkitMappings {
     public static final String KEYS_COLLECTION_METHOD = "f";
     public static final String KEYS_COLLECTION_BUILDER = "qhr";
     public static final String[][] KEYS_COLLECTION_FACTORIES = {
-        {"qhs", "f"}, // 8.2.0.1026567706
+        {"qhs", "f"}, // 8.2.1.1030128190
         {"qhs", "f"}, // 8.2.0
         {"pti", "f"}, // 8.1.0
         {"pyk", "f"}, // 7.97.0 arm64
@@ -83,7 +83,7 @@ public final class ToolkitMappings {
     public static final String FEATURES_REQUEST_BUILDER_CLASS = "zev";
     public static final String FEATURES_REQUEST_CLASS = "zex";
     public static final String[][] FEATURES_REQUEST_PAIRS = {
-        {"zev", "zex"}, // 8.2.0.1026567706
+        {"zev", "zex"}, // 8.2.1.1030128190
         {"zev", "zex"}, // 8.2.0
         {"yqd", "yqf"}, // 8.1.0
         {"wqa", "wqb"}, // 7.97.0
@@ -125,7 +125,7 @@ public final class ToolkitMappings {
     public static final String REMOTE_MEDIA_MODEL_CLASS = "anof";
     public static final String REMOTE_MEDIA_OPTIONS_CLASS = "anog";
     public static final String[][] REMOTE_MEDIA_MODEL_PAIRS = {
-        {"anof", "anog"}, // 8.2.0.1026567706
+        {"anof", "anog"}, // 8.2.1.1030128190
         {"amwm", "amwn"}, // 7.99.0.1007655401
         {"amsr", "amss"}, // 7.97.0 arm64
         {"amri", "amrj"}, // 7.97.0 univ
