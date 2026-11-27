@@ -1,3 +1,13 @@
+## [1.19.0-dev.7](https://github.com/Akash-Sriram/morphe-google-photos/compare/v1.19.0-dev.6...v1.19.0-dev.7) (2026-11-27)
+
+### 🐛 Bug Fixes
+
+* **Google Photos - Timeline:** harden camera and custom folder filters against trashed photos ([7b8baf0](https://github.com/Akash-Sriram/morphe-google-photos/commit/7b8baf048841a82ab57097e827354e4e8703f9f7))
+
+### ✨ New Features
+
+* **Google Photos - Core:** consolidate into Morphe Core suite and fix Collections camera views ([e8275e1](https://github.com/Akash-Sriram/morphe-google-photos/commit/e8275e150bffe623773685603edc063ce675e230))
+
 ## [1.19.0-dev.6](https://github.com/Akash-Sriram/morphe-google-photos/compare/v1.19.0-dev.5...v1.19.0-dev.6) (2026-11-22)
 
 ### ✨ New Features

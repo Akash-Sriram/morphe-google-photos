@@ -75,11 +75,11 @@ Replaced legacy floating overlays with a native, full-screen Material 3 settings
 ## 🩹 Patches List
 
 <!-- PATCHES_START EXPANDED -->
-> **[v1.19.0-dev.6](https://github.com/Akash-Sriram/morphe-google-photos/releases/tag/v1.19.0-dev.6)**&nbsp;&nbsp;&middot;&nbsp;&nbsp;`dev`&nbsp;&nbsp;&middot;&nbsp;&nbsp;**7 patches** across **1 apps**&nbsp;&nbsp;&middot;&nbsp;&nbsp;[Full details](PATCHES.md)
+> **[v1.19.0-dev.7](https://github.com/Akash-Sriram/morphe-google-photos/releases/tag/v1.19.0-dev.7)**&nbsp;&nbsp;&middot;&nbsp;&nbsp;`dev`&nbsp;&nbsp;&middot;&nbsp;&nbsp;**4 patches** across **1 apps**&nbsp;&nbsp;&middot;&nbsp;&nbsp;[Full details](PATCHES.md)
 
 | # | App | Patches | Version | Package |
 |---|---|---|---|---|
-| 1 | [**Google Photos**](PATCHES.md#google-photos-comgoogleandroidappsphotos) | 7 | `experimental 8.2.0.1026567706`, `experimental 8.2.0.1023899193`, `experimental 8.1.0.1023737660`, `experimental 8.1.0.1020990585`, `8.0.0.1011730683` | [`com.google.android.apps.photos`](https://play.google.com/store/apps/details?id=com.google.android.apps.photos) |
+| 1 | [**Google Photos**](PATCHES.md#google-photos-comgoogleandroidappsphotos) | 4 | `experimental 8.2.1.1030128190`, `experimental 8.2.0.1026567706`, `experimental 8.2.0.1023899193`, `experimental 8.1.0.1023737660`, `experimental 8.1.0.1020990585`, `8.0.0.1011730683` | [`com.google.android.apps.photos`](https://play.google.com/store/apps/details?id=com.google.android.apps.photos) |
 <!-- PATCHES_END -->
 
 ---
