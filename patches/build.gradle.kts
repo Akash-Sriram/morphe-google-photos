@@ -14,7 +14,7 @@ group = "app.morphe"
 
 patches {
     about {
-        name = "Morphe Google Photos Patches"
+        name = "MGP Patch"
         description = "Advanced Google Photos patches featuring decoupled DCIM, independent folder backup control, native Morphe Toolkit, AMOLED dark theme, and GmsCore support."
         source = "https://github.com/Akash-Sriram/morphe-google-photos"
         author = "Akash Sriram"
