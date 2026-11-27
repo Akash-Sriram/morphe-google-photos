@@ -1,3 +1,9 @@
+## [1.19.0-dev.8](https://github.com/Akash-Sriram/morphe-google-photos/compare/v1.19.0-dev.7...v1.19.0-dev.8) (2026-11-27)
+
+### 🐛 Bug Fixes
+
+* **Google Photos - Creations:** export creations to Pictures/Google Photos and refresh docs ([9b67f48](https://github.com/Akash-Sriram/morphe-google-photos/commit/9b67f48e83a83c1d188b6c06c2987679e78b5e63))
+
 ## [1.19.0-dev.7](https://github.com/Akash-Sriram/morphe-google-photos/compare/v1.19.0-dev.6...v1.19.0-dev.7) (2026-11-27)
 
 ### 🐛 Bug Fixes

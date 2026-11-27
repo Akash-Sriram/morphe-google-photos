@@ -12,7 +12,7 @@
 ## 🎯 Supported Google Photos Versions
 
 <!-- PATCHES_START EXPANDED -->
-> **[v1.19.0-dev.7](https://github.com/Akash-Sriram/morphe-google-photos/releases/tag/v1.19.0-dev.7)**&nbsp;&nbsp;&middot;&nbsp;&nbsp;`dev`&nbsp;&nbsp;&middot;&nbsp;&nbsp;**4 patches** across **1 apps**&nbsp;&nbsp;&middot;&nbsp;&nbsp;[Full details](PATCHES.md)
+> **[v1.19.0-dev.8](https://github.com/Akash-Sriram/morphe-google-photos/releases/tag/v1.19.0-dev.8)**&nbsp;&nbsp;&middot;&nbsp;&nbsp;`dev`&nbsp;&nbsp;&middot;&nbsp;&nbsp;**4 patches** across **1 apps**&nbsp;&nbsp;&middot;&nbsp;&nbsp;[Full details](PATCHES.md)
 
 | # | App | Patches | Version | Package |
 |---|---|---|---|---|
