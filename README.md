@@ -1,101 +1,126 @@
 # Morphe Google Photos (MGP)
 
-Morphe patches for **Google Photos**, derived from [RookieEnough/De-Vanced](https://github.com/RookieEnough/De-Vanced), adding Pixel feature spoofing, GmsCore/MicroG support, in-app flag controls (referencing [polodarb/GMS-Flags-Reborn](https://github.com/polodarb/GMS-Flags-Reborn)), DCIM folder backup control (referencing [RevealedSoulEven/XposedPhotosFIX](https://github.com/RevealedSoulEven/XposedPhotosFIX)), and built-in Toolkit utilities (referencing [xob0t/Google-Photos-Toolkit](https://github.com/xob0t/Google-Photos-Toolkit)).
+[![Dev Release](https://img.shields.io/github/v/release/Akash-Sriram/morphe-google-photos?include_prereleases&label=Dev%20Release&color=blue)](https://github.com/Akash-Sriram/morphe-google-photos/releases)
+[![License: GPL-3.0](https://img.shields.io/badge/License-GPL%20v3.0-green.svg)](https://www.gnu.org/licenses/gpl-3.0)
+
+**MGP Patch** brings unlimited unmetered Pixel backup, GmsCore/MicroG non-root support, on-device AI model seeding, and in-app flag controls to **Google Photos** — derived from [RookieEnough/De-Vanced](https://github.com/RookieEnough/De-Vanced).
+
+[📦 Ready-to-Install APKs](https://github.com/Akash-Sriram/GooglePhotos-Patched/releases) &nbsp;&bull;&nbsp; [🩹 Latest Patch Bundle (.mpp)](https://github.com/Akash-Sriram/morphe-google-photos/releases) &nbsp;&bull;&nbsp; [📖 Architecture Knowledge](docs/GOOGLE_PHOTOS_KNOWLEDGE.md)
 
 ---
 
-## 🚀 Key Features & Enhancements
-
-### 1. 🔄 Dynamic In-App Backup Profiles & Video Boost Passthrough
-Easily switch backup and identity profiles directly from **Morphe Settings $\rightarrow$ Backup Storage Profile** without recompiling or patching:
-* **Auto-Sync Mode (Recommended)**: Dynamically maps Original Quality $\rightarrow$ **Pixel XL** (unmetered Original Quality) and Storage Saver $\rightarrow$ **Pixel 5** (unmetered Storage Saver). Automatically synchronizes device profiles when changing backup quality in Photos settings.
-* **Google Pixel XL**: Forced unmetered Original Quality backup. Quality selector in Google Photos is locked to Original Quality to prevent accidental quota leakage.
-* **Google Pixel 5**: Forced unmetered Storage Saver backup.
-* **Original Device (Disabled)**: Temporarily disables device spoofing and restores the physical hardware's authentic identity (`Build.MODEL`, `Build.DEVICE`, etc.).
-  * **Video Boost Eligible**: Allows users on real Pixel devices (Pixel 8 Pro, 9 Pro) to trigger server-side **Video Boost** and **Night Sight Video** processing in Google Cloud without needing two separate app installations.
-  * **Full Backup Control**: Re-enables all 3 authentic Google Photos backup quality tiers (**Original Quality**, **Storage Saver**, **Express**).
-* **Patch-Level Profile Selection (Minimal Builds)**: The `Spoof features` patch provides a patch-level option (`profile`: `auto`, `pixel-xl`, `pixel-5`). Users patching a minimal build without the Toolkit / Flag Manager can select their desired spoof profile right from initial installation.
-
----
-
-### 2. ⚡ Bytecode-Level Device Spoofing (Android 12 – 16)
-* **Direct Smali SGET Replacement**: Injects `invoke-static` calls directly at the smali bytecode level for identity fields (`Build.MODEL`, `Build.DEVICE`, `Build.PRODUCT`, `Build.FINGERPRINT`, `Build.MANUFACTURER`, `Build.BRAND`). Bypasses Android 12+ reflection blocks that throw `IllegalAccessException` on `static final` fields, eliminating account quota leakage.
-* **Codec & Hardware Isolation**: Excludes media playback, ExoPlayer, and video decoder classes (`Landroidx/media`, `Lcom/google/android/exoplayer2`, `/videoplayer/`, `/codec/`) from spoofing to preserve hardware-accelerated 4K/60fps/HDR video decoding and prevent playback stuttering.
-
----
-
-### 3. 🎨 Dedicated Material 3 Morphe Settings Screen
-Replaced legacy floating overlays with a native, full-screen Material 3 settings interface accessible via the profile menu or app settings:
-* **Dynamic Material You Theming**: Follows system and AMOLED dark mode palette (`Theme.get(activity)`).
-* **Organized Modules**: Clean categorization for Backup Profiles, Phenotype Flags, Toolkit, AI Models, Creations Registry, and System Diagnostics.
-
----
-
-### 4. 🧪 In-App Phenotype Flag Manager & Curated Presets
-* **Live Search & Filtering**: Inspect, search, and toggle hundreds of experimental Google Photos redesigns and feature flags directly inside the app without root or PC.
-* **One-Tap Curated Presets**: Quickly apply vetted flag bundles including **Ultra Pixel Experience**, **Modern UI & Bento Layout**, **Floating Navigation Bar**, and **Cinematic Wallpapers**.
-* **Backup & Reset**: Export/import flag configurations or reset all overrides to stock defaults with one tap.
-
----
-
-### 5. 🛠️ Native Toolkit & Media Utilities
-* **Google Photos Toolkit Integration**: Built-in batch creation downloader, local deduplication, and media filtering tools.
-* **Storage & Cache Cleaner**: Purges thumbnail memory cache and transient download artifacts to reclaim device storage.
-* **Creations Save Registry Manager**: Reset download and save tracking for Made-For-You (MFY) cards and Story highlights so previously saved creations can be re-downloaded and restored.
-
----
-
-### 6. 🤖 On-Device AI & Machine Learning Model Manager
-* **AI Model Inspector & Seeder**: Verify, download, and seed on-device AI assets for **Gemini Nano**, **Magic Eraser**, **Segmentation Filters**, and **Portrait Light**.
-* **0MB MDD Bypass**: Bypasses the 0MB Mobile Data Download check, preventing AI asset downloads from stalling on unmetered or non-Pixel devices.
-
----
-
-### 7. 📁 DCIM & Selective Folder Backup Control
-* **Camera Folder Independence**: Removes the forced always-on backup constraint on `DCIM/Camera`, granting individual toggle switches for every device folder under **Collections $\rightarrow$ On this device**.
-* **Local Creation Interceptor**: Automatically saves Made-For-You creation cards and Story highlights directly to `DCIM/Google Photos` with original EXIF capture timestamps, allowing Google Photos to back them up locally under the unmetered Pixel quota (**0 bytes quota used**).
-
----
-
-### 8. 🌐 Universal GmsCore / MicroG Account & Avatar Bridge
-* **Full Non-Root MicroG Support**: Works seamlessly without proprietary Google Play Services.
-* **Synchronized Avatar Bridge**: Renders high-resolution Google Account profile pictures across all UI components:
-  * Main Toolbar Account Particle Disc (`og_apd_internal_image_view`)
-  * Bento Center Large Avatar (`og_bento_selected_account_avatar`)
-  * Collapsed & Expanded Account Switcher Rows (`og_bento_header_account_avatar`)
-
----
-
-### 9. 📊 Built-In Diagnostics & Real-Time Logging
-* **Live Logcat Stream**: Read real-time Google Photos and Morphe logcat output directly inside the app.
-* **Diagnostic Bundle Export**: Generate and share complete debug reports with Phenotype flag dumps, active storage policies, and device parameters for seamless troubleshooting.
-
----
-
-## 🩹 Patches List
+## 🎯 Supported Google Photos Versions
 
 <!-- PATCHES_START EXPANDED -->
 > **[v1.19.0-dev.7](https://github.com/Akash-Sriram/morphe-google-photos/releases/tag/v1.19.0-dev.7)**&nbsp;&nbsp;&middot;&nbsp;&nbsp;`dev`&nbsp;&nbsp;&middot;&nbsp;&nbsp;**4 patches** across **1 apps**&nbsp;&nbsp;&middot;&nbsp;&nbsp;[Full details](PATCHES.md)
 
 | # | App | Patches | Version | Package |
 |---|---|---|---|---|
-| 1 | [**Google Photos**](PATCHES.md#google-photos-comgoogleandroidappsphotos) | 4 | `experimental 8.2.1.1030128190`, `experimental 8.2.0.1026567706`, `experimental 8.2.0.1023899193`, `experimental 8.1.0.1023737660`, `experimental 8.1.0.1020990585`, `8.0.0.1011730683` | [`com.google.android.apps.photos`](https://play.google.com/store/apps/details?id=com.google.android.apps.photos) |
+| 1 | [**Google Photos**](PATCHES.md#google-photos-comgoogleandroidappsphotos) | 4 | `8.0.0.1011730683` (stable)<br><sub>+ 5 experimental (`8.1`–`8.2`)</sub> | [`com.google.android.apps.photos`](https://play.google.com/store/apps/details?id=com.google.android.apps.photos) |
 <!-- PATCHES_END -->
+
+<details>
+<summary><b>🔍 View All Specific Target Versions</b></summary>
+
+* `8.0.0.1011730683` *(Recommended Stable Anchor)*
+* `8.1.0.1020990585` *(Experimental)*
+* `8.1.0.1023737660` *(Experimental)*
+* `8.2.0.1023899193` *(Experimental)*
+* `8.2.0.1026567706` *(Experimental)*
+* `8.2.1.1030128190` *(Experimental Latest)*
+
+</details>
 
 ---
 
-## ⚠️ Limitations & Server-Side Nuances
+## 🧩 The 4 Consolidated Patches
 
-1. **Memories / Story Creations & Made-For-You (MFY)**:
-   * Saving creations directly through cloud rendering triggers server-side processing on Google's backend, which bypasses on-device spoofing and debits Google Drive storage quota.
-   * **Solution**: The `DCIM & backup control` patch intercepts creation saves and downloads them locally to `DCIM/Google Photos` with embedded EXIF timestamps. Google Photos then backs them up locally through the unmetered Pixel pipeline at **0 bytes quota**.
+Starting with `v1.19.0-dev`, all fragmented patches are unified into **4 user-visible patches**. Permanent patch-time decisions are eliminated — all behavioral settings are controlled dynamically inside **Morphe Settings**:
 
-2. **Video Boost & Night Sight Video (Pixel 8 Pro / 9 Pro)**:
-   * Google's data-center GPU clusters process Video Boost uploads only for verified eligible devices. Spoofing Pixel XL disables Video Boost cloud processing.
-   * **Solution**: Switch to the **Original Device (Disabled)** profile in Morphe Settings to upload Video Boost raw files with your physical hardware identity. Once processed, switch back to **Pixel XL** to back up the resulting video permanently for free.
+| Patch | Default | Description |
+|---|:---:|---|
+| **Morphe Core** | `ON` | Master engine: backup identity spoofing, DCIM folder decoupling, on-device AI seeding, Phenotype flag manager, and Material 3 Morphe Settings. |
+| **AMOLED dark theme** | `ON` | Pure pitch-black (`#000000`) surfaces for OLED displays while preserving clean light theme. |
+| **GmsCore support** | `ON` | Universal MicroG / non-root operation, push notifications channel, and synchronized account avatar bridge. |
+| **Custom branding** | `OFF` | Renames the launcher title and application icon to custom Morphe branding. |
 
-3. **"Free Up Space" Calculation**:
-   * The percentage on the "Free up space" screen (*"Device storage: X% used"*) displays **total internal storage across the entire phone (`/data`)** (System + Apps + Caches + Photos), measured directly via Android's `StatFs`. It is not calculated against a spoofed Pixel device capacity.
+---
+
+## 🚀 Key Features
+
+### 🔄 Dynamic Backup Profiles & Video Boost Passthrough
+* Switch instantly between **Pixel XL** (unmetered Original Quality), **Pixel 5** (unmetered Storage Saver), or **Original Device** from Morphe Settings without re-patching.
+* **Auto-Sync Mode**: Automatically switches spoofed profile based on chosen backup quality in Photos settings.
+
+<details>
+<summary><b>Details: How Video Boost Passthrough works for Pixel 8/9 Pro users</b></summary>
+
+Switching to the **Original Device (Disabled)** profile restores your physical device identity (`Build.MODEL`, `Build.DEVICE`). Genuine Pixel users can upload raw files for server-side **Video Boost** and **Night Sight Video** cloud processing, then switch back to **Pixel XL** to back up the resulting video permanently with zero quota usage.
+</details>
+
+### ⚡ Bytecode-Level Identity Spoofing (Android 12 – 16)
+* Injects `invoke-static` calls directly at the smali bytecode level, bypassing Android 12+ reflection blocks on `static final` fields to eliminate quota leakage.
+* Excludes video decoders and ExoPlayer (`Landroidx/media`, `Lcom/google/android/exoplayer2`) from spoofing to preserve hardware-accelerated 4K/60fps/HDR playback.
+
+### 📁 DCIM Decoupling & Selective Folder Backup
+* Removes the forced backup constraint on `DCIM/Camera`, granting individual backup toggles for every folder under **Collections $\rightarrow$ On this device**.
+* Intelligently routes queries in `PhotosTimelineFilter` so the main timeline remains decoupled while camera albums, cover thumbnails, and stories preview cleanly.
+* **Creation Interceptor**: Intercepts Made-For-You (MFY) cards and Stories, exporting them cleanly to **`Pictures/Google Photos`** with original EXIF capture timestamps. Once the folder's backup toggle is enabled, Google Photos backs them up through the unmetered Pixel pipeline at **0 bytes quota**.
+
+### 🎨 Material 3 Morphe Settings & Flag Manager
+* Dedicated full-screen Material 3 settings interface following system Material You and AMOLED themes.
+* Search and toggle hundreds of experimental Phenotype flags without root, or apply one-tap vetted presets (**Ultra Pixel Experience**, **Modern UI & Bento Layout**, **Floating Navigation Bar**).
+
+### 🤖 On-Device AI / ML Model Seeder
+* Automatically checks, downloads, and seeds on-device assets for **Gemini Nano**, **Magic Eraser**, **Segmentation Filters**, and **Portrait Light**.
+* Bypasses the 0MB Mobile Data Download (MDD) check and enforces stable CPU fallback on low-tier GPUs.
+
+### 🌐 Universal GmsCore / MicroG Support
+* Seamless non-root operation without proprietary Google Play Services.
+* GmsCore push notification channels for background uploads and partner sharing.
+* Synchronized Avatar Bridge rendering high-res profile photos across the toolbar, Bento disc, and account switcher.
+
+### 🛠️ Native Toolkit & Media Utilities
+* Batch creation downloader, local deduplication, and media filtering tools.
+* Storage & cache cleaner (purges thumbnail memory cache and transient download artifacts).
+* Safe Offload exporter cleanly routing exports to **`Pictures/GooglePhotos_Export`** to prevent auto-rebackup loops.
+
+---
+
+## ⚠️ Nuances & Server-Side Limitations
+
+<details>
+<summary><b>1. Memories / Stories & Made-For-You Creations</b></summary>
+
+Saving creations through Google's cloud renderer triggers server-side processing on Google's backend that bypasses on-device spoofing and debits Google Drive storage quota.  
+**Solution**: MGP intercepts creations and exports them locally to `Pictures/Google Photos` with original EXIF timestamps. Enabling backup on this device folder lets Google Photos back them up through the unmetered Pixel pipeline at **0 bytes quota**.
+</details>
+
+<details>
+<summary><b>2. Video Boost & Night Sight Video</b></summary>
+
+Google's cloud GPU clusters only process Video Boost uploads for eligible physical devices. Set the profile to **Original Device (Disabled)** in Morphe Settings for the upload, then switch back to **Pixel XL** once the boost completes.
+</details>
+
+<details>
+<summary><b>3. "Free Up Space" Storage Percentage Display</b></summary>
+
+The percentage displayed on the *"Free up space"* screen measures total device storage usage across the entire phone (`/data` via `StatFs`), not spoofed Pixel capacity.
+</details>
+
+---
+
+## 🙏 Credits & Acknowledgements
+
+This project is made possible thanks to the work of open-source contributors:
+
+| Project | Author | Contribution |
+|---|---|---|
+| **[De-Vanced](https://github.com/RookieEnough/De-Vanced)** | [RookieEnough](https://github.com/RookieEnough) | Original foundation and inspiration for Google Photos patching |
+| **[GMS-Flags-Reborn](https://github.com/polodarb/GMS-Flags-Reborn)** | [polodarb](https://github.com/polodarb) | In-app Phenotype flag manipulation concepts and flag databases |
+| **[XposedPhotosFIX](https://github.com/RevealedSoulEven/XposedPhotosFIX)** | [RevealedSoulEven](https://github.com/RevealedSoulEven) | DCIM and selective folder backup decoupling implementations |
+| **[Google-Photos-Toolkit](https://github.com/xob0t/Google-Photos-Toolkit)** | [xob0t](https://github.com/xob0t) | Media management utilities and batch creation tools |
+| **[MorpheApp](https://github.com/MorpheApp)** | [Morphe](https://github.com/MorpheApp) | Core patch engine, runtime extensions, and patcher ecosystem |
 
 ---
 

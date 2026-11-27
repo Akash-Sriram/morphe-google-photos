@@ -61,8 +61,8 @@ import java.util.regex.Pattern;
 /**
  * Intercepts saving memory collages in Google Photos.
  * Instead of committing the collage solely to Google's cloud server (which debits account storage quota),
- * this downloader exports the image stream directly to the device's DCIM/Google Photos folder.
- * Google Photos then detects the local file and backs it up under the Pixel XL quota-free exemption.
+ * this downloader exports the image stream directly to the device's Pictures/Google Photos folder.
+ * Google Photos then detects the local file and can back it up under the Pixel XL quota-free exemption.
  *
  * Highlight videos are intentionally NOT intercepted — Google Photos handles their export natively
  * via its own pending-download pipeline (Lbgth;), naming them <Fife_hash>-ExportedMemoryVideo.mp4
@@ -335,7 +335,7 @@ public class LocalCreationDownloader {
             notifySaveStarted(saveCreationMixin, mediaList);
             notifyStoryUi(saveCreationMixin);
 
-            SafeLog.i(TAG, "Intercepted creation save request for " + items.size() + " item(s). Redirecting to DCIM/Google Photos.");
+            SafeLog.i(TAG, "Intercepted creation save request for " + items.size() + " item(s). Redirecting to Pictures/Google Photos.");
 
             // Dispatch background save to avoid blocking the main UI thread
             EXECUTOR.execute(() -> {
@@ -351,7 +351,7 @@ public class LocalCreationDownloader {
                 MAIN_HANDLER.post(() -> {
                     sSavingKeys.removeAll(currentSavingKeys);
                     if (saved > 0) {
-                        SafeLog.i(TAG, "Successfully exported " + saved + " creation(s) to DCIM/Google Photos.");
+                        SafeLog.i(TAG, "Successfully exported " + saved + " creation(s) to Pictures/Google Photos.");
                         for (Object media : items) {
                             if (media == null) continue;
                             String itemKey = extractItemKey(media);
@@ -434,7 +434,7 @@ public class LocalCreationDownloader {
                 recordSavedItem(appContext, itemKey, id, collageFileName, null, utcMs);
             }
 
-            SafeLog.i(TAG, "Intercepted MFY creation save for ID " + id + ". Exporting to DCIM/Google Photos in background.");
+            SafeLog.i(TAG, "Intercepted MFY creation save for ID " + id + ". Exporting to Pictures/Google Photos in background.");
 
             EXECUTOR.execute(() -> {
                 if (appContext != null) {
@@ -443,7 +443,7 @@ public class LocalCreationDownloader {
                         if (success) {
                             recordCardSaved(id);
                             Toast.makeText(appContext, "Saved creation to Google Photos", Toast.LENGTH_SHORT).show();
-                            SafeLog.i(TAG, "Successfully exported MFY creation " + id + " to DCIM/Google Photos.");
+                            SafeLog.i(TAG, "Successfully exported MFY creation " + id + " to Pictures/Google Photos.");
                             if (pres != null) {
                                 updateMfyCardTileState(pres, id, true, false);
                             }
@@ -1171,7 +1171,7 @@ public class LocalCreationDownloader {
 
     /**
      * Called when the user taps "Save" on a Create Tab hero card (Lqlb->n / Lqno->n / Lskw->n).
-     * Marks the card ID as saved immediately and dispatches background export to DCIM/Google Photos.
+     * Marks the card ID as saved immediately and dispatches background export to Pictures/Google Photos.
      */
     public static void onCreateHeroSaveRequested(Object presenter, Object wsf) {
         if (presenter == null || wsf == null) return;
@@ -1324,7 +1324,7 @@ public class LocalCreationDownloader {
                                 lMethod.invoke(presenter, false);
                             } catch (Throwable ignored) {}
                             Toast.makeText(appContext, "Saved creation to Google Photos", Toast.LENGTH_SHORT).show();
-                            SafeLog.i(TAG, "Successfully exported hero card creation to DCIM/Google Photos and updated UI to Saved.");
+                            SafeLog.i(TAG, "Successfully exported hero card creation to Pictures/Google Photos and updated UI to Saved.");
                         } else {
                             Toast.makeText(appContext, "Failed to save creation", Toast.LENGTH_SHORT).show();
                             SafeLog.w(TAG, "Failed to download hero card creation locally.");
@@ -1429,7 +1429,7 @@ public class LocalCreationDownloader {
     }
 
     public static File getGooglePhotosDir() {
-        return new File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DCIM), "Google Photos");
+        return new File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES), "Google Photos");
     }
 
     public static String getOfficialCollageFileName(CreationTime time) {
@@ -1745,7 +1745,7 @@ public class LocalCreationDownloader {
                 String selection = "(" + MediaStore.MediaColumns.DISPLAY_NAME + "=? OR " +
                         MediaStore.MediaColumns.DISPLAY_NAME + " LIKE ?) AND " +
                         MediaStore.MediaColumns.RELATIVE_PATH + " LIKE ?";
-                String[] selectionArgs = new String[]{fileName, basePrefix + " (%)%", "DCIM/Google Photos%"};
+                String[] selectionArgs = new String[]{fileName, basePrefix + " (%)%", "%Google Photos%"};
                 resolver.delete(tableUri, selection, selectionArgs);
             } catch (Throwable ignored) {}
 
@@ -1769,7 +1769,7 @@ public class LocalCreationDownloader {
                 ContentValues values = new ContentValues();
                 values.put(MediaStore.MediaColumns.DISPLAY_NAME, fileName);
                 values.put(MediaStore.MediaColumns.MIME_TYPE, mimeType);
-                values.put(MediaStore.MediaColumns.RELATIVE_PATH, "DCIM/Google Photos");
+                values.put(MediaStore.MediaColumns.RELATIVE_PATH, "Pictures/Google Photos");
                 values.put(MediaStore.MediaColumns.DATE_ADDED, creationTime.utcMs / 1000);
                 values.put(MediaStore.MediaColumns.DATE_MODIFIED, creationTime.utcMs / 1000);
                 if (isVideo) {

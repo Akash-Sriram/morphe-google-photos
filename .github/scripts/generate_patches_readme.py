@@ -265,13 +265,32 @@ def versions_line(targets):
     return "**Supported versions:** " + " ".join(f"`{escape(label)}`" for label in labels)
 
 
-def index_row(index, app_name, package_name, count, labels):
+def format_index_versions(targets):
+    """Format versions cleanly in the README index table without clutter."""
+    if not targets:
+        return "—"
+    stables = [t["version"] for t in targets if not t.get("isExperimental") and t.get("version")]
+    experimentals = [t["version"] for t in targets if t.get("isExperimental") and t.get("version")]
+    if len(targets) <= 2:
+        return ", ".join(f"`{escape(label)}`" for label in version_labels(targets))
+    parts = []
+    if stables:
+        parts.append(", ".join(f"`{escape(s)}`" for s in stables) + " (stable)")
+    if experimentals:
+        exp_first = experimentals[0].split(".")[0] + "." + experimentals[0].split(".")[1]
+        exp_last = experimentals[-1].split(".")[0] + "." + experimentals[-1].split(".")[1]
+        range_str = f"`{exp_last}`–`{exp_first}`" if exp_first != exp_last else f"`{exp_first}`"
+        parts.append(f"<sub>+ {len(experimentals)} experimental ({range_str})</sub>")
+    return "<br>".join(parts) if parts else "—"
+
+
+def index_row(index, app_name, package_name, count, targets):
     """One row of the compact README index table."""
     app_cell = f"[**{escape(app_name, quote=False)}**](PATCHES.md#{app_anchor(app_name, package_name)})"
     icon = app_icon(package_name, 24)
     if icon:
         app_cell = f"{icon} {app_cell}"
-    version_cell = ", ".join(f"`{escape(label)}`" for label in labels) if labels else "—"
+    version_cell = format_index_versions(targets)
     package_cell = (
         f"[`{escape(package_name, quote=False)}`]({play_store_link(package_name)})"
         if package_name
@@ -300,7 +319,7 @@ def build_readme_section():
                 entry["name"],
                 package_name,
                 len(patches),
-                version_labels(entry["targets"]),
+                entry["targets"],
             )
         )
 
